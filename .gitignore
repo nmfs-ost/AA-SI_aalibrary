@@ -1,0 +1,9 @@
+# For avoiding pushing any data files:
+*.idx
+*.raw
+*.tar
+*.netCDF4
+
+# For python files
+**/__pycache__/**
+
