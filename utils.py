@@ -10,7 +10,6 @@ from google.cloud.exceptions import NotFound
 from botocore import UNSIGNED
 from botocore.client import Config
 import boto3
-import botocore
 
 
 def setup_gbq_client_objs(location: str = "US",
@@ -64,7 +63,7 @@ def upload_file_to_gcp_bucket(bucket: storage.Client.bucket,
         raise
 
 
-def create_s3_objs(bucket: str = "noaa-wcsd-pds"):
+def create_s3_objs(bucket_name: str = "noaa-wcsd-pds"):
     """Creates the boto3 object used for downloading file objects."""
 
     # Setup access to S3 bucket as an anonymous user
@@ -75,6 +74,77 @@ def create_s3_objs(bucket: str = "noaa-wcsd-pds"):
         config=Config(signature_version=UNSIGNED),
         )
     
-    bucket = s3.Bucket(bucket)
+    bucket_name = s3.Bucket(bucket_name)
     
-    return s3, bucket
+    return s3, bucket_name
+
+
+def count_objects_in_bucket_location(prefix: str = "",
+                                     bucket: boto3.resource = None) -> int:
+    """Counts the number of objects within a bucket location.
+    NOTE: This DOES NOT include folders, as those do not count as objects.
+
+    Args:
+        prefix (str, optional): The bucket locaiton. Defaults to "".
+        bucket (boto3.resource, optional): The bucket resource object. Defaults to None.
+
+    Returns:
+        int: The count of objects within the location.
+    """    
+    
+    count = sum(1 for _ in bucket.objects.filter(Prefix=prefix).all())
+    return count
+
+
+def count_subdirectories_in_bucket_location(prefix: str = "",
+                                            bucket: boto3.resource = None) -> int:
+    """Counts the number of subdirectories within a bucket location.
+
+    Args:
+        prefix (str, optional): The bucket locaiton. Defaults to "".
+        bucket (boto3.resource, optional): The bucket resource object. Defaults to None.
+
+    Returns:
+        int: The count of subdirectories within the location.
+    """    
+    
+    subdirs = set()
+    for obj in bucket.objects.filter(Prefix=prefix):
+        prefix = "/".join(obj.key.split("/")[:-1])
+        if len(prefix) and prefix not in subdirs:
+            subdirs.add(prefix)
+            # print(prefix + "/")
+    return len(subdirs)
+
+
+def get_subdirectories_in_bucket_location(prefix: str = "",
+                                          bucket: boto3.resource = None,
+                                          return_full_paths: bool = False) -> List[str]:
+    """Gets a list of all the subdirectories in a specific bucket location (called prefix).
+    The return can be with full paths (root to folder inclusive), or just the folder
+    names.
+
+    Args:
+        prefix (str, optional): The bucket location. Defaults to "".
+        bucket (boto3.resource, optional): The bucket resource object. Defaults to None.
+        return_full_paths (bool, optional): Whether or not you want a full path from
+            bucket root to the subdirectory returned. Set to false if you only want
+            the subdirectory names listed. Defaults to False.
+
+    Returns:
+        List[str]: A list of strings, each being the subdirectory. Whether these
+            are full paths or not are specified by the `return_full_paths` parameter.
+    """    
+
+    subdirs = set()
+    for obj in bucket.objects.filter(Prefix=prefix):
+        prefix = "/".join(obj.key.split("/")[:-1])
+        if len(prefix) and prefix not in subdirs:
+            subdirs.add(prefix)
+            # print(prefix + "/")
+    if return_full_paths:
+        return list(subdirs)
+    else:
+        subdirs = [x.split("/")[-1] for x in subdirs]
+        return subdirs
+
