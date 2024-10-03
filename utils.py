@@ -13,7 +13,7 @@ import boto3
 import botocore
 
 
-def setup_gbq(location: str = "US",
+def setup_gbq_client_objs(location: str = "US",
               project_id: str = "ggn-nmfs-gsds-prod-1"):
     # Setup GBQ
     bq_client = bigquery.Client(location=location)
@@ -23,7 +23,7 @@ def setup_gbq(location: str = "US",
     return bq_client, gcs_file_system
 
 
-def setup_storage(project_id: str = "ggn-nmfs-aa-dev-1",
+def setup_gbq_storage_objs(project_id: str = "ggn-nmfs-aa-dev-1",
                   bucket_name: str = "ggn-nmfs-aa-dev-1-data") -> Tuple[storage.Client, str, storage.Client.bucket]:
     # Setup storage
 
@@ -50,7 +50,7 @@ def upload_file_to_gcp_bucket(bucket: storage.Client.bucket,
     """
 
     if not bucket:
-        _, _, bucket = setup_storage()
+        _, _, bucket = setup_gbq_storage_objs()
 
     blob = bucket.blob(blob_file_path,
                        chunk_size=1024*1024*1)
