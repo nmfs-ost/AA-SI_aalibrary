@@ -37,22 +37,6 @@ def get_file_paths_via_json_link(link: str = ""):
             print(f"{file_name}, {cloud_path}")
 
 
-def create_s3_objs(bucket: str = "noaa-wcsd-pds"):
-    """Creates the boto3 object used for downloading file objects."""
-
-    # Setup access to S3 bucket as an anonymous user
-    s3_resource = boto3.resource(
-        's3',
-        aws_access_key_id='',
-        aws_secret_access_key='',
-        config=Config(signature_version=UNSIGNED),
-        )
-    
-    bucket = s3_resource.Bucket(bucket)
-    
-    return s3_resource, bucket
-
-
 def get_file_name_from_url(url: str = ""):
     """Extracts the file name from a given storage bucket url. Includes the file
     extension.
@@ -74,7 +58,7 @@ def download_single_file_from_aws(bucket: str = "noaa-wcsd-pds",
     """Downloads a file from AWS storage bucket, aka the NCEI repository."""
     
     try:
-        s3_resource, bucket = create_s3_objs()
+        s3_resource, bucket = utils.create_s3_objs()
     except Exception as e:
         print(f"Cannot establish connection to s3 bucket..\n{e}")
     
@@ -91,18 +75,27 @@ def download_single_file_from_aws(bucket: str = "noaa-wcsd-pds",
         print(f"Error downloading file {file_name}.\n{e}")
 
 
-def download_single_survey_from_aws(bucket_name: str = "noaa-wvsd-pds",
-                                    survey_folder_url: str = "",
-                                    download_location: str = ""):
-    """_summary_
+def download_single_survey_from_ncei(ship_name: str = "",
+                                     survey_name: str = "",
+                                     echosounder: str = "",
+                                     survey_folder_url: str = "",
+                                     download_location: str = "",
+                                     bucket: boto3.resource = None):
+    """Downloads a single survey from NCEI to the `download_location`.
 
     Args:
-        bucket_name (str, optional): _description_. Defaults to "noaa-wvsd-pds".
+        ship_name (str, optional): The name of the ship. Must be title-case and have
+            spaces substituted for underscores. Defaults to "".
+        bucket (boto3.resource, optional): The boto3 bucket resource for the bucket
+            that the ship data resides in. Defaults to None.
+        survey_name (str, optional): _description_. Defaults to "".
+        echosounder (str, optional): _description_. Defaults to "".
         survey_folder_url (str, optional): _description_. Defaults to "".
         download_location (str, optional): _description_. Defaults to "".
-    """
-
+    """    
     # Get a list of urls of objects from that folder.
+    # TODO
+    ...
 
 
 def get_all_ship_objects_from_ncei(ship_name: str = "",
@@ -131,9 +124,10 @@ def get_all_ship_objects_from_ncei(ship_name: str = "",
     
     return ship_objects
 
-def get_all_objects_from_survey_ncei(ship_name: str = "",
-                                     survey_name: str = "",
-                                     bucket: boto3.resource = None) -> List[str]:
+
+def get_all_objects_in_survey_from_ncei(ship_name: str = "",
+                                        survey_name: str = "",
+                                        bucket: boto3.resource = None) -> List[str]:
     """Gets all of the object keys from a ship survey from the NCEI database.
 
     Args:
@@ -162,17 +156,19 @@ def get_all_objects_from_survey_ncei(ship_name: str = "",
     return survey_objects
 
 
-def main():
-    ...
-
-
 if __name__ == '__main__':
-    main()
-    s3_resource, bucket = create_s3_objs()
-    survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
-                                     survey_name="RL2107",
-                                     bucket=bucket)
-    print(survey_stuff)
+    s3_resource, bucket = utils.create_s3_objs()
+    # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
+    #                                  survey_name="RL2107",
+    #                                  bucket=bucket)
+    # print(survey_stuff)
     # resp = s3_resource.(bucket="noaa-wcsd-pds",
     #                           prefix="data/raw/Reuben_Lasker/RL2107")
     # print(resp)
+
+    # print(utils.count_objects_in_bucket_location(prefix="data/raw/Reuben_Lasker/RL2107/",
+    #                                              bucket=bucket))
+    
+    print(utils.get_subdirectories_in_bucket_location(prefix="data/raw/Reuben_Lasker/RL2107/",
+                                                 bucket=bucket,
+                                                 return_full_paths=True))
