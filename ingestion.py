@@ -69,14 +69,30 @@ def get_file_name_from_url(url: str = ""):
 
     return url.split("/")[-1]
 
+def create_ncei_url_from_variables(file_name: str = "",
+                                file_type: str = "",
+                                ship_name: str = "",
+                                survey_name: str = "",
+                                echosounder: str = "",
+                                year: str = "",
+                                month: str = "",
+                                date: str = ""):
+    if file_name != "":
+        ncei_url = f"https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}"
+        return ncei_url
+    else:
+        # Here we have to search for the file in s3. Just to see if something exists.
+        partial_file_name = f"-D{year}{month}{date}-"
+        # TODO: make sure to check that a raw and idx files both exist.
 
-def download_single_file_from_aws(bucket: str = "noaa-wcsd-pds",
+
+def download_single_file_from_aws(bucket_name: str = "noaa-wcsd-pds",
                                   file_url: str = "https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
                                   download_location: str = ""):
     """Downloads a file from AWS storage bucket, aka the NCEI repository."""
     
     try:
-        s3_resource, bucket = utils.create_s3_objs()
+        s3_resource, bucket_name = utils.create_s3_objs()
     except Exception as e:
         print(f"Cannot establish connection to s3 bucket..\n{e}")
     
@@ -87,7 +103,7 @@ def download_single_file_from_aws(bucket: str = "noaa-wcsd-pds",
 
     # Finally download the file.
     try:
-        bucket.download_file(file_url, file_name)
+        bucket_name.download_file(file_url, file_name)
         print(f"Downloaded: {file_name} to {download_location}")
     except Exception as e:
         print(f"Error downloading file {file_name}.\n{e}")
@@ -115,6 +131,78 @@ def download_single_survey_from_ncei(ship_name: str = "",
     # TODO: Check if its already cached.
     # TODO
     ...
+
+def download_transect_from_NCEI(file_name: str = "",
+                                file_type: str = "",
+                                ship_name: str = "",
+                                survey_name: str = "",
+                                echosounder: str = "",
+                                file_download_location: str = "",
+                                is_metadata: bool = False,
+                                force_download: bool = False,
+                                debug: bool = False):
+    """Downloads a transect file from NCEI for use on your workstation.
+    ENTRYPOINT FOR END-USERS
+
+    Args:
+        file_name (str, optional): The file name (includes extension). Defaults to "".
+        file_type (str, optional): The file type (not include the dot "."). Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        file_download_location (str, optional): The local file path you want to store your
+            file in. Defaults to "".
+        is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
+            files that are considered metadata (metadata json, or readmes) are stored
+            in a separate directory. Defaults to False.
+        force_download (bool, optional): Whether or not to override caching. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+    """
+
+    # Get the correct location of the file in GCP storage bucket, whether it exists
+    # or not, we need the variable.
+    file_ncei_url = create_ncei_url_from_variables(file_name=file_name, ship_name=ship_name,
+                                                   survey_name=survey_name, echosounder=echosounder)
+    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
+                                                                            file_type=file_type,
+                                                                            survey_name=survey_name,
+                                                                            echosounder=echosounder,
+                                                                            data_source="NCEI",
+                                                                            is_metadata=is_metadata,
+                                                                            debug=debug)
+
+    # Check if the file exists in cache (GCP).
+    file_exists_in_gcp = False
+    if file_exists_in_gcp:
+        # TODO: inform user if file exists
+        # TODO: force download if enabled.
+        # TODO: inform the user if a netcdf version exists in cache.
+        # TODO: download from gcp to file_download_location.
+        ...
+    else:
+        # Download the file.
+        try:
+            print(f"DOWNLOADING FILE {file_name} FROM NCEI")
+            download_single_file_from_aws(bucket_name="noaa-wcsd-pds",
+                                        file_url=file_ncei_url,
+                                        download_location=file_download_location)
+            print(f"DOWNLOADED FILE {file_name} FROM NCEI\nUPLOADING TO GCP...")
+        except Exception as e:
+            print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
+            return
+        # Upload to GCP at the correct storage bucket location.
+        try:
+            print("CONTINUING UPLOAD TO GCP...")
+            _, _, gcp_bucket = utils.setup_gbq_storage_objs()
+            upload_file_to_gcp_storage_bucket(file_name=file_name, file_type=file_type,
+                                              ship_name=ship_name, survey_name=survey_name,
+                                              echosounder=echosounder, file_location=file_download_location,
+                                              gcp_bucket=gcp_bucket, data_source="NCEI",
+                                              is_metadata=is_metadata, debug=debug)
+            print(f"UPLOADED FILE {file_name} TO GCP.")
+            # TODO: Maybe submit a dataproc job here to convert the file (background)??????
+        except Exception as e:
+            print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
 
 
 def get_all_ship_objects_from_ncei(ship_name: str = "",
@@ -244,8 +332,15 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
             in a separate directory. Defaults to False.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
-    
-    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location()
+
+    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
+                                                                            file_type=file_type,
+                                                                            ship_name=ship_name,
+                                                                            survey_name=survey_name,
+                                                                            echosounder=echosounder,
+                                                                            data_source=data_source,
+                                                                            is_metadata=is_metadata,
+                                                                            debug=debug)
 
     # Upload to storage bucket.
     utils.upload_file_to_gcp_bucket(bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
@@ -267,6 +362,22 @@ if __name__ == '__main__':
     # print(utils.count_objects_in_bucket_location(prefix="data/raw/Reuben_Lasker/RL2107/",
     #                                              bucket=bucket))
     
-    print(utils.get_subdirectories_in_bucket_location(prefix="data/raw/Reuben_Lasker/RL2107/",
-                                                 bucket=bucket,
-                                                 return_full_paths=True))
+    file_name, file_type, echosounder, survey_name, ship_name = parse_variables_from_ncei_file_url(url="https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210813-T220732.raw")
+    print(parse_correct_gcp_storage_bucket_location(file_name=file_name,
+                                                    file_type=file_type,
+                                                    ship_name=ship_name,
+                                                    survey_name=survey_name,
+                                                    echosounder=echosounder,
+                                                    data_source="NCEI",
+                                                    is_metadata=False,
+                                                    debug=True))
+    # https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx
+    download_transect_from_NCEI(file_name="2107RL_CW-D20210813-T220732.raw",
+                                file_type="idx",
+                                ship_name="Reuben_Lasker",
+                                survey_name="RL2107",
+                                echosounder="EK80",
+                                file_download_location=f"./2107RL_CW-D20210813-T220732.raw",
+                                is_metadata=False,
+                                force_download=True,
+                                debug=True)
