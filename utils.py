@@ -57,7 +57,7 @@ def upload_file_to_gcp_bucket(bucket: storage.Client.bucket,
     try:
         blob.upload_from_filename(local_file_path)
         if debug:
-            print("New csv data uploaded to {}".format(blob.name))
+            print("New data uploaded to {}".format(blob.name))
     except Exception as e:
         print(traceback.format_exc())
         raise
