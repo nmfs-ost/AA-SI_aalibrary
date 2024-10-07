@@ -346,7 +346,7 @@ def parse_correct_gcp_storage_bucket_location(file_name: str = "",
     Returns:
         _type_: _description_
     """
-    gcp_storage_bucket_location = ""
+
     # Creating the correct upload location
     if not is_metadata:
         # Figure out if its a raw or idx file (belongs in raw folder)
@@ -386,7 +386,7 @@ def check_if_netcdf_file_exists_in_gcp(file_name: str = "",
     
     if gcp_storage_bucket_location != "":
         gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
-                                                                        file_type=file_type,
+                                                                        file_type="netcdf",
                                                                         survey_name=survey_name,
                                                                         ship_name=ship_name,
                                                                         echosounder=echosounder,
@@ -413,7 +413,7 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
 
     Args:
         file_name (str, optional): The file name (includes extension). Defaults to "".
-        file_type (str, optional): The file type (not include the dot "."). Defaults to "".
+        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
         ship_name (str, optional): The ship name associated with this survey. Defaults to "".
         survey_name (str, optional): The survey name/identifier. Defaults to "".
         echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
