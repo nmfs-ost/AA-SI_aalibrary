@@ -139,7 +139,7 @@ def download_transect_from_NCEI(file_name: str = "",
                                 echosounder: str = "",
                                 file_download_location: str = "",
                                 is_metadata: bool = False,
-                                force_download: bool = False,
+                                force_download_from_ncei: bool = False,
                                 debug: bool = False):
     """Downloads a transect file from NCEI for use on your workstation.
     ENTRYPOINT FOR END-USERS
@@ -155,7 +155,8 @@ def download_transect_from_NCEI(file_name: str = "",
         is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
             files that are considered metadata (metadata json, or readmes) are stored
             in a separate directory. Defaults to False.
-        force_download (bool, optional): Whether or not to override caching. Defaults to False.
+        force_download_from_ncei (bool, optional): Whether or not to override caching and force
+            a download from NCEI. Defaults to False.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
 
@@ -165,20 +166,49 @@ def download_transect_from_NCEI(file_name: str = "",
                                                    survey_name=survey_name, echosounder=echosounder)
     gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
                                                                             file_type=file_type,
+                                                                            ship_name=ship_name,
                                                                             survey_name=survey_name,
                                                                             echosounder=echosounder,
                                                                             data_source="NCEI",
                                                                             is_metadata=is_metadata,
                                                                             debug=debug)
+    
+    # Create vars for use later.
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
 
     # Check if the file exists in cache (GCP).
-    file_exists_in_gcp = False
+    file_exists_in_gcp = utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+                                                           file_path=gcp_storage_bucket_location)
     if file_exists_in_gcp:
-        # TODO: inform user if file exists
-        # TODO: force download if enabled.
-        # TODO: inform the user if a netcdf version exists in cache.
-        # TODO: download from gcp to file_download_location.
-        ...
+        # Inform user if file exists
+        print(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
+        # Force download from NCEI if enabled.
+        if force_download_from_ncei:
+            try:
+                print("FORCE DOWNLOAD FROM NCEI WAS ENABLED")
+                print(f"DOWNLOADING FILE {file_name} FROM NCEI")
+                download_single_file_from_aws(bucket_name="noaa-wcsd-pds",
+                                            file_url=file_ncei_url,
+                                            download_location=file_download_location)
+                print(f"DOWNLOADED FILE {file_name} FROM NCEI")
+            except Exception as e:
+                print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
+                return
+        else:
+            print(f"SINCE FILE EXISTS IN GCP, CHECKING FOR NETCDF VERSION...")
+            netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(gcp_storage_bucket_location=gcp_storage_bucket_location,
+                                                                      gcp_bucket=gcp_bucket,
+                                                                      debug=debug)
+            if netcdf_exists_in_gcp:
+                # Inform the user if a netcdf version exists in cache.
+                print(f"FILE {file_name} EXISTS AS A NETCDF ALREADY. DOWNLOADING NETCDF...")
+                netcdf_gcp_storage_bucket_location = parse_netcdf_gcp_location(gcp_storage_bucket_location=gcp_storage_bucket_location)
+                # Download from gcp to file_download_location.
+                utils.download_file_from_gcp(gcp_bucket=gcp_bucket,
+                                             blob_file_path=netcdf_gcp_storage_bucket_location,
+                                             local_file_path=file_download_location,
+                                             debug=debug)
+                print(f"DOWNLOADED.")
     else:
         # Download the file.
         try:
@@ -305,6 +335,42 @@ def parse_correct_gcp_storage_bucket_location(file_name: str = "",
     return gcp_storage_bucket_location
 
 
+def parse_netcdf_gcp_location(gcp_storage_bucket_location: str = ""):
+    """Gets the netcdf location of a raw file within GCP."""
+
+    gcp_storage_bucket_location = gcp_storage_bucket_location.replace("/raw/", "/netcdf/")
+    # get rid of file extension and replace with netcdf
+    netcdf_gcp_storage_bucket_location = ".".join(gcp_storage_bucket_location.split(".")[:-1]) + ".netcdf"
+    
+    return netcdf_gcp_storage_bucket_location
+
+def check_if_netcdf_file_exists_in_gcp(file_name: str = "",
+                                file_type: str = "",
+                                ship_name: str = "",
+                                survey_name: str = "",
+                                echosounder: str = "",
+                                data_source: str = "",
+                                gcp_storage_bucket_location: str = "",
+                                gcp_bucket: storage.Bucket = None,
+                                debug: bool = False):
+    
+    assert gcp_bucket is not None, "Please provide a gcp_bucket object with `utils.setup_gcp_storage()`"
+    
+    if gcp_storage_bucket_location != "":
+        gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
+                                                                        file_type=file_type,
+                                                                        survey_name=survey_name,
+                                                                        ship_name=ship_name,
+                                                                        echosounder=echosounder,
+                                                                        data_source=data_source,
+                                                                        is_metadata=False,
+                                                                        debug=debug)
+    netcdf_gcp_storage_bucket_location = parse_netcdf_gcp_location(gcp_storage_bucket_location=gcp_storage_bucket_location)
+    # check if the file exists in gcp
+    return utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+                                        file_path=netcdf_gcp_storage_bucket_location)
+
+
 def upload_file_to_gcp_storage_bucket(file_name: str = "",
                                       file_type: str = "",
                                       ship_name: str = "",
@@ -350,7 +416,7 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
 
 
 if __name__ == '__main__':
-    s3_resource, bucket = utils.create_s3_objs()
+    s3_resource, s3_bucket = utils.create_s3_objs()
     # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
     #                                  survey_name="RL2107",
     #                                  bucket=bucket)
@@ -372,12 +438,14 @@ if __name__ == '__main__':
                                                     is_metadata=False,
                                                     debug=True))
     # https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx
-    download_transect_from_NCEI(file_name="2107RL_CW-D20210813-T220732.raw",
-                                file_type="idx",
-                                ship_name="Reuben_Lasker",
-                                survey_name="RL2107",
-                                echosounder="EK80",
-                                file_download_location=f"./2107RL_CW-D20210813-T220732.raw",
-                                is_metadata=False,
-                                force_download=True,
-                                debug=True)
+    # download_transect_from_NCEI(file_name="2107RL_CW-D20210813-T220732.idx",
+    #                             file_type="idx",
+    #                             ship_name="Reuben_Lasker",
+    #                             survey_name="RL2107",
+    #                             echosounder="EK80",
+    #                             file_download_location=f"./2107RL_CW-D20210813-T220732.idx",
+    #                             is_metadata=False,
+    #                             force_download=True,
+    #                             debug=True)
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
+    print(utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.idx"))
