@@ -465,14 +465,14 @@ if __name__ == '__main__':
                                                     is_metadata=False,
                                                     debug=True))
     # https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx
-    # download_transect_from_NCEI(file_name="2107RL_CW-D20210813-T220732.idx",
-    #                             file_type="idx",
-    #                             ship_name="Reuben_Lasker",
-    #                             survey_name="RL2107",
-    #                             echosounder="EK80",
-    #                             file_download_location=f"./2107RL_CW-D20210813-T220732.idx",
-    #                             is_metadata=False,
-    #                             force_download=True,
-    #                             debug=True)
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
-    print(utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.idx"))
+    download_transect_from_NCEI(file_name="2107RL_CW-D20210813-T220732.raw",
+                                file_type="raw",
+                                ship_name="Reuben_Lasker",
+                                survey_name="RL2107",
+                                echosounder="EK80",
+                                file_download_location=f"./2107RL_CW-D20210813-T220732.raw",
+                                is_metadata=False,
+                                force_download=True,
+                                debug=True)
+    # gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
+    # print(utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
