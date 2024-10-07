@@ -79,7 +79,7 @@ def create_s3_objs(bucket_name: str = "noaa-wcsd-pds"):
     return s3, bucket_name
 
 
-def count_objects_in_bucket_location(prefix: str = "",
+def count_objects_in_s3_bucket_location(prefix: str = "",
                                      bucket: boto3.resource = None) -> int:
     """Counts the number of objects within a bucket location.
     NOTE: This DOES NOT include folders, as those do not count as objects.
@@ -96,7 +96,7 @@ def count_objects_in_bucket_location(prefix: str = "",
     return count
 
 
-def count_subdirectories_in_bucket_location(prefix: str = "",
+def count_subdirectories_in_s3_bucket_location(prefix: str = "",
                                             bucket: boto3.resource = None) -> int:
     """Counts the number of subdirectories within a bucket location.
 
@@ -117,7 +117,7 @@ def count_subdirectories_in_bucket_location(prefix: str = "",
     return len(subdirs)
 
 
-def get_subdirectories_in_bucket_location(prefix: str = "",
+def get_subdirectories_in_s3_bucket_location(prefix: str = "",
                                           bucket: boto3.resource = None,
                                           return_full_paths: bool = False) -> List[str]:
     """Gets a list of all the subdirectories in a specific bucket location (called prefix).
@@ -148,3 +148,34 @@ def get_subdirectories_in_bucket_location(prefix: str = "",
         subdirs = [x.split("/")[-1] for x in subdirs]
         return subdirs
 
+
+def check_if_file_exists_in_gcp(bucket: storage.Bucket = None,
+                                file_path: str = ""):
+    return bucket.blob(file_path).exists()
+
+
+def download_file_from_gcp(gcp_bucket: storage.Client.bucket,
+                           blob_file_path: str,
+                           local_file_path: str,
+                           debug: bool = False):
+    """Downloads a file from the blob storage bucket.
+
+    Args:
+        bucket (storage.Client.bucket): The bucket object used for downloading from.
+        blob_file_path (str): The blob's file path.
+            Ex. "data/itds/logs/execute_rasp_ii/temp.csv"
+            NOTE: This must include the file name as well as the extension.
+        local_file_path (str): The local file path you wish to download the blob to.
+        debug (bool): Whether or not to print debug statements.
+    """    
+
+    blob = gcp_bucket.blob(blob_file_path,
+                       chunk_size=1024*1024*1)
+    # Download from blob
+    try:
+        blob.download_to_filename(local_file_path)
+        if debug:
+            print("New csv data downloaded to {}".format(local_file_path))
+    except Exception as e:
+        print(traceback.format_exc())
+        raise
