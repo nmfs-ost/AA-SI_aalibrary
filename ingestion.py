@@ -167,6 +167,7 @@ def download_transect_from_NCEI(file_name: str = "",
     file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
     file_ncei_idx_url = ".".join(file_ncei_url.split(".")[:-1]) + ".idx"
     file_download_location_idx = ".".join(file_download_location.split(".")[:-1]) + ".idx"
+    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".netcdf"
     gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
                                                                             file_type=file_type,
                                                                             ship_name=ship_name,
@@ -199,7 +200,13 @@ def download_transect_from_NCEI(file_name: str = "",
                 return
         else:
             print(f"SINCE FILE EXISTS IN GCP, CHECKING FOR NETCDF VERSION...")
-            netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(gcp_storage_bucket_location=gcp_storage_bucket_location,
+            netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(file_name=file_name_netcdf,
+                                                                      file_type="netcdf",
+                                                                      ship_name=ship_name,
+                                                                      survey_name=survey_name,
+                                                                      echosounder=echosounder,
+                                                                      data_source="NCEI",
+                                                                      gcp_storage_bucket_location=gcp_storage_bucket_location,
                                                                       gcp_bucket=gcp_bucket,
                                                                       debug=debug)
             if netcdf_exists_in_gcp:
