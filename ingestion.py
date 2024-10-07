@@ -472,7 +472,7 @@ if __name__ == '__main__':
                                 echosounder="EK80",
                                 file_download_location=f"./2107RL_CW-D20210813-T220732.raw",
                                 is_metadata=False,
-                                force_download=True,
+                                force_download_from_ncei=True,
                                 debug=True)
     # gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
     # print(utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
