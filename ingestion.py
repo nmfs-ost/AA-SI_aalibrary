@@ -128,7 +128,7 @@ def download_single_survey_from_ncei(ship_name: str = "",
         download_location (str, optional): _description_. Defaults to "".
     """    
     # Get a list of urls of objects from that folder.
-    # TODO: Check if its already cached.
+    # TODO: Check if ALL OF IT is already cached.
     # TODO
     ...
 
@@ -164,6 +164,9 @@ def download_transect_from_NCEI(file_name: str = "",
     # or not, we need the variable.
     file_ncei_url = create_ncei_url_from_variables(file_name=file_name, ship_name=ship_name,
                                                    survey_name=survey_name, echosounder=echosounder)
+    file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
+    file_ncei_idx_url = ".".join(file_ncei_url.split(".")[:-1]) + ".idx"
+    file_download_location_idx = ".".join(file_download_location.split(".")[:-1]) + ".idx"
     gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
                                                                             file_type=file_type,
                                                                             ship_name=ship_name,
@@ -210,7 +213,7 @@ def download_transect_from_NCEI(file_name: str = "",
                                              debug=debug)
                 print(f"DOWNLOADED.")
     else:
-        # Download the file.
+        # Download the raw file.
         try:
             print(f"DOWNLOADING FILE {file_name} FROM NCEI")
             download_single_file_from_aws(bucket_name="noaa-wcsd-pds",
@@ -233,6 +236,30 @@ def download_transect_from_NCEI(file_name: str = "",
             # TODO: Maybe submit a dataproc job here to convert the file (background)??????
         except Exception as e:
             print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
+        
+
+        # Download the idx file.
+        try:
+            print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
+            download_single_file_from_aws(bucket_name="noaa-wcsd-pds",
+                                        file_url=file_ncei_idx_url,
+                                        download_location=file_download_location_idx)
+            print(f"DOWNLOADED FILE {file_name_idx} FROM NCEI\nUPLOADING TO GCP...")
+        except Exception as e:
+            print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
+            return
+        # Upload to GCP at the correct storage bucket location.
+        try:
+            print("CONTINUING UPLOAD TO GCP...")
+            _, _, gcp_bucket = utils.setup_gbq_storage_objs()
+            upload_file_to_gcp_storage_bucket(file_name=file_name_idx, file_type=file_type,
+                                              ship_name=ship_name, survey_name=survey_name,
+                                              echosounder=echosounder, file_location=file_download_location_idx,
+                                              gcp_bucket=gcp_bucket, data_source="NCEI",
+                                              is_metadata=is_metadata, debug=debug)
+            print(f"UPLOADED FILE {file_name_idx} TO GCP.")
+        except Exception as e:
+            print(f"COULD NOT UPLOAD FILE {file_name_idx} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
 
 
 def get_all_ship_objects_from_ncei(ship_name: str = "",
