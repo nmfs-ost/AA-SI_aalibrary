@@ -345,7 +345,8 @@ def parse_correct_gcp_storage_bucket_location(file_name: str = "",
 
     Returns:
         _type_: _description_
-    """    
+    """
+    gcp_storage_bucket_location = ""
     # Creating the correct upload location
     if not is_metadata:
         # Figure out if its a raw or idx file (belongs in raw folder)
