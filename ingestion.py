@@ -351,7 +351,7 @@ def parse_correct_gcp_storage_bucket_location(file_name: str = "",
         # Figure out if its a raw or idx file (belongs in raw folder)
         if file_type.lower() in ["raw", "idx"]:
             gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/raw/{file_name}"
-        elif file_type.lower() in ["netCDF"]:
+        elif file_type.lower() in ["netcdf"]:
             gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/netcdf/{file_name}"
     else:
         gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
