@@ -219,6 +219,10 @@ def download_transect_from_NCEI(file_name: str = "",
                                              local_file_path=file_download_location,
                                              debug=debug)
                 print(f"DOWNLOADED.")
+            else:
+                print(f"FILE `{file_name}` DOES NOT EXIST AS NETCDF.")
+                # TODO: Maybe submit a dataproc job here to convert the file (background)??????
+            return
     else:
         # Download the raw file.
         try:
@@ -233,14 +237,13 @@ def download_transect_from_NCEI(file_name: str = "",
         # Upload to GCP at the correct storage bucket location.
         try:
             print("CONTINUING UPLOAD TO GCP...")
-            _, _, gcp_bucket = utils.setup_gbq_storage_objs()
             upload_file_to_gcp_storage_bucket(file_name=file_name, file_type=file_type,
                                               ship_name=ship_name, survey_name=survey_name,
                                               echosounder=echosounder, file_location=file_download_location,
                                               gcp_bucket=gcp_bucket, data_source="NCEI",
                                               is_metadata=is_metadata, debug=debug)
             print(f"UPLOADED FILE {file_name} TO GCP.")
-            # TODO: Maybe submit a dataproc job here to convert the file (background)??????
+            # TODO: Maybe submit a dataproc job here automatically to convert the file (background)??????
         except Exception as e:
             print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
         
@@ -258,7 +261,6 @@ def download_transect_from_NCEI(file_name: str = "",
         # Upload to GCP at the correct storage bucket location.
         try:
             print("CONTINUING UPLOAD TO GCP...")
-            _, _, gcp_bucket = utils.setup_gbq_storage_objs()
             upload_file_to_gcp_storage_bucket(file_name=file_name_idx, file_type=file_type,
                                               ship_name=ship_name, survey_name=survey_name,
                                               echosounder=echosounder, file_location=file_download_location_idx,
