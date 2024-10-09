@@ -181,3 +181,14 @@ def download_file_from_gcp(gcp_bucket: storage.Client.bucket,
     except Exception as e:
         print(traceback.format_exc())
         raise
+
+
+def check_if_file_exists_in_s3(object_key: str = "",
+                               s3_resource: boto3.resource = None,
+                               s3_bucket_name: str = ""):
+    try:
+        s3_resource.Object(s3_bucket_name, object_key).load()
+        return True
+    except Exception as e:
+        # object key does not exist.
+        return False
