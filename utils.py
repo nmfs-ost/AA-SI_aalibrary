@@ -177,7 +177,7 @@ def download_file_from_gcp(gcp_bucket: storage.Client.bucket,
     try:
         blob.download_to_filename(local_file_path)
         if debug:
-            print("New csv data downloaded to {}".format(local_file_path))
+            print("New data downloaded to {}".format(local_file_path))
     except Exception as e:
         print(traceback.format_exc())
         raise
@@ -191,4 +191,5 @@ def check_if_file_exists_in_s3(object_key: str = "",
         return True
     except Exception as e:
         # object key does not exist.
+        print(e)
         return False
