@@ -86,13 +86,13 @@ def create_ncei_url_from_variables(file_name: str = "",
         # TODO: make sure to check that a raw and idx files both exist.
 
 
-def download_single_file_from_aws(bucket_name: str = "noaa-wcsd-pds",
+def download_single_file_from_aws(s3_bucket_name: str = "noaa-wcsd-pds",
                                   file_url: str = "https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
                                   download_location: str = ""):
     """Downloads a file from AWS storage bucket, aka the NCEI repository."""
     
     try:
-        s3_resource, bucket_name = utils.create_s3_objs()
+        s3_client, s3_resource, s3_bucket_name = utils.create_s3_objs()
     except Exception as e:
         print(f"Cannot establish connection to s3 bucket..\n{e}")
     
@@ -103,7 +103,7 @@ def download_single_file_from_aws(bucket_name: str = "noaa-wcsd-pds",
 
     # Finally download the file.
     try:
-        bucket_name.download_file(file_url, file_name)
+        s3_bucket_name.download_file(file_url, file_name)
         print(f"Downloaded: {file_name} to {download_location}")
     except Exception as e:
         print(f"Error downloading file {file_name}.\n{e}")
@@ -132,7 +132,39 @@ def download_single_survey_from_ncei(ship_name: str = "",
     # TODO
     ...
 
-def download_transect_from_NCEI(file_name: str = "",
+def download_netcdf(file_name: str = "",
+                    file_type: str = "netcdf",
+                    ship_name: str = "",
+                    survey_name: str = "",
+                    echosounder: str = "",
+                    file_download_location: str = "",
+                    gcp_bucket: storage.Bucket = None,
+                    is_metadata: bool = False,
+                    debug: bool = False):
+    
+    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".netcdf"
+
+    # Check if the file exists as a netcdf
+    netcdf_gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name, file_type="netcdf",
+                                                                                   ship_name=ship_name, survey_name=survey_name,
+                                                                                   echosounder=echosounder,data_source="NCEI",
+                                                                                   is_metadata=is_metadata, debug=debug)
+    file_exists = utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+                                                    file_path=netcdf_gcp_storage_bucket_location)
+    if file_exists:
+        try:
+            print(f"DOWNLOADING FILE `{file_name_netcdf}` TO `{file_download_location}`...")
+            utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=netcdf_gcp_storage_bucket_location,
+                                        local_file_path=file_download_location, debug=debug)
+            print(f"DOWNLOADED TO `{file_download_location}`.")
+        except Exception as e:
+            print(f"COULD NOT DOWNLOAD FILE `{file_name_netcdf}` DUE TO ERROR:\n{e}")
+    else:
+        print(f"FILE `{file_name_netcdf}` DOES NOT EXIST IN THE GCP STORAGE BUCKET AT `{netcdf_gcp_storage_bucket_location}`.")
+        print(f"CONSIDER RUNNING A CONVERSION FUNCTION TO CONVERT THE RAW AND UPLOAD AS NETCDF.")
+
+
+def download_raw_file(file_name: str = "",
                                 file_type: str = "",
                                 ship_name: str = "",
                                 survey_name: str = "",
@@ -141,8 +173,18 @@ def download_transect_from_NCEI(file_name: str = "",
                                 is_metadata: bool = False,
                                 force_download_from_ncei: bool = False,
                                 debug: bool = False):
-    """Downloads a transect file from NCEI for use on your workstation.
-    ENTRYPOINT FOR END-USERS
+    """ENTRYPOINT FOR END-USERS
+    Downloads a raw and idx file from NCEI for use on your workstation.
+    Works as follows:
+        1. Checks if raw file exists in GCP.
+            a. If it exists,
+                checks if a netcdf version also exists or not
+                lets the user know.
+                i. If `force_download_from_ncei` is True
+                    downloads the raw and idx file from NCEI instead.
+            b. If it doesn't exist,
+                downloads raw from NCEI and uploads to GCP for caching
+                downloads idx from NCEI and uploads to GCP for caching
 
     Args:
         file_name (str, optional): The file name (includes extension). Defaults to "".
@@ -157,11 +199,11 @@ def download_transect_from_NCEI(file_name: str = "",
             in a separate directory. Defaults to False.
         force_download_from_ncei (bool, optional): Whether or not to override caching and force
             a download from NCEI. Defaults to False.
+            NOTE: When enabled, no files are uploaded to GCP storage bucket.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
 
-    # Get the correct location of the file in GCP storage bucket, whether it exists
-    # or not, we need the variable.
+    # Create vars for use later.
     file_ncei_url = create_ncei_url_from_variables(file_name=file_name, ship_name=ship_name,
                                                    survey_name=survey_name, echosounder=echosounder)
     file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
@@ -176,29 +218,40 @@ def download_transect_from_NCEI(file_name: str = "",
                                                                             data_source="NCEI",
                                                                             is_metadata=is_metadata,
                                                                             debug=debug)
-    
-    # Create vars for use later.
     gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
+
 
     # Check if the file exists in cache (GCP).
     file_exists_in_gcp = utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
                                                            file_path=gcp_storage_bucket_location)
     if file_exists_in_gcp:
-        # Inform user if file exists
+        # Inform user if file exists in GCP.
         print(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
         # Force download from NCEI if enabled.
         if force_download_from_ncei:
             try:
                 print("FORCE DOWNLOAD FROM NCEI WAS ENABLED")
                 print(f"DOWNLOADING FILE {file_name} FROM NCEI")
-                download_single_file_from_aws(bucket_name="noaa-wcsd-pds",
+                download_single_file_from_aws(s3_bucket_name="noaa-wcsd-pds",
                                             file_url=file_ncei_url,
                                             download_location=file_download_location)
                 print(f"DOWNLOADED FILE {file_name} FROM NCEI")
             except Exception as e:
                 print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
                 return
+            # Force download and upload the idx file.
+            try:
+                print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
+                download_single_file_from_aws(s3_bucket_name="noaa-wcsd-pds",
+                                            file_url=file_ncei_idx_url,
+                                            download_location=file_download_location_idx)
+                print(f"DOWNLOADED FILE {file_name_idx} FROM NCEI\nUPLOADING TO GCP...")
+            except Exception as e:
+                print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
+                return
         else:
+            # Here we download the raw file from GCP. We also check for a netcdf
+            # version and let the user know.
             print(f"SINCE FILE EXISTS IN GCP, CHECKING FOR NETCDF VERSION...")
             netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(file_name=file_name_netcdf,
                                                                       file_type="netcdf",
@@ -211,64 +264,68 @@ def download_transect_from_NCEI(file_name: str = "",
                                                                       debug=debug)
             if netcdf_exists_in_gcp:
                 # Inform the user if a netcdf version exists in cache.
-                print(f"FILE {file_name} EXISTS AS A NETCDF ALREADY. DOWNLOADING NETCDF...")
-                netcdf_gcp_storage_bucket_location = parse_netcdf_gcp_location(gcp_storage_bucket_location=gcp_storage_bucket_location)
-                # Download from gcp to file_download_location.
-                utils.download_file_from_gcp(gcp_bucket=gcp_bucket,
-                                             blob_file_path=netcdf_gcp_storage_bucket_location,
-                                             local_file_path=file_download_location,
-                                             debug=debug)
-                print(f"DOWNLOADED.")
+                print(f"FILE {file_name} EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED.")
             else:
-                print(f"FILE `{file_name}` DOES NOT EXIST AS NETCDF.")
-                # TODO: Maybe submit a dataproc job here to convert the file (background)??????
-            return
+                print(f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. CONSIDER RUNNING A CONVERSION FUNCTION")
+            try:
+                # Here we download the raw from GCP.
+                print(f"DOWNLOADING FILE `{file_name}` TO `{file_download_location}`")
+                utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
+                                            local_file_path=file_download_location, debug=debug)
+                print(f"DOWNLOADED.")
+                return
+            except Exception as e:
+                print(f"COULD NOT DOWNLOAD FILE FROM GCP DUE TO THE FOLLOWING ERROR:\n{e}")
+                return
     else:
-        # Download the raw file.
+        # Download and upload the raw file.
         try:
             print(f"DOWNLOADING FILE {file_name} FROM NCEI")
-            download_single_file_from_aws(bucket_name="noaa-wcsd-pds",
+            download_single_file_from_aws(s3_bucket_name="noaa-wcsd-pds",
                                         file_url=file_ncei_url,
                                         download_location=file_download_location)
             print(f"DOWNLOADED FILE {file_name} FROM NCEI\nUPLOADING TO GCP...")
         except Exception as e:
             print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
             return
-        # Upload to GCP at the correct storage bucket location.
-        try:
-            print("CONTINUING UPLOAD TO GCP...")
-            upload_file_to_gcp_storage_bucket(file_name=file_name, file_type=file_type,
-                                              ship_name=ship_name, survey_name=survey_name,
-                                              echosounder=echosounder, file_location=file_download_location,
-                                              gcp_bucket=gcp_bucket, data_source="NCEI",
-                                              is_metadata=is_metadata, debug=debug)
-            print(f"UPLOADED FILE {file_name} TO GCP.")
-            # TODO: Maybe submit a dataproc job here automatically to convert the file (background)??????
-        except Exception as e:
-            print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
-        
+        else: # executed if there is no exception
+            # TODO: try out a background process if possible -- file might have a lock. only async options, otherwise subprocess gsutil to upload it.
+            # Upload raw to GCP at the correct storage bucket location.
+            try:
+                print("CONTINUING UPLOAD TO GCP...")
+                upload_file_to_gcp_storage_bucket(file_name=file_name, file_type=file_type,
+                                                ship_name=ship_name, survey_name=survey_name,
+                                                echosounder=echosounder, file_location=file_download_location,
+                                                gcp_bucket=gcp_bucket, data_source="NCEI",
+                                                is_metadata=is_metadata, debug=debug)
+                print(f"UPLOADED FILE {file_name} TO GCP.")
+            except Exception as e:
+                print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
+                return
 
-        # Download the idx file.
+        # Download and upload the idx file.
         try:
             print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
-            download_single_file_from_aws(bucket_name="noaa-wcsd-pds",
+            download_single_file_from_aws(s3_bucket_name="noaa-wcsd-pds",
                                         file_url=file_ncei_idx_url,
                                         download_location=file_download_location_idx)
             print(f"DOWNLOADED FILE {file_name_idx} FROM NCEI\nUPLOADING TO GCP...")
         except Exception as e:
             print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
             return
-        # Upload to GCP at the correct storage bucket location.
-        try:
-            print("CONTINUING UPLOAD TO GCP...")
-            upload_file_to_gcp_storage_bucket(file_name=file_name_idx, file_type=file_type,
-                                              ship_name=ship_name, survey_name=survey_name,
-                                              echosounder=echosounder, file_location=file_download_location_idx,
-                                              gcp_bucket=gcp_bucket, data_source="NCEI",
-                                              is_metadata=is_metadata, debug=debug)
-            print(f"UPLOADED FILE {file_name_idx} TO GCP.")
-        except Exception as e:
-            print(f"COULD NOT UPLOAD FILE {file_name_idx} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
+        else: # executed if there is no exception
+            # Upload to GCP at the correct storage bucket location.
+            try:
+                print("CONTINUING UPLOAD TO GCP...")
+                upload_file_to_gcp_storage_bucket(file_name=file_name_idx, file_type=file_type,
+                                                ship_name=ship_name, survey_name=survey_name,
+                                                echosounder=echosounder, file_location=file_download_location_idx,
+                                                gcp_bucket=gcp_bucket, data_source="NCEI",
+                                                is_metadata=is_metadata, debug=debug)
+                print(f"UPLOADED FILE {file_name_idx} TO GCP.")
+            except Exception as e:
+                print(f"COULD NOT UPLOAD FILE {file_name_idx} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
+                return
 
 
 def get_all_ship_objects_from_ncei(ship_name: str = "",
@@ -381,6 +438,7 @@ def parse_netcdf_gcp_location(gcp_storage_bucket_location: str = ""):
     
     return netcdf_gcp_storage_bucket_location
 
+
 def check_if_netcdf_file_exists_in_gcp(file_name: str = "",
                                 file_type: str = "",
                                 ship_name: str = "",
@@ -453,7 +511,7 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
 
 
 if __name__ == '__main__':
-    s3_resource, s3_bucket = utils.create_s3_objs()
+    s3_client, s3_resource, s3_bucket = utils.create_s3_objs()
     # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
     #                                  survey_name="RL2107",
     #                                  bucket=bucket)
@@ -466,16 +524,16 @@ if __name__ == '__main__':
     #                                              bucket=bucket))
     
     file_name, file_type, echosounder, survey_name, ship_name = parse_variables_from_ncei_file_url(url="https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210813-T220732.raw")
-    print(parse_correct_gcp_storage_bucket_location(file_name=file_name,
-                                                    file_type=file_type,
-                                                    ship_name=ship_name,
-                                                    survey_name=survey_name,
-                                                    echosounder=echosounder,
-                                                    data_source="NCEI",
-                                                    is_metadata=False,
-                                                    debug=True))
+    # print(parse_correct_gcp_storage_bucket_location(file_name=file_name,
+    #                                                 file_type=file_type,
+    #                                                 ship_name=ship_name,
+    #                                                 survey_name=survey_name,
+    #                                                 echosounder=echosounder,
+    #                                                 data_source="NCEI",
+    #                                                 is_metadata=False,
+    #                                                 debug=True))
     # https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx
-    download_transect_from_NCEI(file_name="2107RL_CW-D20210813-T220732.raw",
+    download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                                 file_type="raw",
                                 ship_name="Reuben_Lasker",
                                 survey_name="RL2107",
@@ -486,3 +544,18 @@ if __name__ == '__main__':
                                 debug=True)
     # gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
     # print(utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
+
+"""NTH: Not pass a filename, but file type, ship name, echosounder, date field, to match
+with a file name(s).
+
+We need to be able to support MULTIPLE file names.
+
+multiple file names option.
+
+add endpoint for multiple raw files
+
+Keep api responses consistent
+
+API should be predictable.
+
+conversion to netcdf should have its own endpoint"""
