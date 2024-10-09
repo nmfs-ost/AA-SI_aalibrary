@@ -15,22 +15,22 @@ import boto3
 def setup_gbq_client_objs(location: str = "US",
               project_id: str = "ggn-nmfs-gsds-prod-1"):
     # Setup GBQ
-    bq_client = bigquery.Client(location=location)
+    gcp_bq_client = bigquery.Client(location=location)
 
-    gcs_file_system = gcsfs.GCSFileSystem(project=project_id)
+    gcp_gcs_file_system = gcsfs.GCSFileSystem(project=project_id)
 
-    return bq_client, gcs_file_system
+    return gcp_bq_client, gcp_gcs_file_system
 
 
 def setup_gbq_storage_objs(project_id: str = "ggn-nmfs-aa-dev-1",
-                  bucket_name: str = "ggn-nmfs-aa-dev-1-data") -> Tuple[storage.Client, str, storage.Client.bucket]:
+                           gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data") -> Tuple[storage.Client, str, storage.Client.bucket]:
     # Setup storage
 
-    stor_client = storage.Client(project = project_id)
+    gcp_stor_client = storage.Client(project = project_id)
 
-    bucket = stor_client.bucket(bucket_name)
+    gcp_bucket = gcp_stor_client.bucket(gcp_bucket_name)
 
-    return (stor_client, bucket_name, bucket)
+    return (gcp_stor_client, gcp_bucket_name, gcp_bucket)
 
 
 def upload_file_to_gcp_bucket(bucket: storage.Client.bucket,
@@ -67,16 +67,18 @@ def create_s3_objs(bucket_name: str = "noaa-wcsd-pds"):
     """Creates the boto3 object used for downloading file objects."""
 
     # Setup access to S3 bucket as an anonymous user
-    s3 = boto3.resource(
-        's3',
-        aws_access_key_id='',
-        aws_secret_access_key='',
-        config=Config(signature_version=UNSIGNED),
-        )
+    s3_client = boto3.client('s3',
+                             aws_access_key_id='',
+                             aws_secret_access_key='',
+                             config=Config(signature_version=UNSIGNED))
+    s3_resource = boto3.resource('s3',
+                                 aws_access_key_id='',
+                                 aws_secret_access_key='',
+                                 config=Config(signature_version=UNSIGNED))
     
-    bucket_name = s3.Bucket(bucket_name)
+    s3_bucket = s3_resource.Bucket(bucket_name)
     
-    return s3, bucket_name
+    return s3_client, s3_resource, s3_bucket
 
 
 def count_objects_in_s3_bucket_location(prefix: str = "",
