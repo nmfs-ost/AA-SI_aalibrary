@@ -405,9 +405,12 @@ def download_netcdf_file(file_name: str = "",
         return
     else:
         print(f"NETCDF FILE `{file_name}` DOES NOT EXIST IN GCP AT THE LOCATION: `{gcp_storage_bucket_location}`.")
-        print(f"CONSIDER CONVERTING AND UPLOADING THE RAW FILE FIRST.")
+        print(f"PLEASE CONVERT AND UPLOAD THE RAW FILE FIRST VIA `download_raw_file`.")
         return
-    
+
+
+def convert_raw_to_netcdf():
+    ...
 
 
 def get_all_ship_objects_from_ncei(ship_name: str = "",
