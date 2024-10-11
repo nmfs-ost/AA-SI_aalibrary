@@ -16,6 +16,7 @@ from botocore.client import Config
 from google.cloud import bigquery, storage
 
 import utils
+import config
 
 def get_file_paths_via_json_link(link: str = ""):
     """This function helps in getting the links from a json request, parsing
@@ -172,14 +173,14 @@ def download_netcdf(file_name: str = "",
 
 
 def download_raw_file(file_name: str = "",
-                                file_type: str = "",
-                                ship_name: str = "",
-                                survey_name: str = "",
-                                echosounder: str = "",
-                                file_download_location: str = "",
-                                is_metadata: bool = False,
-                                force_download_from_ncei: bool = False,
-                                debug: bool = False):
+                      file_type: str = "raw",
+                      ship_name: str = "",
+                      survey_name: str = "",
+                      echosounder: str = "",
+                      file_download_location: str = "",
+                      is_metadata: bool = False,
+                      force_download_from_ncei: bool = False,
+                      debug: bool = False):
     """ENTRYPOINT FOR END-USERS
     Downloads a raw and idx file from NCEI for use on your workstation.
     Works as follows:
@@ -190,12 +191,12 @@ def download_raw_file(file_name: str = "",
                 i. If `force_download_from_ncei` is True
                     downloads the raw and idx file from NCEI instead.
             b. If it doesn't exist,
-                downloads raw from NCEI and uploads to GCP for caching
-                downloads idx from NCEI and uploads to GCP for caching
+                downloads .raw from NCEI and uploads to GCP for caching
+                downloads .idx from NCEI and uploads to GCP for caching
 
     Args:
         file_name (str, optional): The file name (includes extension). Defaults to "".
-        file_type (str, optional): The file type (not include the dot "."). Defaults to "".
+        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
         ship_name (str, optional): The ship name associated with this survey. Defaults to "".
         survey_name (str, optional): The survey name/identifier. Defaults to "".
         echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
@@ -337,6 +338,78 @@ def download_raw_file(file_name: str = "",
                 return
 
 
+def download_netcdf_file(file_name: str = "",
+                         file_type: str = "netcdf",
+                         ship_name: str = "",
+                         survey_name: str = "",
+                         echosounder: str = "",
+                         data_source: str = "",
+                         file_download_location: str = "",
+                         gcp_bucket: storage.Client.Bucket = None,
+                         is_metadata: bool = False,
+                         debug: bool = False):
+    """ENTRYPOINT FOR END-USERS
+    Downloads a netcdf file from GCP storage bucket for use on your workstation.
+    Works as follows:
+        1. Checks if the exact netcdf exists in gcp.
+            a. If it doesn't exists, prompts user to download it first.
+            b. If it exists, downloads to the `file_download_location`.
+
+    Args:
+        file_name (str, optional): The file name (includes extension). Defaults to "".
+        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to the
+            way the storage bucket is organized. Can be one of ["NCEI", "OMAO", "HDD"].
+            Defaults to "".
+        file_download_location (str, optional): The local file path you want to store your
+            file in. Defaults to "".
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object used to download
+            the file. Defaults to None.
+        is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
+            files that are considered metadata (metadata json, or readmes) are stored
+            in a separate directory. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+    """
+
+    # Create vars for use later.
+    file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
+    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
+                                                                            file_type=file_type,
+                                                                            ship_name=ship_name,
+                                                                            survey_name=survey_name,
+                                                                            echosounder=echosounder,
+                                                                            data_source=data_source,
+                                                                            is_metadata=is_metadata,
+                                                                            debug=debug)
+    
+    # Check if the netcdf exists in GCP:
+    netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(file_name=file_name,
+                                                              file_type=file_type,
+                                                              ship_name=ship_name,
+                                                              survey_name=survey_name,
+                                                              echosounder=echosounder,
+                                                              data_source=data_source,
+                                                              gcp_storage_bucket_location=gcp_storage_bucket_location,
+                                                              gcp_bucket=gcp_bucket,
+                                                              debug=debug)
+    if netcdf_exists_in_gcp:
+        print(f"FILE LOCATED: `{gcp_storage_bucket_location}`\nDOWNLOADING...")
+        utils.utils.download_file_from_gcp(gcp_bucket=gcp_bucket,
+                                           blob_file_path=gcp_storage_bucket_location,
+                                           local_file_path=file_download_location,
+                                           debug=debug)
+        print(f"FILE `{file_name}` DOWNLOADED TO `{file_download_location}`")
+        return
+    else:
+        print(f"NETCDF FILE `{file_name}` DOES NOT EXIST IN GCP AT THE LOCATION: `{gcp_storage_bucket_location}`.")
+        print(f"CONSIDER CONVERTING AND UPLOADING THE RAW FILE FIRST.")
+        return
+    
+
+
 def get_all_ship_objects_from_ncei(ship_name: str = "",
                                    bucket: boto3.resource = None) -> List[str]:
     """Gets all of the object keys from a ship from the NCEI database.
@@ -423,14 +496,14 @@ def parse_correct_gcp_storage_bucket_location(file_name: str = "",
     """
 
     # Creating the correct upload location
-    if not is_metadata:
-        # Figure out if its a raw or idx file (belongs in raw folder)
-        if file_type.lower() in ["raw", "idx"]:
-            gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/raw/{file_name}"
-        elif file_type.lower() in ["netcdf"]:
-            gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/netcdf/{file_name}"
-    else:
+    if is_metadata:
         gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
+    else:
+        # Figure out if its a raw or idx file (belongs in raw folder)
+        if file_type.lower() in config.RAW_DATA_FILE_TYPES:
+            gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/raw/{file_name}"
+        elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
+            gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/netcdf/{file_name}"
     
     if debug:
         print(f"PARSED GCP_STORAGE_BUCKET_LOCATION: {gcp_storage_bucket_location}")
