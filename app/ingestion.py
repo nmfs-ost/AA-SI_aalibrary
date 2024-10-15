@@ -15,8 +15,9 @@ from botocore import UNSIGNED
 from botocore.client import Config
 from google.cloud import bigquery, storage
 
-import utils
-import config
+from app import utils
+from app import config
+from app.utils import cloud_utils
 
 def get_file_paths_via_json_link(link: str = ""):
     """This function helps in getting the links from a json request, parsing
@@ -93,7 +94,7 @@ def download_single_file_from_aws(s3_bucket: str = "noaa-wcsd-pds",
     """Downloads a file from AWS storage bucket, aka the NCEI repository."""
     
     try:
-        s3_client, s3_resource, s3_bucket = utils.create_s3_objs()
+        s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     except Exception as e:
         print(f"Cannot establish connection to s3 bucket..\n{e}")
     
@@ -104,7 +105,7 @@ def download_single_file_from_aws(s3_bucket: str = "noaa-wcsd-pds",
 
     # Check if the file exists in s3
     print(f"s3_bucket.name: {s3_bucket.name}")
-    file_exists = utils.check_if_file_exists_in_s3(object_key=file_url,
+    file_exists = utils.cloud_utils.check_if_file_exists_in_s3(object_key=file_url,
                                                    s3_resource=s3_resource,
                                                    s3_bucket_name=s3_bucket.name)
 
@@ -157,12 +158,12 @@ def download_netcdf(file_name: str = "",
                                                                                    ship_name=ship_name, survey_name=survey_name,
                                                                                    echosounder=echosounder,data_source="NCEI",
                                                                                    is_metadata=is_metadata, debug=debug)
-    file_exists = utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+    file_exists = utils.cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
                                                     file_path=netcdf_gcp_storage_bucket_location)
     if file_exists:
         try:
             print(f"DOWNLOADING FILE `{file_name_netcdf}` TO `{file_download_location}`...")
-            utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=netcdf_gcp_storage_bucket_location,
+            utils.cloud_utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=netcdf_gcp_storage_bucket_location,
                                         local_file_path=file_download_location, debug=debug)
             print(f"DOWNLOADED TO `{file_download_location}`.")
         except Exception as e:
@@ -227,11 +228,11 @@ def download_raw_file(file_name: str = "",
                                                                             data_source="NCEI",
                                                                             is_metadata=is_metadata,
                                                                             debug=debug)
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
 
 
     # Check if the file exists in cache (GCP).
-    file_exists_in_gcp = utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+    file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
                                                            file_path=gcp_storage_bucket_location)
     if file_exists_in_gcp:
         # Inform user if file exists in GCP.
@@ -280,7 +281,7 @@ def download_raw_file(file_name: str = "",
             # Here we download the raw from GCP.
             try:
                 print(f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`")
-                utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
+                utils.cloud_utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
                                             local_file_path=file_download_location, debug=debug)
                 print(f"DOWNLOADED.")
                 return
@@ -345,7 +346,7 @@ def download_netcdf_file(file_name: str = "",
                          echosounder: str = "",
                          data_source: str = "",
                          file_download_location: str = "",
-                         gcp_bucket: storage.Client.Bucket = None,
+                         gcp_bucket: storage.Client.bucket = None,
                          is_metadata: bool = False,
                          debug: bool = False):
     """ENTRYPOINT FOR END-USERS
@@ -397,7 +398,7 @@ def download_netcdf_file(file_name: str = "",
                                                               debug=debug)
     if netcdf_exists_in_gcp:
         print(f"FILE LOCATED: `{gcp_storage_bucket_location}`\nDOWNLOADING...")
-        utils.utils.download_file_from_gcp(gcp_bucket=gcp_bucket,
+        utils.cloud_utils.download_file_from_gcp(gcp_bucket=gcp_bucket,
                                            blob_file_path=gcp_storage_bucket_location,
                                            local_file_path=file_download_location,
                                            debug=debug)
@@ -534,7 +535,7 @@ def check_if_netcdf_file_exists_in_gcp(file_name: str = "",
                                 gcp_bucket: storage.Bucket = None,
                                 debug: bool = False):
     
-    assert gcp_bucket is not None, "Please provide a gcp_bucket object with `utils.setup_gcp_storage()`"
+    assert gcp_bucket is not None, "Please provide a gcp_bucket object with `utils.cloud_utils.setup_gcp_storage()`"
     
     if gcp_storage_bucket_location != "":
         gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
@@ -547,7 +548,7 @@ def check_if_netcdf_file_exists_in_gcp(file_name: str = "",
                                                                         debug=debug)
     netcdf_gcp_storage_bucket_location = parse_netcdf_gcp_location(gcp_storage_bucket_location=gcp_storage_bucket_location)
     # check if the file exists in gcp
-    return utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+    return cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
                                         file_path=netcdf_gcp_storage_bucket_location)
 
 
@@ -589,14 +590,14 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
                                                                             debug=debug)
 
     # Upload to storage bucket.
-    utils.upload_file_to_gcp_bucket(bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
+    utils.cloud_utils.upload_file_to_gcp_bucket(bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
                                     local_file_path=file_location, debug=debug)
 
     return
 
 
 if __name__ == '__main__':
-    s3_client, s3_resource, s3_bucket = utils.create_s3_objs()
+    s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
     #                                  survey_name="RL2107",
     #                                  bucket=bucket)
@@ -605,7 +606,7 @@ if __name__ == '__main__':
     #                           prefix="data/raw/Reuben_Lasker/RL2107")
     # print(resp)
 
-    # print(utils.count_objects_in_bucket_location(prefix="data/raw/Reuben_Lasker/RL2107/",
+    # print(utils.cloud_utils.count_objects_in_bucket_location(prefix="data/raw/Reuben_Lasker/RL2107/",
     #                                              bucket=bucket))
     
     # file_name, file_type, echosounder, survey_name, ship_name = parse_variables_from_ncei_file_url(url="https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210813-T220732.raw")
@@ -618,7 +619,7 @@ if __name__ == '__main__':
     #                                                 is_metadata=False,
     #                                                 debug=True))
     # https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx
-    # print(utils.check_if_file_exists_in_s3(object_key="data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
+    # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
     download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
@@ -630,8 +631,8 @@ if __name__ == '__main__':
                                 is_metadata=False,
                                 force_download_from_ncei=False,
                                 debug=True)
-    # gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.setup_gbq_storage_objs()
-    # print(utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
+    # gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
+    # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
 
 """NTH: Not pass a filename, but file type, ship name, echosounder, date field, to match
 with a file name(s).
