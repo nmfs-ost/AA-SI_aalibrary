@@ -160,7 +160,7 @@ def download_netcdf(file_name: str = "",
                     is_metadata: bool = False,
                     debug: bool = False):
     
-    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".netcdf"
+    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
 
     # Check if the file exists as a netcdf
     netcdf_gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name, file_type="netcdf",
@@ -228,7 +228,7 @@ def download_raw_file(file_name: str = "",
     file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
     file_ncei_idx_url = ".".join(file_ncei_url.split(".")[:-1]) + ".idx"
     file_download_location_idx = ".".join(file_download_location.split(".")[:-1]) + ".idx"
-    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".netcdf"
+    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
     gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
                                                                             file_type=file_type,
                                                                             ship_name=ship_name,
@@ -239,6 +239,14 @@ def download_raw_file(file_name: str = "",
                                                                             debug=debug)
     gcp_storage_bucket_location_idx = parse_correct_gcp_storage_bucket_location(file_name=file_name_idx,
                                                                                 file_type="idx",
+                                                                                ship_name=ship_name,
+                                                                                survey_name=survey_name,
+                                                                                echosounder=echosounder,
+                                                                                data_source="NCEI",
+                                                                                is_metadata=is_metadata,
+                                                                                debug=debug)
+    gcp_storage_bucket_location_netcdf = parse_correct_gcp_storage_bucket_location(file_name=file_name_netcdf,
+                                                                                file_type="netcdf",
                                                                                 ship_name=ship_name,
                                                                                 survey_name=survey_name,
                                                                                 echosounder=echosounder,
@@ -289,7 +297,7 @@ def download_raw_file(file_name: str = "",
                                                                       survey_name=survey_name,
                                                                       echosounder=echosounder,
                                                                       data_source="NCEI",
-                                                                      gcp_storage_bucket_location=gcp_storage_bucket_location,
+                                                                      gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
                                                                       gcp_bucket=gcp_bucket,
                                                                       debug=debug)
             if netcdf_exists_in_gcp:
@@ -452,7 +460,7 @@ def download_netcdf_file(file_name: str = "",
                                                               gcp_bucket=gcp_bucket,
                                                               debug=debug)
     if netcdf_exists_in_gcp:
-        print(f"FILE LOCATED: `{gcp_storage_bucket_location}`\nDOWNLOADING...")
+        print(f"FILE LOCATED IN GCP: `{gcp_storage_bucket_location}`\nDOWNLOADING...")
         utils.cloud_utils.download_file_from_gcp(gcp_bucket=gcp_bucket,
                                            blob_file_path=gcp_storage_bucket_location,
                                            local_file_path=file_download_location,
@@ -492,7 +500,7 @@ def convert_local_raw_to_netcdf(raw_file_location: str = "",
 
 
 def convert_raw_to_netcdf(file_name: str = "",
-                          file_type: str = "netcdf",
+                          file_type: str = "raw",
                           ship_name: str = "",
                           survey_name: str = "",
                           echosounder: str = "",
@@ -502,7 +510,8 @@ def convert_raw_to_netcdf(file_name: str = "",
                           is_metadata: bool = False,
                           debug: bool = False):
     """ENTRYPOINT FOR END-USERS
-    This function allows one to convert a file from raw to netcdf.
+    This function allows one to convert a file from raw to netcdf. Then uploads
+    the file to GCP storage for caching.
 
     Args:
         file_name (str, optional): _description_. Defaults to "".
@@ -515,8 +524,74 @@ def convert_raw_to_netcdf(file_name: str = "",
         gcp_bucket (storage.Client.bucket, optional): _description_. Defaults to None.
         is_metadata (bool, optional): _description_. Defaults to False.
         debug (bool, optional): _description_. Defaults to False.
-    """    
-    ...
+    """
+    # Create vars for use later.
+    # file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
+    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
+    # needs to be a directory...
+    file_download_location_netcdf = file_download_location
+    file_path_netcdf = os.sep.join([os.path.normpath(file_download_location_netcdf), file_name_netcdf])
+    gcp_storage_bucket_location_raw = parse_correct_gcp_storage_bucket_location(file_name=file_name,
+                                                                            file_type=file_type,
+                                                                            ship_name=ship_name,
+                                                                            survey_name=survey_name,
+                                                                            echosounder=echosounder,
+                                                                            data_source="NCEI",
+                                                                            is_metadata=is_metadata,
+                                                                            debug=debug)
+    gcp_storage_bucket_location_netcdf = parse_correct_gcp_storage_bucket_location(file_name=file_name_netcdf,
+                                                                                file_type="netcdf",
+                                                                                ship_name=ship_name,
+                                                                                survey_name=survey_name,
+                                                                                echosounder=echosounder,
+                                                                                data_source="NCEI",
+                                                                                is_metadata=is_metadata,
+                                                                                debug=debug)
+    # We check if the netcdf exists in GCP
+    raw_file_exists_in_gcp_storage = cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+                                                                             file_path=gcp_storage_bucket_location_raw)
+    
+    # Here we check for a netcdf version of the raw file on GCP
+    print(f"CHECKING FOR NETCDF VERSION ON GCP...")
+    netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(file_name=file_name_netcdf,
+                                                                file_type="netcdf",
+                                                                ship_name=ship_name,
+                                                                survey_name=survey_name,
+                                                                echosounder=echosounder,
+                                                                data_source="NCEI",
+                                                                gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
+                                                                gcp_bucket=gcp_bucket,
+                                                                debug=debug)
+    if netcdf_exists_in_gcp:
+        # Inform the user if a netcdf version exists in cache.
+        download_netcdf_file(file_name=file_name_netcdf, file_type="netcdf",
+                             ship_name=ship_name, survey_name=survey_name,
+                             echosounder=echosounder, data_source=data_source,
+                             file_download_location=file_download_location,
+                             gcp_bucket=gcp_bucket, is_metadata=False,
+                             debug=debug)
+    else:
+        print(f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. DOWNLOADING/CONVERTING/UPLOADING RAW...")
+
+        # Download the raw file.
+        # download_raw_file(file_name=file_name, file_type=file_type, ship_name=ship_name,
+        #                 survey_name=survey_name, echosounder=echosounder,
+        #                 file_download_location=file_download_location,
+        #                 is_metadata=is_metadata,force_download_from_ncei=False,
+        #                 debug=debug)
+        
+        # Convert the raw file to netcdf.
+        convert_local_raw_to_netcdf(raw_file_location=os.sep.join([os.path.normpath(file_download_location), file_name]),
+                                    netcdf_file_download_location=file_download_location_netcdf,
+                                    echosounder=echosounder)
+        
+        # Upload the netcdf to the correct location for parsing.
+        print(f"file_path_netcdf {file_path_netcdf}")
+        upload_file_to_gcp_storage_bucket(file_name=file_name_netcdf, file_type="netcdf",
+                                          ship_name=ship_name, survey_name=survey_name,
+                                          echosounder=echosounder, file_location=file_path_netcdf,
+                                          gcp_bucket=gcp_bucket, data_source=data_source,
+                                          is_metadata=False, debug=debug)
 
 
 def get_all_ship_objects_from_ncei(ship_name: str = "",
@@ -736,11 +811,18 @@ if __name__ == '__main__':
     #                             is_metadata=False,
     #                             force_download_from_ncei=False,
     #                             debug=True)
-    # gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
-    convert_local_raw_to_netcdf(raw_file_location="2107RL_CW-D20210813-T220732.raw",
-                                netcdf_file_download_location="./2107RL_CW-D20210813-T220732.netcdf",
-                                echosounder="EK80")
+    # convert_local_raw_to_netcdf(raw_file_location="2107RL_CW-D20210813-T220732.raw",
+    #                             netcdf_file_download_location="./2107RL_CW-D20210813-T220732.netcdf",
+    #                             echosounder="EK80")
+    
+    convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
+                          file_type="raw", ship_name="Reuben_Lasker",
+                          survey_name="RL2107", echosounder="EK80",
+                          data_source="NCEI", file_download_location="./",
+                          gcp_bucket=gcp_bucket, is_metadata=False,
+                          debug=True)
 
 """NTH: Not pass a filename, but file type, ship name, echosounder, date field, to match
 with a file name(s).
