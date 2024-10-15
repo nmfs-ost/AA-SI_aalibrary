@@ -14,10 +14,19 @@ import boto3
 from botocore import UNSIGNED
 from botocore.client import Config
 from google.cloud import bigquery, storage
+from echopype import open_raw
 
-from app import utils
-from app import config
-from app.utils import cloud_utils
+import utils.cloud_utils
+
+if __name__ == "__main__":
+    import utils
+    import config
+    from utils import cloud_utils
+else:
+    from app import utils
+    from app import config
+    from app.utils import cloud_utils
+
 
 def get_file_paths_via_json_link(link: str = ""):
     """This function helps in getting the links from a json request, parsing
@@ -228,12 +237,23 @@ def download_raw_file(file_name: str = "",
                                                                             data_source="NCEI",
                                                                             is_metadata=is_metadata,
                                                                             debug=debug)
+    gcp_storage_bucket_location_idx = parse_correct_gcp_storage_bucket_location(file_name=file_name_idx,
+                                                                                file_type="idx",
+                                                                                ship_name=ship_name,
+                                                                                survey_name=survey_name,
+                                                                                echosounder=echosounder,
+                                                                                data_source="NCEI",
+                                                                                is_metadata=is_metadata,
+                                                                                debug=debug)
     gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
 
 
-    # Check if the file exists in cache (GCP).
+    # Check if the file(s) exists in cache (GCP).
     file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
                                                            file_path=gcp_storage_bucket_location)
+    idx_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+                                                                     file_path=gcp_storage_bucket_location_idx)
+
     if file_exists_in_gcp:
         # Inform user if file exists in GCP.
         print(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
@@ -284,10 +304,44 @@ def download_raw_file(file_name: str = "",
                 utils.cloud_utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
                                             local_file_path=file_download_location, debug=debug)
                 print(f"DOWNLOADED.")
-                return
             except Exception as e:
                 print(f"COULD NOT DOWNLOAD FILE FROM GCP DUE TO THE FOLLOWING ERROR:\n{e}")
-                return
+            
+            # Checking to make sure the idx exists in GCP...
+            if idx_file_exists_in_gcp:
+                print("CORRESPONDING IDX FILE FOUND IN GCP. DOWNLOADING...")
+                # Here we download the idx from GCP.
+                try:
+                    print(f"DOWNLOADING FILE `{file_name_idx}` FROM GCP TO `{file_download_location_idx}`")
+                    utils.cloud_utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location_idx,
+                                                local_file_path=file_download_location_idx, debug=debug)
+                    print(f"DOWNLOADED.")
+                except Exception as e:
+                    print(f"COULD NOT DOWNLOAD FILE FROM GCP DUE TO THE FOLLOWING ERROR:\n{e}")
+            else:
+                print("CORRESPONDING IDX FILE NOT FOUND IN GCP. DOWNLOADING FROM NCEI AND UPLOADING TO GCP...")
+                # Download and upload the idx file.
+                try:
+                    print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
+                    download_single_file_from_aws(s3_bucket="noaa-wcsd-pds",
+                                                file_url=file_ncei_idx_url,
+                                                download_location=file_download_location_idx)
+                    print(f"DOWNLOADED FILE {file_name_idx} FROM NCEI\nUPLOADING TO GCP...")
+                except Exception as e:
+                    print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
+                    return
+                else: # executed if there is no exception
+                    # Upload to GCP at the correct storage bucket location.
+                    try:
+                        print("CONTINUING UPLOAD TO GCP...")
+                        upload_file_to_gcp_storage_bucket(file_name=file_name_idx, file_type=file_type,
+                                                        ship_name=ship_name, survey_name=survey_name,
+                                                        echosounder=echosounder, file_location=file_download_location_idx,
+                                                        gcp_bucket=gcp_bucket, data_source="NCEI",
+                                                        is_metadata=is_metadata, debug=debug)
+                        print(f"UPLOADED FILE {file_name_idx} TO GCP.")
+                    except Exception as e:
+                        print(f"COULD NOT UPLOAD FILE {file_name_idx} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
     else:
         # Download and upload the raw file.
         try:
@@ -337,6 +391,7 @@ def download_raw_file(file_name: str = "",
             except Exception as e:
                 print(f"COULD NOT UPLOAD FILE {file_name_idx} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
                 return
+    return
 
 
 def download_netcdf_file(file_name: str = "",
@@ -410,7 +465,57 @@ def download_netcdf_file(file_name: str = "",
         return
 
 
-def convert_raw_to_netcdf():
+def convert_local_raw_to_netcdf(raw_file_location: str = "",
+                                netcdf_file_download_location: str = "",
+                                echosounder: str = ""):
+    """Converts a local (on your computer) file from raw into netcdf using echopype.
+
+    Args:
+        raw_file_location (str, optional): The location of the raw file. Defaults to "".
+        netcdf_file_download_location (str, optional): The location you want to 
+            download your netcdf file to. Defaults to "".
+        echosounder (str, optional): The echosounder used. Can be one of ["EK80", "EK70"].
+            Defaults to "".
+    """
+
+    netcdf_file_download_directory = os.sep.join(netcdf_file_download_location.split(os.sep)[:-1])
+
+    try:
+        print("CONVERTING RAW TO NETCDF...")
+        raw_file_echopype = open_raw(raw_file=raw_file_location, sonar_model=echosounder)
+        raw_file_echopype.to_netcdf(save_path=netcdf_file_download_directory)
+        print("CONVERTED.")
+        return
+    except Exception as e:
+        print(f"COULD NOT CONVERT DUE TO ERROR {e}")
+        return
+
+
+def convert_raw_to_netcdf(file_name: str = "",
+                          file_type: str = "netcdf",
+                          ship_name: str = "",
+                          survey_name: str = "",
+                          echosounder: str = "",
+                          data_source: str = "",
+                          file_download_location: str = "",
+                          gcp_bucket: storage.Client.bucket = None,
+                          is_metadata: bool = False,
+                          debug: bool = False):
+    """ENTRYPOINT FOR END-USERS
+    This function allows one to convert a file from raw to netcdf.
+
+    Args:
+        file_name (str, optional): _description_. Defaults to "".
+        file_type (str, optional): _description_. Defaults to "netcdf".
+        ship_name (str, optional): _description_. Defaults to "".
+        survey_name (str, optional): _description_. Defaults to "".
+        echosounder (str, optional): _description_. Defaults to "".
+        data_source (str, optional): _description_. Defaults to "".
+        file_download_location (str, optional): _description_. Defaults to "".
+        gcp_bucket (storage.Client.bucket, optional): _description_. Defaults to None.
+        is_metadata (bool, optional): _description_. Defaults to False.
+        debug (bool, optional): _description_. Defaults to False.
+    """    
     ...
 
 
@@ -622,17 +727,20 @@ if __name__ == '__main__':
     # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
-    download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
-                                file_type="raw",
-                                ship_name="Reuben_Lasker",
-                                survey_name="RL2107",
-                                echosounder="EK80",
-                                file_download_location=f"./",
-                                is_metadata=False,
-                                force_download_from_ncei=False,
-                                debug=True)
+    # download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
+    #                             file_type="raw",
+    #                             ship_name="Reuben_Lasker",
+    #                             survey_name="RL2107",
+    #                             echosounder="EK80",
+    #                             file_download_location=f"./",
+    #                             is_metadata=False,
+    #                             force_download_from_ncei=False,
+    #                             debug=True)
     # gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
+    convert_local_raw_to_netcdf(raw_file_location="2107RL_CW-D20210813-T220732.raw",
+                                netcdf_file_download_location="./2107RL_CW-D20210813-T220732.netcdf",
+                                echosounder="EK80")
 
 """NTH: Not pass a filename, but file type, ship name, echosounder, date field, to match
 with a file name(s).
