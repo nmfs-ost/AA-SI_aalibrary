@@ -574,11 +574,11 @@ def convert_raw_to_netcdf(file_name: str = "",
         print(f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. DOWNLOADING/CONVERTING/UPLOADING RAW...")
 
         # Download the raw file.
-        # download_raw_file(file_name=file_name, file_type=file_type, ship_name=ship_name,
-        #                 survey_name=survey_name, echosounder=echosounder,
-        #                 file_download_location=file_download_location,
-        #                 is_metadata=is_metadata,force_download_from_ncei=False,
-        #                 debug=debug)
+        download_raw_file(file_name=file_name, file_type=file_type, ship_name=ship_name,
+                        survey_name=survey_name, echosounder=echosounder,
+                        file_download_location=file_download_location,
+                        is_metadata=is_metadata,force_download_from_ncei=False,
+                        debug=debug)
         
         # Convert the raw file to netcdf.
         convert_local_raw_to_netcdf(raw_file_location=os.sep.join([os.path.normpath(file_download_location), file_name]),
