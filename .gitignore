@@ -3,6 +3,7 @@
 *.raw
 *.tar
 *.netCDF4
+*.nc
 
 # For python files
 **/__pycache__/**
