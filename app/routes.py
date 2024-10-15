@@ -1,8 +1,8 @@
 """This app routes the request to the correct function."""
 
-from flask import request
+from flask import request, send_from_directory
 
-from app import ingestion
+from app import ingestion, utils
 from app import api_app
 
 
@@ -47,6 +47,8 @@ def download_netcdf():
     data_source = request.args.get("data_source")
     debug = request.args.get("debug")
 
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
+
     ingestion.download_netcdf_file(file_name=file_name,
                                    file_type=file_type,
                                    ship_name=ship_name,
@@ -57,3 +59,5 @@ def download_netcdf():
                                    gcp_bucket=gcp_bucket,
                                    is_metadata=False,
                                    debug=debug)
+    
+    return send_from_directory(directory=f".", filename=file_name, as_attachment=True)
