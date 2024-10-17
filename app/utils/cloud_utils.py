@@ -13,8 +13,20 @@ import boto3
 
 
 def setup_gbq_client_objs(location: str = "US",
-              project_id: str = "ggn-nmfs-gsds-prod-1"):
-    # Setup GBQ
+              project_id: str = "ggn-nmfs-gsds-prod-1") -> Tuple[bigquery.Client, gcsfs.GCSFileSystem]:
+    """Sets up Google Big Query client objects used to execute queries and such.
+
+    Args:
+        location (str, optional): The location of the big-query tables/database.
+            This is usually set when creating the database in big query. Defaults to "US".
+        project_id (str, optional): The project id that the big query instance 
+            belongs to. Defaults to "ggn-nmfs-gsds-prod-1".
+
+    Returns:
+        Tuple: The big query client object, along with an object for the Google
+            Cloud Storage file system.
+    """
+
     gcp_bq_client = bigquery.Client(location=location)
 
     gcp_gcs_file_system = gcsfs.GCSFileSystem(project=project_id)
@@ -22,9 +34,22 @@ def setup_gbq_client_objs(location: str = "US",
     return gcp_bq_client, gcp_gcs_file_system
 
 
-def setup_gbq_storage_objs(project_id: str = "ggn-nmfs-aa-dev-1",
+def setup_gcp_storage_objs(project_id: str = "ggn-nmfs-aa-dev-1",
                            gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data") -> Tuple[storage.Client, str, storage.Client.bucket]:
-    # Setup storage
+    """Sets up Google Cloud Platform storage objects for use in accessing and
+    modifying storage buckets.
+
+    Args:
+        project_id (str, optional): The project id of the project you want to 
+            access. Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The name of the exact bucket you want 
+            to access. Defaults to "ggn-nmfs-aa-dev-1-data".
+
+    Returns:
+        Tuple[storage.Client, str, storage.Client.bucket]: The storage client, 
+            followed by the GCP bucket name (str) and then the actual bucket object
+            itself (which will be executing the commands used in this api).
+    """
 
     gcp_stor_client = storage.Client(project = project_id)
 
@@ -42,14 +67,14 @@ def upload_file_to_gcp_bucket(bucket: storage.Client.bucket,
     Args:
         bucket (storage.Client.bucket): The bucket object used for uploading.
         blob_file_path (str): The blob's file path.
-            Ex. "data/itds/logs/execute_rasp_ii/temp.csv"
+            Ex. "data/itds/logs/execute_code_files/temp.csv"
             NOTE: This must include the file name as well as the extension.
         local_file_path (str): The local file path you wish to upload to the blob.
         debug (bool): Whether or not to print debug statements.
     """
 
     if not bucket:
-        _, _, bucket = setup_gbq_storage_objs()
+        _, _, bucket = setup_gcp_storage_objs()
 
     blob = bucket.blob(blob_file_path,
                        chunk_size=1024*1024*1)
@@ -63,8 +88,18 @@ def upload_file_to_gcp_bucket(bucket: storage.Client.bucket,
         raise
 
 
-def create_s3_objs(bucket_name: str = "noaa-wcsd-pds"):
-    """Creates the boto3 object used for downloading file objects."""
+def create_s3_objs(bucket_name: str = "noaa-wcsd-pds") -> Tuple[boto3.client, boto3.resource, boto3.resource.Bucket]:
+    """Creates the s3 objects needed for using boto3 for a particular bucket.
+
+    Args:
+        bucket_name (str, optional): The bucket you want to refer to. The default
+            points to the NCEI bucket. Defaults to "noaa-wcsd-pds".
+
+    Returns:
+        Tuple: The s3 client (used for certain portions of the boto3 api), the 
+            s3 resource (newer, more used object for accessing s3 buckets), and
+            the actual s3 bucket itself.
+    """    
 
     # Setup access to S3 bucket as an anonymous user
     s3_client = boto3.client('s3',
@@ -152,7 +187,18 @@ def get_subdirectories_in_s3_bucket_location(prefix: str = "",
 
 
 def check_if_file_exists_in_gcp(bucket: storage.Bucket = None,
-                                file_path: str = ""):
+                                file_path: str = "") -> bool:
+    """Checks whether a particular file exists in GCP using the file path (blob).
+
+    Args:
+        bucket (storage.Bucket, optional): The bucket object used to check for 
+            the file. Defaults to None.
+        file_path (str, optional): The blob file path within the bucket. Defaults to "".
+
+    Returns:
+        Bool: True if the file already exists, False otherwise.
+    """
+
     return bucket.blob(file_path).exists()
 
 
@@ -185,7 +231,20 @@ def download_file_from_gcp(gcp_bucket: storage.Client.bucket,
 
 def check_if_file_exists_in_s3(object_key: str = "",
                                s3_resource: boto3.resource = None,
-                               s3_bucket_name: str = ""):
+                               s3_bucket_name: str = "") -> bool:
+    """Checks to see if a file exists in an s3 bucket. Intended for use with
+    NCEI, but will work with other s3 buckets as well.
+
+    Args:
+        object_key (str, optional): The object key (location of the object). Defaults to "".
+        s3_resource (boto3.resource, optional): The boto3 resource for this particular
+            bucket. Defaults to None.
+        s3_bucket_name (str, optional): The bucket name. Defaults to "".
+
+    Returns:
+        bool: True if the file exists within the bucket. False otherwise.
+    """
+
     try:
         s3_resource.Object(s3_bucket_name, object_key).load()
         return True
