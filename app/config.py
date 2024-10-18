@@ -3,3 +3,6 @@
 RAW_DATA_FILE_TYPES = ["raw", "idx"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
 METADATA_FILE_TYPES = ["json"]
+VALID_FILETYPES = ["raw", "idx", "netcdf", "nc", "json"]
+
+VALID_ECHOSOUNDERS = ["EK70", "EK80"]
