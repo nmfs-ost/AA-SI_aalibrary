@@ -87,13 +87,17 @@ def create_ncei_url_from_variables(file_name: str = "",
                                 echosounder: str = "",
                                 year: str = "",
                                 month: str = "",
-                                date: str = ""):
+                                date: str = "",
+                                hours: str = "",
+                                minutes: str = "",
+                                seconds: str = ""):
     if file_name != "":
         ncei_url = f"https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}"
         return ncei_url
     else:
+        print(f"COULD NOT FIND FILE GIVEN THE PARAMETERS.")
         # Here we have to search for the file in s3. Just to see if something exists.
-        partial_file_name = f"-D{year}{month}{date}-"
+        partial_file_name = f"-D{year}{month}{date}-T{hours}{minutes}{seconds}.raw"
         # TODO: make sure to check that a raw and idx files both exist.
 
 
@@ -150,8 +154,9 @@ def download_single_survey_from_ncei(ship_name: str = "",
     # TODO
     ...
 
+
 def download_netcdf(file_name: str = "",
-                    file_type: str = "netcdf",
+                    file_type: str = "nc",
                     ship_name: str = "",
                     survey_name: str = "",
                     echosounder: str = "",
@@ -159,11 +164,31 @@ def download_netcdf(file_name: str = "",
                     gcp_bucket: storage.Bucket = None,
                     is_metadata: bool = False,
                     debug: bool = False):
+    """ENTRYPOINT FOR END-USERS
+    Downloads a netcdf file from the GCP storage bucket. If one does not exist,
+    the user is informed.
+
+    Args:
+        file_name (str, optional): The file name (includes extension). Defaults to "".
+        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        file_download_location (str, optional): The local file directory you want to store your
+            file in. Defaults to current directory. Defaults to ".".
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object used to download
+            the file. Defaults to None.
+        is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
+            files that are considered metadata (metadata json, or readmes) are stored
+            in a separate directory. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+    """
     
     file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
+    file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name_netcdf])
 
     # Check if the file exists as a netcdf
-    netcdf_gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name, file_type="netcdf",
+    netcdf_gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name_netcdf, file_type="netcdf",
                                                                                    ship_name=ship_name, survey_name=survey_name,
                                                                                    echosounder=echosounder,data_source="NCEI",
                                                                                    is_metadata=is_metadata, debug=debug)
@@ -177,6 +202,7 @@ def download_netcdf(file_name: str = "",
             print(f"DOWNLOADED TO `{file_download_location}`.")
         except Exception as e:
             print(f"COULD NOT DOWNLOAD FILE `{file_name_netcdf}` DUE TO ERROR:\n{e}")
+            return
     else:
         print(f"FILE `{file_name_netcdf}` DOES NOT EXIST IN THE GCP STORAGE BUCKET AT `{netcdf_gcp_storage_bucket_location}`.")
         print(f"CONSIDER RUNNING A CONVERSION FUNCTION TO CONVERT THE RAW AND UPLOAD AS NETCDF.")
@@ -187,7 +213,7 @@ def download_raw_file(file_name: str = "",
                       ship_name: str = "",
                       survey_name: str = "",
                       echosounder: str = "",
-                      file_download_location: str = "",
+                      file_download_location: str = ".",
                       is_metadata: bool = False,
                       force_download_from_ncei: bool = False,
                       debug: bool = False):
@@ -210,8 +236,8 @@ def download_raw_file(file_name: str = "",
         ship_name (str, optional): The ship name associated with this survey. Defaults to "".
         survey_name (str, optional): The survey name/identifier. Defaults to "".
         echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
-        file_download_location (str, optional): The local file path you want to store your
-            file in. Defaults to "".
+        file_download_location (str, optional): The local file directory you want to store your
+            file in. Defaults to current directory. Defaults to ".".
         is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
             files that are considered metadata (metadata json, or readmes) are stored
             in a separate directory. Defaults to False.
@@ -220,6 +246,17 @@ def download_raw_file(file_name: str = "",
             NOTE: When enabled, no files are uploaded to GCP storage bucket.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
+
+    # User-error-checking
+    assert file_name != "", "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
+    assert file_type != "", "Please provide a valid file type."
+    assert file_type in config.VALID_FILETYPES, f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
+    assert ship_name != "", "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
+    assert survey_name != "", "Please provide a valid survey name."
+    assert echosounder != "", "Please provide a valid echosounder."
+    assert echosounder in config.VALID_ECHOSOUNDERS, f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
+    assert file_download_location != "", "Please provide a valid file download locaiton (a directory)."
+    assert os.path.isdir(file_download_location) == True, f"File download locaiton `{file_download_location}` is not found to be a valid path, please reformat it."
 
     # Create vars for use later.
     file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
@@ -253,7 +290,7 @@ def download_raw_file(file_name: str = "",
                                                                                 data_source="NCEI",
                                                                                 is_metadata=is_metadata,
                                                                                 debug=debug)
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
 
 
     # Check if the file(s) exists in cache (GCP).
@@ -514,17 +551,24 @@ def convert_raw_to_netcdf(file_name: str = "",
     the file to GCP storage for caching.
 
     Args:
-        file_name (str, optional): _description_. Defaults to "".
-        file_type (str, optional): _description_. Defaults to "netcdf".
-        ship_name (str, optional): _description_. Defaults to "".
-        survey_name (str, optional): _description_. Defaults to "".
-        echosounder (str, optional): _description_. Defaults to "".
-        data_source (str, optional): _description_. Defaults to "".
-        file_download_location (str, optional): _description_. Defaults to "".
-        gcp_bucket (storage.Client.bucket, optional): _description_. Defaults to None.
-        is_metadata (bool, optional): _description_. Defaults to False.
-        debug (bool, optional): _description_. Defaults to False.
+        file_name (str, optional): The file name (includes extension). Defaults to "".
+        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to the
+            way the storage bucket is organized. Can be one of ["NCEI", "OMAO", "HDD"].
+            Defaults to "".
+        file_download_location (str, optional): The local file path you want to store your
+            file in. Defaults to "".
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object used to download
+            the file. Defaults to None.
+        is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
+            files that are considered metadata (metadata json, or readmes) are stored
+            in a separate directory. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
+
     # Create vars for use later.
     # file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
     file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
@@ -623,7 +667,7 @@ def get_all_ship_objects_from_ncei(ship_name: str = "",
 
 def get_all_objects_in_survey_from_ncei(ship_name: str = "",
                                         survey_name: str = "",
-                                        bucket: boto3.resource = None) -> List[str]:
+                                        s3_bucket: boto3.resource = None) -> List[str]:
     """Gets all of the object keys from a ship survey from the NCEI database.
 
     Args:
@@ -631,7 +675,7 @@ def get_all_objects_in_survey_from_ncei(ship_name: str = "",
             spaces substituted for underscores. Defaults to "".
         survey_name (str, optional): The name of the survey. Must match what we have
             in the NCEI database. Defaults to "".
-        bucket (boto3.resource, optional): The boto3 bucket resource for the bucket
+        s3_bucket (boto3.resource, optional): The boto3 bucket resource for the bucket
             that the ship data resides in. Defaults to None.
 
     Returns:
@@ -642,11 +686,11 @@ def get_all_objects_in_survey_from_ncei(ship_name: str = "",
     assert ship_name != "", "Please provide a valid Titlecase ship_name using underscores as spaces."
     assert " " not in ship_name, "Please provide a valid Titlecase ship_name using underscores as spaces."
     assert survey_name != "", "Please provide a valid survey name."
-    assert bucket is not None, "Please pass in a boto3 bucket object."
+    assert s3_bucket is not None, "Please pass in a boto3 bucket object."
 
     survey_objects = []
 
-    for object in bucket.objects.filter(Prefix=f"data/raw/{ship_name}/{survey_name}"):
+    for object in s3_bucket.objects.filter(Prefix=f"data/raw/{ship_name}/{survey_name}"):
         survey_objects.append(object.key)
     
     return survey_objects
@@ -659,7 +703,7 @@ def parse_correct_gcp_storage_bucket_location(file_name: str = "",
                                               echosounder: str = "",
                                               data_source: str = "NCEI",
                                               is_metadata: bool = False,
-                                              debug: bool = False):
+                                              debug: bool = False) -> str:
     """Calculates the correct gcp storage location based on data source, file
     type, and if the file is metadata or not.
 
@@ -676,7 +720,7 @@ def parse_correct_gcp_storage_bucket_location(file_name: str = "",
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
 
     Returns:
-        _type_: _description_
+        str: The correctly parsed GCP storage bucket location.
     """
 
     # Creating the correct upload location
@@ -695,12 +739,12 @@ def parse_correct_gcp_storage_bucket_location(file_name: str = "",
     return gcp_storage_bucket_location
 
 
-def parse_netcdf_gcp_location(gcp_storage_bucket_location: str = ""):
+def get_netcdf_gcp_location_from_raw_gcp_location(gcp_storage_bucket_location: str = ""):
     """Gets the netcdf location of a raw file within GCP."""
 
     gcp_storage_bucket_location = gcp_storage_bucket_location.replace("/raw/", "/netcdf/")
     # get rid of file extension and replace with netcdf
-    netcdf_gcp_storage_bucket_location = ".".join(gcp_storage_bucket_location.split(".")[:-1]) + ".netcdf"
+    netcdf_gcp_storage_bucket_location = ".".join(gcp_storage_bucket_location.split(".")[:-1]) + ".nc"
     
     return netcdf_gcp_storage_bucket_location
 
@@ -726,7 +770,7 @@ def check_if_netcdf_file_exists_in_gcp(file_name: str = "",
                                                                         data_source=data_source,
                                                                         is_metadata=False,
                                                                         debug=debug)
-    netcdf_gcp_storage_bucket_location = parse_netcdf_gcp_location(gcp_storage_bucket_location=gcp_storage_bucket_location)
+    netcdf_gcp_storage_bucket_location = get_netcdf_gcp_location_from_raw_gcp_location(gcp_storage_bucket_location=gcp_storage_bucket_location)
     # check if the file exists in gcp
     return cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
                                         file_path=netcdf_gcp_storage_bucket_location)
@@ -742,7 +786,8 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
                                       data_source: str = "NCEI",
                                       is_metadata: bool = False,
                                       debug: bool = False):
-    """Uploads a local file to the storage bucket.
+    """Uploads a local file to the storage bucket. Will also check to see if the
+    file already exists.
 
     Args:
         file_name (str, optional): The file name (includes extension). Defaults to "".
@@ -769,11 +814,28 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
                                                                             is_metadata=is_metadata,
                                                                             debug=debug)
 
-    # Upload to storage bucket.
-    utils.cloud_utils.upload_file_to_gcp_bucket(bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
-                                    local_file_path=file_location, debug=debug)
-
+    # Check if the file exists in GCP
+    file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(gcp_bucket,
+                                                                 file_path=gcp_storage_bucket_location)
+    if file_exists_in_gcp:
+        print(f"FILE `{file_name}` ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`.")
+    else:
+        print(f"UPLOADING FILE `{file_name}` TO GCP AT `{gcp_storage_bucket_location}`...")
+        # Upload to storage bucket.
+        utils.cloud_utils.upload_file_to_gcp_bucket(bucket=gcp_bucket, blob_file_path=gcp_storage_bucket_location,
+                                        local_file_path=file_location, debug=debug)
+        print(f"UPLOADED.")
+    
     return
+
+
+def upload_files_from_directory_to_gcp_storage_bucket(directory: str = ""):
+    """Uploads all of the .raw (and their corresponding .idx) files from a directory
+    into the appropriate location in the GCP storage bucket.
+    NOTE: assumes that all files share the same metadata."""
+    
+    # TODO:
+    ...
 
 
 if __name__ == '__main__':
@@ -811,18 +873,23 @@ if __name__ == '__main__':
     #                             is_metadata=False,
     #                             force_download_from_ncei=False,
     #                             debug=True)
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(raw_file_location="2107RL_CW-D20210813-T220732.raw",
-    #                             netcdf_file_download_location="./2107RL_CW-D20210813-T220732.netcdf",
+    #                             netcdf_file_download_location="./2107RL_CW-D20210813-T220732.nc",
     #                             echosounder="EK80")
     
-    convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
-                          file_type="raw", ship_name="Reuben_Lasker",
-                          survey_name="RL2107", echosounder="EK80",
-                          data_source="NCEI", file_download_location="./",
-                          gcp_bucket=gcp_bucket, is_metadata=False,
-                          debug=True)
+    # convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
+    #                       file_type="raw", ship_name="Reuben_Lasker",
+    #                       survey_name="RL2107", echosounder="EK80",
+    #                       data_source="NCEI", file_download_location="./",
+    #                       gcp_bucket=gcp_bucket, is_metadata=False,
+    #                       debug=False)
+    download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
+                    file_type="netcdf", ship_name="Reuben_Lasker",
+                    survey_name="RL2107", echosounder="EK80",
+                    file_download_location=".", gcp_bucket=gcp_bucket,
+                    is_metadata=False,debug=False)
 
 """NTH: Not pass a filename, but file type, ship name, echosounder, date field, to match
 with a file name(s).
