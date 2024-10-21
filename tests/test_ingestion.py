@@ -12,10 +12,12 @@ class TestNCEIIngestion:
 
     def setup_class(self): ...
 
-    def test_one(self):
-        print("Test one done.")
-
-    def test_force_download_from_NCEI(self): ...
+    def test_force_download_from_NCEI(self):
+        """Tests downloading a raw file direct from NCEI."""
+        # assert files exists
+        # assert files sizes are correct
+        
+        ...
 
     def test_download_raw_idx_from_GCP(self): ...
 
@@ -174,6 +176,154 @@ class TestNCEIIngestionUserErrors:
                 os.utime("file.temp", None)
 
             ingestion.download_raw_file(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                file_download_location="file.temp",
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_null_file_name(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an empty `file_name` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.download_netcdf_file(
+                file_name="",
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_null_file_type(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an empty `file_type` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.download_netcdf_file(
+                file_name=self.file_name,
+                file_type="",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_invalid_file_type(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an invalid `file_type` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.download_netcdf_file(
+                file_name=self.file_name,
+                file_type="abc",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_null_ship_name(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an empty `ship_name` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.download_netcdf_file(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name="",
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_null_survey_name(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an empty `survey_name` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.download_netcdf_file(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name="",
+                echosounder=self.echosounder,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_null_echosounder(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an empty `echosounder` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.download_netcdf_file(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder="",
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_invalid_echosounder(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an invalid `echosounder` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.download_netcdf_file(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder="abc",
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_null_file_download_location(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an empty `file_download_location` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.download_netcdf_file(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                file_download_location="",
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_download_netcdf_file_invalid_file_download_location(self):
+        """Tests the error-handling for the `download_netcdf_file` function when there
+        is an invalid `file_download_location` param (not a dir)."""
+        with pytest.raises(Exception) as e:
+            # Create a test file to point the file download location to.
+            with open("file.temp", "a"):
+                os.utime("file.temp", None)
+
+            ingestion.download_netcdf_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
