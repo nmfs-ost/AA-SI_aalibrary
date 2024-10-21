@@ -474,6 +474,18 @@ def download_netcdf_file(file_name: str = "",
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
 
+    # User-error-checking
+    assert file_name != "", "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
+    assert file_type != "", "Please provide a valid file type."
+    assert file_type in config.VALID_FILETYPES, f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
+    assert ship_name != "", "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
+    assert survey_name != "", "Please provide a valid survey name."
+    assert echosounder != "", "Please provide a valid echosounder."
+    assert echosounder in config.VALID_ECHOSOUNDERS, f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
+    assert file_download_location != "", "Please provide a valid file download locaiton (a directory)."
+    assert os.path.isdir(file_download_location) == True, f"File download locaiton `{file_download_location}` is not found to be a valid path, please reformat it."
+
+
     # Create vars for use later.
     file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
     gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
