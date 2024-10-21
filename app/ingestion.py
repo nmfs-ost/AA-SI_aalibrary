@@ -154,57 +154,57 @@ def download_single_survey_from_ncei(ship_name: str = "",
     ...
 
 
-def download_netcdf(file_name: str = "",
-                    file_type: str = "nc",
-                    ship_name: str = "",
-                    survey_name: str = "",
-                    echosounder: str = "",
-                    file_download_location: str = "",
-                    gcp_bucket: storage.Bucket = None,
-                    is_metadata: bool = False,
-                    debug: bool = False):
-    """ENTRYPOINT FOR END-USERS
-    Downloads a netcdf file from the GCP storage bucket. If one does not exist,
-    the user is informed.
+# def download_netcdf(file_name: str = "",
+#                     file_type: str = "nc",
+#                     ship_name: str = "",
+#                     survey_name: str = "",
+#                     echosounder: str = "",
+#                     file_download_location: str = "",
+#                     gcp_bucket: storage.Bucket = None,
+#                     is_metadata: bool = False,
+#                     debug: bool = False):
+#     """ENTRYPOINT FOR END-USERS
+#     Downloads a netcdf file from the GCP storage bucket. If one does not exist,
+#     the user is informed.
 
-    Args:
-        file_name (str, optional): The file name (includes extension). Defaults to "".
-        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
-        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
-        survey_name (str, optional): The survey name/identifier. Defaults to "".
-        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
-        file_download_location (str, optional): The local file directory you want to store your
-            file in. Defaults to current directory. Defaults to ".".
-        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object used to download
-            the file. Defaults to None.
-        is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
-            files that are considered metadata (metadata json, or readmes) are stored
-            in a separate directory. Defaults to False.
-        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
-    """
+#     Args:
+#         file_name (str, optional): The file name (includes extension). Defaults to "".
+#         file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
+#         ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+#         survey_name (str, optional): The survey name/identifier. Defaults to "".
+#         echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+#         file_download_location (str, optional): The local file directory you want to store your
+#             file in. Defaults to current directory. Defaults to ".".
+#         gcp_bucket (storage.Client.bucket, optional): The GCP bucket object used to download
+#             the file. Defaults to None.
+#         is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
+#             files that are considered metadata (metadata json, or readmes) are stored
+#             in a separate directory. Defaults to False.
+#         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+#     """
     
-    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
-    file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name_netcdf])
+#     file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
+#     file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name_netcdf])
 
-    # Check if the file exists as a netcdf
-    netcdf_gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name_netcdf, file_type="netcdf",
-                                                                                   ship_name=ship_name, survey_name=survey_name,
-                                                                                   echosounder=echosounder,data_source="NCEI",
-                                                                                   is_metadata=is_metadata, debug=debug)
-    file_exists = utils.cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
-                                                    file_path=netcdf_gcp_storage_bucket_location)
-    if file_exists:
-        try:
-            print(f"DOWNLOADING FILE `{file_name_netcdf}` TO `{file_download_location}`...")
-            utils.cloud_utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=netcdf_gcp_storage_bucket_location,
-                                        local_file_path=file_download_location, debug=debug)
-            print(f"DOWNLOADED TO `{file_download_location}`.")
-        except Exception as e:
-            print(f"COULD NOT DOWNLOAD FILE `{file_name_netcdf}` DUE TO ERROR:\n{e}")
-            return
-    else:
-        print(f"FILE `{file_name_netcdf}` DOES NOT EXIST IN THE GCP STORAGE BUCKET AT `{netcdf_gcp_storage_bucket_location}`.")
-        print(f"CONSIDER RUNNING A CONVERSION FUNCTION TO CONVERT THE RAW AND UPLOAD AS NETCDF.")
+#     # Check if the file exists as a netcdf
+#     netcdf_gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name_netcdf, file_type="netcdf",
+#                                                                                    ship_name=ship_name, survey_name=survey_name,
+#                                                                                    echosounder=echosounder,data_source="NCEI",
+#                                                                                    is_metadata=is_metadata, debug=debug)
+#     file_exists = utils.cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+#                                                     file_path=netcdf_gcp_storage_bucket_location)
+#     if file_exists:
+#         try:
+#             print(f"DOWNLOADING FILE `{file_name_netcdf}` TO `{file_download_location}`...")
+#             utils.cloud_utils.download_file_from_gcp(gcp_bucket=gcp_bucket, blob_file_path=netcdf_gcp_storage_bucket_location,
+#                                         local_file_path=file_download_location, debug=debug)
+#             print(f"DOWNLOADED TO `{file_download_location}`.")
+#         except Exception as e:
+#             print(f"COULD NOT DOWNLOAD FILE `{file_name_netcdf}` DUE TO ERROR:\n{e}")
+#             return
+#     else:
+#         print(f"FILE `{file_name_netcdf}` DOES NOT EXIST IN THE GCP STORAGE BUCKET AT `{netcdf_gcp_storage_bucket_location}`.")
+#         print(f"CONSIDER RUNNING A CONVERSION FUNCTION TO CONVERT THE RAW AND UPLOAD AS NETCDF.")
 
 
 def download_raw_file(file_name: str = "",
@@ -579,6 +579,19 @@ def convert_raw_to_netcdf(file_name: str = "",
             in a separate directory. Defaults to False.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
+
+    # User-error-checking
+    assert file_name != "", "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
+    assert file_type != "", "Please provide a valid file type."
+    assert file_type in config.VALID_FILETYPES, f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
+    assert ship_name != "", "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
+    assert survey_name != "", "Please provide a valid survey name."
+    assert echosounder != "", "Please provide a valid echosounder."
+    assert echosounder in config.VALID_ECHOSOUNDERS, f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
+    assert data_source != "", f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}. This is used as metadata, and for storage purposes."
+    assert file_download_location != "", "Please provide a valid file download location (a directory)."
+    assert os.path.isdir(file_download_location) == True, f"File download location `{file_download_location}` is not found to be a valid path, please reformat it."
+
 
     # Create vars for use later.
     # file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
