@@ -16,8 +16,7 @@ from botocore.client import Config
 from google.cloud import bigquery, storage
 from echopype import open_raw
 
-import utils.cloud_utils
-
+# For pytests-sake
 if __name__ == "__main__":
     import utils
     import config
@@ -839,7 +838,10 @@ def upload_files_from_directory_to_gcp_storage_bucket(directory: str = ""):
 
 
 if __name__ == '__main__':
+    # set up storage objects
     s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
+
     # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
     #                                  survey_name="RL2107",
     #                                  bucket=bucket)
@@ -873,7 +875,6 @@ if __name__ == '__main__':
     #                             is_metadata=False,
     #                             force_download_from_ncei=False,
     #                             debug=True)
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(raw_file_location="2107RL_CW-D20210813-T220732.raw",
     #                             netcdf_file_download_location="./2107RL_CW-D20210813-T220732.nc",
@@ -886,7 +887,7 @@ if __name__ == '__main__':
     #                       gcp_bucket=gcp_bucket, is_metadata=False,
     #                       debug=False)
     download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
-                    file_type="netcdf", ship_name="Reuben_Lasker",
+                    file_type="nc", ship_name="Reuben_Lasker",
                     survey_name="RL2107", echosounder="EK80",
                     file_download_location=".", gcp_bucket=gcp_bucket,
                     is_metadata=False,debug=False)
