@@ -16,7 +16,7 @@ class TestNCEIIngestion:
         """Tests downloading a raw file direct from NCEI."""
         # assert files exists
         # assert files sizes are correct
-        
+
         ...
 
     def test_download_raw_idx_from_GCP(self): ...
@@ -34,6 +34,7 @@ class TestNCEIIngestionUserErrors:
         self.ship_name = "Reuben_Lasker"
         self.survey_name = "RL2107"
         self.echosounder = "EK80"
+        self.data_source = "TEST"
         self.file_download_location = "."
         # set up storage objects
         _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
@@ -329,6 +330,180 @@ class TestNCEIIngestionUserErrors:
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
+                file_download_location="file.temp",
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+    
+    def test_convert_raw_to_netcdf_null_file_name(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an empty `file_name` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name="",
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_convert_raw_to_netcdf_null_file_type(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an empty `file_type` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type="",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_convert_raw_to_netcdf_invalid_file_type(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an invalid `file_type` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type="abc",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_convert_raw_to_netcdf_null_ship_name(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an empty `ship_name` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name="",
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_convert_raw_to_netcdf_null_survey_name(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an empty `survey_name` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name="",
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_convert_raw_to_netcdf_null_echosounder(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an empty `echosounder` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder="",
+                data_source=self.data_source,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_convert_raw_to_netcdf_invalid_echosounder(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an invalid `echosounder` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder="abc",
+                data_source=self.data_source,
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+    
+    def test_convert_raw_to_netcdf_null_data_source(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an empty `data_source` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source="",
+                file_download_location=self.file_download_location,
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_convert_raw_to_netcdf_null_file_download_location(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an empty `file_download_location` param."""
+        with pytest.raises(Exception) as e:
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                file_download_location="",
+                gcp_bucket=self.gcp_bucket,
+                is_metadata=False,
+                debug=False,
+            )
+
+    def test_convert_raw_to_netcdf_invalid_file_download_location(self):
+        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
+        is an invalid `file_download_location` param (not a dir)."""
+        with pytest.raises(Exception) as e:
+            # Create a test file to point the file download location to.
+            with open("file.temp", "a"):
+                os.utime("file.temp", None)
+
+            ingestion.convert_raw_to_netcdf(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
                 file_download_location="file.temp",
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
