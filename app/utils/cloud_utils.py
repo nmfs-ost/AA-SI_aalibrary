@@ -88,7 +88,7 @@ def upload_file_to_gcp_bucket(bucket: storage.Client.bucket,
         raise
 
 
-def create_s3_objs(bucket_name: str = "noaa-wcsd-pds") -> Tuple[boto3.client, boto3.resource, boto3.resource.Bucket]:
+def create_s3_objs(bucket_name: str = "noaa-wcsd-pds") -> Tuple:
     """Creates the s3 objects needed for using boto3 for a particular bucket.
 
     Args:
