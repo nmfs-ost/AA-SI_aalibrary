@@ -13,7 +13,7 @@ class TestNCEIIngestion:
     def setup_class(self):
         """Used for setting up the class."""
         self.file_name = "2107RL_CW-D20210813-T220732.raw"
-        self.file_type = "nc"
+        self.file_type = "raw"
         self.ship_name = "Reuben_Lasker"
         self.survey_name = "RL2107"
         self.echosounder = "EK80"
@@ -26,14 +26,40 @@ class TestNCEIIngestion:
         self.local_idx_file_path = (
             ".".join(self.local_raw_file_path.split(".")[:-1]) + ".idx"
         )
+        self.gcp_storage_bucket_location_raw = (
+            ingestion.parse_correct_gcp_storage_bucket_location(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                is_metadata=self.is_metadata,
+            )
+        )
+        self.gcp_storage_bucket_location_idx = (
+            ingestion.parse_correct_gcp_storage_bucket_location(
+                file_name=self.file_name_idx,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                is_metadata=self.is_metadata,
+            )
+        )
+
         # set up storage objects
         _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
         self.s3_client, self.s3_resource, self.s3_bucket = cloud_utils.create_s3_objs()
 
     def test_force_download_from_NCEI(self):
         """Tests downloading a raw file direct from NCEI."""
-        # assert files exists
-        # assert files sizes are correct
+        if os.path.exists(self.local_raw_file_path):
+            os.remove(self.local_raw_file_path)
+        if os.path.exists(self.local_idx_file_path):
+            os.remove(self.local_idx_file_path)
+
         ingestion.download_raw_file(
             file_name=self.file_name,
             file_type=self.file_type,
@@ -50,9 +76,87 @@ class TestNCEIIngestion:
             self.local_idx_file_path
         ), "Raw or Idx file has not been downloaded locally."
 
-    def test_download_raw_idx_from_GCP(self): ...
+    def test_download_from_NCEI(self):
+        """Tests downloading a raw and idx file direct from NCEI, but without the forced downloads on."""
+        # Delete from GCP if it exists; to bypass cache and download direct from NCEI
+        raw_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+            self.gcp_bucket, self.gcp_storage_bucket_location_raw
+        )
+        idx_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+            self.gcp_bucket, self.gcp_storage_bucket_location_idx
+        )
+        if raw_file_exists_in_gcp:
+            cloud_utils.delete_file_from_gcp(
+                gcp_bucket=self.gcp_bucket,
+                blob_file_path=self.gcp_storage_bucket_location_raw,
+            )
+        if idx_file_exists_in_gcp:
+            cloud_utils.delete_file_from_gcp(
+                gcp_bucket=self.gcp_bucket,
+                blob_file_path=self.gcp_storage_bucket_location_idx,
+            )
 
-    def test_parse_correct_gcp_location(self): ...
+        # Delete locally if it exists
+        if os.path.exists(self.local_raw_file_path):
+            os.remove(self.local_raw_file_path)
+        if os.path.exists(self.local_idx_file_path):
+            os.remove(self.local_idx_file_path)
+
+        ingestion.download_raw_file(
+            file_name=self.file_name,
+            file_type=self.file_type,
+            ship_name=self.ship_name,
+            survey_name=self.survey_name,
+            echosounder=self.echosounder,
+            file_download_location=self.file_download_location,
+            is_metadata=False,
+            force_download_from_ncei=False,
+            debug=False,
+        )
+
+        # assert that both raw and idx files exist after they have been downloaded.
+        assert os.path.exists(self.local_raw_file_path) and os.path.exists(
+            self.local_idx_file_path
+        ), "Raw or Idx file has not been downloaded locally."
+
+    def test_download_raw_idx_from_GCP(self):
+        """Tests downloading the raw and idx files from GCP (cached versions)."""
+        # Delete locally if it exists
+        if os.path.exists(self.local_raw_file_path):
+            os.remove(self.local_raw_file_path)
+        if os.path.exists(self.local_idx_file_path):
+            os.remove(self.local_idx_file_path)
+
+        ingestion.download_raw_file(
+            file_name=self.file_name,
+            file_type=self.file_type,
+            ship_name=self.ship_name,
+            survey_name=self.survey_name,
+            echosounder=self.echosounder,
+            file_download_location=self.file_download_location,
+            is_metadata=False,
+            force_download_from_ncei=False,
+            debug=False,
+        )
+
+        # assert that both raw and idx files exist after they have been downloaded.
+        assert os.path.exists(self.local_raw_file_path) and os.path.exists(
+            self.local_idx_file_path
+        ), "Raw or Idx file has not been downloaded locally."
+
+    def test_parse_correct_gcp_location(self):
+        """Tests to see if the correct GCP file location is being parsed for the raw file."""
+        assert (
+            self.gcp_storage_bucket_location_raw
+            == "ggn-nmfs-aa-dev-1-data/TEST/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732.raw"
+        ), f"Incorrectly parsed GCP location: `{self.gcp_storage_bucket_location_raw}`"
+
+    def teardown_class(self):
+        """Tearsdown any temporary files, variables, or anything that was used for testing."""
+        if os.path.exists(self.local_raw_file_path):
+            os.remove(self.local_raw_file_path)
+        if os.path.exists(self.local_idx_file_path):
+            os.remove(self.local_idx_file_path)
 
 
 class TestNCEIIngestionUserErrors:
