@@ -13,6 +13,7 @@ class TestNCEIIngestion:
     def setup_class(self):
         """Used for setting up the class."""
         self.file_name = "2107RL_CW-D20210813-T220732.raw"
+        self.file_name_idx = "2107RL_CW-D20210813-T220732.idx"
         self.file_type = "raw"
         self.ship_name = "Reuben_Lasker"
         self.survey_name = "RL2107"
@@ -67,6 +68,7 @@ class TestNCEIIngestion:
             ship_name=self.ship_name,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
+            data_source=self.data_source,
             file_download_location=self.file_download_location,
             is_metadata=False,
             force_download_from_ncei=True,
@@ -109,6 +111,7 @@ class TestNCEIIngestion:
             ship_name=self.ship_name,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
+            data_source=self.data_source,
             file_download_location=self.file_download_location,
             is_metadata=False,
             force_download_from_ncei=False,
@@ -134,6 +137,7 @@ class TestNCEIIngestion:
             ship_name=self.ship_name,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
+            data_source=self.data_source,
             file_download_location=self.file_download_location,
             is_metadata=False,
             force_download_from_ncei=False,
@@ -149,7 +153,7 @@ class TestNCEIIngestion:
         """Tests to see if the correct GCP file location is being parsed for the raw file."""
         assert (
             self.gcp_storage_bucket_location_raw
-            == "ggn-nmfs-aa-dev-1-data/TEST/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732.raw"
+            == "TEST/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732.raw"
         ), f"Incorrectly parsed GCP location: `{self.gcp_storage_bucket_location_raw}`"
 
     def teardown_class(self):
