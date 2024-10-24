@@ -229,6 +229,21 @@ def download_file_from_gcp(gcp_bucket: storage.Client.bucket,
         raise
 
 
+def delete_file_from_gcp(gcp_bucket: storage.Client.bucket,
+                         blob_file_path: str,
+                         debug: bool = False):
+    file_exists_in_gcp = check_if_file_exists_in_gcp(gcp_bucket, blob_file_path)
+    assert file_exists_in_gcp, f"File does not exist in GCP at `{blob_file_path}`."
+
+    blob = gcp_bucket.blob(blob_file_path)
+    try:
+        blob.delete()
+        return
+    except Exception as e:
+        print(traceback.format_exc())
+        raise
+
+
 def check_if_file_exists_in_s3(object_key: str = "",
                                s3_resource: boto3.resource = None,
                                s3_bucket_name: str = "") -> bool:
