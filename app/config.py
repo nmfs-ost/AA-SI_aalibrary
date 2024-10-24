@@ -6,4 +6,4 @@ METADATA_FILE_TYPES = ["json"]
 VALID_FILETYPES = ["raw", "idx", "netcdf", "nc", "json"]
 
 VALID_ECHOSOUNDERS = ["EK70", "EK80"]
-VALID_DATA_SOURCES = ["NCEI", "OMAO", "TEST"]
+VALID_DATA_SOURCES = ["NCEI", "OMAO", "HDD", "TEST"]
