@@ -101,7 +101,7 @@ def create_ncei_url_from_variables(file_name: str = "",
 
 
 def download_single_file_from_aws(s3_bucket: str = "noaa-wcsd-pds",
-                                  file_url: str = "https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
+                                  file_url: str = "",
                                   download_location: str = ""):
     """Downloads a file from AWS storage bucket, aka the NCEI repository."""
     
@@ -123,10 +123,10 @@ def download_single_file_from_aws(s3_bucket: str = "noaa-wcsd-pds",
 
     # Finally download the file.
     try:
-        s3_bucket.download_file(file_url, file_name, download_location)
-        print(f"Downloaded: {file_name} to {download_location}")
+        s3_bucket.download_file(file_url, download_location)
+        print(f"Downloaded: `{file_name}` to `{download_location}`")
     except Exception as e:
-        print(f"Error downloading file {file_name}.\n{e}")
+        print(f"Error downloading file `{file_name}`\n{e}")
         return
 
 
@@ -261,7 +261,7 @@ def download_raw_file(file_name: str = "",
     assert data_source != "", f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
     assert data_source in config.VALID_DATA_SOURCES, f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
     assert file_download_location != "", "Please provide a valid file download locaiton (a directory)."
-    assert os.path.isdir(file_download_location) == True, f"File download locaiton `{file_download_location}` is not found to be a valid path, please reformat it."
+    assert os.path.isdir(file_download_location) == True, f"File download location `{file_download_location}` is not found to be a valid dir, please reformat it."
 
     # Create vars for use later.
     file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
