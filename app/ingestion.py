@@ -212,6 +212,7 @@ def download_raw_file(file_name: str = "",
                       ship_name: str = "",
                       survey_name: str = "",
                       echosounder: str = "",
+                      data_source: str = "",
                       file_download_location: str = ".",
                       is_metadata: bool = False,
                       force_download_from_ncei: bool = False,
@@ -235,6 +236,9 @@ def download_raw_file(file_name: str = "",
         ship_name (str, optional): The ship name associated with this survey. Defaults to "".
         survey_name (str, optional): The survey name/identifier. Defaults to "".
         echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to the
+            way the storage bucket is organized. Can be one of ["NCEI", "OMAO", "HDD"].
+            Defaults to "".
         file_download_location (str, optional): The local file directory you want to store your
             file in. Defaults to current directory. Defaults to ".".
         is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
@@ -254,6 +258,8 @@ def download_raw_file(file_name: str = "",
     assert survey_name != "", "Please provide a valid survey name."
     assert echosounder != "", "Please provide a valid echosounder."
     assert echosounder in config.VALID_ECHOSOUNDERS, f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
+    assert data_source != "", f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
+    assert data_source in config.VALID_DATA_SOURCES, f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
     assert file_download_location != "", "Please provide a valid file download locaiton (a directory)."
     assert os.path.isdir(file_download_location) == True, f"File download locaiton `{file_download_location}` is not found to be a valid path, please reformat it."
 
@@ -270,7 +276,7 @@ def download_raw_file(file_name: str = "",
                                                                             ship_name=ship_name,
                                                                             survey_name=survey_name,
                                                                             echosounder=echosounder,
-                                                                            data_source="NCEI",
+                                                                            data_source=data_source,
                                                                             is_metadata=is_metadata,
                                                                             debug=debug)
     gcp_storage_bucket_location_idx = parse_correct_gcp_storage_bucket_location(file_name=file_name_idx,
@@ -278,7 +284,7 @@ def download_raw_file(file_name: str = "",
                                                                                 ship_name=ship_name,
                                                                                 survey_name=survey_name,
                                                                                 echosounder=echosounder,
-                                                                                data_source="NCEI",
+                                                                                data_source=data_source,
                                                                                 is_metadata=is_metadata,
                                                                                 debug=debug)
     gcp_storage_bucket_location_netcdf = parse_correct_gcp_storage_bucket_location(file_name=file_name_netcdf,
@@ -286,7 +292,7 @@ def download_raw_file(file_name: str = "",
                                                                                 ship_name=ship_name,
                                                                                 survey_name=survey_name,
                                                                                 echosounder=echosounder,
-                                                                                data_source="NCEI",
+                                                                                data_source=data_source,
                                                                                 is_metadata=is_metadata,
                                                                                 debug=debug)
     gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
@@ -332,7 +338,7 @@ def download_raw_file(file_name: str = "",
                                                                       ship_name=ship_name,
                                                                       survey_name=survey_name,
                                                                       echosounder=echosounder,
-                                                                      data_source="NCEI",
+                                                                      data_source=data_source,
                                                                       gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
                                                                       gcp_bucket=gcp_bucket,
                                                                       debug=debug)
@@ -482,6 +488,8 @@ def download_netcdf_file(file_name: str = "",
     assert survey_name != "", "Please provide a valid survey name."
     assert echosounder != "", "Please provide a valid echosounder."
     assert echosounder in config.VALID_ECHOSOUNDERS, f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
+    assert data_source != "", f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
+    assert data_source in config.VALID_DATA_SOURCES, f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
     assert file_download_location != "", "Please provide a valid file download locaiton (a directory)."
     assert os.path.isdir(file_download_location) == True, f"File download locaiton `{file_download_location}` is not found to be a valid path, please reformat it."
 
@@ -588,7 +596,8 @@ def convert_raw_to_netcdf(file_name: str = "",
     assert survey_name != "", "Please provide a valid survey name."
     assert echosounder != "", "Please provide a valid echosounder."
     assert echosounder in config.VALID_ECHOSOUNDERS, f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
-    assert data_source != "", f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}. This is used as metadata, and for storage purposes."
+    assert data_source != "", f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
+    assert data_source in config.VALID_DATA_SOURCES, f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
     assert file_download_location != "", "Please provide a valid file download location (a directory)."
     assert os.path.isdir(file_download_location) == True, f"File download location `{file_download_location}` is not found to be a valid path, please reformat it."
 
@@ -911,11 +920,11 @@ if __name__ == '__main__':
     #                       data_source="NCEI", file_download_location="./",
     #                       gcp_bucket=gcp_bucket, is_metadata=False,
     #                       debug=False)
-    download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
-                    file_type="nc", ship_name="Reuben_Lasker",
-                    survey_name="RL2107", echosounder="EK80",
-                    file_download_location=".", gcp_bucket=gcp_bucket,
-                    is_metadata=False,debug=False)
+    # download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
+    #                 file_type="nc", ship_name="Reuben_Lasker",
+    #                 survey_name="RL2107", echosounder="EK80",
+    #                 file_download_location=".", gcp_bucket=gcp_bucket,
+    #                 is_metadata=False,debug=False)
 
 """NTH: Not pass a filename, but file type, ship name, echosounder, date field, to match
 with a file name(s).
