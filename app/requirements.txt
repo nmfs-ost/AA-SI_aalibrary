@@ -1,0 +1,11 @@
+boto3
+gcsfs
+google-api-python-client
+google-cloud-bigquery
+google-cloud-storage
+numpy
+openpyxl
+pandas
+pandas_gbq
+pytz
+tqdm
