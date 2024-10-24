@@ -19,6 +19,7 @@ class TestNCEIIngestion:
         self.echosounder = "EK80"
         self.data_source = "TEST"
         self.file_download_location = "."
+        self.is_metadata = False
 
         self.local_raw_file_path = os.sep.join(
             [self.file_download_location, self.file_name]
