@@ -1,6 +1,7 @@
 """This script contains functions used to ingest Active Acoustics data into GCP
 from various sources such as AWS buckets and Azure Data Lake."""
 
+import glob
 import sys
 import os
 import json
@@ -344,7 +345,7 @@ def download_raw_file(file_name: str = "",
                                                                       debug=debug)
             if netcdf_exists_in_gcp:
                 # Inform the user if a netcdf version exists in cache.
-                print(f"FILE {file_name} EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED.")
+                print(f"FILE `{file_name}` EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED.")
             else:
                 print(f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. CONSIDER RUNNING A CONVERSION FUNCTION")
             
@@ -816,7 +817,7 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
                                       echosounder: str = "",
                                       file_location: str = "",
                                       gcp_bucket: storage.Client.bucket = None,
-                                      data_source: str = "NCEI",
+                                      data_source: str = "",
                                       is_metadata: bool = False,
                                       debug: bool = False):
     """Uploads a local file to the storage bucket. Will also check to see if the
@@ -831,7 +832,7 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
         file_location (str, optional): The local location of the file. Defaults to "".
         gcp_bucket (storage.Client.bucket, optional): The GCP bucket object used to upload
             the file. Defaults to None.
-        data_source (str, optional): The source of the data. Can be one of ["NCEI", "OMAO"]. Defaults to "NCEI".
+        data_source (str, optional): The source of the data. Can be one of ["NCEI", "OMAO", "HDD", "TEST"]. Defaults to "".
         is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
             files that are considered metadata (metadata json, or readmes) are stored
             in a separate directory. Defaults to False.
@@ -862,13 +863,86 @@ def upload_file_to_gcp_storage_bucket(file_name: str = "",
     return
 
 
-def upload_files_from_directory_to_gcp_storage_bucket(directory: str = ""):
-    """Uploads all of the .raw (and their corresponding .idx) files from a directory
+def upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(directory: str = "",
+                                                                  ship_name: str = "",
+                                                                  survey_name: str = "",
+                                                                  echosounder: str = "",
+                                                                  debug: bool = False):
+    """ENTRYPOINT FOR END-USERS
+    Uploads all of the .raw (and their corresponding .idx) files from a directory
     into the appropriate location in the GCP storage bucket.
-    NOTE: assumes that all files share the same metadata."""
+    NOTE: Assumes that all files share the same metadata.
+
+    Args:
+        directory (str, optional): The directory which contains all of the files
+            you want to upload. Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+    """
     
-    # TODO:
-    ...
+    # Warn user that this function assumes the same metadata for all files within directory.
+    print(f"WARNING: THIS FUNCTION ASSUMES THAT ALL FILES WITHIN THIS DIRECTORY ARE FROM THE SAME SHIP, SURVEY, AND ECHOSOUNDER.")
+    directory = os.path.normpath(directory)
+    # Assert that the directory exists
+    assert os.path.isdir(directory), f"The location provided `{directory}` does not match a directory."
+    # Check (glob) for raw and idx files.
+    raw_files = [x for x in glob.glob(os.sep.join([directory, "*.raw"]))]
+    idx_files = [x for x in glob.glob(os.sep.join([directory, "*.idx"]))]
+
+    # Let the user know how many of each file has been found to upload.
+    print(f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES")
+
+    # Upload each raw file to gcp
+    for raw_file in raw_files:
+        file_name = raw_file.split(os.sep)[-1]
+        # TODO: Check for caching
+        gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
+                                                                        file_type="raw",
+                                                                        ship_name=ship_name,
+                                                                        survey_name=survey_name,
+                                                                        echosounder=echosounder,
+                                                                        data_source="HDD",
+                                                                        is_metadata=False,
+                                                                        debug=debug)
+        # Upload raw to GCP at the correct storage bucket location.
+        try:
+            print("CONTINUING UPLOAD TO GCP...")
+            upload_file_to_gcp_storage_bucket(file_name=file_name, file_type="raw",
+                                            ship_name=ship_name, survey_name=survey_name,
+                                            echosounder=echosounder, file_location=raw_file,
+                                            gcp_bucket=gcp_bucket, data_source="HDD",
+                                            is_metadata=False, debug=debug)
+            print(f"UPLOADED FILE {file_name} TO GCP.")
+        except Exception as e:
+            print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
+            return
+    
+    # Upload each idx file to gcp
+    for idx_file in idx_files:
+        file_name = idx_file.split(os.sep)[-1]
+        # TODO: Check for caching
+        gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
+                                                                        file_type="idx",
+                                                                        ship_name=ship_name,
+                                                                        survey_name=survey_name,
+                                                                        echosounder=echosounder,
+                                                                        data_source="HDD",
+                                                                        is_metadata=False,
+                                                                        debug=debug)
+        # Upload raw to GCP at the correct storage bucket location.
+        try:
+            print("CONTINUING UPLOAD TO GCP...")
+            upload_file_to_gcp_storage_bucket(file_name=file_name, file_type="idx",
+                                            ship_name=ship_name, survey_name=survey_name,
+                                            echosounder=echosounder, file_location=raw_file,
+                                            gcp_bucket=gcp_bucket, data_source="HDD",
+                                            is_metadata=False, debug=debug)
+            print(f"UPLOADED FILE {file_name} TO GCP.")
+        except Exception as e:
+            print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
+            return
 
 
 if __name__ == '__main__':
