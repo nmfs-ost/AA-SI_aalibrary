@@ -897,7 +897,6 @@ def upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(directory: str
     # Upload each raw file to gcp
     for raw_file in raw_files:
         file_name = raw_file.split(os.sep)[-1]
-        # TODO: Check for caching
         gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
                                                                         file_type="raw",
                                                                         ship_name=ship_name,
@@ -906,23 +905,27 @@ def upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(directory: str
                                                                         data_source="HDD",
                                                                         is_metadata=False,
                                                                         debug=debug)
-        # Upload raw to GCP at the correct storage bucket location.
-        try:
-            print("CONTINUING UPLOAD TO GCP...")
-            upload_file_to_gcp_storage_bucket(file_name=file_name, file_type="raw",
-                                            ship_name=ship_name, survey_name=survey_name,
-                                            echosounder=echosounder, file_location=raw_file,
-                                            gcp_bucket=gcp_bucket, data_source="HDD",
-                                            is_metadata=False, debug=debug)
-            print(f"UPLOADED FILE {file_name} TO GCP.")
-        except Exception as e:
-            print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
-            return
+        raw_file_exists = cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+                                                                  file_path=gcp_storage_bucket_location)
+        if raw_file_exists:
+            print(f"FILE `{file_name}` ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`")
+        else:
+            # Upload raw to GCP at the correct storage bucket location.
+            try:
+                print("CONTINUING UPLOAD TO GCP...")
+                upload_file_to_gcp_storage_bucket(file_name=file_name, file_type="raw",
+                                                ship_name=ship_name, survey_name=survey_name,
+                                                echosounder=echosounder, file_location=raw_file,
+                                                gcp_bucket=gcp_bucket, data_source="HDD",
+                                                is_metadata=False, debug=debug)
+                print(f"UPLOADED FILE {file_name} TO GCP.")
+            except Exception as e:
+                print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
+                return
     
     # Upload each idx file to gcp
     for idx_file in idx_files:
         file_name = idx_file.split(os.sep)[-1]
-        # TODO: Check for caching
         gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(file_name=file_name,
                                                                         file_type="idx",
                                                                         ship_name=ship_name,
@@ -931,18 +934,23 @@ def upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(directory: str
                                                                         data_source="HDD",
                                                                         is_metadata=False,
                                                                         debug=debug)
-        # Upload raw to GCP at the correct storage bucket location.
-        try:
-            print("CONTINUING UPLOAD TO GCP...")
-            upload_file_to_gcp_storage_bucket(file_name=file_name, file_type="idx",
-                                            ship_name=ship_name, survey_name=survey_name,
-                                            echosounder=echosounder, file_location=raw_file,
-                                            gcp_bucket=gcp_bucket, data_source="HDD",
-                                            is_metadata=False, debug=debug)
-            print(f"UPLOADED FILE {file_name} TO GCP.")
-        except Exception as e:
-            print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
-            return
+        idx_file_exists = cloud_utils.check_if_file_exists_in_gcp(bucket=gcp_bucket,
+                                                                  file_path=gcp_storage_bucket_location)
+        if idx_file_exists:
+            print(f"FILE `{file_name}` ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`")
+        else:
+            # Upload raw to GCP at the correct storage bucket location.
+            try:
+                print("CONTINUING UPLOAD TO GCP...")
+                upload_file_to_gcp_storage_bucket(file_name=file_name, file_type="idx",
+                                                ship_name=ship_name, survey_name=survey_name,
+                                                echosounder=echosounder, file_location=raw_file,
+                                                gcp_bucket=gcp_bucket, data_source="HDD",
+                                                is_metadata=False, debug=debug)
+                print(f"UPLOADED FILE {file_name} TO GCP.")
+            except Exception as e:
+                print(f"COULD NOT UPLOAD FILE {file_name} TO GCP STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}")
+                return
 
 
 if __name__ == '__main__':
