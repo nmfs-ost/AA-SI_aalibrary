@@ -1,12 +1,16 @@
+echopype
 boto3
+Flask
 gcsfs
 google-api-python-client
 google-cloud
 google-cloud-bigquery
 google-cloud-storage
+google-cloud-vision
 numpy
 openpyxl
 pandas
 pandas_gbq
+pytest
 pytz
 tqdm
