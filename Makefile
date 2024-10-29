@@ -1,0 +1,17 @@
+# For building and distributing this library as a package.
+dist:
+    pip install --upgrade build
+    python -m build
+    pip install twine
+    pip install keyring
+    pip install keyrings.google-artifactregistry-auth
+    # bottom command should specify ChainerBackend(priority:10) & GooglePythonAuth(priority: 9)
+    keyring --list-backends
+    twine upload --repository-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/ dist/*
+
+install:
+    pip install keyring
+    pip install keyrings.google-artifactregistry-auth
+    keyring --list-backends
+    python -m pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary
+    conda list | pip list
