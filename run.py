@@ -1,6 +1,6 @@
 # Entry-point for running the app
 
-from app import api_app, routes
+from aalibrary import api_app, routes
 
 
 if __name__ == '__main__':

@@ -3,8 +3,8 @@
 import os
 import pytest
 
-from app import ingestion
-from app.utils import cloud_utils
+from aalibrary import ingestion
+from aalibrary.utils import cloud_utils
 
 
 class TestNCEIIngestion:

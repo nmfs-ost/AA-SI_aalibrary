@@ -23,9 +23,9 @@ if __name__ == "__main__":
     import config
     from utils import cloud_utils
 else:
-    from app import utils
-    from app import config
-    from app.utils import cloud_utils
+    from aalibrary import utils
+    from aalibrary import config
+    from aalibrary.utils import cloud_utils
 
 
 def get_file_paths_via_json_link(link: str = ""):

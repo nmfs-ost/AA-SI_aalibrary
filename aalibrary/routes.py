@@ -2,8 +2,8 @@
 
 from flask import request, send_from_directory
 
-from app import ingestion, utils
-from app import api_app
+from aalibrary import ingestion, utils
+from aalibrary import api_app
 
 
 @api_app.route("/")
