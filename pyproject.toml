@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-requirements-txt"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "src/aalibrary/__init__.py"
+path = "src/aalibrary/__about__.py"
 
 [tool.hatch.metadata.hooks.requirements_txt]
 files = ["src/aalibrary/requirements.txt"]
