@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-requirements-txt"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -12,6 +12,7 @@ files = ["src/aalibrary/requirements.txt"]
 name = "aalibrary"
 dynamic = [
  "version",
+ "dependencies"
 ]
 authors = [
   { name="Hannan Khan", email="hannan.khan@noaa.gov" },
