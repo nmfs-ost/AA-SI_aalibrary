@@ -12,3 +12,6 @@
 
 # For package distribution files
 dist/
+
+# For dirs that hold test data
+test_data_dir/
