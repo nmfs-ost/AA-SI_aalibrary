@@ -1,4 +1,4 @@
-__version__ = "0.0.0"
+# TODO: set up dual output logging here
 
 from flask import Flask
 
