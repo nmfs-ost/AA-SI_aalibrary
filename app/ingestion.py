@@ -890,7 +890,7 @@ def upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(directory: str
     # Check (glob) for raw and idx files.
     raw_files = [x for x in glob.glob(os.sep.join([directory, "*.raw"]))]
     idx_files = [x for x in glob.glob(os.sep.join([directory, "*.idx"]))]
-
+    # TODO: Look for netcdf and upload it as well
     # Let the user know how many of each file has been found to upload.
     print(f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES")
 
@@ -912,7 +912,6 @@ def upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(directory: str
         else:
             # Upload raw to GCP at the correct storage bucket location.
             try:
-                print("CONTINUING UPLOAD TO GCP...")
                 upload_file_to_gcp_storage_bucket(file_name=file_name, file_type="raw",
                                                 ship_name=ship_name, survey_name=survey_name,
                                                 echosounder=echosounder, file_location=raw_file,
@@ -941,7 +940,6 @@ def upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(directory: str
         else:
             # Upload raw to GCP at the correct storage bucket location.
             try:
-                print("CONTINUING UPLOAD TO GCP...")
                 upload_file_to_gcp_storage_bucket(file_name=file_name, file_type="idx",
                                                 ship_name=ship_name, survey_name=survey_name,
                                                 echosounder=echosounder, file_location=raw_file,
@@ -958,6 +956,11 @@ if __name__ == '__main__':
     s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
 
+    upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(directory="./test_data_dir",
+                                                                  ship_name="Bristol_Explorer",
+                                                                  survey_name="BE201301",
+                                                                  echosounder="ES60",
+                                                                  debug=False)
     # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
     #                                  survey_name="RL2107",
     #                                  bucket=bucket)
