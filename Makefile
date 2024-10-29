@@ -6,6 +6,7 @@ dist:
     pip install keyrings.google-artifactregistry-auth
     # bottom command should specify ChainerBackend(priority:10) & GooglePythonAuth(priority: 9)
     keyring --list-backends
+    rm -r dist/*
     python -m build
     twine upload --repository-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/ dist/*
 
