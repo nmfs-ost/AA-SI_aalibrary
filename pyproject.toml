@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aalibrary"
+dynamic = [
+ "version",
+]
+authors = [
+  { name="Hannan Khan", email="hannan.khan@noaa.gov" },
+]
+maintainers = [
+  { name="Hannan Khan", email="hannan.khan@noaa.gov" },
+]
+description = "A data-fetching library created for NOAA's Active-Acoustics initiative."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = ""
+Documentation = ""
+Issues = ""
+Repository = ""
+Changelog = ""
