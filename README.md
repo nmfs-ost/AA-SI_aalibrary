@@ -1,8 +1,52 @@
-# Active Acoustics
+<!-- markdownlint-configure-file {
+  "MD013": {
+    "code_blocks": false,
+    "tables": false
+  },
+  "MD033": false,
+  "MD041": false,
+  "MD013": false
+} -->
+
+<div align="center">
+
+<a href="https://www.warp.dev/?utm_source=github&utm_medium=referral&utm_campaign=zoxide_20231001">
+  <div>
+    <img src="other/img.png" width="230" alt="Warp" />
+  </div>
+</a>
+<hr />
+
+Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library provides end-users the tools needed to easily access data from disparate sources. It also implements caching for raw, idx, and netcdf4 files within the GCP ecosystem. </br>
+It is an improvement over previous methods, which would require end-users to fetch each piece of data from its respective source separately. </br> </br>
+
+[Getting Started](#getting-started) •
+[Installation](#installation) •
+[Dependencies](#dependencies) •
+[Usage](#usage) •
+[Recipes](#recipes)
+
+</div>
 
 This repo contains files, code, and other necessary scripts for execution of data pipelines for NOAA Active Acoustics.
 
-## Examples
+# Getting Started
+
+If this library has already been installed, you can run a quick test using `python quick_test.py`. This test will check if your network connections to the data sources are working, and download a raw file as an initial test.
+
+## Installation
+
+To securely install this package via pip, use the following:
+
+### Step 1 - Log Into `gcloud`
+
+### Step 2 - Install Necessary Dependencies Before The `pip install`
+
+### Step 3 - It's Finally `pip install` Time
+
+## Usage
+
+Here are some examples of functions that you can use in this library.
 
 ### Converting A Raw Into Netcdf
 
@@ -58,3 +102,7 @@ download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
                     file_download_location=".", gcp_bucket=gcp_bucket,
                     is_metadata=False,debug=False)
 ```
+
+## Recipes
+
+The following contains common recipes that an end-user might encounter.
