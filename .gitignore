@@ -15,3 +15,7 @@ dist/
 
 # For dirs that hold test data
 test_data_dir/
+
+# For VSCode files
+.vscode/
+
