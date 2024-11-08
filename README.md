@@ -1,6 +1,6 @@
 <!-- markdownlint-configure-file {
   "MD013": {
-    "code_blocks": false,
+    "code_blocks": true,
     "tables": false
   },
   "MD033": false,
@@ -40,9 +40,46 @@ To securely install this package via pip, use the following:
 
 ### Step 1 - Log Into `gcloud`
 
+Issue the following command, and follow the instructions to login to `gcloud`:
+
+```bash
+gcloud auth application-default login
+```
+
 ### Step 2 - Install Necessary Dependencies Before The `pip install`
 
+We need to install some dependencies, and check two authentication parameters before we install.
+
+#### Step 2.1 - Run The Following Commands To Install Dependencies
+
+```python
+pip install keyring
+pip install keyrings.google-artifactregistry-auth
+```
+
+#### Step 2.2 - Run The Following Command & Check The Output
+
+Check if `ChainerBackend(priority:10)` and `GooglePythonAuth(priority: 9)` are both present in the output of the following command:
+
+```python
+keyring --list-backends
+```
+
+If they are, proceed forward. If they are not, please re-install `keyring` and `keyrings.google-artifactregistry-auth`.
+
 ### Step 3 - It's Finally `pip install` Time
+
+To finally be able to pip-install the library, use the following command:
+
+```python
+python -m pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary
+```
+
+**Note:** You can also use the same command to upgrade the current version of the package to the newest version.
+
+## Dependencies
+
+Dependencies are listed within the `requirements.txt` file within the Cloud Source Repo.
 
 ## Usage
 
@@ -59,13 +96,13 @@ gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_stora
 # This function takes care of downloading, converting, and uploading (caching) the netcdf file in gcp.
 convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
                       file_type="raw",
-		      ship_name="Reuben_Lasker",
+                      ship_name="Reuben_Lasker",
                       survey_name="RL2107",
-		      echosounder="EK80",
+                      echosounder="EK80",
                       data_source="NCEI",
-		      file_download_location="./",
+                      file_download_location="./",
                       gcp_bucket=gcp_bucket,
-		      is_metadata=False,
+                      is_metadata=False,
                       debug=False)
 ```
 
@@ -73,18 +110,18 @@ convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
 
 In order to download a raw file from NCEI, use the following example:
 
-```python-repl
+```python
 # This function takes care of downloading, converting, and uploading (caching) the netcdf file in gcp.
 download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
-                      file_type="raw",
-		      ship_name="Reuben_Lasker",
-                      survey_name="RL2107",
-		      echosounder="EK80",
-                      data_source="NCEI",
-		      file_download_location=".",
-		      is_metadata=False,
-		      force_download_from_ncei=False,	# Set to True if you want to bypass GCP cache, and download from NCEI
-                      debug=False)
+                  file_type="raw",
+                  ship_name="Reuben_Lasker",
+                  survey_name="RL2107",
+                  echosounder="EK80",
+                  data_source="NCEI",
+                  file_download_location=".",
+                  is_metadata=False,
+                  force_download_from_ncei=False, # Set to True if you want to bypass GCP cache, and download from NCEI
+                  debug=False)
 ```
 
 ### Downloading A Netcdf
@@ -97,10 +134,10 @@ gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_stora
 
 # This function takes care of downloading the netcdf.
 download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
-                    file_type="netcdf", ship_name="Reuben_Lasker",
-                    survey_name="RL2107", echosounder="EK80",
-                    file_download_location=".", gcp_bucket=gcp_bucket,
-                    is_metadata=False,debug=False)
+                file_type="netcdf", ship_name="Reuben_Lasker",
+                survey_name="RL2107", echosounder="EK80",
+                file_download_location=".", gcp_bucket=gcp_bucket,
+                is_metadata=False,debug=False)
 ```
 
 ## Recipes
