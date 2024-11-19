@@ -144,6 +144,168 @@ def download_single_file_from_aws(
         raise
 
 
+def download_raw_file_from_ncei(
+    file_name: str = "",
+    file_type: str = "raw",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "",
+    file_download_location: str = ".",
+    is_metadata: bool = False,
+    upload_to_gcp: bool = False,
+    debug: bool = False,
+):
+    """ENTRYPOINT FOR END-USERS
+    Downloads a raw and idx file from NCEI. If `upload_to_gcp` is enabled, the
+    downloaded files will also upload to the GCP storage bucket.
+
+    Args:
+        file_name (str, optional): The file name (includes extension). Defaults to "".
+        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to the
+            way the storage bucket is organized. Can be one of ["NCEI", "OMAO", "HDD"].
+            Defaults to "".
+        file_download_location (str, optional): The local file directory you want to store your
+            file in. Defaults to current directory. Defaults to ".".
+        is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
+            files that are considered metadata (metadata json, or readmes) are stored
+            in a separate directory. Defaults to False.
+        upload_to_gcp (bool, optional): Whether or not you want to upload to GCP. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+    """
+
+    # User-error-checking
+    assert (
+        file_name != ""
+    ), "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
+    assert file_type != "", "Please provide a valid file type."
+    assert (
+        file_type in config.VALID_FILETYPES
+    ), f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
+    assert (
+        ship_name != ""
+    ), "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
+    assert survey_name != "", "Please provide a valid survey name."
+    assert echosounder != "", "Please provide a valid echosounder."
+    assert (
+        echosounder in config.VALID_ECHOSOUNDERS
+    ), f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
+    assert (
+        data_source != ""
+    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
+    assert (
+        data_source in config.VALID_DATA_SOURCES
+    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
+    assert (
+        file_download_location != ""
+    ), "Please provide a valid file download locaiton (a directory)."
+    assert (
+        os.path.isdir(file_download_location) == True
+    ), f"File download location `{file_download_location}` is not found to be a valid dir, please reformat it."
+
+    # Create vars for use later.
+    file_download_location = os.sep.join(
+        [os.path.normpath(file_download_location), file_name]
+    )
+    file_ncei_url = create_ncei_url_from_variables(
+        file_name=file_name,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+    file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
+    file_ncei_idx_url = ".".join(file_ncei_url.split(".")[:-1]) + ".idx"
+    file_download_location_idx = (
+        ".".join(file_download_location.split(".")[:-1]) + ".idx"
+    )
+    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        is_metadata=is_metadata,
+        debug=debug,
+    )
+    gcp_storage_bucket_location_idx = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name_idx,
+        file_type="idx",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        is_metadata=is_metadata,
+        debug=debug,
+    )
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+        utils.cloud_utils.setup_gcp_storage_objs()
+    )
+
+    # Check if the file(s) exists in cache (GCP).
+    file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
+        bucket=gcp_bucket, file_path=gcp_storage_bucket_location
+    )
+    idx_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_idx
+    )
+
+    print(f"DOWNLOADING FILE {file_name} FROM NCEI")
+    download_single_file_from_aws(
+        s3_bucket="noaa-wcsd-pds",
+        file_url=file_ncei_url,
+        download_location=file_download_location,
+    )
+    # Force download the idx file.
+    print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
+    download_single_file_from_aws(
+        s3_bucket="noaa-wcsd-pds",
+        file_url=file_ncei_idx_url,
+        download_location=file_download_location_idx,
+    )
+
+    if upload_to_gcp:
+        if file_exists_in_gcp:
+            print(f"RAW FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`")
+        else:
+            # Upload raw to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=file_download_location,
+                gcp_bucket=gcp_bucket,
+                data_source="NCEI",
+                is_metadata=is_metadata,
+                debug=debug,
+            )
+
+        if idx_file_exists_in_gcp:
+            print(f"IDX FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location_idx}`")
+        else:
+            # Upload idx to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name_idx,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=file_download_location_idx,
+                gcp_bucket=gcp_bucket,
+                data_source="NCEI",
+                is_metadata=is_metadata,
+                debug=debug,
+            )
+
+        return
+
+
 def download_single_survey_from_ncei(
     ship_name: str = "",
     survey_name: str = "",
@@ -184,7 +346,6 @@ def download_raw_file(
     data_source: str = "",
     file_download_location: str = ".",
     is_metadata: bool = False,
-    force_download_from_ncei: bool = False,
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
@@ -214,9 +375,6 @@ def download_raw_file(
         is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
             files that are considered metadata (metadata json, or readmes) are stored
             in a separate directory. Defaults to False.
-        force_download_from_ncei (bool, optional): Whether or not to override caching and force
-            a download from NCEI. Defaults to False.
-            NOTE: When enabled, no files are uploaded to GCP storage bucket.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
 
@@ -310,96 +468,79 @@ def download_raw_file(
     if file_exists_in_gcp:
         # Inform user if file exists in GCP.
         print(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
-        # Force download from NCEI if enabled.
-        if force_download_from_ncei:
-            print("FORCE DOWNLOAD FROM NCEI WAS ENABLED")
-            print(f"DOWNLOADING FILE {file_name} FROM NCEI")
-            download_single_file_from_aws(
-                s3_bucket="noaa-wcsd-pds",
-                file_url=file_ncei_url,
-                download_location=file_download_location,
+        # Here we download the raw file from GCP. We also check for a netcdf
+        # version and let the user know.
+        print(f"CHECKING FOR NETCDF VERSION...")
+        netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
+            file_name=file_name_netcdf,
+            file_type="netcdf",
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
+            gcp_bucket=gcp_bucket,
+            debug=debug,
+        )
+        if netcdf_exists_in_gcp:
+            # Inform the user if a netcdf version exists in cache.
+            print(
+                f"FILE `{file_name}` EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED."
             )
-            # Force download the idx file.
-            print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
+        else:
+            print(
+                f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. CONSIDER RUNNING A CONVERSION FUNCTION"
+            )
+
+        # Here we download the raw from GCP.
+        print(
+            f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`"
+        )
+        utils.cloud_utils.download_file_from_gcp(
+            gcp_bucket=gcp_bucket,
+            blob_file_path=gcp_storage_bucket_location,
+            local_file_path=file_download_location,
+            debug=debug,
+        )
+        print(f"DOWNLOADED.")
+
+        # Checking to make sure the idx exists in GCP...
+        if idx_file_exists_in_gcp:
+            print("CORRESPONDING IDX FILE FOUND IN GCP. DOWNLOADING...")
+            # Here we download the idx from GCP.
+            print(
+                f"DOWNLOADING FILE `{file_name_idx}` FROM GCP TO `{file_download_location_idx}`"
+            )
+            utils.cloud_utils.download_file_from_gcp(
+                gcp_bucket=gcp_bucket,
+                blob_file_path=gcp_storage_bucket_location_idx,
+                local_file_path=file_download_location_idx,
+                debug=debug,
+            )
+            print(f"DOWNLOADED.")
+        else:
+            print(
+                "CORRESPONDING IDX FILE NOT FOUND IN GCP. DOWNLOADING FROM NCEI AND UPLOADING TO GCP..."
+            )
+            # Safely download and upload the idx file.
             download_single_file_from_aws(
                 s3_bucket="noaa-wcsd-pds",
                 file_url=file_ncei_idx_url,
                 download_location=file_download_location_idx,
             )
-        else:
-            # Here we download the raw file from GCP. We also check for a netcdf
-            # version and let the user know.
-            print(f"CHECKING FOR NETCDF VERSION...")
-            netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
-                file_name=file_name_netcdf,
-                file_type="netcdf",
+            # Upload to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name_idx,
+                file_type=file_type,
                 ship_name=ship_name,
                 survey_name=survey_name,
                 echosounder=echosounder,
-                data_source=data_source,
-                gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
+                file_location=file_download_location_idx,
                 gcp_bucket=gcp_bucket,
+                data_source="NCEI",
+                is_metadata=is_metadata,
                 debug=debug,
             )
-            if netcdf_exists_in_gcp:
-                # Inform the user if a netcdf version exists in cache.
-                print(
-                    f"FILE `{file_name}` EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED."
-                )
-            else:
-                print(
-                    f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. CONSIDER RUNNING A CONVERSION FUNCTION"
-                )
-
-            # Here we download the raw from GCP.
-            print(
-                f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`"
-            )
-            utils.cloud_utils.download_file_from_gcp(
-                gcp_bucket=gcp_bucket,
-                blob_file_path=gcp_storage_bucket_location,
-                local_file_path=file_download_location,
-                debug=debug,
-            )
-            print(f"DOWNLOADED.")
-
-            # Checking to make sure the idx exists in GCP...
-            if idx_file_exists_in_gcp:
-                print("CORRESPONDING IDX FILE FOUND IN GCP. DOWNLOADING...")
-                # Here we download the idx from GCP.
-                print(
-                    f"DOWNLOADING FILE `{file_name_idx}` FROM GCP TO `{file_download_location_idx}`"
-                )
-                utils.cloud_utils.download_file_from_gcp(
-                    gcp_bucket=gcp_bucket,
-                    blob_file_path=gcp_storage_bucket_location_idx,
-                    local_file_path=file_download_location_idx,
-                    debug=debug,
-                )
-                print(f"DOWNLOADED.")
-            else:
-                print(
-                    "CORRESPONDING IDX FILE NOT FOUND IN GCP. DOWNLOADING FROM NCEI AND UPLOADING TO GCP..."
-                )
-                # Safely download and upload the idx file.
-                download_single_file_from_aws(
-                    s3_bucket="noaa-wcsd-pds",
-                    file_url=file_ncei_idx_url,
-                    download_location=file_download_location_idx,
-                )
-                # Upload to GCP at the correct storage bucket location.
-                upload_file_to_gcp_storage_bucket(
-                    file_name=file_name_idx,
-                    file_type=file_type,
-                    ship_name=ship_name,
-                    survey_name=survey_name,
-                    echosounder=echosounder,
-                    file_location=file_download_location_idx,
-                    gcp_bucket=gcp_bucket,
-                    data_source="NCEI",
-                    is_metadata=is_metadata,
-                    debug=debug,
-                )
     else:
         # Download and upload the raw file.
         download_single_file_from_aws(
@@ -725,7 +866,6 @@ def convert_raw_to_netcdf(
             echosounder=echosounder,
             file_download_location=file_download_location,
             is_metadata=is_metadata,
-            force_download_from_ncei=False,
             debug=debug,
         )
 
