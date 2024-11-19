@@ -23,9 +23,9 @@ if __name__ == "__main__":
     import config
     from utils import cloud_utils
 else:
-    from aalibrary import utils
-    from aalibrary import config
-    from aalibrary.utils import cloud_utils
+    from src.aalibrary import utils
+    from src.aalibrary import config
+    from src.aalibrary.utils import cloud_utils
 
 
 def get_file_paths_via_json_link(link: str = ""):
@@ -102,17 +102,26 @@ def create_ncei_url_from_variables(
         # Here we have to search for the file in s3. Just to see if something exists.
         partial_file_name = f"-D{year}{month}{date}-T{hours}{minutes}{seconds}.raw"
         # TODO: make sure to check that a raw and idx files both exist.
+        raise FileNotFoundError
 
 
 def download_single_file_from_aws(
     s3_bucket: str = "noaa-wcsd-pds", file_url: str = "", download_location: str = ""
 ):
+    """Safely downloads a file from AWS storage bucket, aka the NCEI repository.
+
+    Args:
+        s3_bucket (str, optional): _description_. Defaults to "noaa-wcsd-pds".
+        file_url (str, optional): _description_. Defaults to "".
+        download_location (str, optional): _description_. Defaults to "".
+    """
     """Downloads a file from AWS storage bucket, aka the NCEI repository."""
 
     try:
         s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     except Exception as e:
-        print(f"Cannot establish connection to s3 bucket..\n{e}")
+        print(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        raise
 
     # We replace the beginning of common file paths
     file_url = file_url.replace("https://noaa-wcsd-pds.s3.amazonaws.com/", "")
@@ -127,11 +136,12 @@ def download_single_file_from_aws(
 
     # Finally download the file.
     try:
+        print(f"DOWNLOADING `{file_name}`")
         s3_bucket.download_file(file_url, download_location)
-        print(f"Downloaded: `{file_name}` to `{download_location}`")
+        print(f"DOWNLOADED: `{file_name}` TO `{download_location}`")
     except Exception as e:
-        print(f"Error downloading file `{file_name}`\n{e}")
-        return
+        print(f"ERROR DOWNLOADING FILE `{file_name}` DUE TO\n{e}")
+        raise
 
 
 def download_single_survey_from_ncei(
@@ -157,6 +167,11 @@ def download_single_survey_from_ncei(
     # Get a list of urls of objects from that folder.
     # TODO: Check if ALL OF IT is already cached.
     # TODO
+    ...
+
+
+def download_direct_from_ncei():
+    
     ...
 
 
@@ -297,34 +312,20 @@ def download_raw_file(
         print(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
         # Force download from NCEI if enabled.
         if force_download_from_ncei:
-            try:
-                print("FORCE DOWNLOAD FROM NCEI WAS ENABLED")
-                print(f"DOWNLOADING FILE {file_name} FROM NCEI")
-                download_single_file_from_aws(
-                    s3_bucket="noaa-wcsd-pds",
-                    file_url=file_ncei_url,
-                    download_location=file_download_location,
-                )
-                print(f"DOWNLOADED FILE {file_name} FROM NCEI")
-            except Exception as e:
-                print(
-                    f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}"
-                )
-                return
-            # Force download and upload the idx file.
-            try:
-                print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
-                download_single_file_from_aws(
-                    s3_bucket="noaa-wcsd-pds",
-                    file_url=file_ncei_idx_url,
-                    download_location=file_download_location_idx,
-                )
-                print(f"DOWNLOADED FILE {file_name_idx} FROM NCEI\nUPLOADING TO GCP...")
-            except Exception as e:
-                print(
-                    f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}"
-                )
-                return
+            print("FORCE DOWNLOAD FROM NCEI WAS ENABLED")
+            print(f"DOWNLOADING FILE {file_name} FROM NCEI")
+            download_single_file_from_aws(
+                s3_bucket="noaa-wcsd-pds",
+                file_url=file_ncei_url,
+                download_location=file_download_location,
+            )
+            # Force download the idx file.
+            print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
+            download_single_file_from_aws(
+                s3_bucket="noaa-wcsd-pds",
+                file_url=file_ncei_idx_url,
+                download_location=file_download_location_idx,
+            )
         else:
             # Here we download the raw file from GCP. We also check for a netcdf
             # version and let the user know.
@@ -351,129 +352,94 @@ def download_raw_file(
                 )
 
             # Here we download the raw from GCP.
-            try:
-                print(
-                    f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`"
-                )
-                utils.cloud_utils.download_file_from_gcp(
-                    gcp_bucket=gcp_bucket,
-                    blob_file_path=gcp_storage_bucket_location,
-                    local_file_path=file_download_location,
-                    debug=debug,
-                )
-                print(f"DOWNLOADED.")
-            except Exception as e:
-                print(
-                    f"COULD NOT DOWNLOAD FILE FROM GCP DUE TO THE FOLLOWING ERROR:\n{e}"
-                )
+            print(
+                f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`"
+            )
+            utils.cloud_utils.download_file_from_gcp(
+                gcp_bucket=gcp_bucket,
+                blob_file_path=gcp_storage_bucket_location,
+                local_file_path=file_download_location,
+                debug=debug,
+            )
+            print(f"DOWNLOADED.")
 
             # Checking to make sure the idx exists in GCP...
             if idx_file_exists_in_gcp:
                 print("CORRESPONDING IDX FILE FOUND IN GCP. DOWNLOADING...")
                 # Here we download the idx from GCP.
-                try:
-                    print(
-                        f"DOWNLOADING FILE `{file_name_idx}` FROM GCP TO `{file_download_location_idx}`"
-                    )
-                    utils.cloud_utils.download_file_from_gcp(
-                        gcp_bucket=gcp_bucket,
-                        blob_file_path=gcp_storage_bucket_location_idx,
-                        local_file_path=file_download_location_idx,
-                        debug=debug,
-                    )
-                    print(f"DOWNLOADED.")
-                except Exception as e:
-                    print(
-                        f"COULD NOT DOWNLOAD FILE FROM GCP DUE TO THE FOLLOWING ERROR:\n{e}"
-                    )
+                print(
+                    f"DOWNLOADING FILE `{file_name_idx}` FROM GCP TO `{file_download_location_idx}`"
+                )
+                utils.cloud_utils.download_file_from_gcp(
+                    gcp_bucket=gcp_bucket,
+                    blob_file_path=gcp_storage_bucket_location_idx,
+                    local_file_path=file_download_location_idx,
+                    debug=debug,
+                )
+                print(f"DOWNLOADED.")
             else:
                 print(
                     "CORRESPONDING IDX FILE NOT FOUND IN GCP. DOWNLOADING FROM NCEI AND UPLOADING TO GCP..."
                 )
-                # Download and upload the idx file.
-                try:
-                    print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
-                    download_single_file_from_aws(
-                        s3_bucket="noaa-wcsd-pds",
-                        file_url=file_ncei_idx_url,
-                        download_location=file_download_location_idx,
-                    )
-                    print(
-                        f"DOWNLOADED FILE {file_name_idx} FROM NCEI\nUPLOADING TO GCP..."
-                    )
-                except Exception as e:
-                    print(
-                        f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}"
-                    )
-                    return
-                else:  # executed if there is no exception
-                    # Upload to GCP at the correct storage bucket location.
-                    upload_file_to_gcp_storage_bucket(
-                        file_name=file_name_idx,
-                        file_type=file_type,
-                        ship_name=ship_name,
-                        survey_name=survey_name,
-                        echosounder=echosounder,
-                        file_location=file_download_location_idx,
-                        gcp_bucket=gcp_bucket,
-                        data_source="NCEI",
-                        is_metadata=is_metadata,
-                        debug=debug,
-                    )
+                # Safely download and upload the idx file.
+                download_single_file_from_aws(
+                    s3_bucket="noaa-wcsd-pds",
+                    file_url=file_ncei_idx_url,
+                    download_location=file_download_location_idx,
+                )
+                # Upload to GCP at the correct storage bucket location.
+                upload_file_to_gcp_storage_bucket(
+                    file_name=file_name_idx,
+                    file_type=file_type,
+                    ship_name=ship_name,
+                    survey_name=survey_name,
+                    echosounder=echosounder,
+                    file_location=file_download_location_idx,
+                    gcp_bucket=gcp_bucket,
+                    data_source="NCEI",
+                    is_metadata=is_metadata,
+                    debug=debug,
+                )
     else:
         # Download and upload the raw file.
-        try:
-            print(f"DOWNLOADING FILE `{file_name}` FROM NCEI...")
-            download_single_file_from_aws(
-                s3_bucket="noaa-wcsd-pds",
-                file_url=file_ncei_url,
-                download_location=file_download_location,
-            )
-            print(f"DOWNLOADED FILE {file_name} FROM NCEI\nUPLOADING TO GCP...")
-        except Exception as e:
-            print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
-            return
-        else:  # executed if there is no exception
-            # TODO: try out a background process if possible -- file might have a lock. only async options, otherwise subprocess gsutil to upload it.
-            # Upload raw to GCP at the correct storage bucket location.
-            upload_file_to_gcp_storage_bucket(
-                file_name=file_name,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=file_download_location,
-                gcp_bucket=gcp_bucket,
-                data_source="NCEI",
-                is_metadata=is_metadata,
-                debug=debug,
-            )
+        download_single_file_from_aws(
+            s3_bucket="noaa-wcsd-pds",
+            file_url=file_ncei_url,
+            download_location=file_download_location,
+        )
+        # TODO: try out a background process if possible -- file might have a lock. only async options, otherwise subprocess gsutil to upload it.
+        # Upload raw to GCP at the correct storage bucket location.
+        upload_file_to_gcp_storage_bucket(
+            file_name=file_name,
+            file_type=file_type,
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            file_location=file_download_location,
+            gcp_bucket=gcp_bucket,
+            data_source="NCEI",
+            is_metadata=is_metadata,
+            debug=debug,
+        )
         # Download and upload the idx file.
-        try:
-            print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
-            download_single_file_from_aws(
-                s3_bucket="noaa-wcsd-pds",
-                file_url=file_ncei_idx_url,
-                download_location=file_download_location_idx,
-            )
-            print(f"DOWNLOADED FILE {file_name_idx} FROM NCEI\nUPLOADING TO GCP...")
-        except Exception as e:
-            print(f"COULD NOT DOWNLOAD FILE FROM NCEI DUE TO THE FOLLOWING ERROR:\n{e}")
-            return
-        else:  # executed if there is no exception
-            # Upload to GCP at the correct storage bucket location.
-            upload_file_to_gcp_storage_bucket(
-                file_name=file_name_idx,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=file_download_location_idx,
-                gcp_bucket=gcp_bucket,
-                data_source="NCEI",
-                is_metadata=is_metadata,
-                debug=debug,
-            )
+        download_single_file_from_aws(
+            s3_bucket="noaa-wcsd-pds",
+            file_url=file_ncei_idx_url,
+            download_location=file_download_location_idx,
+        )
+        # Upload to GCP at the correct storage bucket location.
+        upload_file_to_gcp_storage_bucket(
+            file_name=file_name_idx,
+            file_type=file_type,
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            file_location=file_download_location_idx,
+            gcp_bucket=gcp_bucket,
+            data_source="NCEI",
+            is_metadata=is_metadata,
+            debug=debug,
+        )
     return
 
 
