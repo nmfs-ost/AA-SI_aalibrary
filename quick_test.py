@@ -1,8 +1,8 @@
 """Contains quick tests for the API to verify that the connections are working as intended.
 Also checks to see if a raw file can be downloaded."""
 
-from aalibrary.utils import cloud_utils
-from aalibrary import ingestion
+from src.aalibrary.utils import cloud_utils
+from src.aalibrary import ingestion
 
 _, _, _ = cloud_utils.setup_gcp_storage_objs()
 
