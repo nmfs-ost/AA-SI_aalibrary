@@ -28,44 +28,6 @@ else:
     from src.aalibrary.utils import cloud_utils
 
 
-def get_file_paths_via_json_link(link: str = ""):
-    """This function helps in getting the links from a json request, parsing
-    the contents of that url into a json object. The output is a json of the
-    filename, and the cloud path link (s3 bucket link).
-    Code from: https://www.ngdc.noaa.gov/mgg/wcd/S3_download.html
-
-    Args:
-        link (str, optional): The link to the json url. Defaults to "".
-    """
-
-    url = requests.get(link)
-    text = url.text
-    contents = json.loads(text)
-    for k in contents.keys():
-        print(k)
-    for i in contents["features"]:
-        file_name = i["attributes"]["FILE_NAME"]
-        cloud_path = i["attributes"]["CLOUD_PATH"]
-        if cloud_path:
-            print(f"{file_name}, {cloud_path}")
-
-
-def parse_variables_from_ncei_file_url(url: str = ""):
-    """Gets the file variables associated with a file url in NCEI.
-    File urls in NCEI follow this template:
-    data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}
-
-    NOTE: file_name will include the extension."""
-
-    file_name = get_file_name_from_url(url=url)
-    file_type = file_name.split(".")[-1]
-    echosounder = url.split("/")[-2]
-    survey_name = url.split("/")[-3]
-    ship_name = url.split("/")[-4]
-
-    return file_name, file_type, echosounder, survey_name, ship_name
-
-
 def get_file_name_from_url(url: str = ""):
     """Extracts the file name from a given storage bucket url. Includes the file
     extension.
@@ -287,7 +249,9 @@ def download_raw_file_from_ncei(
             )
 
         if idx_file_exists_in_gcp:
-            print(f"IDX FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location_idx}`")
+            print(
+                f"IDX FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location_idx}`"
+            )
         else:
             # Upload idx to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
@@ -329,11 +293,6 @@ def download_single_survey_from_ncei(
     # Get a list of urls of objects from that folder.
     # TODO: Check if ALL OF IT is already cached.
     # TODO
-    ...
-
-
-def download_direct_from_ncei():
-    
     ...
 
 
@@ -493,9 +452,7 @@ def download_raw_file(
             )
 
         # Here we download the raw from GCP.
-        print(
-            f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`"
-        )
+        print(f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`")
         utils.cloud_utils.download_file_from_gcp(
             gcp_bucket=gcp_bucket,
             blob_file_path=gcp_storage_bucket_location,
@@ -701,7 +658,8 @@ def convert_local_raw_to_netcdf(
     netcdf_file_download_location: str = "",
     echosounder: str = "",
 ):
-    """Converts a local (on your computer) file from raw into netcdf using echopype.
+    """ENTRYPOINT FOR END-USERS
+    Converts a local (on your computer) file from raw into netcdf using echopype.
 
     Args:
         raw_file_location (str, optional): The location of the raw file. Defaults to "".
@@ -894,75 +852,6 @@ def convert_raw_to_netcdf(
         )
 
 
-def get_all_ship_objects_from_ncei(
-    ship_name: str = "", bucket: boto3.resource = None
-) -> List[str]:
-    """Gets all of the object keys from a ship from the NCEI database.
-
-    Args:
-        ship_name (str, optional): The name of the ship. Must be title-case and have
-            spaces substituted for underscores. Defaults to "".
-        bucket (boto3.resource, optional): The boto3 bucket resource for the bucket
-            that the ship data resides in. Defaults to None.
-
-    Returns:
-        List[str]: A list of strings. Each one being an object key (path to the object
-            inside of the bucket).
-    """
-
-    assert (
-        ship_name != ""
-    ), "Please provide a valid Titlecase ship_name using underscores as spaces."
-    assert (
-        " " not in ship_name
-    ), "Please provide a valid Titlecase ship_name using underscores as spaces."
-    assert bucket is not None, "Please pass in a boto3 bucket object."
-
-    ship_objects = []
-
-    for object in bucket.objects.filter(Prefix=f"data/raw/{ship_name}"):
-        ship_objects.append(object.key)
-
-    return ship_objects
-
-
-def get_all_objects_in_survey_from_ncei(
-    ship_name: str = "", survey_name: str = "", s3_bucket: boto3.resource = None
-) -> List[str]:
-    """Gets all of the object keys from a ship survey from the NCEI database.
-
-    Args:
-        ship_name (str, optional): The name of the ship. Must be title-case and have
-            spaces substituted for underscores. Defaults to "".
-        survey_name (str, optional): The name of the survey. Must match what we have
-            in the NCEI database. Defaults to "".
-        s3_bucket (boto3.resource, optional): The boto3 bucket resource for the bucket
-            that the ship data resides in. Defaults to None.
-
-    Returns:
-        List[str]: A list of strings. Each one being an object key (path to the object
-            inside of the bucket).
-    """
-
-    assert (
-        ship_name != ""
-    ), "Please provide a valid Titlecase ship_name using underscores as spaces."
-    assert (
-        " " not in ship_name
-    ), "Please provide a valid Titlecase ship_name using underscores as spaces."
-    assert survey_name != "", "Please provide a valid survey name."
-    assert s3_bucket is not None, "Please pass in a boto3 bucket object."
-
-    survey_objects = []
-
-    for object in s3_bucket.objects.filter(
-        Prefix=f"data/raw/{ship_name}/{survey_name}"
-    ):
-        survey_objects.append(object.key)
-
-    return survey_objects
-
-
 def parse_correct_gcp_storage_bucket_location(
     file_name: str = "",
     file_type: str = "",
@@ -1133,7 +1022,7 @@ def upload_file_to_gcp_storage_bucket(
     return
 
 
-def upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
+def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     directory: str = "",
     ship_name: str = "",
     survey_name: str = "",
@@ -1248,7 +1137,7 @@ if __name__ == "__main__":
         utils.cloud_utils.setup_gcp_storage_objs()
     )
 
-    upload_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
+    upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         directory="./test_data_dir",
         ship_name="Bristol_Explorer",
         survey_name="BE201301",
