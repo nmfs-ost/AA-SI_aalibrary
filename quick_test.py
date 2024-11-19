@@ -25,6 +25,5 @@ ingestion.download_raw_file(
     data_source=data_source,
     file_download_location=file_download_location,
     is_metadata=False,
-    force_download_from_ncei=False,
     debug=True,
 )
