@@ -886,6 +886,11 @@ def parse_correct_gcp_storage_bucket_location(
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
         )
+        # Figure out if its a raw or idx file (belongs in raw folder)
+        if file_type.lower() in config.RAW_DATA_FILE_TYPES:
+            gcp_storage_bucket_location = gcp_storage_bucket_location + f"raw/{file_name}.json"
+        elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
+            gcp_storage_bucket_location = gcp_storage_bucket_location + f"netcdf/{file_name}.json"
     else:
         # Figure out if its a raw or idx file (belongs in raw folder)
         if file_type.lower() in config.RAW_DATA_FILE_TYPES:
