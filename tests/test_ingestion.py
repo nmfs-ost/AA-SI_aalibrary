@@ -54,29 +54,8 @@ class TestNCEIIngestion:
         # set up storage objects
         _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
         self.s3_client, self.s3_resource, self.s3_bucket = cloud_utils.create_s3_objs()
-
-    # def test_force_download_from_NCEI(self):
-    #     """Tests downloading a raw file direct from NCEI."""
-    #     if os.path.exists(self.local_raw_file_path):
-    #         os.remove(self.local_raw_file_path)
-    #     if os.path.exists(self.local_idx_file_path):
-    #         os.remove(self.local_idx_file_path)
-
-    #     ingestion.download_raw_file(
-    #         file_name=self.file_name,
-    #         file_type=self.file_type,
-    #         ship_name=self.ship_name,
-    #         survey_name=self.survey_name,
-    #         echosounder=self.echosounder,
-    #         data_source=self.data_source,
-    #         file_download_location=self.file_download_location,
-    #         is_metadata=False,
-    #         debug=False,
-    #     )
-    #     # assert that both raw and idx files exist after they have been downloaded.
-    #     assert os.path.exists(self.local_raw_file_path) and os.path.exists(
-    #         self.local_idx_file_path
-    #     ), "Raw or Idx file has not been downloaded locally."
+    
+    def download_from_NCEI_upload_to_GCP(self): ...
 
     def test_download_from_NCEI(self):
         """Tests downloading a raw and idx file direct from NCEI, but without the forced downloads on."""
