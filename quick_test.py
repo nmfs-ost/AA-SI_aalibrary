@@ -4,9 +4,11 @@ Also checks to see if a raw file can be downloaded."""
 from src.aalibrary.utils import cloud_utils
 from src.aalibrary import ingestion
 
-_, _, _ = cloud_utils.setup_gcp_storage_objs()
+# CONNECTION TEST: set up storage objects
+_, _, gcp_bucket = cloud_utils.setup_gcp_storage_objs()
+s3_client, s3_resource, s3_bucket = cloud_utils.create_s3_objs()
 
-# download a raw file
+# FUNCTIONAL TEST: download a raw file
 file_name = "2107RL_CW-D20210813-T220732.raw"
 file_name_idx = "2107RL_CW-D20210813-T220732.idx"
 file_type = "raw"
