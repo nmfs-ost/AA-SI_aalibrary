@@ -11,7 +11,7 @@ from src.aalibrary import ingestion, metadata
 try:
     print("`gcloud` SETUP TEST...", end="")
     metadata_json = metadata.create_metadata_json()
-    print(f"PASSED.\n{metadata_json}\n")
+    print(f"PASSED.\n{metadata_json}")
 except Exception as e:
     print(
         f"`gcloud` SETUP TEST FAILED DUE TO THE FOLLOWING ERROR:\n{e}", file=sys.stderr
