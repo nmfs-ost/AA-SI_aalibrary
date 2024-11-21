@@ -17,7 +17,7 @@ try:
     assert (
         metadata_json["ECHOPYPE_VERSION"] != ""
     ), "Please install requirements using `pip install -r src/aalibrary/requirements.txt`, or you can try reinstalling `aalibrary` to automatically take care of dependencies."
-    print(f"PASSED.\n{metadata_json}")
+    print(f"PASSED\n{metadata_json}")
 except Exception as e:
     print(
         f"`gcloud` SETUP TEST FAILED DUE TO THE FOLLOWING ERROR:\n{e}", file=sys.stderr
