@@ -28,7 +28,7 @@ def create_metadata_json(
 
     get_curr_user_email_cmd = ["gcloud", "config", "get-value", "account"]
     email = subprocess.run(
-        get_curr_user_email_cmd, shell=True, capture_output=True, text=True
+        get_curr_user_email_cmd, capture_output=True, text=True
     ).stdout
     email = email.replace("\n", "")
     metadata_json = {
