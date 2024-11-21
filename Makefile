@@ -6,7 +6,7 @@ dist:
 	pip install keyrings.google-artifactregistry-auth
 	# bottom command should specify ChainerBackend(priority:10) & GooglePythonAuth(priority: 9)
 	keyring --list-backends
-	rm -r dist/*
+	rm -rf dist/*
 	python -m build
 	twine upload --repository-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/ dist/*
 
@@ -22,7 +22,7 @@ update-changelog:
 	git-cliff --config cliff.toml --repository . -o --tag 0.1.0 --bump
 
 local-build-and-install:
-	rm -r dist/*
+	rm -rf dist/*
 	python -m build
 	python -m pip uninstall aalibrary -y
 	python -m pip install dist/*.whl
