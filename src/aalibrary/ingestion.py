@@ -92,16 +92,16 @@ def download_single_file_from_aws(
     file_name = get_file_name_from_url(file_url)
 
     # Check if the file exists in s3
-    logging.INFO(f"s3_bucket.name: {s3_bucket.name}")
+    logging.info(f"s3_bucket.name: {s3_bucket.name}")
     file_exists = utils.cloud_utils.check_if_file_exists_in_s3(
         object_key=file_url, s3_resource=s3_resource, s3_bucket_name=s3_bucket.name
     )
 
     # Finally download the file.
     try:
-        logging.INFO(f"DOWNLOADING `{file_name}`")
+        logging.info(f"DOWNLOADING `{file_name}`")
         s3_bucket.download_file(file_url, download_location)
-        logging.INFO(f"DOWNLOADED: `{file_name}` TO `{download_location}`")
+        logging.info(f"DOWNLOADED: `{file_name}` TO `{download_location}`")
     except Exception as e:
         logging.ERROR(f"ERROR DOWNLOADING FILE `{file_name}` DUE TO\n{e}")
         raise
@@ -199,14 +199,14 @@ def download_raw_file_from_ncei(
         bucket=gcp_bucket, file_path=gcp_storage_bucket_location_idx
     )
 
-    logging.INFO(f"DOWNLOADING FILE {file_name} FROM NCEI")
+    logging.info(f"DOWNLOADING FILE {file_name} FROM NCEI")
     download_single_file_from_aws(
         s3_bucket="noaa-wcsd-pds",
         file_url=file_ncei_url,
         download_location=file_download_location,
     )
     # Force download the idx file.
-    logging.INFO(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
+    logging.info(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
     download_single_file_from_aws(
         s3_bucket="noaa-wcsd-pds",
         file_url=file_ncei_idx_url,
@@ -215,7 +215,7 @@ def download_raw_file_from_ncei(
 
     if upload_to_gcp:
         if file_exists_in_gcp:
-            logging.INFO(f"RAW FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`")
+            logging.info(f"RAW FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`")
         else:
             # TODO: try out a background process if possible -- file might have a lock. only async options, otherwise subprocess gsutil to upload it.
             # Upload raw to GCP at the correct storage bucket location.
@@ -244,7 +244,7 @@ def download_raw_file_from_ncei(
             )
 
         if idx_file_exists_in_gcp:
-            logging.INFO(
+            logging.info(
                 f"IDX FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location_idx}`"
             )
         else:
@@ -465,10 +465,10 @@ def download_raw_file(
 
     if file_exists_in_gcp:
         # Inform user if file exists in GCP.
-        logging.INFO(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
+        logging.info(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
         # Here we download the raw file from GCP. We also check for a netcdf
         # version and let the user know.
-        logging.INFO(f"CHECKING FOR NETCDF VERSION...")
+        logging.info(f"CHECKING FOR NETCDF VERSION...")
         netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
             file_name=file_name_netcdf,
             file_type="netcdf",
@@ -482,7 +482,7 @@ def download_raw_file(
         )
         if netcdf_exists_in_gcp:
             # Inform the user if a netcdf version exists in cache.
-            logging.INFO(
+            logging.info(
                 f"FILE `{file_name}` EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED."
             )
         else:
@@ -491,20 +491,20 @@ def download_raw_file(
             )
 
         # Here we download the raw from GCP.
-        logging.INFO(f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`")
+        logging.info(f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`")
         utils.cloud_utils.download_file_from_gcp(
             gcp_bucket=gcp_bucket,
             blob_file_path=gcp_storage_bucket_location,
             local_file_path=file_download_location,
             debug=debug,
         )
-        logging.INFO(f"DOWNLOADED.")
+        logging.info(f"DOWNLOADED.")
 
         # Checking to make sure the idx exists in GCP...
         if idx_file_exists_in_gcp:
-            logging.INFO("CORRESPONDING IDX FILE FOUND IN GCP. DOWNLOADING...")
+            logging.info("CORRESPONDING IDX FILE FOUND IN GCP. DOWNLOADING...")
             # Here we download the idx from GCP.
-            logging.INFO(
+            logging.info(
                 f"DOWNLOADING FILE `{file_name_idx}` FROM GCP TO `{file_download_location_idx}`"
             )
             utils.cloud_utils.download_file_from_gcp(
@@ -513,9 +513,9 @@ def download_raw_file(
                 local_file_path=file_download_location_idx,
                 debug=debug,
             )
-            logging.INFO(f"DOWNLOADED.")
+            logging.info(f"DOWNLOADED.")
         else:
-            logging.INFO(
+            logging.info(
                 "CORRESPONDING IDX FILE NOT FOUND IN GCP. DOWNLOADING FROM NCEI AND UPLOADING TO GCP..."
             )
             # Safely download and upload the idx file.
@@ -643,14 +643,14 @@ def download_netcdf_file(
         debug=debug,
     )
     if netcdf_exists_in_gcp:
-        logging.INFO(f"FILE LOCATED IN GCP: `{gcp_storage_bucket_location}`\nDOWNLOADING...")
+        logging.info(f"FILE LOCATED IN GCP: `{gcp_storage_bucket_location}`\nDOWNLOADING...")
         utils.cloud_utils.download_file_from_gcp(
             gcp_bucket=gcp_bucket,
             blob_file_path=gcp_storage_bucket_location,
             local_file_path=file_download_location,
             debug=debug,
         )
-        logging.INFO(f"FILE `{file_name}` DOWNLOADED TO `{file_download_location}`")
+        logging.info(f"FILE `{file_name}` DOWNLOADED TO `{file_download_location}`")
         return
     else:
         logging.ERROR(
@@ -681,12 +681,12 @@ def convert_local_raw_to_netcdf(
     )
 
     try:
-        logging.INFO("CONVERTING RAW TO NETCDF...")
+        logging.info("CONVERTING RAW TO NETCDF...")
         raw_file_echopype = open_raw(
             raw_file=raw_file_location, sonar_model=echosounder
         )
         raw_file_echopype.to_netcdf(save_path=netcdf_file_download_directory)
-        logging.INFO("CONVERTED.")
+        logging.info("CONVERTED.")
         return
     except Exception as e:
         logging.ERROR(f"COULD NOT CONVERT `{raw_file_location}` DUE TO ERROR {e}")
@@ -773,7 +773,7 @@ def convert_raw_to_netcdf(
     )
 
     # Here we check for a netcdf version of the raw file on GCP
-    logging.INFO(f"CHECKING FOR NETCDF VERSION ON GCP...")
+    logging.info(f"CHECKING FOR NETCDF VERSION ON GCP...")
     netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
         file_name=file_name_netcdf,
         file_type="netcdf",
@@ -800,7 +800,7 @@ def convert_raw_to_netcdf(
             debug=debug,
         )
     else:
-        logging.INFO(
+        logging.info(
             f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. DOWNLOADING/CONVERTING/UPLOADING RAW..."
         )
 
@@ -826,7 +826,7 @@ def convert_raw_to_netcdf(
         )
 
         # Upload the netcdf to the correct location for parsing.
-        logging.INFO(f"file_path_netcdf {file_path_netcdf}")
+        logging.info(f"file_path_netcdf {file_path_netcdf}")
         upload_file_to_gcp_storage_bucket(
             file_name=file_name_netcdf,
             file_type="netcdf",
@@ -892,7 +892,7 @@ def parse_correct_gcp_storage_bucket_location(
             gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/netcdf/{file_name}"
 
     if debug:
-        logging.DEBUG(f"PARSED GCP_STORAGE_BUCKET_LOCATION: {gcp_storage_bucket_location}")
+        logging.debug(f"PARSED GCP_STORAGE_BUCKET_LOCATION: {gcp_storage_bucket_location}")
 
     return gcp_storage_bucket_location
 
@@ -1003,12 +1003,12 @@ def upload_file_to_gcp_storage_bucket(
         gcp_bucket, file_path=gcp_storage_bucket_location
     )
     if file_exists_in_gcp:
-        logging.INFO(
+        logging.info(
             f"FILE `{file_name}` ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`."
         )
     else:
         try:
-            logging.INFO(
+            logging.info(
                 f"UPLOADING FILE `{file_name}` TO GCP AT `{gcp_storage_bucket_location}`..."
             )
             # Upload to storage bucket.
@@ -1018,7 +1018,7 @@ def upload_file_to_gcp_storage_bucket(
                 local_file_path=file_location,
                 debug=debug,
             )
-            logging.INFO(f"UPLOADED.")
+            logging.info(f"UPLOADED.")
         except Exception as e:
             logging.ERROR(
                 f"COULD NOT UPLOAD FILE {file_name} TO GCP ({gcp_storage_bucket_location}) STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}"
@@ -1049,7 +1049,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     """
 
     # Warn user that this function assumes the same metadata for all files within directory.
-    logging.WARNING(
+    logging.warning(
         f"WARNING: THIS FUNCTION ASSUMES THAT ALL FILES WITHIN THIS DIRECTORY ARE FROM THE SAME SHIP, SURVEY, AND ECHOSOUNDER."
     )
     directory = os.path.normpath(directory)
@@ -1065,7 +1065,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     idx_files = [x for x in glob.glob(os.sep.join([directory, "*.idx"]))]
     # TODO: Look for netcdf and upload it as well
     # Let the user know how many of each file has been found to upload.
-    logging.INFO(f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES")
+    logging.info(f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES")
 
     # Upload each raw file to gcp
     for raw_file in raw_files:
@@ -1084,7 +1084,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             bucket=gcp_bucket, file_path=gcp_storage_bucket_location
         )
         if raw_file_exists:
-            logging.INFO(
+            logging.info(
                 f"FILE `{file_name}` ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`"
             )
         else:
@@ -1119,7 +1119,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             bucket=gcp_bucket, file_path=gcp_storage_bucket_location
         )
         if idx_file_exists:
-            logging.INFO(
+            logging.info(
                 f"FILE `{file_name}` ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`"
             )
         else:
@@ -1176,15 +1176,15 @@ if __name__ == "__main__":
     # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
-    # download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
-    #                   file_type="raw",
-    #                   ship_name="Reuben_Lasker",
-    #                   survey_name="RL2107",
-    #                   echosounder="EK80",
-    #                   file_download_location=f"./",
-    #                   is_metadata=False,
-    #                   force_download_from_ncei=False,
-    #                   debug=True)
+    download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
+                      file_type="raw",
+                      ship_name="Reuben_Lasker",
+                      survey_name="RL2107",
+                      echosounder="EK80",
+                      data_source="NCEI",
+                      file_download_location=f"./",
+                      is_metadata=False,
+                      debug=True)
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(raw_file_location="2107RL_CW-D20210813-T220732.raw",
     #                             netcdf_file_download_location="./2107RL_CW-D20210813-T220732.nc",
