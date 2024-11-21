@@ -486,7 +486,7 @@ def download_raw_file(
                 f"FILE `{file_name}` EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED."
             )
         else:
-            logging.error(
+            logging.info(
                 f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. CONSIDER RUNNING A CONVERSION FUNCTION"
             )
 
