@@ -61,7 +61,7 @@ def create_ncei_url_from_variables(
         ncei_url = f"https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}"
         return ncei_url
     else:
-        logging.ERROR(f"COULD NOT FIND FILE GIVEN THE PARAMETERS.")
+        logging.error(f"COULD NOT FIND FILE GIVEN THE PARAMETERS.")
         # Here we have to search for the file in s3. Just to see if something exists.
         partial_file_name = f"-D{year}{month}{date}-T{hours}{minutes}{seconds}.raw"
         # TODO: make sure to check that a raw and idx files both exist.
@@ -83,7 +83,7 @@ def download_single_file_from_aws(
     try:
         s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     except Exception as e:
-        logging.ERROR(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
         raise
 
     # We replace the beginning of common file paths
@@ -103,7 +103,7 @@ def download_single_file_from_aws(
         s3_bucket.download_file(file_url, download_location)
         logging.info(f"DOWNLOADED: `{file_name}` TO `{download_location}`")
     except Exception as e:
-        logging.ERROR(f"ERROR DOWNLOADING FILE `{file_name}` DUE TO\n{e}")
+        logging.error(f"ERROR DOWNLOADING FILE `{file_name}` DUE TO\n{e}")
         raise
 
 
@@ -486,7 +486,7 @@ def download_raw_file(
                 f"FILE `{file_name}` EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED."
             )
         else:
-            logging.ERROR(
+            logging.error(
                 f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. CONSIDER RUNNING A CONVERSION FUNCTION"
             )
 
@@ -653,10 +653,10 @@ def download_netcdf_file(
         logging.info(f"FILE `{file_name}` DOWNLOADED TO `{file_download_location}`")
         return
     else:
-        logging.ERROR(
+        logging.error(
             f"NETCDF FILE `{file_name}` DOES NOT EXIST IN GCP AT THE LOCATION: `{gcp_storage_bucket_location}`."
         )
-        logging.ERROR(f"PLEASE CONVERT AND UPLOAD THE RAW FILE FIRST VIA `download_raw_file`.")
+        logging.error(f"PLEASE CONVERT AND UPLOAD THE RAW FILE FIRST VIA `download_raw_file`.")
         return
 
 
@@ -689,7 +689,7 @@ def convert_local_raw_to_netcdf(
         logging.info("CONVERTED.")
         return
     except Exception as e:
-        logging.ERROR(f"COULD NOT CONVERT `{raw_file_location}` DUE TO ERROR {e}")
+        logging.error(f"COULD NOT CONVERT `{raw_file_location}` DUE TO ERROR {e}")
         return
 
 
@@ -1020,7 +1020,7 @@ def upload_file_to_gcp_storage_bucket(
             )
             logging.info(f"UPLOADED.")
         except Exception as e:
-            logging.ERROR(
+            logging.error(
                 f"COULD NOT UPLOAD FILE {file_name} TO GCP ({gcp_storage_bucket_location}) STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}"
             )
 
