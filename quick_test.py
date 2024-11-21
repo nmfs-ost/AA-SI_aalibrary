@@ -42,5 +42,5 @@ ingestion.download_raw_file(
     data_source=data_source,
     file_download_location=file_download_location,
     is_metadata=False,
-    debug=True,
+    debug=False,
 )
