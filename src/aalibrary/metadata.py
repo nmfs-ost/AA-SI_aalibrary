@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 import subprocess
 import json
+import logging
 
 import google.auth
 from google.cloud import storage
@@ -37,7 +38,7 @@ def create_metadata_json(
         "ECHOPYPE_VERSION": echopype.__version__,
     }
     if debug:
-        print(metadata_json)
+        logging.DEBUG(metadata_json)
 
     return metadata_json
 
