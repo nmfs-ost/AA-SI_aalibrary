@@ -9,14 +9,19 @@ from src.aalibrary import ingestion
 
 # CONNECTION TEST: set up storage objects
 try:
+    print("GCP CONNECTION TEST...", end="")
     _, _, gcp_bucket = cloud_utils.setup_gcp_storage_objs()
+    print("PASSED")
 except Exception as e:
     print(
         f"CONNECTION TEST TO GCP FAILED DUE TO THE FOLLOWING ERROR:\n{e}",
         file=sys.stderr,
     )
+
 try:
+    print("S3 CONNECTION TEST...", end="")
     s3_client, s3_resource, s3_bucket = cloud_utils.create_s3_objs()
+    print("PASSED")
 except Exception as e:
     print(
         f"CONNECTION TEST TO s3 FAILED DUE TO THE FOLLOWING ERROR:\n{e}",
@@ -33,14 +38,23 @@ echosounder = "EK80"
 data_source = "TEST"
 file_download_location = "."
 is_metadata = False
-ingestion.download_raw_file(
-    file_name=file_name,
-    file_type=file_type,
-    ship_name=ship_name,
-    survey_name=survey_name,
-    echosounder=echosounder,
-    data_source=data_source,
-    file_download_location=file_download_location,
-    is_metadata=False,
-    debug=False,
-)
+
+try:
+    print("NCEI DOWNLOAD TEST...", end="")
+    ingestion.download_raw_file(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        file_download_location=file_download_location,
+        is_metadata=False,
+        debug=False,
+    )
+    print("PASSED")
+except Exception as e:
+    print(
+        f"NCEI DOWNLOAD TEST FAILED DUE TO THE FOLLOWING ERROR:\n{e}",
+        file=sys.stderr,
+    )
