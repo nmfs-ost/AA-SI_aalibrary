@@ -69,7 +69,7 @@ If they are, proceed forward. If they are not, please re-install `keyring` and `
 
 ### Step 3 - It's Finally `pip install` Time
 
-To finally be able to pip-install the library, use the following command:
+To finally be able to pip-install the library, make sure you have access to the repository (contact hannan.khan@noaa.gov), then use the following command:
 
 ```python
 python -m pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary
@@ -112,6 +112,21 @@ In order to download a raw file from NCEI, use the following example:
 
 ```python
 # This function takes care of downloading, converting, and uploading (caching) the netcdf file in gcp.
+download_raw_file_from_ncei(file_name="2107RL_CW-D20210813-T220732.raw",
+                            file_type="raw",
+                            ship_name="Reuben_Lasker",
+                            survey_name="RL2107",
+                            echosounder="EK80",
+                            data_source="NCEI",
+                            file_download_location=".",
+                            is_metadata=False,
+                            upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
+                            debug=False)
+```
+
+If you would like to just download a raw file, but do not care about it's source, you can use the following function:
+
+```python
 download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                   file_type="raw",
                   ship_name="Reuben_Lasker",
@@ -120,7 +135,7 @@ download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                   data_source="NCEI",
                   file_download_location=".",
                   is_metadata=False,
-                  force_download_from_ncei=False, # Set to True if you want to bypass GCP cache, and download from NCEI
+                  upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
                   debug=False)
 ```
 
