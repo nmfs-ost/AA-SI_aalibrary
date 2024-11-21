@@ -12,10 +12,10 @@ try:
     print("`gcloud` SETUP TEST...", end="")
     metadata_json = metadata.create_metadata_json()
     assert (
-        metadata_json["UPLOADED_BY"] is not ""
+        metadata_json["UPLOADED_BY"] != ""
     ), "Please login to `gcloud` using `gcloud auth login --no-browser`"
     assert (
-        metadata_json["ECHOPYPE_VERSION"] is not ""
+        metadata_json["ECHOPYPE_VERSION"] != ""
     ), "Please install requirements using `pip install -r src/aalibrary/requirements.txt`, or you can try reinstalling `aalibrary` to automatically take care of dependencies."
     print(f"PASSED.\n{metadata_json}")
 except Exception as e:
