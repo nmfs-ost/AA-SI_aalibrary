@@ -4,7 +4,18 @@ Also checks to see if a raw file can be downloaded."""
 import sys
 
 from src.aalibrary.utils import cloud_utils
-from src.aalibrary import ingestion
+from src.aalibrary import ingestion, metadata
+
+
+# `gcloud` setup test
+try:
+    print("`gcloud` SETUP TEST...", end="")
+    metadata_json = metadata.create_metadata_json()
+    print(f"PASSED.\n{metadata_json}\n")
+except Exception as e:
+    print(
+        f"`gcloud` SETUP TEST FAILED DUE TO THE FOLLOWING ERROR:\n{e}", file=sys.stderr
+    )
 
 
 # CONNECTION TEST: set up storage objects
