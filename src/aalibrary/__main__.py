@@ -1,5 +1,5 @@
 import argparse
-import quick_test
+from aalibrary import quick_test
 
 
 parser = argparse.ArgumentParser(
