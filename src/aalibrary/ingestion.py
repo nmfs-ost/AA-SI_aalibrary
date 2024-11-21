@@ -142,33 +142,15 @@ def download_raw_file_from_ncei(
     """
 
     # User-error-checking
-    assert (
-        file_name != ""
-    ), "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
-    assert file_type != "", "Please provide a valid file type."
-    assert (
-        file_type in config.VALID_FILETYPES
-    ), f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
-    assert (
-        ship_name != ""
-    ), "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
-    assert survey_name != "", "Please provide a valid survey name."
-    assert echosounder != "", "Please provide a valid echosounder."
-    assert (
-        echosounder in config.VALID_ECHOSOUNDERS
-    ), f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
-    assert (
-        data_source != ""
-    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
-    assert (
-        data_source in config.VALID_DATA_SOURCES
-    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
-    assert (
-        file_download_location != ""
-    ), "Please provide a valid file download locaiton (a directory)."
-    assert (
-        os.path.isdir(file_download_location) == True
-    ), f"File download location `{file_download_location}` is not found to be a valid dir, please reformat it."
+    check_for_assertion_errors(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        file_download_location=file_download_location,
+    )
 
     # Create vars for use later.
     file_download_location = os.sep.join(
@@ -294,6 +276,54 @@ def download_raw_file_from_ncei(
         return
 
 
+def check_for_assertion_errors(**kwargs):
+    """Checks for errors in the kwargs provided."""
+
+    if "file_name" in kwargs:
+        assert (
+            kwargs["file_name"] != ""
+        ), "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
+    if "file_type" in kwargs:
+        assert kwargs["file_type"] != "", "Please provide a valid file type."
+        assert (
+            kwargs["file_type"] in config.VALID_FILETYPES
+        ), f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
+    if "ship_name" in kwargs:
+        assert (
+            kwargs["ship_name"] != ""
+        ), "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
+    if "survey_name" in kwargs:
+        assert kwargs["survey_name"] != "", "Please provide a valid survey name."
+    if "echosounder" in kwargs:
+        assert kwargs["echosounder"] != "", "Please provide a valid echosounder."
+        assert (
+            kwargs["echosounder"] in config.VALID_ECHOSOUNDERS
+        ), f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
+    if "data_source" in kwargs:
+        assert (
+            kwargs["data_source"] != ""
+        ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
+        assert (
+            kwargs["data_source"] in config.VALID_DATA_SOURCES
+        ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
+    if "file_download_location" in kwargs:
+        assert (
+            kwargs["file_download_location"] != ""
+        ), "Please provide a valid file download locaiton (a directory)."
+        assert (
+            os.path.isdir(kwargs["file_download_location"]) == True
+        ), f"File download location `{kwargs['file_download_location']}` is not found to be a valid dir, please reformat it."
+    if "gcp_bucket" in kwargs:
+        assert (
+            kwargs["gcp_bucket"] is not None
+        ), "Please provide a gcp_bucket object with `utils.cloud_utils.setup_gcp_storage()`"
+    if "directory" in kwargs:
+        assert kwargs["directory"] != "", "Please provide a valid directory."
+        assert (
+            os.path.isdir(kwargs["directory"]) == True
+        ), f"Directory location `{kwargs['directory']}` is not found to be a valid dir, please reformat it."
+
+
 def download_single_survey_from_ncei(
     ship_name: str = "",
     survey_name: str = "",
@@ -362,36 +392,18 @@ def download_raw_file(
     """
 
     # User-error-checking
-    assert (
-        file_name != ""
-    ), "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
-    assert file_type != "", "Please provide a valid file type."
-    assert (
-        file_type in config.VALID_FILETYPES
-    ), f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
-    assert (
-        ship_name != ""
-    ), "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
-    assert survey_name != "", "Please provide a valid survey name."
-    assert echosounder != "", "Please provide a valid echosounder."
-    assert (
-        echosounder in config.VALID_ECHOSOUNDERS
-    ), f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
-    assert (
-        data_source != ""
-    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
-    assert (
-        data_source in config.VALID_DATA_SOURCES
-    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
-    assert (
-        file_download_location != ""
-    ), "Please provide a valid file download locaiton (a directory)."
-    assert (
-        os.path.isdir(file_download_location) == True
-    ), f"File download location `{file_download_location}` is not found to be a valid dir, please reformat it."
+    check_for_assertion_errors(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        file_download_location=file_download_location,
+    )
 
     # Create vars for use later.
-    pure_file_download_location  = file_download_location
+    pure_file_download_location = file_download_location
     file_download_location = os.sep.join(
         [os.path.normpath(file_download_location), file_name]
     )
@@ -536,7 +548,7 @@ def download_raw_file(
                 gcp_bucket=gcp_bucket,
                 debug=debug,
             )
-    else: # File does not exist in gcp and needs to be downloaded from NCEI
+    else:  # File does not exist in gcp and needs to be downloaded from NCEI
         download_raw_file_from_ncei(
             file_name=file_name,
             file_type=file_type,
@@ -544,11 +556,11 @@ def download_raw_file(
             survey_name=survey_name,
             echosounder=echosounder,
             data_source=data_source,
-            file_download_location=pure_file_download_location, # Needs the location that is a dir.
+            file_download_location=pure_file_download_location,  # Needs the location that is a dir.
             is_metadata=is_metadata,
             # TODO: add an upload to gcp parameter.
             upload_to_gcp=True,
-            debug=debug
+            debug=debug,
         )
 
     return
@@ -593,33 +605,15 @@ def download_netcdf_file(
     """
 
     # User-error-checking
-    assert (
-        file_name != ""
-    ), "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
-    assert file_type != "", "Please provide a valid file type."
-    assert (
-        file_type in config.VALID_FILETYPES
-    ), f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
-    assert (
-        ship_name != ""
-    ), "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
-    assert survey_name != "", "Please provide a valid survey name."
-    assert echosounder != "", "Please provide a valid echosounder."
-    assert (
-        echosounder in config.VALID_ECHOSOUNDERS
-    ), f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
-    assert (
-        data_source != ""
-    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
-    assert (
-        data_source in config.VALID_DATA_SOURCES
-    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
-    assert (
-        file_download_location != ""
-    ), "Please provide a valid file download locaiton (a directory)."
-    assert (
-        os.path.isdir(file_download_location) == True
-    ), f"File download locaiton `{file_download_location}` is not found to be a valid path, please reformat it."
+    check_for_assertion_errors(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        file_download_location=file_download_location,
+    )
 
     # Create vars for use later.
     file_download_location = os.sep.join(
@@ -735,33 +729,15 @@ def convert_raw_to_netcdf(
     """
 
     # User-error-checking
-    assert (
-        file_name != ""
-    ), "Please provide a valid file name with the file extension (ex. `2107RL_CW-D20210813-T220732.raw`)"
-    assert file_type != "", "Please provide a valid file type."
-    assert (
-        file_type in config.VALID_FILETYPES
-    ), f"Please provide a valid file type (extension) from the following: {config.VALID_FILETYPES}"
-    assert (
-        ship_name != ""
-    ), "Please provide a valid ship name (Title_Case_With_Underscores_As_Spaces)."
-    assert survey_name != "", "Please provide a valid survey name."
-    assert echosounder != "", "Please provide a valid echosounder."
-    assert (
-        echosounder in config.VALID_ECHOSOUNDERS
-    ), f"Please provide a valid echosounder from the following: {config.VALID_ECHOSOUNDERS}"
-    assert (
-        data_source != ""
-    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
-    assert (
-        data_source in config.VALID_DATA_SOURCES
-    ), f"Please provide a valid data source from the following: {config.VALID_DATA_SOURCES}"
-    assert (
-        file_download_location != ""
-    ), "Please provide a valid file download location (a directory)."
-    assert (
-        os.path.isdir(file_download_location) == True
-    ), f"File download location `{file_download_location}` is not found to be a valid path, please reformat it."
+    check_for_assertion_errors(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        file_download_location=file_download_location,
+    )
 
     # Create vars for use later.
     # file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
@@ -901,9 +877,13 @@ def parse_correct_gcp_storage_bucket_location(
         )
         # Figure out if its a raw or idx file (belongs in raw folder)
         if file_type.lower() in config.RAW_DATA_FILE_TYPES:
-            gcp_storage_bucket_location = gcp_storage_bucket_location + f"raw/{file_name}.json"
+            gcp_storage_bucket_location = (
+                gcp_storage_bucket_location + f"raw/{file_name}.json"
+            )
         elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
-            gcp_storage_bucket_location = gcp_storage_bucket_location + f"netcdf/{file_name}.json"
+            gcp_storage_bucket_location = (
+                gcp_storage_bucket_location + f"netcdf/{file_name}.json"
+            )
     else:
         # Figure out if its a raw or idx file (belongs in raw folder)
         if file_type.lower() in config.RAW_DATA_FILE_TYPES:
@@ -945,9 +925,16 @@ def check_if_netcdf_file_exists_in_gcp(
     debug: bool = False,
 ):
 
-    assert (
-        gcp_bucket is not None
-    ), "Please provide a gcp_bucket object with `utils.cloud_utils.setup_gcp_storage()`"
+    check_for_assertion_errors(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        gcp_storage_bucket_location=gcp_storage_bucket_location,
+        gcp_bucket=gcp_bucket,
+    )
 
     if gcp_storage_bucket_location != "":
         gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
@@ -1066,10 +1053,13 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         f"WARNING: THIS FUNCTION ASSUMES THAT ALL FILES WITHIN THIS DIRECTORY ARE FROM THE SAME SHIP, SURVEY, AND ECHOSOUNDER."
     )
     directory = os.path.normpath(directory)
-    # Assert that the directory exists
-    assert os.path.isdir(
-        directory
-    ), f"The location provided `{directory}` does not match a directory."
+    # Check that the directory exists
+    check_for_assertion_errors(
+        directory=directory,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
     # Check (glob) for raw and idx files.
     raw_files = [x for x in glob.glob(os.sep.join([directory, "*.raw"]))]
     idx_files = [x for x in glob.glob(os.sep.join([directory, "*.idx"]))]
