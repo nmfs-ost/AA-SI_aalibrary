@@ -26,6 +26,7 @@ else:
     from src.aalibrary import utils
     from src.aalibrary import config
     from src.aalibrary.utils import cloud_utils
+    from src.aalibrary import metadata
 
 
 def get_file_name_from_url(url: str = ""):
@@ -112,7 +113,7 @@ def download_raw_file_from_ncei(
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
-    data_source: str = "",
+    data_source: str = "NCEI",
     file_download_location: str = ".",
     is_metadata: bool = False,
     upload_to_gcp: bool = False,
@@ -234,6 +235,7 @@ def download_raw_file_from_ncei(
         if file_exists_in_gcp:
             print(f"RAW FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`")
         else:
+            # TODO: try out a background process if possible -- file might have a lock. only async options, otherwise subprocess gsutil to upload it.
             # Upload raw to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name,
@@ -243,8 +245,19 @@ def download_raw_file_from_ncei(
                 echosounder=echosounder,
                 file_location=file_download_location,
                 gcp_bucket=gcp_bucket,
-                data_source="NCEI",
+                data_source=data_source,
                 is_metadata=is_metadata,
+                debug=debug,
+            )
+            # Upload the metadata file as well.
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
                 debug=debug,
             )
 
@@ -262,8 +275,19 @@ def download_raw_file_from_ncei(
                 echosounder=echosounder,
                 file_location=file_download_location_idx,
                 gcp_bucket=gcp_bucket,
-                data_source="NCEI",
+                data_source=data_source,
                 is_metadata=is_metadata,
+                debug=debug,
+            )
+            # Upload the metadata file as well.
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name_idx,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
                 debug=debug,
             )
 
@@ -367,6 +391,7 @@ def download_raw_file(
     ), f"File download location `{file_download_location}` is not found to be a valid dir, please reformat it."
 
     # Create vars for use later.
+    pure_file_download_location  = file_download_location
     file_download_location = os.sep.join(
         [os.path.normpath(file_download_location), file_name]
     )
@@ -494,50 +519,36 @@ def download_raw_file(
                 echosounder=echosounder,
                 file_location=file_download_location_idx,
                 gcp_bucket=gcp_bucket,
-                data_source="NCEI",
+                data_source=data_source,
                 is_metadata=is_metadata,
                 debug=debug,
             )
-    else:
-        # Download and upload the raw file.
-        download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
-            file_url=file_ncei_url,
-            download_location=file_download_location,
-        )
-        # TODO: try out a background process if possible -- file might have a lock. only async options, otherwise subprocess gsutil to upload it.
-        # Upload raw to GCP at the correct storage bucket location.
-        upload_file_to_gcp_storage_bucket(
+            # Upload the metadata file as well.
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name_idx,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+    else: # File does not exist in gcp and needs to be downloaded from NCEI
+        download_raw_file_from_ncei(
             file_name=file_name,
             file_type=file_type,
             ship_name=ship_name,
             survey_name=survey_name,
             echosounder=echosounder,
-            file_location=file_download_location,
-            gcp_bucket=gcp_bucket,
-            data_source="NCEI",
+            data_source=data_source,
+            file_download_location=pure_file_download_location, # Needs the location that is a dir.
             is_metadata=is_metadata,
-            debug=debug,
+            # TODO: add an upload to gcp parameter.
+            upload_to_gcp=True,
+            debug=debug
         )
-        # Download and upload the idx file.
-        download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
-            file_url=file_ncei_idx_url,
-            download_location=file_download_location_idx,
-        )
-        # Upload to GCP at the correct storage bucket location.
-        upload_file_to_gcp_storage_bucket(
-            file_name=file_name_idx,
-            file_type=file_type,
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            file_location=file_download_location_idx,
-            gcp_bucket=gcp_bucket,
-            data_source="NCEI",
-            is_metadata=is_metadata,
-            debug=debug,
-        )
+
     return
 
 
@@ -764,7 +775,7 @@ def convert_raw_to_netcdf(
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
-        data_source="NCEI",
+        data_source=data_source,
         is_metadata=is_metadata,
         debug=debug,
     )
@@ -774,7 +785,7 @@ def convert_raw_to_netcdf(
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
-        data_source="NCEI",
+        data_source=data_source,
         is_metadata=is_metadata,
         debug=debug,
     )
@@ -791,7 +802,7 @@ def convert_raw_to_netcdf(
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
-        data_source="NCEI",
+        data_source=data_source,
         gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
         gcp_bucket=gcp_bucket,
         debug=debug,
@@ -1174,14 +1185,14 @@ if __name__ == "__main__":
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
     # download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
-    #                             file_type="raw",
-    #                             ship_name="Reuben_Lasker",
-    #                             survey_name="RL2107",
-    #                             echosounder="EK80",
-    #                             file_download_location=f"./",
-    #                             is_metadata=False,
-    #                             force_download_from_ncei=False,
-    #                             debug=True)
+    #                   file_type="raw",
+    #                   ship_name="Reuben_Lasker",
+    #                   survey_name="RL2107",
+    #                   echosounder="EK80",
+    #                   file_download_location=f"./",
+    #                   is_metadata=False,
+    #                   force_download_from_ncei=False,
+    #                   debug=True)
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(raw_file_location="2107RL_CW-D20210813-T220732.raw",
     #                             netcdf_file_download_location="./2107RL_CW-D20210813-T220732.nc",
