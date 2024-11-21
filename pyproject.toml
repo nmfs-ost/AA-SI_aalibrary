@@ -8,6 +8,11 @@ path = "src/aalibrary/__about__.py"
 [tool.hatch.metadata.hooks.requirements_txt]
 files = ["src/aalibrary/requirements.txt"]
 
+[tool.pytest.ini_options]
+pythonpath = [
+  ".", "src",
+]
+
 [project]
 name = "aalibrary"
 dynamic = [
