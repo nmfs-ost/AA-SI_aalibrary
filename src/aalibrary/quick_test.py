@@ -3,8 +3,8 @@ Also checks to see if a raw file can be downloaded."""
 
 import sys
 
-from src.aalibrary.utils import cloud_utils
-from src.aalibrary import ingestion, metadata
+from aalibrary.utils import cloud_utils
+from aalibrary import ingestion, metadata
 
 
 def quick_test():
