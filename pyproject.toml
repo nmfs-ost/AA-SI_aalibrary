@@ -10,7 +10,7 @@ files = ["src/aalibrary/requirements.txt"]
 
 [tool.pytest.ini_options]
 pythonpath = [
-  ".", "src",
+  "src"
 ]
 
 [project]
