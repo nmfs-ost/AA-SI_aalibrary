@@ -22,11 +22,12 @@ if __name__ == "__main__":
     import utils
     import config
     from utils import cloud_utils
+    import metadata
 else:
-    from src.aalibrary import utils
-    from src.aalibrary import config
-    from src.aalibrary.utils import cloud_utils
-    from src.aalibrary import metadata
+    from aalibrary import utils
+    from aalibrary import config
+    from aalibrary.utils import cloud_utils
+    from aalibrary import metadata
 
 
 def get_file_name_from_url(url: str = ""):
@@ -1145,13 +1146,13 @@ if __name__ == "__main__":
         utils.cloud_utils.setup_gcp_storage_objs()
     )
 
-    upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
-        directory="./test_data_dir",
-        ship_name="Bristol_Explorer",
-        survey_name="BE201301",
-        echosounder="ES60",
-        debug=False,
-    )
+    # upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
+    #     directory="./test_data_dir",
+    #     ship_name="Bristol_Explorer",
+    #     survey_name="BE201301",
+    #     echosounder="ES60",
+    #     debug=False,
+    # )
     # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
     #                                  survey_name="RL2107",
     #                                  bucket=bucket)
@@ -1176,20 +1177,26 @@ if __name__ == "__main__":
     # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
-    download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
+    download_raw_file(file_name="2107RL_FM-D20210804-T214458.raw",
                       file_type="raw",
                       ship_name="Reuben_Lasker",
                       survey_name="RL2107",
                       echosounder="EK80",
                       data_source="NCEI",
-                      file_download_location=f"./",
+                      file_download_location=f"./test_data_dir/",
                       is_metadata=False,
                       debug=True)
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
-    # convert_local_raw_to_netcdf(raw_file_location="2107RL_CW-D20210813-T220732.raw",
-    #                             netcdf_file_download_location="./2107RL_CW-D20210813-T220732.nc",
-    #                             echosounder="EK80")
-
+    
+    # convert_local_raw_to_netcdf(raw_file_location="./test_data_dir/L0010-D20130804-T090737-ES60.raw",
+    #                             netcdf_file_download_location="./test_data_dir/L0010-D20130804-T090737-ES60.nc",
+    #                             echosounder="ES60")
+    # convert_local_raw_to_netcdf(raw_file_location="./test_data_dir/L0010-D20130804-T092510-ES60.raw",
+    #                             netcdf_file_download_location="./test_data_dir/L0010-D20130804-T092510-ES60.nc",
+    #                             echosounder="ES60")
+    # convert_local_raw_to_netcdf(raw_file_location="./test_data_dir/L0010-D20130804-T094313-ES60.raw",
+    #                             netcdf_file_download_location="./test_data_dir/L0010-D20130804-T094313-ES60.nc",
+    #                             echosounder="ES60")
     # convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
     #                       file_type="raw", ship_name="Reuben_Lasker",
     #                       survey_name="RL2107", echosounder="EK80",
