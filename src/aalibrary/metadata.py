@@ -5,14 +5,15 @@ from datetime import datetime, timezone
 import subprocess
 import json
 import logging
+import platform
 
 import google.auth
 from google.cloud import storage
 
 import echopype
 
-from src.aalibrary import ingestion
-from src.aalibrary import utils
+from aalibrary import ingestion
+from aalibrary import utils
 
 
 def create_metadata_json(
@@ -28,9 +29,14 @@ def create_metadata_json(
     """
 
     get_curr_user_email_cmd = ["gcloud", "config", "get-value", "account"]
-    email = subprocess.run(
-        get_curr_user_email_cmd, capture_output=True, text=True
-    ).stdout
+    if platform.system() == "Windows":
+        email = subprocess.run(
+            get_curr_user_email_cmd, shell=True, capture_output=True, text=True
+        ).stdout
+    else:
+        email = subprocess.run(
+            get_curr_user_email_cmd, capture_output=True, text=True
+        ).stdout
     email = email.replace("\n", "")
     metadata_json = {
         "DATE_CREATED": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f"),
