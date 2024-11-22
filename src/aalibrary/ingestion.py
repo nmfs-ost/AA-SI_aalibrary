@@ -18,10 +18,18 @@ from google.cloud import bigquery, storage
 from echopype import open_raw
 
 # For pytests-sake
-from aalibrary import utils
-from aalibrary import config
-from aalibrary.utils import cloud_utils
-from aalibrary import metadata
+if __package__ is None or __package__ == '':
+    # uses current directory visibility
+    import utils
+    import config
+    from utils import cloud_utils
+    import metadata
+else:
+    # uses current package visibility
+    from aalibrary import utils
+    from aalibrary import config
+    from aalibrary.utils import cloud_utils
+    from aalibrary import metadata
 
 
 def get_file_name_from_url(url: str = ""):
@@ -1232,23 +1240,15 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
 
 if __name__ == "__main__":
     # set logging config
-    # for handler in logging.root.handlers[:]:
-    #     logging.root.removeHandler(handler)
-    # stream_handler = logging.StreamHandler(stream=sys.stdout)
-    # stream_handler.setLevel(logging.DEBUG)
-    # logging.root.handlers = []
-    # logging.getLogger().addHandler(logging.StreamHandler())
-    # logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
-    # log = logging.getLogger()
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
 
-    logging.basicConfig(filename="output.log", level=logging.INFO)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
 
-    # consoleHandler = logging.StreamHandler()
-    # consoleHandler.setFormatter(logFormatter)
-    # consoleHandler.setLevel(logging.INFO)
-    # logging.addHandler(consoleHandler)
     # set up storage objects
     s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
