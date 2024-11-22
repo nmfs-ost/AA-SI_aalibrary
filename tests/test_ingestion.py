@@ -12,8 +12,8 @@ class TestNCEIIngestion:
 
     def setup_class(self):
         """Used for setting up the class."""
-        self.file_name = "2107RL_CW-D20210813-T220732.raw"
-        self.file_name_idx = "2107RL_CW-D20210813-T220732.idx"
+        self.file_name = "2107RL_CW-D20210919-T172430.raw"
+        self.file_name_idx = "2107RL_CW-D20210919-T172430.idx"
         self.file_type = "raw"
         self.ship_name = "Reuben_Lasker"
         self.survey_name = "RL2107"
@@ -129,7 +129,7 @@ class TestNCEIIngestion:
         """Tests to see if the correct GCP file location is being parsed for the raw file."""
         assert (
             self.gcp_storage_bucket_location_raw
-            == "TEST/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732.raw"
+            == f"TEST/Reuben_Lasker/RL2107/EK80/data/raw/{self.file_name}"
         ), f"Incorrectly parsed GCP location: `{self.gcp_storage_bucket_location_raw}`"
 
     def teardown_class(self):
@@ -145,7 +145,7 @@ class TestNCEIIngestionUserErrors:
 
     def setup_class(self):
         """Used for setting up the class."""
-        self.file_name = "2107RL_CW-D20210813-T220732.raw"
+        self.file_name = "2107RL_CW-D20210919-T172430.raw"
         self.file_type = "nc"
         self.ship_name = "Reuben_Lasker"
         self.survey_name = "RL2107"
