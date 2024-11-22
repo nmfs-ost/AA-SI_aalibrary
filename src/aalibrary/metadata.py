@@ -44,7 +44,7 @@ def create_metadata_json(
         "ECHOPYPE_VERSION": echopype.__version__,
     }
     if debug:
-        logging.DEBUG(metadata_json)
+        logging.debug(metadata_json)
 
     return metadata_json
 

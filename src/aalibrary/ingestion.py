@@ -1177,7 +1177,7 @@ if __name__ == "__main__":
     # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
-    download_raw_file(file_name="2107RL_FM-D20210804-T214458.raw",
+    download_raw_file(file_name="2107RL_FM-D20211012-T022341.raw",
                       file_type="raw",
                       ship_name="Reuben_Lasker",
                       survey_name="RL2107",
