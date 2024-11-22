@@ -12,8 +12,7 @@ from google.cloud import storage
 
 import echopype
 
-from aalibrary import ingestion
-from aalibrary import utils
+from aalibrary import ingestion, utils
 
 
 def create_metadata_json(
