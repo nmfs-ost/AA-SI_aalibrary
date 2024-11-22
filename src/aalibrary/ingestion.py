@@ -18,16 +18,10 @@ from google.cloud import bigquery, storage
 from echopype import open_raw
 
 # For pytests-sake
-if __name__ == "__main__":
-    import utils
-    import config
-    from utils import cloud_utils
-    import metadata
-else:
-    from aalibrary import utils
-    from aalibrary import config
-    from aalibrary.utils import cloud_utils
-    from aalibrary import metadata
+from aalibrary import utils
+from aalibrary import config
+from aalibrary.utils import cloud_utils
+from aalibrary import metadata
 
 
 def get_file_name_from_url(url: str = ""):
@@ -93,16 +87,16 @@ def download_single_file_from_aws(
     file_name = get_file_name_from_url(file_url)
 
     # Check if the file exists in s3
-    logging.info(f"s3_bucket.name: {s3_bucket.name}")
+    print(f"s3_bucket.name: {s3_bucket.name}")
     file_exists = utils.cloud_utils.check_if_file_exists_in_s3(
         object_key=file_url, s3_resource=s3_resource, s3_bucket_name=s3_bucket.name
     )
 
     # Finally download the file.
     try:
-        logging.info(f"DOWNLOADING `{file_name}`")
+        print(f"DOWNLOADING `{file_name}`")
         s3_bucket.download_file(file_url, download_location)
-        logging.info(f"DOWNLOADED: `{file_name}` TO `{download_location}`")
+        print(f"DOWNLOADED: `{file_name}` TO `{download_location}`")
     except Exception as e:
         logging.error(f"ERROR DOWNLOADING FILE `{file_name}` DUE TO\n{e}")
         raise
@@ -200,14 +194,14 @@ def download_raw_file_from_ncei(
         bucket=gcp_bucket, file_path=gcp_storage_bucket_location_idx
     )
 
-    logging.info(f"DOWNLOADING FILE {file_name} FROM NCEI")
+    print(f"DOWNLOADING FILE {file_name} FROM NCEI")
     download_single_file_from_aws(
         s3_bucket="noaa-wcsd-pds",
         file_url=file_ncei_url,
         download_location=file_download_location,
     )
     # Force download the idx file.
-    logging.info(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
+    print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
     download_single_file_from_aws(
         s3_bucket="noaa-wcsd-pds",
         file_url=file_ncei_idx_url,
@@ -216,7 +210,7 @@ def download_raw_file_from_ncei(
 
     if upload_to_gcp:
         if file_exists_in_gcp:
-            logging.info(f"RAW FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`")
+            print(f"RAW FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`")
         else:
             # TODO: try out a background process if possible -- file might have a lock. only async options, otherwise subprocess gsutil to upload it.
             # Upload raw to GCP at the correct storage bucket location.
@@ -245,7 +239,7 @@ def download_raw_file_from_ncei(
             )
 
         if idx_file_exists_in_gcp:
-            logging.info(
+            print(
                 f"IDX FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location_idx}`"
             )
         else:
@@ -466,10 +460,10 @@ def download_raw_file(
 
     if file_exists_in_gcp:
         # Inform user if file exists in GCP.
-        logging.info(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
+        print(f"FILE `{file_name}` ALREADY EXISTS IN GOOGLE STORAGE BUCKET.")
         # Here we download the raw file from GCP. We also check for a netcdf
         # version and let the user know.
-        logging.info(f"CHECKING FOR NETCDF VERSION...")
+        print(f"CHECKING FOR NETCDF VERSION...")
         netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
             file_name=file_name_netcdf,
             file_type="netcdf",
@@ -483,29 +477,29 @@ def download_raw_file(
         )
         if netcdf_exists_in_gcp:
             # Inform the user if a netcdf version exists in cache.
-            logging.info(
+            print(
                 f"FILE `{file_name}` EXISTS AS A NETCDF ALREADY. PLEASE DOWNLOAD THE NETCDF VERSION IF NEEDED."
             )
         else:
-            logging.info(
+            print(
                 f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. CONSIDER RUNNING A CONVERSION FUNCTION"
             )
 
         # Here we download the raw from GCP.
-        logging.info(f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`")
+        print(f"DOWNLOADING FILE `{file_name}` FROM GCP TO `{file_download_location}`")
         utils.cloud_utils.download_file_from_gcp(
             gcp_bucket=gcp_bucket,
             blob_file_path=gcp_storage_bucket_location,
             local_file_path=file_download_location,
             debug=debug,
         )
-        logging.info(f"DOWNLOADED.")
+        print(f"DOWNLOADED.")
 
         # Checking to make sure the idx exists in GCP...
         if idx_file_exists_in_gcp:
-            logging.info("CORRESPONDING IDX FILE FOUND IN GCP. DOWNLOADING...")
+            print("CORRESPONDING IDX FILE FOUND IN GCP. DOWNLOADING...")
             # Here we download the idx from GCP.
-            logging.info(
+            print(
                 f"DOWNLOADING FILE `{file_name_idx}` FROM GCP TO `{file_download_location_idx}`"
             )
             utils.cloud_utils.download_file_from_gcp(
@@ -514,9 +508,9 @@ def download_raw_file(
                 local_file_path=file_download_location_idx,
                 debug=debug,
             )
-            logging.info(f"DOWNLOADED.")
+            print(f"DOWNLOADED.")
         else:
-            logging.info(
+            print(
                 "CORRESPONDING IDX FILE NOT FOUND IN GCP. DOWNLOADING FROM NCEI AND UPLOADING TO GCP..."
             )
             # Safely download and upload the idx file.
@@ -644,20 +638,22 @@ def download_netcdf_file(
         debug=debug,
     )
     if netcdf_exists_in_gcp:
-        logging.info(f"FILE LOCATED IN GCP: `{gcp_storage_bucket_location}`\nDOWNLOADING...")
+        print(f"FILE LOCATED IN GCP: `{gcp_storage_bucket_location}`\nDOWNLOADING...")
         utils.cloud_utils.download_file_from_gcp(
             gcp_bucket=gcp_bucket,
             blob_file_path=gcp_storage_bucket_location,
             local_file_path=file_download_location,
             debug=debug,
         )
-        logging.info(f"FILE `{file_name}` DOWNLOADED TO `{file_download_location}`")
+        print(f"FILE `{file_name}` DOWNLOADED TO `{file_download_location}`")
         return
     else:
         logging.error(
             f"NETCDF FILE `{file_name}` DOES NOT EXIST IN GCP AT THE LOCATION: `{gcp_storage_bucket_location}`."
         )
-        logging.error(f"PLEASE CONVERT AND UPLOAD THE RAW FILE FIRST VIA `download_raw_file`.")
+        logging.error(
+            f"PLEASE CONVERT AND UPLOAD THE RAW FILE FIRST VIA `download_raw_file`."
+        )
         return
 
 
@@ -676,18 +672,17 @@ def convert_local_raw_to_netcdf(
         echosounder (str, optional): The echosounder used. Can be one of ["EK80", "EK70"].
             Defaults to "".
     """
-
     netcdf_file_download_directory = os.sep.join(
-        netcdf_file_download_location.split(os.sep)[:-1]
+        [os.path.normpath(netcdf_file_download_location)]
     )
 
     try:
-        logging.info("CONVERTING RAW TO NETCDF...")
+        print("CONVERTING RAW TO NETCDF...")
         raw_file_echopype = open_raw(
             raw_file=raw_file_location, sonar_model=echosounder
         )
         raw_file_echopype.to_netcdf(save_path=netcdf_file_download_directory)
-        logging.info("CONVERTED.")
+        print("CONVERTED.")
         return
     except Exception as e:
         logging.error(f"COULD NOT CONVERT `{raw_file_location}` DUE TO ERROR {e}")
@@ -774,7 +769,7 @@ def convert_raw_to_netcdf(
     )
 
     # Here we check for a netcdf version of the raw file on GCP
-    logging.info(f"CHECKING FOR NETCDF VERSION ON GCP...")
+    print(f"CHECKING FOR NETCDF VERSION ON GCP...")
     netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
         file_name=file_name_netcdf,
         file_type="netcdf",
@@ -801,7 +796,7 @@ def convert_raw_to_netcdf(
             debug=debug,
         )
     else:
-        logging.info(
+        print(
             f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. DOWNLOADING/CONVERTING/UPLOADING RAW..."
         )
 
@@ -827,7 +822,7 @@ def convert_raw_to_netcdf(
         )
 
         # Upload the netcdf to the correct location for parsing.
-        logging.info(f"file_path_netcdf {file_path_netcdf}")
+        print(f"file_path_netcdf {file_path_netcdf}")
         upload_file_to_gcp_storage_bucket(
             file_name=file_name_netcdf,
             file_type="netcdf",
@@ -893,7 +888,9 @@ def parse_correct_gcp_storage_bucket_location(
             gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/netcdf/{file_name}"
 
     if debug:
-        logging.debug(f"PARSED GCP_STORAGE_BUCKET_LOCATION: {gcp_storage_bucket_location}")
+        logging.debug(
+            f"PARSED GCP_STORAGE_BUCKET_LOCATION: {gcp_storage_bucket_location}"
+        )
 
     return gcp_storage_bucket_location
 
@@ -1004,12 +1001,12 @@ def upload_file_to_gcp_storage_bucket(
         gcp_bucket, file_path=gcp_storage_bucket_location
     )
     if file_exists_in_gcp:
-        logging.info(
+        print(
             f"FILE `{file_name}` ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`."
         )
     else:
         try:
-            logging.info(
+            print(
                 f"UPLOADING FILE `{file_name}` TO GCP AT `{gcp_storage_bucket_location}`..."
             )
             # Upload to storage bucket.
@@ -1019,7 +1016,7 @@ def upload_file_to_gcp_storage_bucket(
                 local_file_path=file_location,
                 debug=debug,
             )
-            logging.info(f"UPLOADED.")
+            print(f"UPLOADED.")
         except Exception as e:
             logging.error(
                 f"COULD NOT UPLOAD FILE {file_name} TO GCP ({gcp_storage_bucket_location}) STORAGE BUCKET DUE TO THE FOLLOWING ERROR:\n{e}"
@@ -1033,6 +1030,8 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
+    data_source: str = "",
+    gcp_bucket: storage.Client.bucket = None,
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
@@ -1046,9 +1045,13 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         ship_name (str, optional): The ship name associated with this survey. Defaults to "".
         survey_name (str, optional): The survey name/identifier. Defaults to "".
         echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to the
+            way the storage bucket is organized. Can be one of ["NCEI", "OMAO", "HDD"].
+            Defaults to "".
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object used to download
+            the file. Defaults to None.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
-
     # Warn user that this function assumes the same metadata for all files within directory.
     logging.warning(
         f"WARNING: THIS FUNCTION ASSUMES THAT ALL FILES WITHIN THIS DIRECTORY ARE FROM THE SAME SHIP, SURVEY, AND ECHOSOUNDER."
@@ -1064,20 +1067,29 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     # Check (glob) for raw and idx files.
     raw_files = [x for x in glob.glob(os.sep.join([directory, "*.raw"]))]
     idx_files = [x for x in glob.glob(os.sep.join([directory, "*.idx"]))]
-    # TODO: Look for netcdf and upload it as well
+    netcdf_files = [x for x in glob.glob(os.sep.join([directory, "*.nc"]))]
+    # Create vars for use later.
+    raw_upload_count = 0
+    idx_upload_count = 0
+    netcdf_upload_count = 0
+
     # Let the user know how many of each file has been found to upload.
-    logging.info(f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES")
+    print(
+        f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES | {len(netcdf_files)} NETCDF FILES"
+    )
 
     # Upload each raw file to gcp
+    print("UPLOADING RAW FILES...")
     for raw_file in raw_files:
         file_name = raw_file.split(os.sep)[-1]
+        print(f"\tUPLOADING RAW FILE {file_name}")
         gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
             file_name=file_name,
             file_type="raw",
             ship_name=ship_name,
             survey_name=survey_name,
             echosounder=echosounder,
-            data_source="HDD",
+            data_source=data_source,
             is_metadata=False,
             debug=debug,
         )
@@ -1085,8 +1097,8 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             bucket=gcp_bucket, file_path=gcp_storage_bucket_location
         )
         if raw_file_exists:
-            logging.info(
-                f"FILE `{file_name}` ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`"
+            print(
+                f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`"
             )
         else:
             # Upload raw to GCP at the correct storage bucket location.
@@ -1098,21 +1110,35 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 echosounder=echosounder,
                 file_location=raw_file,
                 gcp_bucket=gcp_bucket,
-                data_source="HDD",
+                data_source=data_source,
                 is_metadata=False,
                 debug=debug,
             )
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name,
+                file_type="raw",
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+            raw_upload_count += 1
+    print(f"{raw_upload_count} RAW FILES UPLOADED.")
 
     # Upload each idx file to gcp
+    print("UPLOADING IDX FILES...")
     for idx_file in idx_files:
         file_name = idx_file.split(os.sep)[-1]
+        print(f"\tUPLOADING IDX FILE {file_name}")
         gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
             file_name=file_name,
             file_type="idx",
             ship_name=ship_name,
             survey_name=survey_name,
             echosounder=echosounder,
-            data_source="HDD",
+            data_source=data_source,
             is_metadata=False,
             debug=debug,
         )
@@ -1120,8 +1146,8 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             bucket=gcp_bucket, file_path=gcp_storage_bucket_location
         )
         if idx_file_exists:
-            logging.info(
-                f"FILE `{file_name}` ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`"
+            print(
+                f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`"
             )
         else:
             # Upload idx to GCP at the correct storage bucket location.
@@ -1133,26 +1159,111 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 echosounder=echosounder,
                 file_location=raw_file,
                 gcp_bucket=gcp_bucket,
-                data_source="HDD",
+                data_source=data_source,
                 is_metadata=False,
                 debug=debug,
             )
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name,
+                file_type="idx",
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+            idx_upload_count += 1
+    print(f"{idx_upload_count} IDX FILES UPLOADED.")
+
+    # Upload each netcdf file to gcp
+    print("UPLOADING NETCDF FILES...")
+    for netcdf_file in netcdf_files:
+        file_name = netcdf_file.split(os.sep)[-1]
+        print(f"\tUPLOADING NETCDF FILE {file_name}")
+        gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
+            file_name=file_name,
+            file_type="netcdf",
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            is_metadata=False,
+            debug=debug,
+        )
+        netcdf_file_exists = cloud_utils.check_if_file_exists_in_gcp(
+            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
+        )
+        if netcdf_file_exists:
+            print(
+                f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`"
+            )
+        else:
+            # Upload idx to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name,
+                file_type="netcdf",
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=raw_file,
+                gcp_bucket=gcp_bucket,
+                data_source=data_source,
+                is_metadata=False,
+                debug=debug,
+            )
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name,
+                file_type="netcdf",
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+            netcdf_upload_count += 1
+    print(f"{netcdf_upload_count} NETCDF FILES UPLOADED.")
+
+    print(
+        f"UPLOADS COMPLETE. RAW ({raw_upload_count}) | IDX ({idx_upload_count}) | NETCDF ({netcdf_upload_count})"
+    )
 
 
 if __name__ == "__main__":
+    # set logging config
+    # for handler in logging.root.handlers[:]:
+    #     logging.root.removeHandler(handler)
+    # stream_handler = logging.StreamHandler(stream=sys.stdout)
+    # stream_handler.setLevel(logging.DEBUG)
+    # logging.root.handlers = []
+    # logging.getLogger().addHandler(logging.StreamHandler())
+    # logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+    # log = logging.getLogger()
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+
+    logging.basicConfig(filename="output.log", level=logging.INFO)
+
+    # consoleHandler = logging.StreamHandler()
+    # consoleHandler.setFormatter(logFormatter)
+    # consoleHandler.setLevel(logging.INFO)
+    # logging.addHandler(consoleHandler)
     # set up storage objects
     s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         utils.cloud_utils.setup_gcp_storage_objs()
     )
 
-    # upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
-    #     directory="./test_data_dir",
-    #     ship_name="Bristol_Explorer",
-    #     survey_name="BE201301",
-    #     echosounder="ES60",
-    #     debug=False,
-    # )
+    upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
+        directory="./test_data_dir",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="NCEI",
+        gcp_bucket=gcp_bucket,
+        debug=False,
+    )
     # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
     #                                  survey_name="RL2107",
     #                                  bucket=bucket)
@@ -1177,26 +1288,31 @@ if __name__ == "__main__":
     # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
-    download_raw_file(file_name="2107RL_FM-D20211012-T022341.raw",
-                      file_type="raw",
-                      ship_name="Reuben_Lasker",
-                      survey_name="RL2107",
-                      echosounder="EK80",
-                      data_source="NCEI",
-                      file_download_location=f"./test_data_dir/",
-                      is_metadata=False,
-                      debug=True)
+    # download_raw_file(file_name="2107RL_FM-D20210808-T033245.raw",
+    #                   file_type="raw",
+    #                   ship_name="Reuben_Lasker",
+    #                   survey_name="RL2107",
+    #                   echosounder="EK80",
+    #                   data_source="NCEI",
+    #                   file_download_location=f"./test_data_dir/",
+    #                   is_metadata=False,
+    #                   debug=True)
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket, file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
-    
-    # convert_local_raw_to_netcdf(raw_file_location="./test_data_dir/L0010-D20130804-T090737-ES60.raw",
-    #                             netcdf_file_download_location="./test_data_dir/L0010-D20130804-T090737-ES60.nc",
-    #                             echosounder="ES60")
-    # convert_local_raw_to_netcdf(raw_file_location="./test_data_dir/L0010-D20130804-T092510-ES60.raw",
-    #                             netcdf_file_download_location="./test_data_dir/L0010-D20130804-T092510-ES60.nc",
-    #                             echosounder="ES60")
-    # convert_local_raw_to_netcdf(raw_file_location="./test_data_dir/L0010-D20130804-T094313-ES60.raw",
-    #                             netcdf_file_download_location="./test_data_dir/L0010-D20130804-T094313-ES60.nc",
-    #                             echosounder="ES60")
+    # convert_local_raw_to_netcdf(
+    #     raw_file_location="./test_data_dir/2107RL_FM-D20210804-T214458.raw",
+    #     netcdf_file_download_location="./test_data_dir",
+    #     echosounder="EK80",
+    # )
+    # convert_local_raw_to_netcdf(
+    #     raw_file_location="./test_data_dir/2107RL_FM-D20210808-T033245.raw",
+    #     netcdf_file_download_location="./test_data_dir",
+    #     echosounder="EK80",
+    # )
+    # convert_local_raw_to_netcdf(
+    #     raw_file_location="./test_data_dir/2107RL_FM-D20211012-T022341.raw",
+    #     netcdf_file_download_location="./test_data_dir",
+    #     echosounder="EK80",
+    # )
     # convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
     #                       file_type="raw", ship_name="Reuben_Lasker",
     #                       survey_name="RL2107", echosounder="EK80",
