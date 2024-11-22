@@ -27,5 +27,7 @@ local-build-and-install:
 	python -m pip uninstall aalibrary -y
 	python -m pip install dist/*.whl
 
-pytest: local-build-and-install
+pytest:
+	# to make sure we are testing the current code, not the installed code.
+	python -m pip uninstall aalibrary -y
 	python -m pytest .
