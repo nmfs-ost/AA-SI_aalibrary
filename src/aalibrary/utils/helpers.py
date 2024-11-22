@@ -6,7 +6,7 @@ import json
 
 import boto3
 
-from src.aalibrary.ingestion import get_file_name_from_url
+from aalibrary.ingestion import get_file_name_from_url
 
 
 # def parse_and_check_file_download_location(file_download_location: str = ""):
