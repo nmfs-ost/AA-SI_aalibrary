@@ -18,7 +18,7 @@ from google.cloud import bigquery, storage
 from echopype import open_raw
 
 # For pytests-sake
-if __package__ is None or __package__ == '':
+if __package__ is None or __package__ == "":
     # uses current directory visibility
     import utils
     import config
@@ -853,6 +853,7 @@ def parse_correct_gcp_storage_bucket_location(
     echosounder: str = "",
     data_source: str = "",
     is_metadata: bool = False,
+    is_survey_metadata: bool = False,
     debug: bool = False,
 ) -> str:
     """Calculates the correct gcp storage location based on data source, file
@@ -868,14 +869,23 @@ def parse_correct_gcp_storage_bucket_location(
         is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
             files that are considered metadata (metadata json, or readmes) are stored
             in a separate directory. Defaults to False.
+        is_survey_metadata (bool, optional): Whether or not the file is a metadata file associated with a
+            survey. The files are stored at the survey level, in the `metadata/` folder.
+            Defaults to False.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
 
     Returns:
         str: The correctly parsed GCP storage bucket location.
     """
 
+    assert (is_metadata == True and is_survey_metadata == False) or \
+            (is_metadata == False and is_survey_metadata == True) or \
+            (is_metadata == False and is_survey_metadata == False), "Please make sure that only one of `is_metadata` and `is_survey_metadata` is True. Or you can set both to False."
+
     # Creating the correct upload location
-    if is_metadata:
+    if is_survey_metadata:
+            gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/metadata/{file_name}"
+    elif is_metadata:
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
         )
@@ -972,6 +982,7 @@ def upload_file_to_gcp_storage_bucket(
     gcp_bucket: storage.Client.bucket = None,
     data_source: str = "",
     is_metadata: bool = False,
+    is_survey_metadata: bool = False,
     debug: bool = False,
 ):
     """Safely uploads a local file to the storage bucket. Will also check to see if the
@@ -990,6 +1001,9 @@ def upload_file_to_gcp_storage_bucket(
         is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
             files that are considered metadata (metadata json, or readmes) are stored
             in a separate directory. Defaults to False.
+        is_survey_metadata (bool, optional): Whether or not the file is a metadata file associated with a
+            survey. The files are stored at the survey level, in the `metadata/` folder.
+            Defaults to False.
         debug (bool, optional): Whether or not to print debug statements. Defaults to False.
     """
 
@@ -1001,6 +1015,7 @@ def upload_file_to_gcp_storage_bucket(
         echosounder=echosounder,
         data_source=data_source,
         is_metadata=is_metadata,
+        is_survey_metadata=is_survey_metadata,
         debug=debug,
     )
 
@@ -1238,6 +1253,64 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     )
 
 
+def find_and_upload_survey_metadata_from_s3(
+    ship_name: str = "",
+    survey_name: str = "",
+    debug: bool = False,
+):
+    """Finds the metadata that is associated with a particular survey in s3, then
+    uploads all of those files into the correct gcp location."""
+    metadata_location_in_s3 = f"data/raw/{ship_name}/{survey_name}/metadata/"
+
+    try:
+        s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+    except Exception as e:
+        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        raise
+
+    num_metadata_objects = cloud_utils.count_objects_in_s3_bucket_location(
+        prefix=metadata_location_in_s3, bucket=s3_bucket
+    )
+
+    if debug:
+        logging.debug(
+            f"{num_metadata_objects} FOUND IN S3 FOR {ship_name} - {survey_name}"
+        )
+
+    if num_metadata_objects >= 1:
+        # Get object keys
+        s3_objects = cloud_utils.list_all_objects_in_s3_bucket_location(
+            prefix=metadata_location_in_s3, bucket=s3_bucket
+        )
+        # Download and upload each object
+        for full_path, file_name in s3_objects:
+            # Get the correct full file download location
+            file_download_location = os.sep.join([os.path.normpath("./"), file_name])
+            # Download from aws
+            download_single_file_from_aws(
+                file_url=full_path, download_location=file_download_location
+            )
+            # Upload to gcp
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                file_location=file_download_location,
+                gcp_bucket=gcp_bucket,
+                data_source="NCEI",
+                is_metadata=False,
+                is_survey_metadata=True,
+                debug=debug
+            )
+            # Remove local file (it's temporary)
+            os.remove(file_download_location)
+
+
+def find_data_source_for_file():
+    """Finds the data source of a given filename by checking all possible data sources."""
+    ...
+
+
 if __name__ == "__main__":
     # set logging config
     for handler in logging.root.handlers[:]:
@@ -1255,15 +1328,20 @@ if __name__ == "__main__":
         utils.cloud_utils.setup_gcp_storage_objs()
     )
 
-    upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
-        directory="./test_data_dir",
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        echosounder="EK80",
-        data_source="NCEI",
-        gcp_bucket=gcp_bucket,
-        debug=False,
+    find_and_upload_survey_metadata_from_s3(
+        ship_name="Reuben_Lasker", survey_name="RL2107"
     )
+
+    # upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
+    #     directory="./test_data_dir",
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     echosounder="EK80",
+    #     data_source="NCEI",
+    #     gcp_bucket=gcp_bucket,
+    #     debug=False,
+    # )
+
     # survey_stuff = get_all_objects_from_survey_ncei(ship_name="Reuben_Lasker",
     #                                  survey_name="RL2107",
     #                                  bucket=bucket)
