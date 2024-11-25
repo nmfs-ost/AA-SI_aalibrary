@@ -186,6 +186,30 @@ def get_subdirectories_in_s3_bucket_location(prefix: str = "",
         return subdirs
 
 
+def list_all_objects_in_s3_bucket_location(prefix: str = "",
+                                          bucket: boto3.resource = None):
+    """Lists all of the objects in a s3 bucket location denoted by `prefix`. Returns
+    a list containing tuples. Each tuple refers to one object, with the first item
+    in the tuple being the full path of the object, and the second item being the
+    object name (file name).
+
+    Args:
+        prefix (str, optional): The bucket location. Defaults to "".
+        bucket (boto3.resource, optional): The bucket resource object. Defaults to None.
+
+    Returns:
+        List[Tuple(str, str)]: Each tuple refers to one object, with the first item
+    in the tuple being the full path of the object, and the second item being the
+    object name (file name).
+    """
+
+    object_keys = []
+    for obj in bucket.objects.filter(Prefix=prefix):
+        object_keys.append((obj.key, obj.key.split("/")[-1]))
+
+    return object_keys
+
+
 def check_if_file_exists_in_gcp(bucket: storage.Bucket = None,
                                 file_path: str = "") -> bool:
     """Checks whether a particular file exists in GCP using the file path (blob).
