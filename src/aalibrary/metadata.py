@@ -47,6 +47,10 @@ def create_metadata_json(
         "DATE_CREATED": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f"),
         "UPLOADED_BY": email,
         "ECHOPYPE_VERSION": echopype.__version__,
+        # TODO: add python version as well
+        # TODO: add numpy version as well
+        # maybe just add in echopype's reqs.
+        # pip lock file - for current environment as 
     }
     if debug:
         logging.debug(metadata_json)
