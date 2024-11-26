@@ -1,5 +1,5 @@
 # For building and distributing this library as a package.
-dist:
+distribute:
 	pip install --upgrade build
 	pip install twine
 	pip install keyring
