@@ -94,7 +94,7 @@ from aalibrary import utils
 from aalibrary.ingestion import convert_raw_to_netcdf
 
 # Create a GCP bucket object
-gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
+gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
 
 # This function takes care of downloading, converting, and uploading (caching) the netcdf file in gcp.
 convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
@@ -155,7 +155,7 @@ from aalibrary import utils
 from aalibrary.ingestion import download_netcdf_file
 
 # Create a GCP bucket object
-gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
+gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
 
 # This function takes care of downloading the netcdf.
 download_netcdf_file(file_name="2107RL_CW-D20210813-T220732.raw",
