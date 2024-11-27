@@ -17,8 +17,8 @@
 </a>
 <hr />
 
-Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library provides end-users the tools needed to easily access data from disparate sources. It also implements caching for raw, idx, and netcdf4 files within the GCP ecosystem. </br>
-It is an improvement over previous methods, which would require end-users to fetch each piece of data from its respective source separately. </br> </br>
+Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library provides end-users the tools needed to easily access data from disparate sources. It also implements caching for raw, idx, and netcdf4 files within the GCP ecosystem. `</br>`
+It is an improvement over previous methods, which would require end-users to fetch each piece of data from its respective source separately. `</br>` `</br>`
 
 [Getting Started](#getting-started) •
 [Installation](#installation) •
@@ -90,6 +90,9 @@ Here are some examples of functions that you can use in this library.
 In order to convert a raw file into a netcdf, use the following example as a guide:
 
 ```python
+from aalibrary import utils
+from aalibrary.ingestion import convert_raw_to_netcdf
+
 # Create a GCP bucket object
 gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
 
@@ -111,6 +114,8 @@ convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
 In order to download a raw file from NCEI, use the following example:
 
 ```python
+from aalibrary.ingestion import download_raw_file_from_ncei
+
 # This function takes care of downloading, converting, and uploading (caching) the netcdf file in gcp.
 download_raw_file_from_ncei(file_name="2107RL_CW-D20210813-T220732.raw",
                             file_type="raw",
@@ -127,6 +132,8 @@ download_raw_file_from_ncei(file_name="2107RL_CW-D20210813-T220732.raw",
 If you would like to just download a raw file, but do not care about it's source, you can use the following function:
 
 ```python
+from aalibrary.ingestion import download_raw_file
+
 download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                   file_type="raw",
                   ship_name="Reuben_Lasker",
@@ -144,15 +151,22 @@ download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
 Netcdf files (converted over from raw) only exist in the GCP cache as of now. The following example takes care of downloading a particular raw file as netcdf4 (if it had already been converted and cached in GCP, otherwise an error is thrown):
 
 ```python
+from aalibrary import utils
+from aalibrary.ingestion import download_netcdf_file
+
 # Create a GCP bucket object
 gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gbq_storage_objs()
 
 # This function takes care of downloading the netcdf.
-download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
-                file_type="netcdf", ship_name="Reuben_Lasker",
-                survey_name="RL2107", echosounder="EK80",
-                file_download_location=".", gcp_bucket=gcp_bucket,
-                is_metadata=False,debug=False)
+download_netcdf_file(file_name="2107RL_CW-D20210813-T220732.raw",
+                file_type="netcdf",
+		ship_name="Reuben_Lasker",
+                survey_name="RL2107",
+		echosounder="EK80",
+                file_download_location=".",
+		gcp_bucket=gcp_bucket,
+                is_metadata=False,
+		debug=False)
 ```
 
 ## Recipes
