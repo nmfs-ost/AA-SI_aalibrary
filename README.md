@@ -72,7 +72,7 @@ If they are, proceed forward. If they are not, please re-install `keyring` and `
 To finally be able to pip-install the library, make sure you have access to the repository (contact hannan.khan@noaa.gov), then use the following command:
 
 ```python
-python -m pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary
+python -m pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary --extra-index-url https://pypi.python.org/simple
 ```
 
 **Note:** You can also use the same command to upgrade the current version of the package to the newest version.

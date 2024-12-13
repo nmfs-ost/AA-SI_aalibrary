@@ -15,7 +15,7 @@ install:
 	pip install keyrings.google-artifactregistry-auth
 	keyring --list-backends
 	python -m pip uninstall aalibrary -y
-	python -m pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary
+	python -m pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary --extra-index-url https://pypi.python.org/simple
 	conda list | pip list
 
 update-changelog:
