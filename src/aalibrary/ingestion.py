@@ -382,32 +382,6 @@ def check_for_assertion_errors(**kwargs):
         ), f"Directory location `{kwargs['directory']}` is not found to be a valid dir, please reformat it."
 
 
-def download_single_survey_from_ncei(
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    survey_folder_url: str = "",
-    download_location: str = "",
-    bucket: boto3.resource = None,
-):
-    """Downloads a single survey from NCEI to the `download_location`.
-
-    Args:
-        ship_name (str, optional): The name of the ship. Must be title-case and have
-            spaces substituted for underscores. Defaults to "".
-        bucket (boto3.resource, optional): The boto3 bucket resource for the bucket
-            that the ship data resides in. Defaults to None.
-        survey_name (str, optional): _description_. Defaults to "".
-        echosounder (str, optional): _description_. Defaults to "".
-        survey_folder_url (str, optional): _description_. Defaults to "".
-        download_location (str, optional): _description_. Defaults to "".
-    """
-    # Get a list of urls of objects from that folder.
-    # TODO: Check if ALL OF IT is already cached.
-    # TODO
-    ...
-
-
 def download_raw_file(
     file_name: str = "",
     file_type: str = "raw",
@@ -624,7 +598,7 @@ def download_raw_file(
                 gcp_bucket=gcp_bucket,
                 debug=debug,
             )
-        
+
         # Checking to make sure the bot exists in GCP...
         if bot_file_exists_in_gcp:
             print("CORRESPONDING BOT FILE FOUND IN GCP. DOWNLOADING...")
@@ -1000,13 +974,17 @@ def parse_correct_gcp_storage_bucket_location(
         str: The correctly parsed GCP storage bucket location.
     """
 
-    assert (is_metadata == True and is_survey_metadata == False) or \
-            (is_metadata == False and is_survey_metadata == True) or \
-            (is_metadata == False and is_survey_metadata == False), "Please make sure that only one of `is_metadata` and `is_survey_metadata` is True. Or you can set both to False."
+    assert (
+        (is_metadata == True and is_survey_metadata == False)
+        or (is_metadata == False and is_survey_metadata == True)
+        or (is_metadata == False and is_survey_metadata == False)
+    ), "Please make sure that only one of `is_metadata` and `is_survey_metadata` is True. Or you can set both to False."
 
     # Creating the correct upload location
     if is_survey_metadata:
-            gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/metadata/{file_name}"
+        gcp_storage_bucket_location = (
+            f"{data_source}/{ship_name}/{survey_name}/metadata/{file_name}"
+        )
     elif is_metadata:
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
@@ -1473,7 +1451,7 @@ def find_and_upload_survey_metadata_from_s3(
                 data_source="NCEI",
                 is_metadata=False,
                 is_survey_metadata=True,
-                debug=debug
+                debug=debug,
             )
             # Remove local file (it's temporary)
             os.remove(file_download_location)
