@@ -629,7 +629,6 @@ def download_raw_file(
             data_source=data_source,
             file_download_location=pure_file_download_location,  # Needs the location that is a dir.
             is_metadata=is_metadata,
-            # TODO: add an upload to gcp parameter.
             upload_to_gcp=True,
             debug=debug,
         )
