@@ -417,9 +417,14 @@ def download_raw_file(
         echosounder=echosounder,
     )
     file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
+    file_name_bot = ".".join(file_name.split(".")[:-1]) + ".bot"
     file_ncei_idx_url = ".".join(file_ncei_url.split(".")[:-1]) + ".idx"
+    file_ncei_bot_url = ".".join(file_ncei_url.split(".")[:-1]) + ".bot"
     file_download_location_idx = (
         ".".join(file_download_location.split(".")[:-1]) + ".idx"
+    )
+    file_download_location_bot = (
+        ".".join(file_download_location.split(".")[:-1]) + ".bot"
     )
     file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
     gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
@@ -435,6 +440,16 @@ def download_raw_file(
     gcp_storage_bucket_location_idx = parse_correct_gcp_storage_bucket_location(
         file_name=file_name_idx,
         file_type="idx",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        is_metadata=is_metadata,
+        debug=debug,
+    )
+    gcp_storage_bucket_location_bot = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name_bot,
+        file_type="bot",
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
@@ -464,6 +479,9 @@ def download_raw_file(
     )
     idx_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
         bucket=gcp_bucket, file_path=gcp_storage_bucket_location_idx
+    )
+    bot_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_bot
     )
 
     if file_exists_in_gcp:
@@ -551,6 +569,56 @@ def download_raw_file(
                 gcp_bucket=gcp_bucket,
                 debug=debug,
             )
+        
+        # Checking to make sure the bot exists in GCP...
+        if bot_file_exists_in_gcp:
+            print("CORRESPONDING BOT FILE FOUND IN GCP. DOWNLOADING...")
+            # Here we download the bot from GCP.
+            print(
+                f"DOWNLOADING FILE `{file_name_bot}` FROM GCP TO `{file_download_location_bot}`"
+            )
+            utils.cloud_utils.download_file_from_gcp(
+                gcp_bucket=gcp_bucket,
+                blob_file_path=gcp_storage_bucket_location_bot,
+                local_file_path=file_download_location_bot,
+                debug=debug,
+            )
+            print(f"DOWNLOADED.")
+        else:
+            print(
+                "CORRESPONDING BOT FILE NOT FOUND IN GCP. TRYING TO DOWNLOAD FROM NCEI AND UPLOADING TO GCP..."
+            )
+            # Safely download and upload the bot file.
+            download_single_file_from_aws(
+                s3_bucket="noaa-wcsd-pds",
+                file_url=file_ncei_bot_url,
+                download_location=file_download_location_bot,
+            )
+            # Upload to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name_bot,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=file_download_location_bot,
+                gcp_bucket=gcp_bucket,
+                data_source=data_source,
+                is_metadata=is_metadata,
+                debug=debug,
+            )
+            # Upload the metadata file as well.
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name_bot,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+
     else:  # File does not exist in gcp and needs to be downloaded from NCEI
         download_raw_file_from_ncei(
             file_name=file_name,
