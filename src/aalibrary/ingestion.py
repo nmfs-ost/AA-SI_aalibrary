@@ -123,7 +123,7 @@ def download_raw_file_from_ncei(
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
-    Downloads a raw and idx file from NCEI. If `upload_to_gcp` is enabled, the
+    Downloads a raw, idx, and bot file from NCEI. If `upload_to_gcp` is enabled, the
     downloaded files will also upload to the GCP storage bucket.
 
     Args:
@@ -166,9 +166,14 @@ def download_raw_file_from_ncei(
         echosounder=echosounder,
     )
     file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
+    file_name_bot = ".".join(file_name.split(".")[:-1]) + ".bot"
     file_ncei_idx_url = ".".join(file_ncei_url.split(".")[:-1]) + ".idx"
+    file_ncei_bot_url = ".".join(file_ncei_url.split(".")[:-1]) + ".bot"
     file_download_location_idx = (
         ".".join(file_download_location.split(".")[:-1]) + ".idx"
+    )
+    file_download_location_bot = (
+        ".".join(file_download_location.split(".")[:-1]) + ".bot"
     )
     gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
         file_name=file_name,
@@ -190,6 +195,16 @@ def download_raw_file_from_ncei(
         is_metadata=is_metadata,
         debug=debug,
     )
+    gcp_storage_bucket_location_bot = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name_bot,
+        file_type="bot",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        is_metadata=is_metadata,
+        debug=debug,
+    )
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         utils.cloud_utils.setup_gcp_storage_objs()
     )
@@ -200,6 +215,9 @@ def download_raw_file_from_ncei(
     )
     idx_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
         bucket=gcp_bucket, file_path=gcp_storage_bucket_location_idx
+    )
+    bot_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_bot
     )
 
     print(f"DOWNLOADING FILE {file_name} FROM NCEI")
@@ -214,6 +232,13 @@ def download_raw_file_from_ncei(
         s3_bucket="noaa-wcsd-pds",
         file_url=file_ncei_idx_url,
         download_location=file_download_location_idx,
+    )
+    # Force download the bot file.
+    print(f"DOWNLOADING BOT FILE {file_name_bot} FROM NCEI")
+    download_single_file_from_aws(
+        s3_bucket="noaa-wcsd-pds",
+        file_url=file_ncei_bot_url,
+        download_location=file_download_location_bot,
     )
 
     if upload_to_gcp:
@@ -267,6 +292,36 @@ def download_raw_file_from_ncei(
             # Upload the metadata file as well.
             metadata.create_and_upload_metadata_file(
                 file_name=file_name_idx,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+
+        if bot_file_exists_in_gcp:
+            print(
+                f"BOT FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location_bot}`"
+            )
+        else:
+            # Upload bot to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name_bot,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=file_download_location_bot,
+                gcp_bucket=gcp_bucket,
+                data_source=data_source,
+                is_metadata=is_metadata,
+                debug=debug,
+            )
+            # Upload the metadata file as well.
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name_bot,
                 file_type=file_type,
                 ship_name=ship_name,
                 survey_name=survey_name,
