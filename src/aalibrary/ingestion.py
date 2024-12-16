@@ -1090,15 +1090,17 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     # Check (glob) for raw and idx files.
     raw_files = [x for x in glob.glob(os.sep.join([directory, "*.raw"]))]
     idx_files = [x for x in glob.glob(os.sep.join([directory, "*.idx"]))]
+    bot_files = [x for x in glob.glob(os.sep.join([directory, "*.bot"]))]
     netcdf_files = [x for x in glob.glob(os.sep.join([directory, "*.nc"]))]
     # Create vars for use later.
     raw_upload_count = 0
     idx_upload_count = 0
+    bot_upload_count = 0
     netcdf_upload_count = 0
 
     # Let the user know how many of each file has been found to upload.
     print(
-        f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES | {len(netcdf_files)} NETCDF FILES"
+        f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES | {len(bot_files)} BOT FILES | {len(netcdf_files)} NETCDF FILES"
     )
 
     # Upload each raw file to gcp
@@ -1198,6 +1200,55 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             )
             idx_upload_count += 1
     print(f"{idx_upload_count} IDX FILES UPLOADED.")
+
+    # Upload each bot file to gcp
+    print("UPLOADING BOT FILES...")
+    for bot_file in bot_files:
+        file_name = bot_file.split(os.sep)[-1]
+        print(f"\tUPLOADING BOT FILE {file_name}")
+        gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
+            file_name=file_name,
+            file_type="bot",
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            is_metadata=False,
+            debug=debug,
+        )
+        bot_file_exists = cloud_utils.check_if_file_exists_in_gcp(
+            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
+        )
+        if bot_file_exists:
+            print(
+                f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT `{gcp_storage_bucket_location}`"
+            )
+        else:
+            # Upload idx to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name,
+                file_type="bot",
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=raw_file,
+                gcp_bucket=gcp_bucket,
+                data_source=data_source,
+                is_metadata=False,
+                debug=debug,
+            )
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name,
+                file_type="bot",
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+            bot_upload_count += 1
+    print(f"{bot_upload_count} BOT FILES UPLOADED.")
 
     # Upload each netcdf file to gcp
     print("UPLOADING NETCDF FILES...")
