@@ -334,6 +334,70 @@ def download_raw_file_from_ncei(
         return
 
 
+def download_survey_from_ncei(
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "NCEI",
+    file_download_location: str = ".",
+    is_metadata: bool = False,
+    upload_to_gcp: bool = False,
+    debug: bool = False,
+):
+    """ENTRYPOINT FOR END-USERS
+    Downloads the raw, idx, and bot files from a survey from NCEI. If `upload_to_gcp` is enabled, the
+    downloaded files will also upload to the GCP storage bucket.
+
+    Args:
+        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to the
+            way the storage bucket is organized. Can be one of ["NCEI", "OMAO", "HDD"].
+            Defaults to "".
+        file_download_location (str, optional): The local file directory you want to store your
+            file in. Defaults to current directory. Defaults to ".".
+        is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
+            files that are considered metadata (metadata json, or readmes) are stored
+            in a separate directory. Defaults to False.
+        upload_to_gcp (bool, optional): Whether or not you want to upload to GCP. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+    """
+
+    # User-error-checking
+    check_for_assertion_errors(
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        file_download_location=file_download_location,
+    )
+
+    # Get all raw file names associated with this survey from NCEI.
+    prefix = f"data/raw/{ship_name}/{survey_name}/{echosounder}/"
+    survey_file_names = cloud_utils.get_subdirectories_in_s3_bucket_location(
+        prefix=prefix, bucket=s3_bucket, return_full_paths=False
+    )
+    # Filter out only the raw files (the download function takes care of downloading
+    # the idx and bot files).
+    survey_file_names = [x for x in survey_file_names if x.endswith(".raw")]
+
+    # Download/upload each file, one by one.
+    for survey_file_name in survey_file_names:
+        download_raw_file_from_ncei(
+            file_name=survey_file_name,
+            file_type="raw",
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source="NCEI",
+            file_download_location=file_download_location,
+            is_metadata=False,
+            upload_to_gcp=upload_to_gcp,
+            debug=debug,
+        )
+
+
 def check_for_assertion_errors(**kwargs):
     """Checks for errors in the kwargs provided."""
 
