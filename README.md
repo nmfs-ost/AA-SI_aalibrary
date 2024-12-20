@@ -17,8 +17,8 @@
 </a>
 <hr />
 
-Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library provides end-users the tools needed to easily access data from disparate sources. It also implements caching for raw, idx, and netcdf4 files within the GCP ecosystem. `</br>`
-It is an improvement over previous methods, which would require end-users to fetch each piece of data from its respective source separately. `</br>` `</br>`
+Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library provides end-users the tools needed to easily access data from disparate sources. It also implements caching for raw, idx, and netcdf4 files within the GCP ecosystem. </br>
+It is an improvement over previous methods, which would require end-users to fetch each piece of data from its respective source separately. </br> </br>
 
 [Getting Started](#getting-started) •
 [Installation](#installation) •
@@ -40,10 +40,10 @@ To securely install this package via pip, use the following:
 
 ### Step 1 - Log Into `gcloud`
 
-Issue the following command, and follow the instructions to login to `gcloud`:
+Issue the following command, and follow the instructions to login to `gcloud`. This authentication is necessary if you want to download `aalibrary`.
 
 ```bash
-gcloud auth application-default login
+gcloud auth login
 ```
 
 ### Step 2 - Install Necessary Dependencies Before The `pip install`
@@ -52,17 +52,19 @@ We need to install some dependencies, and check two authentication parameters be
 
 #### Step 2.1 - Run The Following Commands To Install Dependencies
 
-```python
-pip install keyring
-pip install keyrings.google-artifactregistry-auth
+```bash
+sudo apt-get update && sudo apt-get install python3-virtualenv -y
+python -m virtualenv my-venv
+my-venv/bin/pip install keyring
+my-venv/bin/pip install keyrings.google-artifactregistry-auth
 ```
 
 #### Step 2.2 - Run The Following Command & Check The Output
 
 Check if `ChainerBackend(priority:10)` and `GooglePythonAuth(priority: 9)` are both present in the output of the following command:
 
-```python
-keyring --list-backends
+```bash
+my-venv/bin/python -m keyring --list-backends
 ```
 
 If they are, proceed forward. If they are not, please re-install `keyring` and `keyrings.google-artifactregistry-auth`.
@@ -71,8 +73,8 @@ If they are, proceed forward. If they are not, please re-install `keyring` and `
 
 To finally be able to pip-install the library, make sure you have access to the repository (contact hannan.khan@noaa.gov), then use the following command:
 
-```python
-python -m pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary --extra-index-url https://pypi.python.org/simple
+```bash
+my-venv/bin/pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary --extra-index-url https://pypi.python.org/simple
 ```
 
 **Note:** You can also use the same command to upgrade the current version of the package to the newest version.
