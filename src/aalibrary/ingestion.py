@@ -10,11 +10,17 @@ import requests
 import time
 from typing import List
 import logging
+import configparser
 
 import boto3
 from botocore import UNSIGNED
 from botocore.client import Config
 from google.cloud import bigquery, storage
+from azure.storage.filedatalake import (
+    DataLakeServiceClient,
+    DataLakeDirectoryClient,
+    DataLakeFileClient,
+)
 from echopype import open_raw
 
 # For pytests-sake
@@ -45,6 +51,59 @@ def get_file_name_from_url(url: str = ""):
     """
 
     return url.split("/")[-1]
+
+
+def get_data_lake_directory_client(config_file_path: str = ""):
+    """Creates a data lake directory client. Returns an object of type DataLakeServiceClient.
+
+    Args:
+        config_file_path (str, optional): The location of the config file.
+            Needs a `[DEFAULT]` section with a `azure_connection_string` variable
+            defined. Defaults to "".
+
+    Returns:
+        DataLakeServiceClient: An object of type DataLakeServiceClient, with connection
+            to the connection string described in the config.
+    """
+
+    config = configparser.ConfigParser()
+    config.read(config_file_path)
+
+    azure_service = DataLakeServiceClient.from_connection_string(
+        conn_str=config["DEFAULT"]["azure_connection_string"]
+    )
+
+    return azure_service
+
+
+def download_file_from_azure_directory(
+    self, directory_client: DataLakeDirectoryClient, local_path: str, file_name: str
+):
+    file_client = directory_client.get_file_client(file_name)
+
+    with open(file=os.path.join(local_path, file_name), mode="wb") as local_file:
+        download = file_client.download_file()
+        local_file.write(download.readall())
+        local_file.close()
+
+
+def download_specific_file_from_azure(
+    config_file_path: str = "",
+    container_name: str = "testcontainer",
+    file_path_in_container: str = "",
+):
+    config = configparser.ConfigParser()
+    config.read(config_file_path)
+
+    file = DataLakeFileClient.from_connection_string(
+        config["DEFAULT"]["azure_connection_string"],
+        file_system_name=container_name,
+        file_path=file_path_in_container,
+    )
+
+    with open("./RL2107_EK80_WCSD_EK80-metadata.json", "wb") as my_file:
+        download = file.download_file()
+        download.readinto(my_file)
 
 
 def create_ncei_url_from_variables(
@@ -1537,15 +1596,22 @@ if __name__ == "__main__":
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
+    get_data_lake_directory_client(config_file_path="./azure_config.ini")
+    download_specific_file_from_azure(
+        config_file_path="./azure_config.ini",
+        container_name="testcontainer",
+        file_path_in_container="RL2107_EK80_WCSD_EK80-metadata.json",
+    )
+
     # set up storage objects
     s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         utils.cloud_utils.setup_gcp_storage_objs()
     )
 
-    find_and_upload_survey_metadata_from_s3(
-        ship_name="Reuben_Lasker", survey_name="RL2107"
-    )
+    # find_and_upload_survey_metadata_from_s3(
+    #     ship_name="Reuben_Lasker", survey_name="RL2107"
+    # )
 
     # upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     #     directory="./test_data_dir",
