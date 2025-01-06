@@ -77,11 +77,30 @@ def get_data_lake_directory_client(config_file_path: str = ""):
 
 
 def download_file_from_azure_directory(
-    self, directory_client: DataLakeDirectoryClient, local_path: str, file_name: str
+    directory_client: DataLakeDirectoryClient,
+    file_system: str = "",
+    download_directory: str = "./",
+    file_name: str = "",
 ):
-    file_client = directory_client.get_file_client(file_name)
+    """Downloads a single file from an azure directory using the DataLakeDirectoryClient.
+    Useful for numerous operations, as authentication is only required once for
+    the creation of each DataLakeDirectoryClient.
 
-    with open(file=os.path.join(local_path, file_name), mode="wb") as local_file:
+    Args:
+        directory_client (DataLakeDirectoryClient): The DataLakeDirectoryClient that will be
+            used to connect to an download from an azure file system in the data lake.
+        file_system (str): The file system (container) you wish to download your file from.
+        download_directory (str): The local directory you want to download to. Defaults to "./".
+        file_name (str): The file name (or path) you want to download.
+    """
+
+    file_client = directory_client.get_file_client(
+        file_path=file_name, file_system=file_system
+    )
+
+    with open(
+        file=os.path.join(download_directory, file_name), mode="wb"
+    ) as local_file:
         download = file_client.download_file()
         local_file.write(download.readall())
         local_file.close()
@@ -92,6 +111,16 @@ def download_specific_file_from_azure(
     container_name: str = "testcontainer",
     file_path_in_container: str = "",
 ):
+    """Creates a DataLakeFileClient and downloads a specific file from `container_name`.
+
+    Args:
+        config_file_path (str, optional): The location of the config file.
+            Needs a `[DEFAULT]` section with a `azure_connection_string` variable
+            defined. Defaults to "".
+        container_name (str, optional): The container within Azure Data Lake you are trying to access. Defaults to "testcontainer".
+        file_path_in_container (str, optional): The file path of the file you would like downloaded. Defaults to "".
+    """
+
     config = configparser.ConfigParser()
     config.read(config_file_path)
 
@@ -1596,12 +1625,20 @@ if __name__ == "__main__":
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    get_data_lake_directory_client(config_file_path="./azure_config.ini")
-    download_specific_file_from_azure(
-        config_file_path="./azure_config.ini",
-        container_name="testcontainer",
-        file_path_in_container="RL2107_EK80_WCSD_EK80-metadata.json",
+    azure_datalake_directory_client = get_data_lake_directory_client(
+        config_file_path="./azure_config.ini"
     )
+    download_file_from_azure_directory(
+        directory_client=azure_datalake_directory_client,
+        file_system="testcontainer",
+        download_directory="./",
+        file_name="RL2107_EK80_WCSD_EK80-metadata.json",
+    )
+    # download_specific_file_from_azure(
+    #     config_file_path="./azure_config.ini",
+    #     container_name="testcontainer",
+    #     file_path_in_container="RL2107_EK80_WCSD_EK80-metadata.json",
+    # )
 
     # set up storage objects
     s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
