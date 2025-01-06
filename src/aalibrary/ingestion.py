@@ -130,6 +130,7 @@ def download_specific_file_from_azure(
         file_path=file_path_in_container,
     )
 
+    # TODO: parse file name from path
     with open("./RL2107_EK80_WCSD_EK80-metadata.json", "wb") as my_file:
         download = file.download_file()
         download.readinto(my_file)
@@ -519,7 +520,7 @@ def check_for_assertion_errors(**kwargs):
     if "file_download_location" in kwargs:
         assert (
             kwargs["file_download_location"] != ""
-        ), "Please provide a valid file download locaiton (a directory)."
+        ), "Please provide a valid file download location (a directory)."
         assert (
             os.path.isdir(kwargs["file_download_location"]) == True
         ), f"File download location `{kwargs['file_download_location']}` is not found to be a valid dir, please reformat it."
