@@ -148,6 +148,43 @@ download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                   debug=False)
 ```
 
+### Downloading A Raw File From Azure Data Lake
+
+Use the following code if you would like to download a file from the Azure Data Lake. The code requires a `config.ini` file.
+
+**NOTE:** This file needs to have a `[DEFAULT]` section with a `azure_connection_string` variable set.
+
+```python
+from aalibrary.ingestion import get_data_lake_directory_client, download_file_from_azure_directory
+
+azure_datalake_directory_client = get_data_lake_directory_client(
+    config_file_path="./azure_config.ini"
+)
+download_file_from_azure_directory(
+    directory_client=azure_datalake_directory_client,
+    file_system="testcontainer",
+    download_directory="./",
+    file_name="RL2107_EK80_WCSD_EK80-metadata.json",
+)
+```
+
+The above method of creating a client and then downloading a file works best when you have multiple files you would like to download.
+
+If you would like a single file downloaded, you can use the following much more simple code:
+
+```python
+from aalibrary.ingestion import download_specific_file_from_azure
+
+download_specific_file_from_azure(
+    config_file_path="./azure_config.ini",
+    container_name="testcontainer",
+    file_path_in_container="RL2107_EK80_WCSD_EK80-metadata.json",
+)
+```
+
+**NOTE:** Please keep in mind that this method creates a connection every single time you call it.
+
+
 ### Downloading A Netcdf
 
 Netcdf files (converted over from raw) only exist in the GCP cache as of now. The following example takes care of downloading a particular raw file as netcdf4 (if it had already been converted and cached in GCP, otherwise an error is thrown):
