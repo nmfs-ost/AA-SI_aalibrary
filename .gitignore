@@ -19,3 +19,6 @@ test_data_dir/
 # For VSCode files
 .vscode/
 
+# For files that store azure account credentials
+azure_config.ini
+
