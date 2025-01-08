@@ -166,9 +166,9 @@ def download_single_file_from_aws(
     """Safely downloads a file from AWS storage bucket, aka the NCEI repository.
 
     Args:
-        s3_bucket (str, optional): _description_. Defaults to "noaa-wcsd-pds".
-        file_url (str, optional): _description_. Defaults to "".
-        download_location (str, optional): _description_. Defaults to "".
+        s3_bucket (str, optional): The string name of the s3 bucket. Defaults to "noaa-wcsd-pds".
+        file_url (str, optional): The file url. Defaults to "".
+        download_location (str, optional): The local download location for the file. Defaults to "".
     """
     """Downloads a file from AWS storage bucket, aka the NCEI repository."""
 
