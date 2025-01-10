@@ -1,0 +1,15 @@
+name: Call Run GitLeaks
+# Learn more about GitLeaks: https://gitleaks.io/
+# Learn more about GitHub Actions: https://docs.github.com/en/actions
+
+# on specifies the build triggers. See more info at 
+# https://docs.github.com/en/actions/learn-github-actions/events-that-trigger-workflows
+# The default build trigger is to run the action on every push and pull request, for any branch
+on: [push, pull_request, workflow_dispatch]
+# This workflow calls a reusable github action located at 
+# https://github.com/nmfs-ost/admin/blob/main/.github/workflows/run-gitleaks.yml
+# Learn more about reusable actions: https://docs.github.com/en/actions/using-workflows/reusing-workflows
+jobs:
+  call-workflow:
+    uses: nmfs-ost/admin/.github/workflows/run-gitleaks.yml@main
+    secrets: inherit
