@@ -184,7 +184,6 @@ download_specific_file_from_azure(
 
 **NOTE:** Please keep in mind that this method creates a connection every single time you call it.
 
-
 ### Downloading A Netcdf
 
 Netcdf files (converted over from raw) only exist in the GCP cache as of now. The following example takes care of downloading a particular raw file as netcdf4 (if it had already been converted and cached in GCP, otherwise an error is thrown):
