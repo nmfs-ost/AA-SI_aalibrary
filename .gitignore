@@ -1,1 +1,24 @@
+# For avoiding pushing any data files:
+*.idx
+*.raw
+*.tar
+*.netCDF4
+*.nc
+
+# For python files
+**/__pycache__/**
+**/.pytest_cache__/**
+
+
+# For package distribution files
+dist/
+
+# For dirs that hold test data
+test_data_dir/
+
+# For VSCode files
+.vscode/
+
+# For files that store azure account credentials
+azure_config.ini
 
