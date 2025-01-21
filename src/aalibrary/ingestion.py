@@ -149,9 +149,10 @@ def download_specific_file_from_azure(
         file_system_name=container_name,
         file_path=file_path_in_container,
     )
+    
+    file_name = file_path_in_container.split("/")[-1]
 
-    # TODO: parse file name from path
-    with open("./RL2107_EK80_WCSD_EK80-metadata.json", "wb") as my_file:
+    with open(f"./{file_name}", "wb") as my_file:
         download = file.download_file()
         download.readinto(my_file)
 
