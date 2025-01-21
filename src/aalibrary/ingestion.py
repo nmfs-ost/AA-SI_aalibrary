@@ -76,6 +76,26 @@ def get_data_lake_directory_client(config_file_path: str = ""):
     return azure_service
 
 
+def get_service_client_sas(account_name: str, sas_token: str) -> DataLakeServiceClient:
+    """Gets an azure service client using an SAS (shared access signature) token.
+    The token must be created in Azure. 
+
+    Args:
+        account_name (str): The name of the account you are trying to create a service client with.
+        sas_token (str): The complete SAS token.
+
+    Returns:
+        DataLakeServiceClient: An object of type DataLakeServiceClient, with connection
+            to the container/file the SAS allows access to.
+    """    
+    account_url = f"https://{account_name}.dfs.core.windows.net"
+
+    # The SAS token string can be passed in as credential param or appended to the account URL
+    service_client = DataLakeServiceClient(account_url, credential=sas_token)
+
+    return service_client
+
+
 def download_file_from_azure_directory(
     directory_client: DataLakeDirectoryClient,
     file_system: str = "",
