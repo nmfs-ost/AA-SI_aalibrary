@@ -155,22 +155,24 @@ Use the following code if you would like to download a file from the Azure Data 
 **NOTE:** This file needs to have a `[DEFAULT]` section with a `azure_connection_string` variable set.
 
 ```python
-from aalibrary.ingestion import get_data_lake_directory_client, download_file_from_azure_directory
+from aalibrary.ingestion import download_raw_file_from_azure
 
-azure_datalake_directory_client = get_data_lake_directory_client(
-    config_file_path="./azure_config.ini"
-)
-download_file_from_azure_directory(
-    directory_client=azure_datalake_directory_client,
-    file_system="testcontainer",
-    download_directory="./",
-    file_name="RL2107_EK80_WCSD_EK80-metadata.json",
+download_raw_file_from_azure(
+    file_name="1601RL-D20160107-T074016.raw",
+    file_type="raw",
+    ship_name="Reuben_Lasker",
+    survey_name="RL_1601",
+    echosounder="EK_60",
+    data_source="OMAO",
+    file_download_directory=".",
+    config_file_path="./azure_config.ini",
+    is_metadata=False,
+    upload_to_gcp=True,
+    debug=True,
 )
 ```
 
-The above method of creating a client and then downloading a file works best when you have multiple files you would like to download.
-
-If you would like a single file downloaded, you can use the following much more simple code:
+If you would like a single file downloaded using a path, you can use the following much more simple code:
 
 ```python
 from aalibrary.ingestion import download_specific_file_from_azure
