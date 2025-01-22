@@ -78,16 +78,16 @@ def get_data_lake_directory_client(config_file_path: str = ""):
 
 def get_service_client_sas(account_name: str, sas_token: str) -> DataLakeServiceClient:
     """Gets an azure service client using an SAS (shared access signature) token.
-    The token must be created in Azure. 
+    The token must be created in Azure.
 
     Args:
-        account_name (str): The name of the account you are trying to create a service client with.
+        account_name (str): The name of the account you are trying to create a service client with. This is usually a storage account that is attached to the container.
         sas_token (str): The complete SAS token.
 
     Returns:
         DataLakeServiceClient: An object of type DataLakeServiceClient, with connection
             to the container/file the SAS allows access to.
-    """    
+    """
     account_url = f"https://{account_name}.dfs.core.windows.net"
 
     # The SAS token string can be passed in as credential param or appended to the account URL
@@ -98,9 +98,9 @@ def get_service_client_sas(account_name: str, sas_token: str) -> DataLakeService
 
 def download_file_from_azure_directory(
     directory_client: DataLakeDirectoryClient,
-    file_system: str = "",
+    file_system: str = "testcontainer",
     download_directory: str = "./",
-    file_name: str = "",
+    file_path: str = "",
 ):
     """Downloads a single file from an azure directory using the DataLakeDirectoryClient.
     Useful for numerous operations, as authentication is only required once for
@@ -110,16 +110,21 @@ def download_file_from_azure_directory(
         directory_client (DataLakeDirectoryClient): The DataLakeDirectoryClient that will be
             used to connect to an download from an azure file system in the data lake.
         file_system (str): The file system (container) you wish to download your file from.
+            Defaults to "testcontainer" for testing purposes.
         download_directory (str): The local directory you want to download to. Defaults to "./".
-        file_name (str): The file name (or path) you want to download.
+        file_path (str): The file path you want to download.
     """
+    # TODO: check assertion errors (if directory client is init or not, maybe provide a config file)
 
     file_client = directory_client.get_file_client(
-        file_path=file_name, file_system=file_system
+        file_path=file_path, file_system=file_system
     )
 
+    download_directory = os.path.normpath(download_directory)
+    file_name = os.path.normpath(file_path).split(os.path.sep)[-1]
+
     with open(
-        file=os.path.join(download_directory, file_name), mode="wb"
+        file=os.sep.join([download_directory, file_name]), mode="wb"
     ) as local_file:
         download = file_client.download_file()
         local_file.write(download.readall())
@@ -149,12 +154,276 @@ def download_specific_file_from_azure(
         file_system_name=container_name,
         file_path=file_path_in_container,
     )
-    
+
     file_name = file_path_in_container.split("/")[-1]
 
     with open(f"./{file_name}", "wb") as my_file:
         download = file.download_file()
         download.readinto(my_file)
+
+
+def download_raw_file_from_azure(
+    file_name: str = "",
+    file_type: str = "raw",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "OMAO",
+    file_download_directory: str = ".",
+    config_file_path: str = "",
+    is_metadata: bool = False,
+    upload_to_gcp: bool = False,
+    debug: bool = False,
+):
+    """ENTRYPOINT FOR END-USERS
+
+    Args:
+        file_name (str, optional): The file name (includes extension). Defaults to "".
+        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to the
+            way the storage bucket is organized. Can be one of ["NCEI", "OMAO", "HDD"].
+            Defaults to "".
+        file_download_directory (str, optional): The local directory you want to store your
+            file in. Defaults to current directory. Defaults to ".".
+        config_file_path (str, optional): The location of the config file.
+            Needs a `[DEFAULT]` section with a `azure_connection_string` variable
+            defined. Defaults to "".
+        is_metadata (bool, optional): Whether or not the file is a metadata file. Necessary since
+            files that are considered metadata (metadata json, or readmes) are stored
+            in a separate directory. Defaults to False.
+        upload_to_gcp (bool, optional): Whether or not you want to upload to GCP. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+    """
+
+    # User-error-checking
+    check_for_assertion_errors(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        file_download_location=file_download_directory,
+    )
+
+    # Create vars for use later.
+    # https://contracttest4.blob.core.windows.net/testcontainer/Reuben_Lasker/RL_1601/EK_60/1601RL-D20160107-T074016.bot
+    file_azure_file_path = create_omao_file_path_from_variables(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+
+    file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
+    file_name_bot = ".".join(file_name.split(".")[:-1]) + ".bot"
+    file_azure_idx_file_path = ".".join(file_azure_file_path.split(".")[:-1]) + ".idx"
+    file_azure_bot_file_path = ".".join(file_azure_file_path.split(".")[:-1]) + ".bot"
+    file_download_location = os.sep.join([os.path.normpath(file_download_directory), file_name])
+    file_download_location_idx = (
+        ".".join(file_download_location.split(".")[:-1]) + ".idx"
+    )
+    file_download_location_bot = (
+        ".".join(file_download_location.split(".")[:-1]) + ".bot"
+    )
+    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        is_metadata=is_metadata,
+        debug=debug,
+    )
+    gcp_storage_bucket_location_idx = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name_idx,
+        file_type="idx",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        is_metadata=is_metadata,
+        debug=debug,
+    )
+    gcp_storage_bucket_location_bot = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name_bot,
+        file_type="bot",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        is_metadata=is_metadata,
+        debug=debug,
+    )
+
+    # Create gcp bucket objects
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+        utils.cloud_utils.setup_gcp_storage_objs()
+    )
+
+    # Create Azure Directory Client
+    azure_datalake_directory_client = get_data_lake_directory_client(
+        config_file_path=config_file_path
+    )
+
+    # Check if the file(s) exists in cache (GCP).
+    file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
+        bucket=gcp_bucket, file_path=gcp_storage_bucket_location
+    )
+    idx_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_idx
+    )
+    bot_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_bot
+    )
+
+    # TODO: check to see if you want to download from gcp instead.
+
+    print(f"DOWNLOADING FILE {file_name} FROM OMAO")
+    download_file_from_azure_directory(
+        directory_client=azure_datalake_directory_client,
+        download_directory=file_download_directory,
+        file_path=file_azure_file_path,
+    )
+
+    # Force download the idx file.
+    print(f"DOWNLOADING IDX FILE {file_name_idx} FROM OMAO")
+    download_file_from_azure_directory(
+        directory_client=azure_datalake_directory_client,
+        download_directory=file_download_directory,
+        file_path=file_azure_idx_file_path,
+    )
+
+    # Force download the bot file.
+    print(f"DOWNLOADING BOT FILE {file_name_bot} FROM OMAO")
+    download_file_from_azure_directory(
+        directory_client=azure_datalake_directory_client,
+        download_directory=file_download_directory,
+        file_path=file_azure_bot_file_path,
+    )
+
+    if upload_to_gcp:
+        if file_exists_in_gcp:
+            print(f"RAW FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location}`")
+        else:
+            # TODO: try out a background process if possible -- file might have a lock. only async options, otherwise subprocess gsutil to upload it.
+            # Upload raw to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=file_download_location,
+                gcp_bucket=gcp_bucket,
+                data_source=data_source,
+                is_metadata=is_metadata,
+                debug=debug,
+            )
+            # Upload the metadata file as well.
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+
+        if idx_file_exists_in_gcp:
+            print(
+                f"IDX FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location_idx}`"
+            )
+        else:
+            # Upload idx to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name_idx,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=file_download_location_idx,
+                gcp_bucket=gcp_bucket,
+                data_source=data_source,
+                is_metadata=is_metadata,
+                debug=debug,
+            )
+            # Upload the metadata file as well.
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name_idx,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+
+        if bot_file_exists_in_gcp:
+            print(
+                f"BOT FILE ALREADY EXISTS IN GCP AT `{gcp_storage_bucket_location_bot}`"
+            )
+        else:
+            # Upload bot to GCP at the correct storage bucket location.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name_bot,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=file_download_location_bot,
+                gcp_bucket=gcp_bucket,
+                data_source=data_source,
+                is_metadata=is_metadata,
+                debug=debug,
+            )
+            # Upload the metadata file as well.
+            metadata.create_and_upload_metadata_file(
+                file_name=file_name_bot,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                gcp_bucket=gcp_bucket,
+                debug=debug,
+            )
+
+        return
+
+
+def create_omao_file_path_from_variables(
+    file_name: str = "",
+    file_type: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    year: str = "",
+    month: str = "",
+    date: str = "",
+    hours: str = "",
+    minutes: str = "",
+    seconds: str = "",
+):
+    if file_name != "":
+        azure_url = f"{ship_name}/{survey_name}/{echosounder}/{file_name}"
+        return azure_url
+    else:
+        logging.error(f"COULD NOT FIND FILE GIVEN THE PARAMETERS.")
+        # Here we have to search for the file in s3. Just to see if something exists.
+        partial_file_name = (
+            f"-D{year}{month}{date}-T{hours}{minutes}{seconds}.{file_type}"
+        )
+        # TODO: make sure to check that a raw and idx files both exist.
+        raise FileNotFoundError
 
 
 def create_ncei_url_from_variables(
@@ -329,6 +598,8 @@ def download_raw_file_from_ncei(
     bot_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
         bucket=gcp_bucket, file_path=gcp_storage_bucket_location_bot
     )
+
+    # TODO: check to see if you want to download from gcp instead.
 
     print(f"DOWNLOADING FILE {file_name} FROM NCEI")
     download_single_file_from_aws(
@@ -1647,14 +1918,27 @@ if __name__ == "__main__":
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    azure_datalake_directory_client = get_data_lake_directory_client(
-        config_file_path="./azure_config.ini"
-    )
-    download_file_from_azure_directory(
-        directory_client=azure_datalake_directory_client,
-        file_system="testcontainer",
-        download_directory="./",
-        file_name="RL2107_EK80_WCSD_EK80-metadata.json",
+    # azure_datalake_directory_client = get_data_lake_directory_client(
+    #     config_file_path="./azure_config.ini"
+    # )
+    # download_file_from_azure_directory(
+    #     directory_client=azure_datalake_directory_client,
+    #     file_system="testcontainer",
+    #     download_directory="./",
+    #     file_name="RL2107_EK80_WCSD_EK80-metadata.json",
+    # )
+    download_raw_file_from_azure(
+        file_name="1601RL-D20160107-T074016.raw",
+        file_type="raw",
+        ship_name="Reuben_Lasker",
+        survey_name="RL_1601",
+        echosounder="EK_60",
+        data_source="OMAO",
+        file_download_directory=".",
+        config_file_path="./azure_config.ini",
+        is_metadata=False,
+        upload_to_gcp=True,
+        debug=True,
     )
     # download_specific_file_from_azure(
     #     config_file_path="./azure_config.ini",
