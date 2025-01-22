@@ -1349,6 +1349,8 @@ def convert_raw_to_netcdf(
             f"FILE `{file_name}` DOES NOT EXIST AS NETCDF. DOWNLOADING/CONVERTING/UPLOADING RAW..."
         )
 
+        # TODO: check to see if file exists in either azure or NCEI.
+        
         # Download the raw file.
         download_raw_file(
             file_name=file_name,
