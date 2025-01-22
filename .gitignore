@@ -1,5 +1,6 @@
 # For avoiding pushing any data files:
 *.idx
+*.bot
 *.raw
 *.tar
 *.netCDF4
