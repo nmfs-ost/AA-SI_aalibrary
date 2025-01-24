@@ -7,7 +7,7 @@ from aalibrary.utils import cloud_utils
 from aalibrary import ingestion, metadata
 
 
-def quick_test():
+def start():
     # `gcloud` setup test
     try:
         print("`gcloud` SETUP TEST...", end="")
@@ -79,4 +79,4 @@ def quick_test():
 
 
 if __name__ == "__main__":
-    quick_test()
+    start()
