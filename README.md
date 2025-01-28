@@ -40,7 +40,7 @@ To securely install this package via pip, use the following:
 
 ### Step 1 - Log Into `gcloud`
 
-Issue the following command, and follow the instructions to login to `gcloud`. This authentication is necessary if you want to download `aalibrary`.
+Issue the following command, and follow the instructions to login to `gcloud` using your NOAA email. This authentication is necessary if you want to use `aalibrary` with its Google Cloud Platform capabilities.
 
 ```bash
 gcloud auth login
@@ -55,33 +55,36 @@ We need to install some dependencies, and check two authentication parameters be
 ```bash
 sudo apt-get update && sudo apt-get install python3-virtualenv -y
 python -m virtualenv my-venv
-my-venv/bin/pip install keyring
-my-venv/bin/pip install keyrings.google-artifactregistry-auth
 ```
-
-#### Step 2.2 - Run The Following Command & Check The Output
-
-Check if `ChainerBackend(priority:10)` and `GooglePythonAuth(priority: 9)` are both present in the output of the following command:
-
-```bash
-my-venv/bin/python -m keyring --list-backends
-```
-
-If they are, proceed forward. If they are not, please re-install `keyring` and `keyrings.google-artifactregistry-auth`.
 
 ### Step 3 - It's Finally `pip install` Time
 
-To finally be able to pip-install the library, make sure you have access to the repository (contact hannan.khan@noaa.gov), then use the following command:
+To finally be able to pip-install the library use the following command:
 
 ```bash
-my-venv/bin/pip install --index-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/simple/ aalibrary --extra-index-url https://pypi.python.org/simple
+my-venv/bin/pip install aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
 ```
 
-**Note:** You can also use the same command to upgrade the current version of the package to the newest version.
+**NOTE:** Since we have created a virtual environment, in order to use `aalibrary` simply replace all `python` commands with `my-venv/bin/python` and all `pip` commands with `my-venv/bin/pip`.
+
+### Step 4 - Test it Out
+
+Now that the library is installed, we can finally test it out. Open up a python  using the following command:
+
+```bash
+my-venv/bin/python
+```
+
+Next, we will enter the following code line-by-line. This will run a test function that will allow us to quickly test connectivity in our environment.
+
+```python
+from aalibrary import quick_test
+quick_test.start()
+```
 
 ## Dependencies
 
-Dependencies are listed within the `requirements.txt` file within the Cloud Source Repo.
+Dependencies are listed within the `requirements.txt` file within the Cloud Source Repo, however, they should be installed when you first install `aalibrary`.
 
 ## Usage
 
