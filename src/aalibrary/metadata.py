@@ -1,6 +1,7 @@
 """This file contains functions that have to do with metadata."""
 
 import os
+import sys
 from datetime import datetime, timezone
 import subprocess
 import json
@@ -9,6 +10,7 @@ import platform
 
 import google.auth
 from google.cloud import storage
+import numpy as np
 
 import echopype
 
@@ -47,8 +49,8 @@ def create_metadata_json(
         "DATE_CREATED": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f"),
         "UPLOADED_BY": email,
         "ECHOPYPE_VERSION": echopype.__version__,
-        # TODO: add python version as well
-        # TODO: add numpy version as well
+        "PYTHON_VERSION": sys.version,
+        "NUMPY_VERSION": np.version.version
         # maybe just add in echopype's reqs.
         # pip lock file - for current environment as 
     }

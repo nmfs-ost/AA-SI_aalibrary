@@ -114,7 +114,12 @@ def download_file_from_azure_directory(
         download_directory (str): The local directory you want to download to. Defaults to "./".
         file_path (str): The file path you want to download.
     """
-    # TODO: check assertion errors (if directory client is init or not, maybe provide a config file)
+    
+    # User-error-checking
+    check_for_assertion_errors(
+        data_lake_directory_client=directory_client,
+        file_download_location=download_directory,
+    )
 
     file_client = directory_client.get_file_client(
         file_path=file_path, file_system=file_system
@@ -227,7 +232,9 @@ def download_raw_file_from_azure(
     file_name_bot = ".".join(file_name.split(".")[:-1]) + ".bot"
     file_azure_idx_file_path = ".".join(file_azure_file_path.split(".")[:-1]) + ".idx"
     file_azure_bot_file_path = ".".join(file_azure_file_path.split(".")[:-1]) + ".bot"
-    file_download_location = os.sep.join([os.path.normpath(file_download_directory), file_name])
+    file_download_location = os.sep.join(
+        [os.path.normpath(file_download_directory), file_name]
+    )
     file_download_location_idx = (
         ".".join(file_download_location.split(".")[:-1]) + ".idx"
     )
@@ -837,6 +844,10 @@ def check_for_assertion_errors(**kwargs):
         assert (
             os.path.isdir(kwargs["directory"]) == True
         ), f"Directory location `{kwargs['directory']}` is not found to be a valid dir, please reformat it."
+    if "data_lake_directory_client" in kwargs:
+        assert (
+            kwargs["data_lake_directory_client"] is not None
+        ), f"The data lake directory client cannot be a {type(kwargs["data_lake_directory_client"])} object. It needs to be of the type `DataLakeDirectoryClient`."
 
 
 def download_raw_file(
@@ -1378,7 +1389,7 @@ def convert_raw_to_netcdf(
         )
 
         # TODO: check to see if file exists in either azure or NCEI.
-        
+
         # Download the raw file.
         download_raw_file(
             file_name=file_name,
