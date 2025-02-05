@@ -10,6 +10,7 @@ import platform
 
 import google.auth
 from google.cloud import storage
+import numpy as np
 
 import echopype
 
@@ -49,7 +50,7 @@ def create_metadata_json(
         "UPLOADED_BY": email,
         "ECHOPYPE_VERSION": echopype.__version__,
         "PYTHON_VERSION": sys.version,
-        # TODO: add numpy version as well
+        "NUMPY_VERSION": np.version.version
         # maybe just add in echopype's reqs.
         # pip lock file - for current environment as 
     }
