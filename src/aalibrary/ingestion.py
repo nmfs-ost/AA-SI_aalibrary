@@ -209,6 +209,10 @@ def download_raw_file_from_azure(
         file_download_location=file_download_directory,
     )
 
+    # Create the download directory (path) if it doesn't exist
+    if not os.path.exists(file_download_directory):
+        os.makedirs(file_download_directory)
+
     # Create vars for use later.
     # https://contracttest4.blob.core.windows.net/testcontainer/Reuben_Lasker/RL_1601/EK_60/1601RL-D20160107-T074016.bot
     file_azure_file_path = create_omao_file_path_from_variables(
@@ -534,6 +538,10 @@ def download_raw_file_from_ncei(
         file_download_location=file_download_location,
     )
 
+    # Create the download directory (path) if it doesn't exist
+    if not os.path.exists(file_download_location):
+        os.makedirs(file_download_location)
+
     # Create vars for use later.
     file_download_location = os.sep.join(
         [os.path.normpath(file_download_location), file_name]
@@ -754,6 +762,10 @@ def download_survey_from_ncei(
         file_download_location=file_download_location,
     )
 
+    # Create the download directory (path) if it doesn't exist
+    if not os.path.exists(file_download_location):
+        os.makedirs(file_download_location)
+
     # Get all raw file names associated with this survey from NCEI.
     prefix = f"data/raw/{ship_name}/{survey_name}/{echosounder}/"
     survey_file_names = cloud_utils.get_subdirectories_in_s3_bucket_location(
@@ -878,6 +890,10 @@ def download_raw_file(
         data_source=data_source,
         file_download_location=file_download_location,
     )
+
+    # Create the download directory (path) if it doesn't exist
+    if not os.path.exists(file_download_location):
+        os.makedirs(file_download_location)
 
     # Create vars for use later.
     pure_file_download_location = file_download_location
@@ -1159,6 +1175,10 @@ def download_netcdf_file(
         file_download_location=file_download_location,
     )
 
+    # Create the download directory (path) if it doesn't exist
+    if not os.path.exists(file_download_location):
+        os.makedirs(file_download_location)
+
     # Create vars for use later.
     file_download_location = os.sep.join(
         [os.path.normpath(file_download_location), file_name]
@@ -1225,6 +1245,10 @@ def convert_local_raw_to_netcdf(
         [os.path.normpath(netcdf_file_download_location)]
     )
 
+    # Create the download directory (path) if it doesn't exist
+    if not os.path.exists(netcdf_file_download_location):
+        os.makedirs(netcdf_file_download_location)
+
     try:
         print("CONVERTING RAW TO NETCDF...")
         raw_file_echopype = open_raw(
@@ -1283,6 +1307,10 @@ def convert_raw_to_netcdf(
         data_source=data_source,
         file_download_location=file_download_location,
     )
+
+    # Create the download directory (path) if it doesn't exist
+    if not os.path.exists(file_download_location):
+        os.makedirs(file_download_location)
 
     # Create vars for use later.
     # file_download_location = os.sep.join([os.path.normpath(file_download_location), file_name])
