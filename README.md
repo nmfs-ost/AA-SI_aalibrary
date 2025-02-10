@@ -9,12 +9,9 @@
 } -->
 
 <div align="center">
-
-<a href="https://www.warp.dev/?utm_source=github&utm_medium=referral&utm_campaign=zoxide_20231001">
-  <div>
-    <img src="other/img.png" width="230" alt="Warp" />
-  </div>
-</a>
+<div>
+  <img src="other/img.png" width="230" alt="Warp" />
+</div>
 <hr />
 
 Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library provides end-users the tools needed to easily access data from disparate sources. It also implements caching for raw, idx, and netcdf4 files within the GCP ecosystem. </br>
@@ -203,13 +200,13 @@ gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_stora
 # This function takes care of downloading the netcdf.
 download_netcdf_file(file_name="2107RL_CW-D20210813-T220732.raw",
                 file_type="netcdf",
-		ship_name="Reuben_Lasker",
+  ship_name="Reuben_Lasker",
                 survey_name="RL2107",
-		echosounder="EK80",
+  echosounder="EK80",
                 file_download_location=".",
-		gcp_bucket=gcp_bucket,
+  gcp_bucket=gcp_bucket,
                 is_metadata=False,
-		debug=False)
+  debug=False)
 ```
 
 ## Recipes
