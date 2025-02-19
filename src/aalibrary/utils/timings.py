@@ -9,7 +9,7 @@ from various sources. It works as follows:
 import time
 
 from aalibrary import ingestion
-import utils
+import cloud_utils
 
 
 def time_ingestion_and_upload_from_ncei(n: int = 10,
@@ -32,7 +32,7 @@ def time_ingestion_and_upload_from_ncei(n: int = 10,
         print(f"Downloading took {time_elapsed} seconds.\nThat's {1000/time_elapsed} mb/sec.")
         print(f"Uploading file to cloud storage")
         start_time = time.time()
-        utils.upload_file_to_gcp_bucket(bucket=None,
+        cloud_utils.upload_file_to_gcp_bucket(bucket=None,
                                         blob_file_path="timing_test_raw_upload.raw",
                                         local_file_path=file_name)
         time_elapsed = time.time() - start_time
