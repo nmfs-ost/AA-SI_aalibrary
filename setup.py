@@ -43,7 +43,7 @@ setup_info = dict(
     #     'Topic :: Software Development :: Libraries :: Python Modules',
     # ],
     # Package info
-    packages=["aalibrary"] + ["aalibrary." + pkg for pkg in find_packages("aalibrary")],
+    packages=["aalibrary"] + ["aalibrary.utils"],
     # Requirements
     install_requires=[
         "echopype>=0.9.0",
