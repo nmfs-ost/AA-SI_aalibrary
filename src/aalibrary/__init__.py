@@ -7,3 +7,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
+
+# Import sub-packages
+from . import utils
