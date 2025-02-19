@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, find_namespace_packages
 
 # Get version number
 with open("./src/aalibrary/about.py") as f:
@@ -43,7 +43,8 @@ setup_info = dict(
     #     'Topic :: Software Development :: Libraries :: Python Modules',
     # ],
     # Package info
-    packages=["aalibrary"] + ["aalibrary.utils"],
+    packages=find_namespace_packages(where='src/', include=['aalibrary.utils']),
+    package_dir={'': 'src'},
     # Requirements
     install_requires=[
         "echopype>=0.9.0",
