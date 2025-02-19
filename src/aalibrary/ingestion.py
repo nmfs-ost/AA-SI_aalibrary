@@ -21,6 +21,7 @@ from azure.storage.filedatalake import (
     DataLakeDirectoryClient,
     DataLakeFileClient,
 )
+import echopype
 from echopype import open_raw
 
 # For pytests-sake
@@ -1259,6 +1260,20 @@ def convert_local_raw_to_netcdf(
     # Create the download directory (path) if it doesn't exist
     if not os.path.exists(netcdf_file_download_location):
         os.makedirs(netcdf_file_download_location)
+
+    # Make sure the echosounder specified matches the raw file data.
+    if echosounder.lower() == 'ek80':
+        assert echopype.convert.is_EK80(raw_file=raw_file_location), f"""THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE ECHOSOUNDER FOUND WITHIN THE RAW FILE."""
+    elif echosounder.lower() == 'ek60':
+        assert echopype.convert.is_EK60(raw_file=raw_file_location), f"""THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE ECHOSOUNDER FOUND WITHIN THE RAW FILE."""
+    elif echosounder.lower() == 'azfp6':
+        assert echopype.convert.is_AZFP6(raw_file=raw_file_location), f"""THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE ECHOSOUNDER FOUND WITHIN THE RAW FILE."""
+    elif echosounder.lower() == 'azfp':
+        assert echopype.convert.is_AZFP(raw_file=raw_file_location), f"""THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE ECHOSOUNDER FOUND WITHIN THE RAW FILE."""
+    elif echosounder.lower() == 'ad2cp':
+        assert echopype.convert.is_AD2CP(raw_file=raw_file_location), f"""THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE ECHOSOUNDER FOUND WITHIN THE RAW FILE."""
+    elif echosounder.lower() == 'er60':
+        assert echopype.convert.is_ER60(raw_file=raw_file_location), f"""THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE ECHOSOUNDER FOUND WITHIN THE RAW FILE."""
 
     try:
         print("CONVERTING RAW TO NETCDF...")
