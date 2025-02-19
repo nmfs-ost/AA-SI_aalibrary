@@ -9,7 +9,7 @@ from various sources. It works as follows:
 import time
 
 from aalibrary import ingestion
-import cloud_utils
+from aalibrary.utils import cloud_utils
 
 
 def time_ingestion_and_upload_from_ncei(n: int = 10,
