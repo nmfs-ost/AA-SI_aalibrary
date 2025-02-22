@@ -1,5 +1,5 @@
-"""Contains quick tests for the API to verify that the connections are working as intended.
-Also checks to see if a raw file can be downloaded."""
+"""Contains quick tests for the API to verify that the connections are working
+as intended. Also checks to see if a raw file can be downloaded."""
 
 import sys
 
@@ -15,9 +15,11 @@ def start():
         assert (
             metadata_json["UPLOADED_BY"] != ""
         ), "Please login to `gcloud` using `gcloud auth login --no-browser`"
-        assert (
-            metadata_json["ECHOPYPE_VERSION"] != ""
-        ), "Please install requirements using `pip install -r src/aalibrary/requirements.txt`, or you can try reinstalling `aalibrary` to automatically take care of dependencies."
+        assert metadata_json["ECHOPYPE_VERSION"] != "", (
+            "Please install requirements using `pip install -r src/aalibrary/"
+            "requirements.txt`, or you can try reinstalling `aalibrary` to "
+            "automatically take care of dependencies."
+        )
         print(f"PASSED\n{metadata_json}")
     except Exception as e:
         print(
@@ -48,14 +50,12 @@ def start():
 
     # FUNCTIONAL TEST: download a raw file
     file_name = "2107RL_CW-D20210813-T220732.raw"
-    file_name_idx = "2107RL_CW-D20210813-T220732.idx"
     file_type = "raw"
     ship_name = "Reuben_Lasker"
     survey_name = "RL2107"
     echosounder = "EK80"
     data_source = "TEST"
     file_download_location = "."
-    is_metadata = False
 
     try:
         print("NCEI DOWNLOAD TEST...", end="")
