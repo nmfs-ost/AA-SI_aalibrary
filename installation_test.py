@@ -1,6 +1,8 @@
-"""This script is used to test installations of the aalibrary on various systems and platforms."""
+"""This script is used to test installations of the aalibrary on various
+systems and platforms."""
 
-import sys, os, platform
+import sys
+import platform
 import subprocess
 
 
@@ -11,9 +13,10 @@ def determine_os():
 def check_and_install_on_windows():
     system_name = determine_os()
 
-    assert (
-        system_name == "Windows"
-    ), f"The system specified was `Windows` however, we have determined that the system is `{system_name}`"
+    assert system_name == "Windows", (
+        "The system specified was `Windows` however, we have determined that"
+        f" the system is `{system_name}`"
+    )
 
     # Install the library using the current directory.
     subprocess.check_call(
@@ -30,9 +33,10 @@ def check_and_install_on_windows():
 def check_and_install_on_linux():
     system_name = determine_os()
 
-    assert (
-        system_name == "Linux"
-    ), f"The system specified was `Linux` however, we have determined that the system is `{system_name}`"
+    assert system_name == "Linux", (
+        "The system specified was `Linux` however, we have determined that "
+        f"the system is `{system_name}`"
+    )
 
     # Install the library using the current directory.
     subprocess.check_call(
@@ -49,9 +53,10 @@ def check_and_install_on_linux():
 def check_and_install_on_mac():
     system_name = determine_os()
 
-    assert (
-        system_name == "Darwin"
-    ), f"The system specified was `Darwin` however, we have determined that the system is `{system_name}`"
+    assert system_name == "Darwin", (
+        "The system specified was `Darwin` however, we have determined that "
+        f"the system is `{system_name}`"
+    )
 
     # Install the library using the current directory.
     subprocess.check_call(
@@ -66,12 +71,13 @@ def check_and_install_on_mac():
 
 
 def install(system_name: str = ""):
-    """Installs the package on the current system after determining the current system.
+    """Installs the package on the current system after determining the
+    current system.
 
     Args:
-        system_name (str, optional): The name of the system you are using. Can be
-            one of ['Windows', 'Linux', 'Darwin' (for MacOS)]. Will determine
-            automatically if not specified. Defaults to "".
+        system_name (str, optional): The name of the system you are using. Can
+            be one of ['Windows', 'Linux', 'Darwin' (for MacOS)]. Will
+            determine automatically if not specified. Defaults to "".
     """
 
     if system_name == "":
