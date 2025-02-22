@@ -10,17 +10,20 @@ from aalibrary.ingestion import get_file_name_from_url
 
 
 # def parse_and_check_file_download_location(file_download_location: str = ""):
-#     """Will clean (return a file download location and the file download location directory)
-#     and check if the directory even exists in the first place, if not makes it.
+#     """Will clean (return a file download location and the file download
+#     location directory) and check if the directory even exists in the first
+#     place, if not makes it.
 
 #     Args:
-#         file_download_location (str, optional): _description_. Defaults to "".
+#         file_download_location (str, optional): _description_.
+#         Defaults to "".
 #     """
 
 #     # Get the last directory of the file download location.
-#     file_download_location = os.path.normpath(file_download_location) # normalize the path
+#     file_download_location = os.path.normpath(file_download_location)
 #     file_download_location.split(os.sep)
-#     file_download_location_directory = os.sep.join([os.path.normpath(file_download_location), file_name])
+#     file_download_location_directory = os.sep.join([
+#                        os.path.normpath(file_download_location), file_name])
 
 
 def get_file_paths_via_json_link(link: str = ""):
@@ -67,22 +70,24 @@ def get_all_ship_objects_from_ncei(
     """Gets all of the object keys from a ship from the NCEI database.
 
     Args:
-        ship_name (str, optional): The name of the ship. Must be title-case and have
-            spaces substituted for underscores. Defaults to "".
-        bucket (boto3.resource, optional): The boto3 bucket resource for the bucket
-            that the ship data resides in. Defaults to None.
+        ship_name (str, optional): The name of the ship. Must be title-case
+            and have spaces substituted for underscores. Defaults to "".
+        bucket (boto3.resource, optional): The boto3 bucket resource for the
+            bucket that the ship data resides in. Defaults to None.
 
     Returns:
-        List[str]: A list of strings. Each one being an object key (path to the object
-            inside of the bucket).
+        List[str]: A list of strings. Each one being an object key (path to
+            the object inside of the bucket).
     """
 
-    assert (
-        ship_name != ""
-    ), "Please provide a valid Titlecase ship_name using underscores as spaces."
-    assert (
-        " " not in ship_name
-    ), "Please provide a valid Titlecase ship_name using underscores as spaces."
+    assert ship_name != "", (
+        "Please provide a valid Titlecase",
+        " ship_name using underscores as spaces.",
+    )
+    assert " " not in ship_name, (
+        "Please provide a valid Titlecase",
+        " ship_name using underscores as spaces.",
+    )
     assert bucket is not None, "Please pass in a boto3 bucket object."
 
     ship_objects = []
@@ -99,24 +104,26 @@ def get_all_objects_in_survey_from_ncei(
     """Gets all of the object keys from a ship survey from the NCEI database.
 
     Args:
-        ship_name (str, optional): The name of the ship. Must be title-case and have
-            spaces substituted for underscores. Defaults to "".
-        survey_name (str, optional): The name of the survey. Must match what we have
-            in the NCEI database. Defaults to "".
-        s3_bucket (boto3.resource, optional): The boto3 bucket resource for the bucket
-            that the ship data resides in. Defaults to None.
+        ship_name (str, optional): The name of the ship. Must be title-case
+            and have spaces substituted for underscores. Defaults to "".
+        survey_name (str, optional): The name of the survey. Must match what
+            we have in the NCEI database. Defaults to "".
+        s3_bucket (boto3.resource, optional): The boto3 bucket resource for
+            the bucket that the ship data resides in. Defaults to None.
 
     Returns:
-        List[str]: A list of strings. Each one being an object key (path to the object
-            inside of the bucket).
+        List[str]: A list of strings. Each one being an object key (path to
+            the object inside of the bucket).
     """
 
-    assert (
-        ship_name != ""
-    ), "Please provide a valid Titlecase ship_name using underscores as spaces."
-    assert (
-        " " not in ship_name
-    ), "Please provide a valid Titlecase ship_name using underscores as spaces."
+    assert ship_name != "", (
+        "Please provide a valid Titlecase",
+        " ship_name using underscores as spaces.",
+    )
+    assert " " not in ship_name, (
+        "Please provide a valid Titlecase",
+        " ship_name using underscores as spaces.",
+    )
     assert survey_name != "", "Please provide a valid survey name."
     assert s3_bucket is not None, "Please pass in a boto3 bucket object."
 
