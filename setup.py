@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages, find_namespace_packages
+from setuptools import setup, find_namespace_packages
 
 # Get version number
 with open("./src/aalibrary/about.py") as f:
@@ -16,9 +16,9 @@ setup_info = dict(
     url="https://github.com/nmfs-ost/AA-SI_aalibrary",
     download_url="https://github.com/nmfs-ost/AA-SI_aalibrary",
     project_urls={
-        #'Documentation': 'https://pyglet.readthedocs.io/en/latest',
+        # 'Documentation': 'https://pyglet.readthedocs.io/en/latest',
         "Source": "https://github.com/nmfs-ost/AA-SI_aalibrary",
-        #'Tracker': 'https://github.com/pyglet/pyglet/issues',
+        # 'Tracker': 'https://github.com/pyglet/pyglet/issues',
     },
     description="A python library used for fetching acoustics data.",
     long_description=open("README.md").read(),
@@ -43,8 +43,10 @@ setup_info = dict(
     #     'Topic :: Software Development :: Libraries :: Python Modules',
     # ],
     # Package info
-    packages=find_namespace_packages(where='src/', include=['aalibrary.utils']),
-    package_dir={'': 'src'},
+    packages=find_namespace_packages(
+        where="src/", include=["aalibrary.utils"]
+    ),
+    package_dir={"": "src"},
     # Requirements
     install_requires=[
         "echopype>=0.9.0",
