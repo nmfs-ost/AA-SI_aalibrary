@@ -8,16 +8,16 @@ import json
 import logging
 import platform
 
-import google.auth
 from google.cloud import storage
 import numpy as np
 
 import echopype
 
 # For pytests-sake
-if __package__ is None or __package__ == '':
+if __package__ is None or __package__ == "":
     # uses current directory visibility
-    import ingestion, utils
+    import ingestion
+    import utils
 else:
     # uses current package visibility
     from aalibrary import ingestion, utils
@@ -29,7 +29,8 @@ def create_metadata_json(
     """Creates a JSON object containing metadata for the current user.
 
     Args:
-        debug (bool, optional): Whether or not to print out the metadata json. Defaults to False.
+        debug (bool, optional): Whether or not to print out the metadata json.
+            Defaults to False.
 
     Returns:
         dict: The metadata json dict.
@@ -46,13 +47,15 @@ def create_metadata_json(
         ).stdout
     email = email.replace("\n", "")
     metadata_json = {
-        "DATE_CREATED": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f"),
+        "DATE_CREATED": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S.%f"
+        ),
         "UPLOADED_BY": email,
         "ECHOPYPE_VERSION": echopype.__version__,
         "PYTHON_VERSION": sys.version,
-        "NUMPY_VERSION": np.version.version
+        "NUMPY_VERSION": np.version.version,
         # maybe just add in echopype's reqs.
-        # pip lock file - for current environment as 
+        # pip lock file - for current environment as
     }
     if debug:
         logging.debug(metadata_json)
@@ -70,20 +73,27 @@ def create_and_upload_metadata_file(
     gcp_bucket: storage.Bucket = None,
     debug: bool = False,
 ):
-    """Creates a metadata file with appropriate information. Then uploads it to the correct location in GCP.
+    """Creates a metadata file with appropriate information. Then uploads it
+    to the correct location in GCP.
 
     Args:
-        file_name (str, optional): The file name (includes extension). Defaults to "".
-        file_type (str, optional): The file type (do not include the dot "."). Defaults to "".
-        ship_name (str, optional): The ship name associated with this survey. Defaults to "".
-        survey_name (str, optional): The survey name/identifier. Defaults to "".
-        echosounder (str, optional): The echosounder used to gather the data. Defaults to "".
-        data_source (str, optional): The source of the file. Necessary due to the
-            way the storage bucket is organized. Can be one of ["NCEI", "OMAO", "HDD"].
+        file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object used to download
-            the file. Defaults to None.
-        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+        file_type (str, optional): The file type (do not include the dot ".").
+            Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey.
+            Defaults to "".
+        survey_name (str, optional): The survey name/identifier.
+            Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data.
+            Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to
+            the way the storage bucket is organized. Can be one of
+            ["NCEI", "OMAO", "HDD"]. Defaults to "".
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
+            used to download the file. Defaults to None.
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
     """
 
     # Create the metadata file to be uploaded.
@@ -116,7 +126,9 @@ def update_metadata_file(): ...
 
 
 def get_metadata_in_columnar_format():
-    """Retrieves the metadata associated with all objects in GCP in columnar format."""
+    """Retrieves the metadata associated with all objects in GCP in columnar
+    format."""
+    # TODO:
     ...
 
 
