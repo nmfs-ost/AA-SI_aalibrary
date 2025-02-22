@@ -43,6 +43,14 @@ Issue the following command, and follow the instructions to login to `gcloud` us
 gcloud auth login
 ```
 
+### Step 1.1 - Set Your Account As The Active Account For `gcloud`
+
+```bash
+gcloud config set account {ACCOUNT} 
+```
+
+Here, `{ACCOUNT}` should be your noaa.gov email. The same one you used to sign-in in the step above.
+
 ### Step 2 - Install Necessary Dependencies Before The `pip install`
 
 We need to install some dependencies, and check two authentication parameters before we install.
@@ -188,7 +196,7 @@ download_specific_file_from_azure(
 
 ### Downloading A Netcdf
 
-Netcdf files (converted over from raw) only exist in the GCP cache as of now. The following example takes care of downloading a particular raw file as netcdf4 (if it had already been converted and cached in GCP, otherwise an error is thrown):
+Netcdf files (converted over from raw) only exist in the GCP cache as of now. The following example takes care of downloading a particular raw file as netcdf4 (if it had already been converted and cached in GCP, otherwise an error message is thrown):
 
 ```python
 from aalibrary import utils
@@ -198,20 +206,42 @@ from aalibrary.ingestion import download_netcdf_file
 gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
 
 # This function takes care of downloading the netcdf.
-download_netcdf_file(file_name="2107RL_CW-D20210813-T220732.raw",
+download_netcdf_file(
+                file_name="2107RL_CW-D20210813-T220732.raw",
                 file_type="netcdf",
-  ship_name="Reuben_Lasker",
+                ship_name="Reuben_Lasker",
                 survey_name="RL2107",
-  echosounder="EK80",
+                echosounder="EK80",
                 file_download_location=".",
-  gcp_bucket=gcp_bucket,
+                gcp_bucket=gcp_bucket,
                 is_metadata=False,
-  debug=False)
+                debug=False)
 ```
 
 ## Recipes
 
 The following contains common recipes that an end-user might encounter.
+
+### Downloading Multiple Files From A Survey
+
+```python
+from aalibrary.ingestion import download_raw_file_from_ncei
+
+file_names = ["2107RL_CW-D20210813-T220732.raw",
+              "2107RL_CW-D20210706-T172335.raw"]
+for file_name in file_names:
+  download_raw_file_from_ncei(
+    file_name=file_name,
+    file_type="raw",
+    ship_name="Reuben_Lasker",
+    survey_name="RL2107",
+    echosounder="EK80",
+    data_source="NCEI",
+    file_download_location=".",
+    is_metadata=False,
+    upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
+    debug=False)
+```
 
 ## Disclaimer
 
