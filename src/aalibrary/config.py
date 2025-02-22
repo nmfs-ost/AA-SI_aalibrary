@@ -1,4 +1,5 @@
-# Used for storing environment-specific settings such as database URIs and such.
+"""Used for storing environment-specific settings such as database URIs and
+such."""
 
 RAW_DATA_FILE_TYPES = ["raw", "idx", "bot"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
