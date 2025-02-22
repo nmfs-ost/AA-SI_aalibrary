@@ -53,13 +53,17 @@ class TestNCEIIngestion:
 
         # set up storage objects
         _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
-        self.s3_client, self.s3_resource, self.s3_bucket = cloud_utils.create_s3_objs()
-    
+        self.s3_client, self.s3_resource, self.s3_bucket = (
+            cloud_utils.create_s3_objs()
+        )
+
     def download_from_NCEI_upload_to_GCP(self): ...
 
     def test_download_from_NCEI(self):
-        """Tests downloading a raw and idx file direct from NCEI, but without the forced downloads on."""
-        # Delete from GCP if it exists; to bypass cache and download direct from NCEI
+        """Tests downloading a raw and idx file direct from NCEI, but without
+        the forced downloads on."""
+        # Delete from GCP if it exists; to bypass cache and download direct
+        # from NCEI
         raw_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
             self.gcp_bucket, self.gcp_storage_bucket_location_raw
         )
@@ -95,13 +99,15 @@ class TestNCEIIngestion:
             debug=False,
         )
 
-        # assert that both raw and idx files exist after they have been downloaded.
+        # assert that both raw and idx files exist after they have been
+        # downloaded.
         assert os.path.exists(self.local_raw_file_path) and os.path.exists(
             self.local_idx_file_path
         ), "Raw or Idx file has not been downloaded locally."
 
     def test_download_raw_idx_from_GCP(self):
-        """Tests downloading the raw and idx files from GCP (cached versions)."""
+        """Tests downloading the raw and idx files from GCP
+        (cached versions)."""
         # Delete locally if it exists
         if os.path.exists(self.local_raw_file_path):
             os.remove(self.local_raw_file_path)
@@ -120,20 +126,24 @@ class TestNCEIIngestion:
             debug=False,
         )
 
-        # assert that both raw and idx files exist after they have been downloaded.
+        # assert that both raw and idx files exist after they have been
+        # downloaded.
         assert os.path.exists(self.local_raw_file_path) and os.path.exists(
             self.local_idx_file_path
         ), "Raw or Idx file has not been downloaded locally."
 
     def test_parse_correct_gcp_location(self):
-        """Tests to see if the correct GCP file location is being parsed for the raw file."""
+        """Tests to see if the correct GCP file location is being parsed for
+        the raw file."""
         assert (
             self.gcp_storage_bucket_location_raw
             == f"TEST/Reuben_Lasker/RL2107/EK80/data/raw/{self.file_name}"
-        ), f"Incorrectly parsed GCP location: `{self.gcp_storage_bucket_location_raw}`"
+        ), ("Incorrectly parsed GCP location: "
+            f"`{self.gcp_storage_bucket_location_raw}`")
 
     def teardown_class(self):
-        """Tearsdown any temporary files, variables, or anything that was used for testing."""
+        """Tears-down any temporary files, variables, or anything that was used
+        for testing."""
         if os.path.exists(self.local_raw_file_path):
             os.remove(self.local_raw_file_path)
         if os.path.exists(self.local_idx_file_path):
@@ -141,7 +151,8 @@ class TestNCEIIngestion:
 
 
 class TestNCEIIngestionUserErrors:
-    """A class that tests various end-user error-handling capabilities of the API."""
+    """A class that tests various end-user error-handling capabilities of the
+    API."""
 
     def setup_class(self):
         """Used for setting up the class."""
@@ -154,12 +165,14 @@ class TestNCEIIngestionUserErrors:
         self.file_download_location = "."
         # set up storage objects
         _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
-        self.s3_client, self.s3_resource, self.s3_bucket = cloud_utils.create_s3_objs()
+        self.s3_client, self.s3_resource, self.s3_bucket = (
+            cloud_utils.create_s3_objs()
+        )
 
     def test_download_raw_file_null_file_name(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an empty `file_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an empty `file_name` param."""
+        with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name="",
                 file_type=self.file_type,
@@ -173,9 +186,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_raw_file_null_file_type(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an empty `file_type` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an empty `file_type` param."""
+        with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
                 file_type="",
@@ -189,9 +202,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_raw_file_invalid_file_type(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an invalid `file_type` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an invalid `file_type` param."""
+        with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
                 file_type="abc",
@@ -205,9 +218,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_raw_file_null_ship_name(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an empty `ship_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an empty `ship_name` param."""
+        with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -221,9 +234,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_raw_file_null_survey_name(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an empty `survey_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an empty `survey_name` param."""
+        with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -237,9 +250,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_raw_file_null_echosounder(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an empty `echosounder` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an empty `echosounder` param."""
+        with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -253,9 +266,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_raw_file_invalid_echosounder(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an invalid `echosounder` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an invalid `echosounder` param."""
+        with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -269,9 +282,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_raw_file_null_file_download_location(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an empty `file_download_location` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an empty `file_download_location` param."""
+        with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -285,9 +298,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_raw_file_invalid_file_download_location(self):
-        """Tests the error-handling for the `download_raw_file` function when there
-        is an invalid `file_download_location` param (not a dir)."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_raw_file` function when
+        there is an invalid `file_download_location` param (not a dir)."""
+        with pytest.raises(Exception):
             # Create a test file to point the file download location to.
             with open("file.temp", "a"):
                 os.utime("file.temp", None)
@@ -305,9 +318,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_null_file_name(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an empty `file_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an empty `file_name` param."""
+        with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 file_name="",
                 file_type=self.file_type,
@@ -321,9 +334,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_null_file_type(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an empty `file_type` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an empty `file_type` param."""
+        with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 file_name=self.file_name,
                 file_type="",
@@ -337,9 +350,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_invalid_file_type(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an invalid `file_type` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an invalid `file_type` param."""
+        with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 file_name=self.file_name,
                 file_type="abc",
@@ -353,9 +366,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_null_ship_name(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an empty `ship_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an empty `ship_name` param."""
+        with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -369,9 +382,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_null_survey_name(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an empty `survey_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an empty `survey_name` param."""
+        with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -385,9 +398,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_null_echosounder(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an empty `echosounder` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an empty `echosounder` param."""
+        with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -401,9 +414,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_invalid_echosounder(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an invalid `echosounder` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an invalid `echosounder` param."""
+        with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -417,9 +430,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_null_file_download_location(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an empty `file_download_location` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an empty `file_download_location` param."""
+        with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -433,9 +446,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_download_netcdf_file_invalid_file_download_location(self):
-        """Tests the error-handling for the `download_netcdf_file` function when there
-        is an invalid `file_download_location` param (not a dir)."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `download_netcdf_file` function
+        when there is an invalid `file_download_location` param (not a dir)."""
+        with pytest.raises(Exception):
             # Create a test file to point the file download location to.
             with open("file.temp", "a"):
                 os.utime("file.temp", None)
@@ -453,9 +466,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_null_file_name(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an empty `file_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an empty `file_name` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name="",
                 file_type=self.file_type,
@@ -470,9 +483,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_null_file_type(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an empty `file_type` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an empty `file_type` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type="",
@@ -487,9 +500,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_invalid_file_type(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an invalid `file_type` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an invalid `file_type` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type="abc",
@@ -504,9 +517,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_null_ship_name(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an empty `ship_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an empty `ship_name` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -521,9 +534,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_null_survey_name(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an empty `survey_name` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an empty `survey_name` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -538,9 +551,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_null_echosounder(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an empty `echosounder` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an empty `echosounder` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -555,9 +568,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_invalid_echosounder(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an invalid `echosounder` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an invalid `echosounder` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -572,9 +585,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_null_data_source(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an empty `data_source` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an empty `data_source` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -589,9 +602,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_null_file_download_location(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an empty `file_download_location` param."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an empty `file_download_location` param."""
+        with pytest.raises(Exception):
             ingestion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
@@ -606,9 +619,9 @@ class TestNCEIIngestionUserErrors:
             )
 
     def test_convert_raw_to_netcdf_invalid_file_download_location(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function when there
-        is an invalid `file_download_location` param (not a dir)."""
-        with pytest.raises(Exception) as e:
+        """Tests the error-handling for the `convert_raw_to_netcdf` function
+        when there is an invalid `file_download_location` param (not a dir)."""
+        with pytest.raises(Exception):
             # Create a test file to point the file download location to.
             with open("file.temp", "a"):
                 os.utime("file.temp", None)
@@ -627,5 +640,6 @@ class TestNCEIIngestionUserErrors:
             )
 
     def teardown_class(self):
-        """Tearsdown any temporary files, variables, or anything that was used for testing."""
+        """Tears-down any temporary files, variables, or anything that was used
+        for testing."""
         os.remove("file.temp")
