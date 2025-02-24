@@ -2239,6 +2239,9 @@ def find_data_source_for_file():
     """Finds the data source of a given filename by checking all possible data
     sources."""
     # TODO:
+    # Check HDD storage bucket on GCP
+    # Check NCEI S3 bucket.
+    # TODO: Check OMAO Data Lake
     ...
 
 
