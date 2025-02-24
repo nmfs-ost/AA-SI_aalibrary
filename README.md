@@ -14,8 +14,17 @@
 </div>
 <hr />
 
-Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library provides end-users the tools needed to easily access data from disparate sources. It also implements caching for raw, idx, and netcdf4 files within the GCP ecosystem. </br>
-It is an improvement over previous methods, which would require end-users to fetch each piece of data from its respective source separately. </br> </br>
+The Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library is a data management tool that provides users with an all-in-one solution to load, transform, and analyze acoustics data from all science centers across the United States. Using the library, users now have the ability to:
+
+<div align="left">
+
+* Fetch data from disparate sources using a single source of retrieval, including being able to upload their personal data to the cloud.
+* Cache repeatedly accessed data, optimizing data retrieval speeds.
+* Transform and cache the transformed files, eliminating the need to constantly transform data before analysis.
+
+</div>
+
+Future plans include integration with more data sources, leading to petabytes of more data, and further integration with EchoPype. All together, the API provides users with a one-stop-shop for acoustics data. </br> </br>
 
 [Getting Started](#getting-started) •
 [Installation](#installation) •
@@ -25,11 +34,11 @@ It is an improvement over previous methods, which would require end-users to fet
 
 </div>
 
-This repo contains files, code, and other necessary scripts for execution of data pipelines for NOAA Active Acoustics.
+This repo contains code necessary for execution of data pipelines for NOAA Active Acoustics.
 
 # Getting Started
 
-If this library has already been installed, you can run a quick test using `python quick_test.py`. This test will check if your network connections to the data sources are working, and download a raw file as an initial test.
+If this library has already been installed, you can run a quick test using `python quick_test.py`. This test will check if your network connections to the data sources are working, and download a small raw file as an initial test.
 
 ## Installation
 
