@@ -13,6 +13,8 @@ import numpy as np
 
 import echopype
 
+from utils import nc_reader
+
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
@@ -71,6 +73,7 @@ def create_and_upload_metadata_file(
     echosounder: str = "",
     data_source: str = "",
     gcp_bucket: storage.Bucket = None,
+    netcdf_local_file_location: str = "",
     debug: bool = False,
 ):
     """Creates a metadata file with appropriate information. Then uploads it
@@ -92,12 +95,24 @@ def create_and_upload_metadata_file(
             ["NCEI", "OMAO", "HDD"]. Defaults to "".
         gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
             used to download the file. Defaults to None.
+        netcdf_local_file_location (str, optional): The local file path for the
+            netcdf that is to be uploaded. Necessary for extracting headers
+            from the netcdf file. Defaults to "".
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
 
     # Create the metadata file to be uploaded.
     metadata_json = create_metadata_json(debug=debug)
+    # If the file is a netcdf, we extract even more data from its headers.
+    if netcdf_local_file_location:
+        # Extract the metadata
+        netcdf_metadata = nc_reader.get_netcdf_header(
+            file_path=netcdf_local_file_location
+        )
+        # Merge the netcdf metadata with the metadata we have created.
+        metadata_json.update(netcdf_metadata)
+    # Extract the metadata string
     metadata_json_str = json.dumps(metadata_json)
     with open(f"./{file_name}.json", "w") as jf:
         jf.write(metadata_json_str)
