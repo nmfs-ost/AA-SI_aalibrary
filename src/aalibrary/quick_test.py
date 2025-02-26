@@ -49,7 +49,7 @@ def start():
         )
 
     # FUNCTIONAL TEST: download a raw file
-    file_name = "2107RL_CW-D20210813-T220732.raw"
+    file_name = "2107RL_CW-D20210916-T165047.raw"
     file_type = "raw"
     ship_name = "Reuben_Lasker"
     survey_name = "RL2107"
