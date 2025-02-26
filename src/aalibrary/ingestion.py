@@ -1514,6 +1514,7 @@ def convert_raw_to_netcdf(
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
+    # TODO: Implement an 'upload' param default to True.
 
     # User-error-checking
     check_for_assertion_errors(
