@@ -13,7 +13,13 @@ import numpy as np
 
 import echopype
 
-from utils import nc_reader
+# For pytests-sake
+if __package__ is None or __package__ == "":
+    # uses current directory visibility
+    from utils import nc_reader
+else:
+    # uses current package visibility
+    from aalibrary.utils import nc_reader
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
