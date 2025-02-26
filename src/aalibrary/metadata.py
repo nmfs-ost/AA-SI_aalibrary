@@ -16,19 +16,13 @@ import echopype
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
+    import ingestion
+    import utils
     from utils import nc_reader
 else:
     # uses current package visibility
-    from aalibrary.utils import nc_reader
-
-# For pytests-sake
-if __package__ is None or __package__ == "":
-    # uses current directory visibility
-    import ingestion
-    import utils
-else:
-    # uses current package visibility
     from aalibrary import ingestion, utils
+    from aalibrary.utils import nc_reader
 
 
 def create_metadata_json(
