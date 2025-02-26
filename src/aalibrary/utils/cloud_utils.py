@@ -168,7 +168,9 @@ def count_subdirectories_in_s3_bucket_location(
 
 
 def get_subdirectories_in_s3_bucket_location(
-    prefix: str = "", bucket: boto3.resource = None, return_full_paths: bool = False
+    prefix: str = "",
+    bucket: boto3.resource = None,
+    return_full_paths: bool = False,
 ) -> List[str]:
     """Gets a list of all the subdirectories in a specific bucket location
     (called a prefix). The return can be with full paths (root to folder
@@ -279,8 +281,12 @@ def download_file_from_gcp(
 def delete_file_from_gcp(
     gcp_bucket: storage.Client.bucket, blob_file_path: str, debug: bool = False
 ):
-    file_exists_in_gcp = check_if_file_exists_in_gcp(gcp_bucket, blob_file_path)
-    assert file_exists_in_gcp, f"File does not exist in GCP at `{blob_file_path}`."
+    file_exists_in_gcp = check_if_file_exists_in_gcp(
+        gcp_bucket, blob_file_path
+    )
+    assert (
+        file_exists_in_gcp
+    ), f"File does not exist in GCP at `{blob_file_path}`."
 
     blob = gcp_bucket.blob(blob_file_path)
     try:
@@ -292,7 +298,9 @@ def delete_file_from_gcp(
 
 
 def check_if_file_exists_in_s3(
-    object_key: str = "", s3_resource: boto3.resource = None, s3_bucket_name: str = ""
+    object_key: str = "",
+    s3_resource: boto3.resource = None,
+    s3_bucket_name: str = "",
 ) -> bool:
     """Checks to see if a file exists in an s3 bucket. Intended for use with
     NCEI, but will work with other s3 buckets as well.
@@ -315,3 +323,46 @@ def check_if_file_exists_in_s3(
         # object key does not exist.
         print(e)
         return False
+
+
+def get_object_key_for_s3(
+    file_url: str = "",
+    file_name: str = "",
+    file_type: str = "raw",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+):
+    """Creates an object key for a file within s3 given the parameters above.
+
+    Args:
+        file_url (str, optional): The entire url to the file resource in s3.
+            Starts with "https://" or "s3://". Defaults to "".
+            NOTE: If this is specified, there is no need to provide the other
+            parameters.
+        file_name (str, optional): The file name (includes extension).
+            Defaults to "".
+        file_type (str, optional): The file type (do not include the dot ".").
+            Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey.
+            Defaults to "".
+        survey_name (str, optional): The survey name/identifier.
+            Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data.
+            Defaults to "".
+    """
+
+    if file_url:
+        # We replace the beginning of common file paths
+        file_url = file_url.replace(
+            "https://noaa-wcsd-pds.s3.amazonaws.com/", ""
+        )
+        file_url = file_url.replace("s3://noaa-wcsd-pds/", "")
+        return file_url
+    else:
+        # We default to using the parameters to create an object key according
+        # to NCEI standards.
+        object_key = (
+            f"data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}"
+        )
+        return object_key
