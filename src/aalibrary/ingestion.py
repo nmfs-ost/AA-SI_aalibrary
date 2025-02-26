@@ -1652,6 +1652,7 @@ def convert_raw_to_netcdf(
             echosounder=echosounder,
             data_source=data_source,
             gcp_bucket=gcp_bucket,
+            netcdf_local_file_location=file_path_netcdf,
             debug=debug,
         )
 
