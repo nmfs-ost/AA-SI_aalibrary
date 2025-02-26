@@ -1643,6 +1643,17 @@ def convert_raw_to_netcdf(
             is_metadata=False,
             debug=debug,
         )
+        # Upload the metadata file associated with this
+        metadata.create_and_upload_metadata_file(
+            file_name=file_name_netcdf,
+            file_type="netcdf",
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            gcp_bucket=gcp_bucket,
+            debug=debug,
+        )
 
 
 def parse_correct_gcp_storage_bucket_location(
