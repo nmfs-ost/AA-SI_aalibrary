@@ -1397,6 +1397,7 @@ def convert_local_raw_to_netcdf(
     raw_file_location: str = "",
     netcdf_file_download_location: str = "",
     echosounder: str = "",
+    overwrite: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
     Converts a local (on your computer) file from raw into netcdf using
@@ -1409,6 +1410,8 @@ def convert_local_raw_to_netcdf(
             download your netcdf file to. Defaults to "".
         echosounder (str, optional): The echosounder used. Can be one of
             ["EK80", "EK70"]. Defaults to "".
+        overwrite (bool, optional): Whether or not to overwrite the netcdf
+            file. Defaults to False.
     """
     netcdf_file_download_directory = os.sep.join(
         [os.path.normpath(netcdf_file_download_location)]
@@ -1455,7 +1458,9 @@ def convert_local_raw_to_netcdf(
         raw_file_echopype = open_raw(
             raw_file=raw_file_location, sonar_model=echosounder
         )
-        raw_file_echopype.to_netcdf(save_path=netcdf_file_download_directory)
+        raw_file_echopype.to_netcdf(
+            save_path=netcdf_file_download_directory, overwrite=overwrite
+        )
         print("CONVERTED.")
         return
     except Exception as e:
@@ -1473,6 +1478,7 @@ def convert_raw_to_netcdf(
     echosounder: str = "",
     data_source: str = "",
     file_download_location: str = "",
+    overwrite: bool = False,
     gcp_bucket: storage.Client.bucket = None,
     is_metadata: bool = False,
     debug: bool = False,
@@ -1497,6 +1503,8 @@ def convert_raw_to_netcdf(
             ["NCEI", "OMAO", "HDD"]. Defaults to "".
         file_download_location (str, optional): The local file path you want
             to store your file in. Defaults to "".
+        overwrite (bool, optional): Whether or not to overwrite the netcdf
+            file. Defaults to False.
         gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
             used to download the file. Defaults to None.
         is_metadata (bool, optional): Whether or not the file is a metadata
@@ -1618,6 +1626,7 @@ def convert_raw_to_netcdf(
             ),
             netcdf_file_download_location=file_download_location_netcdf,
             echosounder=echosounder,
+            overwrite=overwrite,
         )
 
         # Upload the netcdf to the correct location for parsing.
