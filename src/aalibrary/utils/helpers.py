@@ -6,7 +6,13 @@ import json
 
 import boto3
 
-from aalibrary.ingestion import get_file_name_from_url
+# For pytests-sake
+if __package__ is None or __package__ == "":
+    # uses current directory visibility
+    from ingestion import get_file_name_from_url
+else:
+    # uses current package visibility
+    from aalibrary.ingestion import get_file_name_from_url
 
 
 # def parse_and_check_file_download_location(file_download_location: str = ""):
@@ -99,7 +105,9 @@ def get_all_ship_objects_from_ncei(
 
 
 def get_all_objects_in_survey_from_ncei(
-    ship_name: str = "", survey_name: str = "", s3_bucket: boto3.resource = None
+    ship_name: str = "",
+    survey_name: str = "",
+    s3_bucket: boto3.resource = None,
 ) -> List[str]:
     """Gets all of the object keys from a ship survey from the NCEI database.
 
