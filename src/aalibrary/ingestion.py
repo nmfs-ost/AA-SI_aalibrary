@@ -217,7 +217,7 @@ def download_raw_file_from_azure(
 
     # Create vars for use later.
     # https://contracttest4.blob.core.windows.net/testcontainer/Reuben_Lasker/RL_1601/EK_60/1601RL-D20160107-T074016.bot
-    file_azure_file_path = create_omao_file_path_from_variables(
+    file_azure_file_path = utils.helpers.create_omao_file_path_from_variables(
         file_name=file_name,
         file_type=file_type,
         ship_name=ship_name,
@@ -427,33 +427,6 @@ def download_raw_file_from_azure(
             )
 
         return
-
-
-def create_omao_file_path_from_variables(
-    file_name: str = "",
-    file_type: str = "",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    year: str = "",
-    month: str = "",
-    date: str = "",
-    hours: str = "",
-    minutes: str = "",
-    seconds: str = "",
-):
-    if file_name != "":
-        azure_url = f"{ship_name}/{survey_name}/{echosounder}/{file_name}"
-        return azure_url
-    else:
-        logging.error("COULD NOT FIND FILE GIVEN THE PARAMETERS.")
-        # Here we have to search for the file in s3. Just to see if something
-        # exists.
-        # partial_file_name = (
-        #     f"-D{year}{month}{date}-T{hours}{minutes}{seconds}.{file_type}"
-        # )
-        # TODO: make sure to check that a raw and idx files both exist.
-        raise FileNotFoundError
 
 
 def create_ncei_url_from_variables(
