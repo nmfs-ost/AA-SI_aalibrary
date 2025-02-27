@@ -321,7 +321,7 @@ def check_if_file_exists_in_s3(
         return True
     except Exception as e:
         # object key does not exist.
-        print(e)
+        # print(e)
         return False
 
 
