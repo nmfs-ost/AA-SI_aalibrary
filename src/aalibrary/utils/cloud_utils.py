@@ -319,7 +319,7 @@ def check_if_file_exists_in_s3(
     try:
         s3_resource.Object(s3_bucket_name, object_key).load()
         return True
-    except Exception as e:
+    except Exception:
         # object key does not exist.
         # print(e)
         return False
