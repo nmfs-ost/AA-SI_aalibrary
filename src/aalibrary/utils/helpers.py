@@ -3,6 +3,7 @@
 from typing import List
 import requests
 import json
+import logging
 
 import boto3
 
@@ -22,6 +23,7 @@ import boto3
 #     file_download_location.split(os.sep)
 #     file_download_location_directory = os.sep.join([
 #                        os.path.normpath(file_download_location), file_name])
+
 
 def get_file_name_from_url(url: str = ""):
     """Extracts the file name from a given storage bucket url. Includes the
@@ -151,3 +153,30 @@ def get_all_objects_in_survey_from_ncei(
         survey_objects.append(object.key)
 
     return survey_objects
+
+
+def create_omao_file_path_from_variables(
+    file_name: str = "",
+    file_type: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    year: str = "",
+    month: str = "",
+    date: str = "",
+    hours: str = "",
+    minutes: str = "",
+    seconds: str = "",
+):
+    if file_name != "":
+        azure_url = f"{ship_name}/{survey_name}/{echosounder}/{file_name}"
+        return azure_url
+    else:
+        logging.error("COULD NOT FIND FILE GIVEN THE PARAMETERS.")
+        # Here we have to search for the file in s3. Just to see if something
+        # exists.
+        # partial_file_name = (
+        #     f"-D{year}{month}{date}-T{hours}{minutes}{seconds}.{file_type}"
+        # )
+        # TODO: make sure to check that a raw and idx files both exist.
+        raise FileNotFoundError
