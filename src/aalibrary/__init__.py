@@ -3,6 +3,7 @@ import sys
 import logging
 
 # Import sub-packages
+# flake8: noqa
 from . import utils
 
 logging.basicConfig(
