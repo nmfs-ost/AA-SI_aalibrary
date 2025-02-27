@@ -13,7 +13,6 @@ from azure.storage.filedatalake import (
     DataLakeDirectoryClient,
     DataLakeFileClient,
 )
-import echopype
 from echopype import open_raw
 
 # For pytests-sake
@@ -21,31 +20,14 @@ if __package__ is None or __package__ == "":
     # uses current directory visibility
     import utils
     import config
-    from utils import cloud_utils
+    from utils import cloud_utils, helpers
     import metadata
 else:
     # uses current package visibility
     from aalibrary import utils
     from aalibrary import config
-    from aalibrary.utils import cloud_utils
+    from aalibrary.utils import cloud_utils, helpers
     from aalibrary import metadata
-
-
-def get_file_name_from_url(url: str = ""):
-    """Extracts the file name from a given storage bucket url. Includes the
-    file extension.
-
-    Args:
-        url (str, optional): The full url of the storage object.
-            Defaults to "".
-            Example: "https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_La
-                      sker/RL2107/EK80/2107RL_CW-D20210813-T220732.raw"
-
-    Returns:
-        str: The file name. Example: 2107RL_CW-D20210813-T220732.raw
-    """
-
-    return url.split("/")[-1]
 
 
 def get_data_lake_directory_client(config_file_path: str = ""):
@@ -528,7 +510,7 @@ def download_single_file_from_aws(
 
     # We replace the beginning of common file paths
     file_url = utils.cloud_utils.get_object_key_for_s3(file_url=file_url)
-    file_name = get_file_name_from_url(file_url)
+    file_name = helpers.get_file_name_from_url(file_url)
 
     # Check if the file exists in s3
     file_exists = utils.cloud_utils.check_if_file_exists_in_s3(
@@ -611,9 +593,9 @@ def download_raw_file_from_ncei(
         os.makedirs(file_download_location)
 
     # Create vars for use later.
-    file_download_location = os.path.normpath(os.sep.join(
-        [os.path.normpath(file_download_location), file_name]
-    ))
+    file_download_location = os.path.normpath(
+        os.sep.join([os.path.normpath(file_download_location), file_name])
+    )
     file_ncei_url = create_ncei_url_from_variables(
         file_name=file_name,
         ship_name=ship_name,
@@ -1339,7 +1321,9 @@ def download_raw_file(
                 debug=debug,
             )
 
-    elif file_exists_in_ncei and (not file_exists_in_gcp):  # File does not exist in gcp and needs to be downloaded from NCEI
+    elif file_exists_in_ncei and (
+        not file_exists_in_gcp
+    ):  # File does not exist in gcp and needs to be downloaded from NCEI
         download_raw_file_from_ncei(
             file_name=file_name,
             file_type=file_type,
@@ -1498,10 +1482,11 @@ def convert_local_raw_to_netcdf(
     netcdf_file_download_directory = os.sep.join(
         [os.path.normpath(netcdf_file_download_location)]
     )
+    print(f"netcdf_file_download_directory{netcdf_file_download_directory}")
 
     # Create the download directory (path) if it doesn't exist
-    if not os.path.exists(netcdf_file_download_location):
-        os.makedirs(netcdf_file_download_location)
+    if not os.path.exists(netcdf_file_download_directory):
+        os.makedirs(netcdf_file_download_directory)
 
     # Make sure the echosounder specified matches the raw file data.
     # if echosounder.lower() == "ek80":
@@ -1609,6 +1594,8 @@ def convert_raw_to_netcdf(
         file_download_location=file_download_location,
     )
 
+    file_download_location = os.path.normpath(file_download_location)
+    print(f"file_download_location {file_download_location}")
     # Create the download directory (path) if it doesn't exist
     if not os.path.exists(file_download_location):
         os.makedirs(file_download_location)
@@ -1622,6 +1609,7 @@ def convert_raw_to_netcdf(
     file_path_netcdf = os.sep.join(
         [os.path.normpath(file_download_location_netcdf), file_name_netcdf]
     )
+    print(f" file_path_netcdf {file_path_netcdf}")
     # TODO: implement check for raw file gcp storage location.
     # gcp_storage_bucket_location_raw = (
     #     parse_correct_gcp_storage_bucket_location(
@@ -1704,6 +1692,11 @@ def convert_raw_to_netcdf(
         )
 
         # Convert the raw file to netcdf.
+        print(
+            f"rawfilelocation {os.sep.join(
+                [os.path.normpath(file_download_location), file_name]
+            )}"
+        )
         convert_local_raw_to_netcdf(
             raw_file_location=os.sep.join(
                 [os.path.normpath(file_download_location), file_name]
@@ -1971,6 +1964,7 @@ def upload_file_to_gcp_storage_bucket(
                     f" `{gcp_storage_bucket_location}`..."
                 )
             )
+            print(f"file_location {file_location}")
             # Upload to storage bucket.
             utils.cloud_utils.upload_file_to_gcp_bucket(
                 bucket=gcp_bucket,

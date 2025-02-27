@@ -6,14 +6,6 @@ import json
 
 import boto3
 
-# For pytests-sake
-if __package__ is None or __package__ == "":
-    # uses current directory visibility
-    from ingestion import get_file_name_from_url
-else:
-    # uses current package visibility
-    from ingestion import get_file_name_from_url
-
 
 # def parse_and_check_file_download_location(file_download_location: str = ""):
 #     """Will clean (return a file download location and the file download
@@ -30,6 +22,22 @@ else:
 #     file_download_location.split(os.sep)
 #     file_download_location_directory = os.sep.join([
 #                        os.path.normpath(file_download_location), file_name])
+
+def get_file_name_from_url(url: str = ""):
+    """Extracts the file name from a given storage bucket url. Includes the
+    file extension.
+
+    Args:
+        url (str, optional): The full url of the storage object.
+            Defaults to "".
+            Example: "https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_La
+                      sker/RL2107/EK80/2107RL_CW-D20210813-T220732.raw"
+
+    Returns:
+        str: The file name. Example: 2107RL_CW-D20210813-T220732.raw
+    """
+
+    return url.split("/")[-1]
 
 
 def get_file_paths_via_json_link(link: str = ""):

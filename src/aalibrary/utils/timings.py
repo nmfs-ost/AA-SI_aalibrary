@@ -9,7 +9,7 @@
 import time
 
 import ingestion
-from utils import cloud_utils
+from utils import cloud_utils, helpers
 
 
 def time_ingestion_and_upload_from_ncei(
@@ -26,7 +26,7 @@ def time_ingestion_and_upload_from_ncei(
 
     download_times = []
     upload_times = []
-    file_name = ingestion.get_file_name_from_url(ncei_file_url)
+    file_name = helpers.get_file_name_from_url(ncei_file_url)
 
     for i in range(n):
         start_time = time.time()
