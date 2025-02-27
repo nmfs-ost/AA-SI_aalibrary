@@ -15,9 +15,6 @@ from azure.storage.filedatalake import (
 )
 from echopype import open_raw
 
-from aalibrary.utils.helpers import (
-    get_netcdf_gcp_location_from_raw_gcp_location,
-)
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -1123,7 +1120,7 @@ def download_raw_file(
         # Here we download the raw file from GCP. We also check for a netcdf
         # version and let the user know.
         print("CHECKING FOR NETCDF VERSION...")
-        netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
+        netcdf_exists_in_gcp = cloud_utils.check_if_netcdf_file_exists_in_gcp(
             file_name=file_name_netcdf,
             file_type="netcdf",
             ship_name=ship_name,
@@ -1373,7 +1370,7 @@ def download_netcdf_file(
     )
 
     # Check if the netcdf exists in GCP:
-    netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
+    netcdf_exists_in_gcp = cloud_utils.check_if_netcdf_file_exists_in_gcp(
         file_name=file_name,
         file_type=file_type,
         ship_name=ship_name,
@@ -1599,7 +1596,7 @@ def convert_raw_to_netcdf(
 
     # Here we check for a netcdf version of the raw file on GCP
     print("CHECKING FOR NETCDF VERSION ON GCP...")
-    netcdf_exists_in_gcp = check_if_netcdf_file_exists_in_gcp(
+    netcdf_exists_in_gcp = cloud_utils.check_if_netcdf_file_exists_in_gcp(
         file_name=file_name_netcdf,
         file_type="netcdf",
         ship_name=ship_name,
@@ -1648,11 +1645,6 @@ def convert_raw_to_netcdf(
         )
 
         # Convert the raw file to netcdf.
-        print(
-            f"rawfilelocation {os.sep.join(
-                [os.path.normpath(file_download_location), file_name]
-            )}"
-        )
         convert_local_raw_to_netcdf(
             raw_file_location=os.sep.join(
                 [os.path.normpath(file_download_location), file_name]
@@ -1688,53 +1680,6 @@ def convert_raw_to_netcdf(
             netcdf_local_file_location=file_path_netcdf,
             debug=debug,
         )
-
-
-def check_if_netcdf_file_exists_in_gcp(
-    file_name: str = "",
-    file_type: str = "",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    data_source: str = "",
-    gcp_storage_bucket_location: str = "",
-    gcp_bucket: storage.Bucket = None,
-    debug: bool = False,
-):
-
-    check_for_assertion_errors(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        gcp_storage_bucket_location=gcp_storage_bucket_location,
-        gcp_bucket=gcp_bucket,
-    )
-
-    if gcp_storage_bucket_location != "":
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="netcdf",
-                survey_name=survey_name,
-                ship_name=ship_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-    netcdf_gcp_storage_bucket_location = (
-        get_netcdf_gcp_location_from_raw_gcp_location(
-            gcp_storage_bucket_location=gcp_storage_bucket_location
-        )
-    )
-    # check if the file exists in gcp
-    return cloud_utils.check_if_file_exists_in_gcp(
-        bucket=gcp_bucket, file_path=netcdf_gcp_storage_bucket_location
-    )
 
 
 def upload_file_to_gcp_storage_bucket(

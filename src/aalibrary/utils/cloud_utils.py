@@ -8,6 +8,11 @@ from botocore import UNSIGNED
 from botocore.client import Config
 import boto3
 
+from aalibrary.ingestion import check_for_assertion_errors
+from aalibrary.utils import cloud_utils, helpers
+from aalibrary.utils.helpers import get_netcdf_gcp_location_from_raw_gcp_location
+from google.cloud.storage import storage
+
 
 def setup_gbq_client_objs(
     location: str = "US", project_id: str = "ggn-nmfs-gsds-prod-1"
@@ -366,3 +371,50 @@ def get_object_key_for_s3(
             f"data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}"
         )
         return object_key
+
+
+def check_if_netcdf_file_exists_in_gcp(
+    file_name: str = "",
+    file_type: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "",
+    gcp_storage_bucket_location: str = "",
+    gcp_bucket: storage.Bucket = None,
+    debug: bool = False,
+):
+
+    check_for_assertion_errors(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        gcp_storage_bucket_location=gcp_storage_bucket_location,
+        gcp_bucket=gcp_bucket,
+    )
+
+    if gcp_storage_bucket_location != "":
+        gcp_storage_bucket_location = (
+            helpers.parse_correct_gcp_storage_bucket_location(
+                file_name=file_name,
+                file_type="netcdf",
+                survey_name=survey_name,
+                ship_name=ship_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                is_metadata=False,
+                debug=debug,
+            )
+        )
+    netcdf_gcp_storage_bucket_location = (
+        get_netcdf_gcp_location_from_raw_gcp_location(
+            gcp_storage_bucket_location=gcp_storage_bucket_location
+        )
+    )
+    # check if the file exists in gcp
+    return cloud_utils.check_if_file_exists_in_gcp(
+        bucket=gcp_bucket, file_path=netcdf_gcp_storage_bucket_location
+    )
