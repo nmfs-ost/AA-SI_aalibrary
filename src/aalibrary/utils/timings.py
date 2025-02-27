@@ -8,8 +8,15 @@
 
 import time
 
-import ingestion
-from utils import cloud_utils, helpers
+# For pytests-sake
+if __package__ is None or __package__ == "":
+    # uses current directory visibility
+    from .. import ingestion
+    from ..utils import cloud_utils, helpers
+else:
+    # uses current package visibility
+    from aalibrary import ingestion
+    from aalibrary.utils import cloud_utils, helpers
 
 
 def time_ingestion_and_upload_from_ncei(
