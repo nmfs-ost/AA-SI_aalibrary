@@ -7,6 +7,8 @@ import logging
 
 import boto3
 
+from aalibrary import config
+
 
 # def parse_and_check_file_download_location(file_download_location: str = ""):
 #     """Will clean (return a file download location and the file download
@@ -210,3 +212,95 @@ def create_ncei_url_from_variables(
         # )
         # TODO: make sure to check that a raw and idx files both exist.
         raise FileNotFoundError
+
+
+def parse_correct_gcp_storage_bucket_location(
+    file_name: str = "",
+    file_type: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "",
+    is_metadata: bool = False,
+    is_survey_metadata: bool = False,
+    debug: bool = False,
+) -> str:
+    """Calculates the correct gcp storage location based on data source, file
+    type, and if the file is metadata or not.
+
+    Args:
+        file_name (str, optional): The file name (includes extension).
+            Defaults to "".
+        file_type (str, optional): The file type (not include the dot ".").
+            Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey.
+            Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults
+            to "".
+        echosounder (str, optional): The echosounder used to gather the data.
+            Defaults to "".
+        data_source (str, optional): The source of the data. Can be one of
+            ["NCEI", "OMAO"]. Defaults to "".
+        is_metadata (bool, optional): Whether or not the file is a metadata
+            file. Necessary since files that are considered metadata (metadata
+            json, or readmes) are stored in a separate directory. Defaults to
+            False.
+        is_survey_metadata (bool, optional): Whether or not the file is a
+            metadata file associated with a survey. The files are stored at
+            the survey level, in the `metadata/` folder. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+
+    Returns:
+        str: The correctly parsed GCP storage bucket location.
+    """
+
+    assert (
+        (is_metadata and is_survey_metadata is False)
+        or (is_metadata is False and is_survey_metadata)
+        or (is_metadata is False and is_survey_metadata is False)
+    ), (
+        "Please make sure that only one of `is_metadata` and"
+        " `is_survey_metadata` is True. Or you can set both to False."
+    )
+
+    # Creating the correct upload location
+    if is_survey_metadata:
+        gcp_storage_bucket_location = (
+            f"{data_source}/{ship_name}/{survey_name}/metadata/{file_name}"
+        )
+    elif is_metadata:
+        gcp_storage_bucket_location = (
+            f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
+        )
+        # Figure out if its a raw or idx file (belongs in raw folder)
+        if file_type.lower() in config.RAW_DATA_FILE_TYPES:
+            gcp_storage_bucket_location = (
+                gcp_storage_bucket_location + f"raw/{file_name}.json"
+            )
+        elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
+            gcp_storage_bucket_location = (
+                gcp_storage_bucket_location + f"netcdf/{file_name}.json"
+            )
+    else:
+        # Figure out if its a raw or idx file (belongs in raw folder)
+        if file_type.lower() in config.RAW_DATA_FILE_TYPES:
+            gcp_storage_bucket_location = (
+                f"{data_source}/{ship_name}/"
+                f"{survey_name}/{echosounder}/data/raw/{file_name}"
+            )
+        elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
+            gcp_storage_bucket_location = (
+                f"{data_source}/{ship_name}/"
+                f"{survey_name}/{echosounder}/data/netcdf/{file_name}"
+            )
+
+    if debug:
+        logging.debug(
+            (
+                "PARSED GCP_STORAGE_BUCKET_LOCATION: "
+                f"{gcp_storage_bucket_location}"
+            )
+        )
+
+    return gcp_storage_bucket_location

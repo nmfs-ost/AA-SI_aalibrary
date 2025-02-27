@@ -242,18 +242,20 @@ def download_raw_file_from_azure(
     file_download_location_bot = (
         ".".join(file_download_location.split(".")[:-1]) + ".bot"
     )
-    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        is_metadata=is_metadata,
-        debug=debug,
+    gcp_storage_bucket_location = (
+        helpers.parse_correct_gcp_storage_bucket_location(
+            file_name=file_name,
+            file_type=file_type,
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            is_metadata=is_metadata,
+            debug=debug,
+        )
     )
     gcp_storage_bucket_location_idx = (
-        parse_correct_gcp_storage_bucket_location(
+        helpers.parse_correct_gcp_storage_bucket_location(
             file_name=file_name_idx,
             file_type="idx",
             ship_name=ship_name,
@@ -265,7 +267,7 @@ def download_raw_file_from_azure(
         )
     )
     gcp_storage_bucket_location_bot = (
-        parse_correct_gcp_storage_bucket_location(
+        helpers.parse_correct_gcp_storage_bucket_location(
             file_name=file_name_bot,
             file_type="bot",
             ship_name=ship_name,
@@ -555,18 +557,20 @@ def download_raw_file_from_ncei(
     file_download_location_bot = (
         ".".join(file_download_location.split(".")[:-1]) + ".bot"
     )
-    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        is_metadata=is_metadata,
-        debug=debug,
+    gcp_storage_bucket_location = (
+        helpers.parse_correct_gcp_storage_bucket_location(
+            file_name=file_name,
+            file_type=file_type,
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            is_metadata=is_metadata,
+            debug=debug,
+        )
     )
     gcp_storage_bucket_location_idx = (
-        parse_correct_gcp_storage_bucket_location(
+        helpers.parse_correct_gcp_storage_bucket_location(
             file_name=file_name_idx,
             file_type="idx",
             ship_name=ship_name,
@@ -578,7 +582,7 @@ def download_raw_file_from_ncei(
         )
     )
     gcp_storage_bucket_location_bot = (
-        parse_correct_gcp_storage_bucket_location(
+        helpers.parse_correct_gcp_storage_bucket_location(
             file_name=file_name_bot,
             file_type="bot",
             ship_name=ship_name,
@@ -1006,18 +1010,20 @@ def download_raw_file(
         ".".join(file_download_location.split(".")[:-1]) + ".bot"
     )
     file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
-    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        is_metadata=is_metadata,
-        debug=debug,
+    gcp_storage_bucket_location = (
+        helpers.parse_correct_gcp_storage_bucket_location(
+            file_name=file_name,
+            file_type=file_type,
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            is_metadata=is_metadata,
+            debug=debug,
+        )
     )
     gcp_storage_bucket_location_idx = (
-        parse_correct_gcp_storage_bucket_location(
+        helpers.parse_correct_gcp_storage_bucket_location(
             file_name=file_name_idx,
             file_type="idx",
             ship_name=ship_name,
@@ -1029,7 +1035,7 @@ def download_raw_file(
         )
     )
     gcp_storage_bucket_location_bot = (
-        parse_correct_gcp_storage_bucket_location(
+        helpers.parse_correct_gcp_storage_bucket_location(
             file_name=file_name_bot,
             file_type="bot",
             ship_name=ship_name,
@@ -1041,7 +1047,7 @@ def download_raw_file(
         )
     )
     gcp_storage_bucket_location_netcdf = (
-        parse_correct_gcp_storage_bucket_location(
+        helpers.parse_correct_gcp_storage_bucket_location(
             file_name=file_name_netcdf,
             file_type="netcdf",
             ship_name=ship_name,
@@ -1349,15 +1355,17 @@ def download_netcdf_file(
     file_download_location = os.sep.join(
         [os.path.normpath(file_download_location), file_name]
     )
-    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        is_metadata=is_metadata,
-        debug=debug,
+    gcp_storage_bucket_location = (
+        helpers.parse_correct_gcp_storage_bucket_location(
+            file_name=file_name,
+            file_type=file_type,
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            is_metadata=is_metadata,
+            debug=debug,
+        )
     )
 
     # Check if the netcdf exists in GCP:
@@ -1556,7 +1564,7 @@ def convert_raw_to_netcdf(
     print(f" file_path_netcdf {file_path_netcdf}")
     # TODO: implement check for raw file gcp storage location.
     # gcp_storage_bucket_location_raw = (
-    #     parse_correct_gcp_storage_bucket_location(
+    #     helpers.parse_correct_gcp_storage_bucket_location(
     #         file_name=file_name,
     #         file_type=file_type,
     #         ship_name=ship_name,
@@ -1568,7 +1576,7 @@ def convert_raw_to_netcdf(
     #     )
     # )
     gcp_storage_bucket_location_netcdf = (
-        parse_correct_gcp_storage_bucket_location(
+        helpers.parse_correct_gcp_storage_bucket_location(
             file_name=file_name_netcdf,
             file_type="netcdf",
             ship_name=ship_name,
@@ -1678,98 +1686,6 @@ def convert_raw_to_netcdf(
         )
 
 
-def parse_correct_gcp_storage_bucket_location(
-    file_name: str = "",
-    file_type: str = "",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    data_source: str = "",
-    is_metadata: bool = False,
-    is_survey_metadata: bool = False,
-    debug: bool = False,
-) -> str:
-    """Calculates the correct gcp storage location based on data source, file
-    type, and if the file is metadata or not.
-
-    Args:
-        file_name (str, optional): The file name (includes extension).
-            Defaults to "".
-        file_type (str, optional): The file type (not include the dot ".").
-            Defaults to "".
-        ship_name (str, optional): The ship name associated with this survey.
-            Defaults to "".
-        survey_name (str, optional): The survey name/identifier. Defaults
-            to "".
-        echosounder (str, optional): The echosounder used to gather the data.
-            Defaults to "".
-        data_source (str, optional): The source of the data. Can be one of
-            ["NCEI", "OMAO"]. Defaults to "".
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
-        is_survey_metadata (bool, optional): Whether or not the file is a
-            metadata file associated with a survey. The files are stored at
-            the survey level, in the `metadata/` folder. Defaults to False.
-        debug (bool, optional): Whether or not to print debug statements.
-            Defaults to False.
-
-    Returns:
-        str: The correctly parsed GCP storage bucket location.
-    """
-
-    assert (
-        (is_metadata and is_survey_metadata is False)
-        or (is_metadata is False and is_survey_metadata)
-        or (is_metadata is False and is_survey_metadata is False)
-    ), (
-        "Please make sure that only one of `is_metadata` and"
-        " `is_survey_metadata` is True. Or you can set both to False."
-    )
-
-    # Creating the correct upload location
-    if is_survey_metadata:
-        gcp_storage_bucket_location = (
-            f"{data_source}/{ship_name}/{survey_name}/metadata/{file_name}"
-        )
-    elif is_metadata:
-        gcp_storage_bucket_location = (
-            f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
-        )
-        # Figure out if its a raw or idx file (belongs in raw folder)
-        if file_type.lower() in config.RAW_DATA_FILE_TYPES:
-            gcp_storage_bucket_location = (
-                gcp_storage_bucket_location + f"raw/{file_name}.json"
-            )
-        elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
-            gcp_storage_bucket_location = (
-                gcp_storage_bucket_location + f"netcdf/{file_name}.json"
-            )
-    else:
-        # Figure out if its a raw or idx file (belongs in raw folder)
-        if file_type.lower() in config.RAW_DATA_FILE_TYPES:
-            gcp_storage_bucket_location = (
-                f"{data_source}/{ship_name}/"
-                f"{survey_name}/{echosounder}/data/raw/{file_name}"
-            )
-        elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
-            gcp_storage_bucket_location = (
-                f"{data_source}/{ship_name}/"
-                f"{survey_name}/{echosounder}/data/netcdf/{file_name}"
-            )
-
-    if debug:
-        logging.debug(
-            (
-                "PARSED GCP_STORAGE_BUCKET_LOCATION: "
-                f"{gcp_storage_bucket_location}"
-            )
-        )
-
-    return gcp_storage_bucket_location
-
-
 def get_netcdf_gcp_location_from_raw_gcp_location(
     gcp_storage_bucket_location: str = "",
 ):
@@ -1811,7 +1727,7 @@ def check_if_netcdf_file_exists_in_gcp(
 
     if gcp_storage_bucket_location != "":
         gcp_storage_bucket_location = (
-            parse_correct_gcp_storage_bucket_location(
+            helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=file_name,
                 file_type="netcdf",
                 survey_name=survey_name,
@@ -1877,16 +1793,18 @@ def upload_file_to_gcp_storage_bucket(
             Defaults to False.
     """
 
-    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        is_metadata=is_metadata,
-        is_survey_metadata=is_survey_metadata,
-        debug=debug,
+    gcp_storage_bucket_location = (
+        helpers.parse_correct_gcp_storage_bucket_location(
+            file_name=file_name,
+            file_type=file_type,
+            ship_name=ship_name,
+            survey_name=survey_name,
+            echosounder=echosounder,
+            data_source=data_source,
+            is_metadata=is_metadata,
+            is_survey_metadata=is_survey_metadata,
+            debug=debug,
+        )
     )
 
     # Check if the file exists in GCP
@@ -2001,7 +1919,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         file_name = raw_file.split(os.sep)[-1]
         print(f"\tUPLOADING RAW FILE {file_name}")
         gcp_storage_bucket_location = (
-            parse_correct_gcp_storage_bucket_location(
+            helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=file_name,
                 file_type="raw",
                 ship_name=ship_name,
@@ -2055,7 +1973,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         file_name = idx_file.split(os.sep)[-1]
         print(f"\tUPLOADING IDX FILE {file_name}")
         gcp_storage_bucket_location = (
-            parse_correct_gcp_storage_bucket_location(
+            helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=file_name,
                 file_type="idx",
                 ship_name=ship_name,
@@ -2109,7 +2027,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         file_name = bot_file.split(os.sep)[-1]
         print(f"\tUPLOADING BOT FILE {file_name}")
         gcp_storage_bucket_location = (
-            parse_correct_gcp_storage_bucket_location(
+            helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=file_name,
                 file_type="bot",
                 ship_name=ship_name,
@@ -2163,7 +2081,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         file_name = netcdf_file.split(os.sep)[-1]
         print(f"\tUPLOADING NETCDF FILE {file_name}")
         gcp_storage_bucket_location = (
-            parse_correct_gcp_storage_bucket_location(
+            helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=file_name,
                 file_type="netcdf",
                 ship_name=ship_name,
@@ -2363,7 +2281,7 @@ if __name__ == "__main__":
     # file_name, file_type, echosounder, survey_name, ship_name = \
     # parse_variables_from_ncei_file_url(url="https://noaa-wcsd-pds.s3.amazonaws.\
     # com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210813-T220732.raw")
-    # print(parse_correct_gcp_storage_bucket_location(file_name=file_name,
+    # print(helpers.parse_correct_gcp_storage_bucket_location(file_name=file_name,
     #                                                 file_type=file_type,
     #                                                 ship_name=ship_name,
     #                                                 survey_name=survey_name,

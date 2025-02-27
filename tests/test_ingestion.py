@@ -4,7 +4,7 @@ import os
 import pytest
 
 from aalibrary import ingestion
-from aalibrary.utils import cloud_utils
+from aalibrary.utils import cloud_utils, helpers
 
 
 class TestNCEIIngestion:
@@ -29,7 +29,7 @@ class TestNCEIIngestion:
             ".".join(self.local_raw_file_path.split(".")[:-1]) + ".idx"
         )
         self.gcp_storage_bucket_location_raw = (
-            ingestion.parse_correct_gcp_storage_bucket_location(
+            helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
@@ -40,7 +40,7 @@ class TestNCEIIngestion:
             )
         )
         self.gcp_storage_bucket_location_idx = (
-            ingestion.parse_correct_gcp_storage_bucket_location(
+            helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=self.file_name_idx,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
