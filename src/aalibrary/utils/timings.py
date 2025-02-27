@@ -8,8 +8,8 @@
 
 import time
 
-from aalibrary import ingestion
-from aalibrary.utils import cloud_utils
+import ingestion
+from utils import cloud_utils
 
 
 def time_ingestion_and_upload_from_ncei(

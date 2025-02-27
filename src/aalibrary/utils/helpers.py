@@ -12,7 +12,7 @@ if __package__ is None or __package__ == "":
     from ingestion import get_file_name_from_url
 else:
     # uses current package visibility
-    from aalibrary.ingestion import get_file_name_from_url
+    from ingestion import get_file_name_from_url
 
 
 # def parse_and_check_file_download_location(file_download_location: str = ""):
