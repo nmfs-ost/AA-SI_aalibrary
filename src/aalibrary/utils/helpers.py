@@ -304,3 +304,19 @@ def parse_correct_gcp_storage_bucket_location(
         )
 
     return gcp_storage_bucket_location
+
+
+def get_netcdf_gcp_location_from_raw_gcp_location(
+    gcp_storage_bucket_location: str = "",
+):
+    """Gets the netcdf location of a raw file within GCP."""
+
+    gcp_storage_bucket_location = gcp_storage_bucket_location.replace(
+        "/raw/", "/netcdf/"
+    )
+    # get rid of file extension and replace with netcdf
+    netcdf_gcp_storage_bucket_location = (
+        ".".join(gcp_storage_bucket_location.split(".")[:-1]) + ".nc"
+    )
+
+    return netcdf_gcp_storage_bucket_location
