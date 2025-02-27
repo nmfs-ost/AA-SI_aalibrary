@@ -1112,6 +1112,7 @@ def download_raw_file(
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         utils.cloud_utils.setup_gcp_storage_objs()
     )
+    s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
 
     # TODO: Check for data_sources
 
