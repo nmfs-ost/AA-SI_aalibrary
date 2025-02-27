@@ -10,8 +10,9 @@ import boto3
 
 from aalibrary.ingestion import check_for_assertion_errors
 from aalibrary.utils import cloud_utils, helpers
-from aalibrary.utils.helpers import get_netcdf_gcp_location_from_raw_gcp_location
-from google.cloud.storage import storage
+from aalibrary.utils.helpers import (
+    get_netcdf_gcp_location_from_raw_gcp_location,
+)
 
 
 def setup_gbq_client_objs(
