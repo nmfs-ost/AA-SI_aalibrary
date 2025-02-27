@@ -180,3 +180,33 @@ def create_omao_file_path_from_variables(
         # )
         # TODO: make sure to check that a raw and idx files both exist.
         raise FileNotFoundError
+
+
+def create_ncei_url_from_variables(
+    file_name: str = "",
+    file_type: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    year: str = "",
+    month: str = "",
+    date: str = "",
+    hours: str = "",
+    minutes: str = "",
+    seconds: str = "",
+):
+    if file_name != "":
+        ncei_url = (
+            "https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/"
+            f"{ship_name}/{survey_name}/{echosounder}/{file_name}"
+        )
+        return ncei_url
+    else:
+        logging.error("COULD NOT FIND FILE GIVEN THE PARAMETERS.")
+        # Here we have to search for the file in s3. Just to see if something
+        # exists.
+        # partial_file_name = (
+        #     f"-D{year}{month}{date}-T{hours}{minutes}{seconds}.raw"
+        # )
+        # TODO: make sure to check that a raw and idx files both exist.
+        raise FileNotFoundError

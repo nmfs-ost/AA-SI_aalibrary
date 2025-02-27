@@ -429,36 +429,6 @@ def download_raw_file_from_azure(
         return
 
 
-def create_ncei_url_from_variables(
-    file_name: str = "",
-    file_type: str = "",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    year: str = "",
-    month: str = "",
-    date: str = "",
-    hours: str = "",
-    minutes: str = "",
-    seconds: str = "",
-):
-    if file_name != "":
-        ncei_url = (
-            "https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/"
-            f"{ship_name}/{survey_name}/{echosounder}/{file_name}"
-        )
-        return ncei_url
-    else:
-        logging.error("COULD NOT FIND FILE GIVEN THE PARAMETERS.")
-        # Here we have to search for the file in s3. Just to see if something
-        # exists.
-        # partial_file_name = (
-        #     f"-D{year}{month}{date}-T{hours}{minutes}{seconds}.raw"
-        # )
-        # TODO: make sure to check that a raw and idx files both exist.
-        raise FileNotFoundError
-
-
 def download_single_file_from_aws(
     s3_bucket: str = "noaa-wcsd-pds",
     file_url: str = "",
@@ -569,7 +539,7 @@ def download_raw_file_from_ncei(
     file_download_location = os.path.normpath(
         os.sep.join([os.path.normpath(file_download_location), file_name])
     )
-    file_ncei_url = create_ncei_url_from_variables(
+    file_ncei_url = utils.helpers.create_ncei_url_from_variables(
         file_name=file_name,
         ship_name=ship_name,
         survey_name=survey_name,
@@ -1019,7 +989,7 @@ def download_raw_file(
     file_download_location = os.sep.join(
         [os.path.normpath(file_download_location), file_name]
     )
-    file_ncei_url = create_ncei_url_from_variables(
+    file_ncei_url = utils.helpers.create_ncei_url_from_variables(
         file_name=file_name,
         ship_name=ship_name,
         survey_name=survey_name,
