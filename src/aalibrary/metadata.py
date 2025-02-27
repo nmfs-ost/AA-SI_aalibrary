@@ -119,7 +119,7 @@ def create_and_upload_metadata_file(
 
     # Upload to GCP
     ingestion.upload_file_to_gcp_storage_bucket(
-        file_name=file_name,
+        file_name=f"{file_name}.json",
         file_type=file_type,
         ship_name=ship_name,
         survey_name=survey_name,
