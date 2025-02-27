@@ -527,27 +527,29 @@ def download_single_file_from_aws(
         raise
 
     # We replace the beginning of common file paths
-    file_url = file_url.replace("https://noaa-wcsd-pds.s3.amazonaws.com/", "")
-    file_url = file_url.replace("s3://noaa-wcsd-pds/", "")
+    file_url = utils.cloud_utils.get_object_key_for_s3(file_url=file_url)
     file_name = get_file_name_from_url(file_url)
 
     # Check if the file exists in s3
-    print(f"s3_bucket.name: {s3_bucket.name}")
-    # TODO: implement file-exists condition
-    # file_exists = utils.cloud_utils.check_if_file_exists_in_s3(
-    #     object_key=file_url,
-    #     s3_resource=s3_resource,
-    #     s3_bucket_name=s3_bucket.name,
-    # )
+    file_exists = utils.cloud_utils.check_if_file_exists_in_s3(
+        object_key=file_url,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket.name,
+    )
 
-    # Finally download the file.
-    try:
-        print(f"DOWNLOADING `{file_name}`")
-        s3_bucket.download_file(file_url, download_location)
-        print(f"DOWNLOADED: `{file_name}` TO `{download_location}`")
-    except Exception as e:
-        logging.error(f"ERROR DOWNLOADING FILE `{file_name}` DUE TO\n{e}")
-        raise
+    if file_exists:
+        # Finally download the file.
+        try:
+            logging.info(f"DOWNLOADING `{file_name}`...")
+            s3_bucket.download_file(file_url, download_location)
+            logging.info(f"DOWNLOADED `{file_name}` TO `{download_location}`")
+        except Exception as e:
+            logging.error(f"ERROR DOWNLOADING FILE `{file_name}` DUE TO\n{e}")
+            raise
+    else:
+        logging.error(
+            f"FILE {file_name} DOES NOT EXIST IN NCEI S3 BUCKET. SKIPPING..."
+        )
 
 
 def download_raw_file_from_ncei(
@@ -609,9 +611,9 @@ def download_raw_file_from_ncei(
         os.makedirs(file_download_location)
 
     # Create vars for use later.
-    file_download_location = os.sep.join(
+    file_download_location = os.path.normpath(os.sep.join(
         [os.path.normpath(file_download_location), file_name]
-    )
+    ))
     file_ncei_url = create_ncei_url_from_variables(
         file_name=file_name,
         ship_name=ship_name,
@@ -665,6 +667,49 @@ def download_raw_file_from_ncei(
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         utils.cloud_utils.setup_gcp_storage_objs()
     )
+    try:
+        s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+    except Exception as e:
+        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        raise
+
+    # Check if the file(s) exist in s3 (NCEI)
+    file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
+        file_name=file_name,
+        file_type="raw",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+    file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+        object_key=file_s3_object_key,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket.name,
+    )
+    idx_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
+        file_name=file_name_idx,
+        file_type="idx",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+    idx_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+        object_key=idx_file_s3_object_key,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket.name,
+    )
+    bot_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
+        file_name=file_name_bot,
+        file_type="bot",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+    bot_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+        object_key=bot_file_s3_object_key,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket.name,
+    )
 
     # Check if the file(s) exists in cache (GCP).
     file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
@@ -679,26 +724,26 @@ def download_raw_file_from_ncei(
 
     # TODO: check to see if you want to download from gcp instead.
 
-    print(f"DOWNLOADING FILE {file_name} FROM NCEI")
-    download_single_file_from_aws(
-        s3_bucket="noaa-wcsd-pds",
-        file_url=file_ncei_url,
-        download_location=file_download_location,
-    )
-    # Force download the idx file.
-    print(f"DOWNLOADING IDX FILE {file_name_idx} FROM NCEI")
-    download_single_file_from_aws(
-        s3_bucket="noaa-wcsd-pds",
-        file_url=file_ncei_idx_url,
-        download_location=file_download_location_idx,
-    )
-    # Force download the bot file.
-    print(f"DOWNLOADING BOT FILE {file_name_bot} FROM NCEI")
-    download_single_file_from_aws(
-        s3_bucket="noaa-wcsd-pds",
-        file_url=file_ncei_bot_url,
-        download_location=file_download_location_bot,
-    )
+    if file_exists_in_ncei:
+        download_single_file_from_aws(
+            s3_bucket="noaa-wcsd-pds",
+            file_url=file_ncei_url,
+            download_location=file_download_location,
+        )
+    if idx_file_exists_in_ncei:
+        # Force download the idx file.
+        download_single_file_from_aws(
+            s3_bucket="noaa-wcsd-pds",
+            file_url=file_ncei_idx_url,
+            download_location=file_download_location_idx,
+        )
+    if bot_file_exists_in_ncei:
+        # Force download the bot file.
+        download_single_file_from_aws(
+            s3_bucket="noaa-wcsd-pds",
+            file_url=file_ncei_bot_url,
+            download_location=file_download_location_bot,
+        )
 
     if upload_to_gcp:
         if file_exists_in_gcp:
@@ -745,7 +790,7 @@ def download_raw_file_from_ncei(
                     f"`{gcp_storage_bucket_location_idx}`"
                 )
             )
-        else:
+        elif idx_file_exists_in_ncei and (not idx_file_exists_in_gcp):
             # Upload idx to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name_idx,
@@ -778,7 +823,7 @@ def download_raw_file_from_ncei(
                     f"`{gcp_storage_bucket_location_bot}`"
                 )
             )
-        else:
+        elif bot_file_exists_in_ncei and (not bot_file_exists_in_gcp):
             # Upload bot to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name_bot,
@@ -1098,6 +1143,43 @@ def download_raw_file(
     bot_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
         bucket=gcp_bucket, file_path=gcp_storage_bucket_location_bot
     )
+    # Check if the file(s) exist in s3 (NCEI)
+    file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
+        file_name=file_name,
+        file_type="raw",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+    file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+        object_key=file_s3_object_key,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket.name,
+    )
+    idx_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
+        file_name=file_name_idx,
+        file_type="idx",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+    idx_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+        object_key=idx_file_s3_object_key,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket.name,
+    )
+    bot_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
+        file_name=file_name_bot,
+        file_type="bot",
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+    bot_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+        object_key=bot_file_s3_object_key,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket.name,
+    )
 
     if file_exists_in_gcp:
         # Inform user if file exists in GCP.
@@ -1164,7 +1246,7 @@ def download_raw_file(
                 debug=debug,
             )
             print("DOWNLOADED.")
-        else:
+        elif idx_file_exists_in_ncei and (not idx_file_exists_in_gcp):
             print(
                 (
                     "CORRESPONDING IDX FILE NOT FOUND IN GCP."
@@ -1219,7 +1301,7 @@ def download_raw_file(
                 debug=debug,
             )
             print("DOWNLOADED.")
-        else:
+        elif bot_file_exists_in_ncei and (not bot_file_exists_in_gcp):
             print(
                 (
                     "CORRESPONDING BOT FILE NOT FOUND IN GCP. TRYING TO "
@@ -1257,7 +1339,7 @@ def download_raw_file(
                 debug=debug,
             )
 
-    else:  # File does not exist in gcp and needs to be downloaded from NCEI
+    elif file_exists_in_ncei and (not file_exists_in_gcp):  # File does not exist in gcp and needs to be downloaded from NCEI
         download_raw_file_from_ncei(
             file_name=file_name,
             file_type=file_type,
@@ -1422,36 +1504,36 @@ def convert_local_raw_to_netcdf(
         os.makedirs(netcdf_file_download_location)
 
     # Make sure the echosounder specified matches the raw file data.
-    if echosounder.lower() == "ek80":
-        assert echopype.convert.is_EK80(raw_file=raw_file_location), (
-            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-        )
-    elif echosounder.lower() == "ek60":
-        assert echopype.convert.is_EK60(raw_file=raw_file_location), (
-            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-        )
-    elif echosounder.lower() == "azfp6":
-        assert echopype.convert.is_AZFP6(raw_file=raw_file_location), (
-            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-        )
-    elif echosounder.lower() == "azfp":
-        assert echopype.convert.is_AZFP(raw_file=raw_file_location), (
-            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-        )
-    elif echosounder.lower() == "ad2cp":
-        assert echopype.convert.is_AD2CP(raw_file=raw_file_location), (
-            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-        )
-    elif echosounder.lower() == "er60":
-        assert echopype.convert.is_ER60(raw_file=raw_file_location), (
-            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-        )
+    # if echosounder.lower() == "ek80":
+    #     assert echopype.convert.is_EK80(raw_file=raw_file_location), (
+    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+    #     )
+    # elif echosounder.lower() == "ek60":
+    #     assert echopype.convert.is_EK60(raw_file=raw_file_location), (
+    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+    #     )
+    # elif echosounder.lower() == "azfp6":
+    #     assert echopype.convert.is_AZFP6(raw_file=raw_file_location), (
+    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+    #     )
+    # elif echosounder.lower() == "azfp":
+    #     assert echopype.convert.is_AZFP(raw_file=raw_file_location), (
+    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+    #     )
+    # elif echosounder.lower() == "ad2cp":
+    #     assert echopype.convert.is_AD2CP(raw_file=raw_file_location), (
+    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+    #     )
+    # elif echosounder.lower() == "er60":
+    #     assert echopype.convert.is_ER60(raw_file=raw_file_location), (
+    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+    #     )
 
     try:
         print("CONVERTING RAW TO NETCDF...")
@@ -1615,6 +1697,7 @@ def convert_raw_to_netcdf(
             ship_name=ship_name,
             survey_name=survey_name,
             echosounder=echosounder,
+            data_source=data_source,
             file_download_location=file_download_location,
             is_metadata=is_metadata,
             debug=debug,
@@ -2287,19 +2370,19 @@ if __name__ == "__main__":
     #     download_directory="./",
     #     file_name="RL2107_EK80_WCSD_EK80-metadata.json",
     # )
-    download_raw_file_from_azure(
-        file_name="1601RL-D20160107-T074016.raw",
-        file_type="raw",
-        ship_name="Reuben_Lasker",
-        survey_name="RL_1601",
-        echosounder="EK_60",
-        data_source="OMAO",
-        file_download_directory=".",
-        config_file_path="./azure_config.ini",
-        is_metadata=False,
-        upload_to_gcp=True,
-        debug=True,
-    )
+    # download_raw_file_from_azure(
+    #     file_name="1601RL-D20160107-T074016.raw",
+    #     file_type="raw",
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL_1601",
+    #     echosounder="EK_60",
+    #     data_source="OMAO",
+    #     file_download_directory=".",
+    #     config_file_path="./azure_config.ini",
+    #     is_metadata=False,
+    #     upload_to_gcp=True,
+    #     debug=True,
+    # )
     # download_specific_file_from_azure(
     #     config_file_path="./azure_config.ini",
     #     container_name="testcontainer",
@@ -2380,12 +2463,18 @@ if __name__ == "__main__":
     #     netcdf_file_download_location="./test_data_dir",
     #     echosounder="EK80",
     # )
-    # convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
-    #                       file_type="raw", ship_name="Reuben_Lasker",
-    #                       survey_name="RL2107", echosounder="EK80",
-    #                       data_source="NCEI", file_download_location="./",
-    #                       gcp_bucket=gcp_bucket, is_metadata=False,
-    #                       debug=False)
+    convert_raw_to_netcdf(
+        file_name="2107RL_CW-D20210916-T165047.raw",
+        file_type="raw",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="NCEI",
+        file_download_location="./",
+        gcp_bucket=gcp_bucket,
+        is_metadata=False,
+        debug=True,
+    )
     # download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
     #                 file_type="nc", ship_name="Reuben_Lasker",
     #                 survey_name="RL2107", echosounder="EK80",
