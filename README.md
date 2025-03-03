@@ -60,6 +60,12 @@ gcloud config set account {ACCOUNT}
 
 Here, `{ACCOUNT}` should be your noaa.gov email. The same one you used to sign-in in the step above.
 
+### Step 1.2 - Set The AA GCP Project As The Active Project For `gcloud`
+
+```bash
+gcloud config set project ggn-nmfs-aa-dev-1 
+```
+
 ### Step 2 - Install Necessary Dependencies Before The `pip install`
 
 We need to install some dependencies, and check two authentication parameters before we install.
