@@ -49,7 +49,7 @@ To securely install this package via pip, use the following:
 Issue the following command, and follow the instructions to login to `gcloud` using your NOAA email. This authentication is necessary if you want to use `aalibrary` with its Google Cloud Platform capabilities.
 
 ```bash
-gcloud auth login
+gcloud auth application-default login
 ```
 
 ### Step 1.1 - Set Your Account As The Active Account For `gcloud`
