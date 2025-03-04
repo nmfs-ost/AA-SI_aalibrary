@@ -496,7 +496,8 @@ def download_raw_file_from_ncei(
 ):
     """ENTRYPOINT FOR END-USERS
     Downloads a raw, idx, and bot file from NCEI. If `upload_to_gcp` is
-    enabled, the downloaded files will also upload to the GCP storage bucket.
+    enabled, the downloaded files will also upload to the GCP storage bucket
+    if they do not exist.
 
     Args:
         file_name (str, optional): The file name (includes extension).
