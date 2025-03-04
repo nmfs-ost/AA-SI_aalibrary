@@ -7,7 +7,6 @@ import pprint
 
 import aalibrary.utils.helpers
 import config
-import ingestion
 import utils
 
 
@@ -77,19 +76,19 @@ class RawFile:
         )
 
         # Create all possible NCEI urls that can exist
-        self.raw_file_ncei_url = ingestion.create_ncei_url_from_variables(
+        self.raw_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.raw_file_name,
             ship_name=self.ship_name,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
-        self.idx_file_ncei_url = ingestion.create_ncei_url_from_variables(
+        self.idx_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.idx_file_name,
             ship_name=self.ship_name,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
-        self.bot_file_ncei_url = ingestion.create_ncei_url_from_variables(
+        self.bot_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.bot_file_name,
             ship_name=self.ship_name,
             survey_name=self.survey_name,
