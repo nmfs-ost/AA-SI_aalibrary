@@ -1419,7 +1419,7 @@ def convert_local_raw_to_netcdf(
     netcdf_file_download_location: str = "",
     echosounder: str = "",
     overwrite: bool = False,
-) -> bool: 
+) -> bool:
     """ENTRYPOINT FOR END-USERS
     Converts a local (on your computer) file from raw into netcdf using
     echopype.
