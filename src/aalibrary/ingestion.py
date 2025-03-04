@@ -1419,7 +1419,7 @@ def convert_local_raw_to_netcdf(
     netcdf_file_download_location: str = "",
     echosounder: str = "",
     overwrite: bool = False,
-) -> bool:
+):
     """ENTRYPOINT FOR END-USERS
     Converts a local (on your computer) file from raw into netcdf using
     echopype.
@@ -1433,10 +1433,6 @@ def convert_local_raw_to_netcdf(
             ["EK80", "EK70"]. Defaults to "".
         overwrite (bool, optional): Whether or not to overwrite the netcdf
             file. Defaults to False.
-    Returns:
-        bool: Whether or not the conversion operation was a success. Use this
-            to create an assert statement, to make sure that the file was
-            converted successfully.
     """
 
     netcdf_file_download_directory = os.sep.join(
@@ -1489,12 +1485,11 @@ def convert_local_raw_to_netcdf(
             save_path=netcdf_file_download_directory, overwrite=overwrite
         )
         print("CONVERTED.")
-        return True
     except Exception as e:
         logging.error(
             f"COULD NOT CONVERT `{raw_file_location}` DUE TO ERROR {e}"
         )
-        return False
+        raise e
 
 
 def convert_raw_to_netcdf(
