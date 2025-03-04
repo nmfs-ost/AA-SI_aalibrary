@@ -1538,6 +1538,13 @@ def convert_raw_to_netcdf(
     """
     # TODO: Implement an 'upload' param default to True.
 
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+        utils.cloud_utils.setup_gcp_storage_objs()
+    )
+    s3_client, s3_resource, s3_bucket = (
+        utils.cloud_utils.create_s3_objs()
+    )
+
     rf = RawFile(
         file_name=file_name,
         file_type=file_type,
@@ -1550,11 +1557,9 @@ def convert_raw_to_netcdf(
         gcp_bucket=gcp_bucket,
         is_metadata=is_metadata,
         debug=debug,
+        s3_resource=s3_resource,
+        s3_bucket_name="noaa-wcsd-pds"
     )
-
-    # TODO: implement check for raw file gcp storage location.
-    # We check if the netcdf exists in GCP
-    # TODO: implement the raw file exists check
 
     # Here we check for a netcdf version of the raw file on GCP
     print("CHECKING FOR NETCDF VERSION ON GCP...")
@@ -1580,9 +1585,9 @@ def convert_raw_to_netcdf(
             )
         )
 
-        # TODO: check to see if file exists in either azure or NCEI.
-
         # Download the raw file.
+        # This function should take care of checking whether the raw file
+        # exists in any of the data sources, and fetching it.
         download_raw_file(
             file_name=rf.file_name,
             file_type=rf.file_type,
@@ -1596,12 +1601,12 @@ def convert_raw_to_netcdf(
         )
 
         # Convert the raw file to netcdf.
-        assert convert_local_raw_to_netcdf(
+        convert_local_raw_to_netcdf(
             raw_file_location=rf.raw_file_download_path,
             netcdf_file_download_location=rf.netcdf_file_download_path,
             echosounder=rf.echosounder,
             overwrite=overwrite,
-        ), f"COULD NOT CONVERT RAW {rf.raw_file_name} TO NETCDF."
+        )
 
         # Upload the netcdf to the correct location for parsing.
         print(f"file_path_netcdf {rf.netcdf_file_download_path}")
