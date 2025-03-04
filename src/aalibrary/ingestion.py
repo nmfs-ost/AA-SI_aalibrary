@@ -1427,8 +1427,8 @@ def convert_local_raw_to_netcdf(
     Args:
         raw_file_location (str, optional): The location of the raw file.
             Defaults to "".
-        netcdf_file_download_directory (str, optional): The location you want to
-            download your netcdf file to. Defaults to "".
+        netcdf_file_download_directory (str, optional): The location you want
+            to download your netcdf file to. Defaults to "".
         echosounder (str, optional): The echosounder used. Can be one of
             ["EK80", "EK70"]. Defaults to "".
         overwrite (bool, optional): Whether or not to overwrite the netcdf
@@ -1541,9 +1541,7 @@ def convert_raw_to_netcdf(
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         utils.cloud_utils.setup_gcp_storage_objs()
     )
-    s3_client, s3_resource, s3_bucket = (
-        utils.cloud_utils.create_s3_objs()
-    )
+    s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
         file_name=file_name,
@@ -1558,7 +1556,7 @@ def convert_raw_to_netcdf(
         is_metadata=is_metadata,
         debug=debug,
         s3_resource=s3_resource,
-        s3_bucket_name="noaa-wcsd-pds"
+        s3_bucket_name="noaa-wcsd-pds",
     )
 
     # Here we check for a netcdf version of the raw file on GCP
