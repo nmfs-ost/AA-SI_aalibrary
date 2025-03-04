@@ -1434,11 +1434,11 @@ def convert_local_raw_to_netcdf(
         overwrite (bool, optional): Whether or not to overwrite the netcdf
             file. Defaults to False.
     Returns:
-        bool: Whether or not the conversion operation was a success. Use this 
+        bool: Whether or not the conversion operation was a success. Use this
             to create an assert statement, to make sure that the file was
             converted successfully.
     """
-    
+
     netcdf_file_download_directory = os.sep.join(
         [os.path.normpath(netcdf_file_download_location)]
     )
