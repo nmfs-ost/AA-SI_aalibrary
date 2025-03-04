@@ -489,7 +489,7 @@ def download_raw_file_from_ncei(
     survey_name: str = "",
     echosounder: str = "",
     data_source: str = "NCEI",
-    file_download_location: str = ".",
+    file_download_directory: str = ".",
     is_metadata: bool = False,
     upload_to_gcp: bool = False,
     debug: bool = False,
@@ -512,7 +512,7 @@ def download_raw_file_from_ncei(
         data_source (str, optional): The source of the file. Necessary due to
             the way the storage bucket is organized. Can be one of
             ["NCEI", "OMAO", "HDD"]. Defaults to "".
-        file_download_location (str, optional): The local file directory you
+        file_download_directory (str, optional): The local file directory you
             want to store your file in. Defaults to current directory.
             Defaults to ".".
         is_metadata (bool, optional): Whether or not the file is a metadata
@@ -524,78 +524,6 @@ def download_raw_file_from_ncei(
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
-
-    # User-error-checking
-    check_for_assertion_errors(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        file_download_location=file_download_location,
-    )
-
-    # Create the download directory (path) if it doesn't exist
-    if not os.path.exists(file_download_location):
-        os.makedirs(file_download_location)
-
-    # Create vars for use later.
-    file_download_location = os.path.normpath(
-        os.sep.join([os.path.normpath(file_download_location), file_name])
-    )
-    file_ncei_url = utils.helpers.create_ncei_url_from_variables(
-        file_name=file_name,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-    )
-    file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
-    file_name_bot = ".".join(file_name.split(".")[:-1]) + ".bot"
-    file_ncei_idx_url = ".".join(file_ncei_url.split(".")[:-1]) + ".idx"
-    file_ncei_bot_url = ".".join(file_ncei_url.split(".")[:-1]) + ".bot"
-    file_download_location_idx = (
-        ".".join(file_download_location.split(".")[:-1]) + ".idx"
-    )
-    file_download_location_bot = (
-        ".".join(file_download_location.split(".")[:-1]) + ".bot"
-    )
-    gcp_storage_bucket_location = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name,
-            file_type=file_type,
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_metadata=is_metadata,
-            debug=debug,
-        )
-    )
-    gcp_storage_bucket_location_idx = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name_idx,
-            file_type="idx",
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_metadata=is_metadata,
-            debug=debug,
-        )
-    )
-    gcp_storage_bucket_location_bot = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name_bot,
-            file_type="bot",
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_metadata=is_metadata,
-            debug=debug,
-        )
-    )
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         utils.cloud_utils.setup_gcp_storage_objs()
     )
@@ -605,84 +533,48 @@ def download_raw_file_from_ncei(
         logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
         raise
 
-    # Check if the file(s) exist in s3 (NCEI)
-    file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
+    rf = RawFile(
         file_name=file_name,
-        file_type="raw",
+        file_type=file_type,
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
-    )
-    file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
-        object_key=file_s3_object_key,
+        data_source=data_source,
+        file_download_directory=file_download_directory,
+        is_metadata=is_metadata,
+        upload_to_gcp=upload_to_gcp,
+        debug=debug,
+        gcp_bucket=gcp_bucket,
         s3_resource=s3_resource,
-        s3_bucket_name=s3_bucket.name,
-    )
-    idx_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
-        file_name=file_name_idx,
-        file_type="idx",
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-    )
-    idx_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
-        object_key=idx_file_s3_object_key,
-        s3_resource=s3_resource,
-        s3_bucket_name=s3_bucket.name,
-    )
-    bot_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
-        file_name=file_name_bot,
-        file_type="bot",
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-    )
-    bot_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
-        object_key=bot_file_s3_object_key,
-        s3_resource=s3_resource,
-        s3_bucket_name=s3_bucket.name,
     )
 
-    # Check if the file(s) exists in cache (GCP).
-    file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
-        bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-    )
-    idx_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
-        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_idx
-    )
-    bot_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
-        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_bot
-    )
-
-    # TODO: check to see if you want to download from gcp instead.
-
-    if file_exists_in_ncei:
+    if rf.raw_file_exists_in_ncei:
         download_single_file_from_aws(
             s3_bucket="noaa-wcsd-pds",
-            file_url=file_ncei_url,
-            download_location=file_download_location,
+            file_url=rf.raw_file_ncei_url,
+            download_location=rf.raw_file_download_path,
         )
-    if idx_file_exists_in_ncei:
+    if rf.idx_file_exists_in_ncei:
         # Force download the idx file.
         download_single_file_from_aws(
             s3_bucket="noaa-wcsd-pds",
-            file_url=file_ncei_idx_url,
-            download_location=file_download_location_idx,
+            file_url=rf.idx_file_ncei_url,
+            download_location=rf.idx_file_download_path,
         )
-    if bot_file_exists_in_ncei:
+    if rf.bot_file_exists_in_ncei:
         # Force download the bot file.
         download_single_file_from_aws(
             s3_bucket="noaa-wcsd-pds",
-            file_url=file_ncei_bot_url,
-            download_location=file_download_location_bot,
+            file_url=rf.bot_file_ncei_url,
+            download_location=rf.bot_file_download_path,
         )
 
     if upload_to_gcp:
-        if file_exists_in_gcp:
+        if rf.raw_file_exists_in_gcp:
             print(
                 (
                     "RAW FILE ALREADY EXISTS IN GCP AT "
-                    f"`{gcp_storage_bucket_location}`"
+                    f"`{rf.raw_gcp_storage_bucket_location}`"
                 )
             )
         else:
@@ -692,93 +584,93 @@ def download_raw_file_from_ncei(
 
             # Upload raw to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
-                file_name=file_name,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=file_download_location,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
-                is_metadata=is_metadata,
-                debug=debug,
+                file_name=rf.file_name,
+                file_type="raw",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
+                echosounder=rf.echosounder,
+                file_location=rf.raw_file_download_path,
+                gcp_bucket=rf.gcp_bucket,
+                data_source=rf.data_source,
+                is_metadata=False,
+                debug=rf.debug,
             )
             # Upload the metadata file as well.
             metadata.create_and_upload_metadata_file(
-                file_name=file_name,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
-                debug=debug,
+                file_name=rf.file_name,
+                file_type="raw",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
+                echosounder=rf.echosounder,
+                data_source=rf.data_source,
+                gcp_bucket=rf.gcp_bucket,
+                debug=rf.debug,
             )
 
-        if idx_file_exists_in_gcp:
+        if rf.idx_file_exists_in_gcp:
             print(
                 (
                     "IDX FILE ALREADY EXISTS IN GCP AT "
-                    f"`{gcp_storage_bucket_location_idx}`"
+                    f"`{rf.idx_gcp_storage_bucket_location}`"
                 )
             )
-        elif idx_file_exists_in_ncei and (not idx_file_exists_in_gcp):
+        elif rf.idx_file_exists_in_ncei and (not rf.idx_file_exists_in_gcp):
             # Upload idx to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
-                file_name=file_name_idx,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
+                file_name=rf.idx_file_name,
+                file_type="idx",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
                 echosounder=echosounder,
-                file_location=file_download_location_idx,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
-                is_metadata=is_metadata,
-                debug=debug,
+                file_location=rf.idx_file_download_path,
+                gcp_bucket=rf.gcp_bucket,
+                data_source=rf.data_source,
+                is_metadata=False,
+                debug=rf.debug,
             )
             # Upload the metadata file as well.
             metadata.create_and_upload_metadata_file(
-                file_name=file_name_idx,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
-                debug=debug,
+                file_name=rf.idx_file_name,
+                file_type="idx",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
+                echosounder=rf.echosounder,
+                data_source=rf.data_source,
+                gcp_bucket=rf.gcp_bucket,
+                debug=rf.debug,
             )
 
-        if bot_file_exists_in_gcp:
+        if rf.bot_file_exists_in_gcp:
             print(
                 (
                     "BOT FILE ALREADY EXISTS IN GCP AT "
-                    f"`{gcp_storage_bucket_location_bot}`"
+                    f"`{rf.bot_gcp_storage_bucket_location}`"
                 )
             )
-        elif bot_file_exists_in_ncei and (not bot_file_exists_in_gcp):
+        elif rf.bot_file_exists_in_ncei and (not rf.bot_file_exists_in_gcp):
             # Upload bot to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
-                file_name=file_name_bot,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=file_download_location_bot,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
-                is_metadata=is_metadata,
-                debug=debug,
+                file_name=rf.bot_file_name,
+                file_type="bot",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
+                echosounder=rf.echosounder,
+                file_location=rf.bot_file_download_path,
+                gcp_bucket=rf.gcp_bucket,
+                data_source=rf.data_source,
+                is_metadata=False,
+                debug=rf.debug,
             )
             # Upload the metadata file as well.
             metadata.create_and_upload_metadata_file(
-                file_name=file_name_bot,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
-                debug=debug,
+                file_name=rf.bot_file_name,
+                file_type="bot",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
+                echosounder=rf.echosounder,
+                data_source=rf.data_source,
+                gcp_bucket=rf.gcp_bucket,
+                debug=rf.debug,
             )
 
         return
