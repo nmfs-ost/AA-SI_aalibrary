@@ -322,12 +322,12 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `file_name` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                file_name="",
+                raw_file_name="",
                 file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_location=self.file_download_location,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -338,12 +338,12 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `file_type` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                file_name=self.file_name,
+                raw_file_name=self.file_name,
                 file_type="",
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_location=self.file_download_location,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -354,12 +354,12 @@ class TestNCEIIngestionUserErrors:
         when there is an invalid `file_type` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                file_name=self.file_name,
+                raw_file_name=self.file_name,
                 file_type="abc",
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_location=self.file_download_location,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -370,12 +370,12 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `ship_name` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                file_name=self.file_name,
+                raw_file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name="",
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_location=self.file_download_location,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -386,12 +386,12 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `survey_name` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                file_name=self.file_name,
+                raw_file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name="",
                 echosounder=self.echosounder,
-                file_download_location=self.file_download_location,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -402,12 +402,12 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `echosounder` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                file_name=self.file_name,
+                raw_file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder="",
-                file_download_location=self.file_download_location,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -418,12 +418,12 @@ class TestNCEIIngestionUserErrors:
         when there is an invalid `echosounder` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                file_name=self.file_name,
+                raw_file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder="abc",
-                file_download_location=self.file_download_location,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -434,12 +434,12 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `file_download_location` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                file_name=self.file_name,
+                raw_file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_location="",
+                file_download_directory="",
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -454,12 +454,12 @@ class TestNCEIIngestionUserErrors:
                 os.utime("file.temp", None)
 
             ingestion.download_netcdf_file(
-                file_name=self.file_name,
+                raw_file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_location="file.temp",
+                file_download_directory="file.temp",
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
