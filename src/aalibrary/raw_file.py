@@ -245,6 +245,10 @@ class RawFile:
                 "Please provide a valid ship name "
                 "(Title_Case_With_Underscores_As_Spaces)."
             )
+            assert " " not in self.ship_name, (
+                "Please provide a valid ship name "
+                "(Title_Case_With_Underscores_As_Spaces)."
+            )
         if "survey_name" in self.__dict__:
             assert (
                 self.survey_name != ""
