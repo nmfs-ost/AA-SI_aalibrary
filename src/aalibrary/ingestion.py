@@ -1578,7 +1578,7 @@ def convert_raw_to_netcdf(
             debug=rf.debug,
         )
     else:
-        print(
+        logging.info(
             (
                 f"FILE `{rf.raw_file_name}` DOES NOT EXIST AS NETCDF."
                 " DOWNLOADING/CONVERTING/UPLOADING RAW..."
