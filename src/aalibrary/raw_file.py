@@ -61,6 +61,7 @@ class RawFile:
             self.s3_client, self.s3_resource, self.s3_bucket = (
                 utils.cloud_utils.create_s3_objs()
             )
+            self.s3_bucket_name = "noaa-wcsd-pds"
 
         # Create file names for all other files that can exist
         self.raw_file_name = self.file_name
