@@ -1416,7 +1416,7 @@ def download_netcdf_file(
 
 def convert_local_raw_to_netcdf(
     raw_file_location: str = "",
-    netcdf_file_download_location: str = "",
+    netcdf_file_download_directory: str = "",
     echosounder: str = "",
     overwrite: bool = False,
 ):
@@ -1427,7 +1427,7 @@ def convert_local_raw_to_netcdf(
     Args:
         raw_file_location (str, optional): The location of the raw file.
             Defaults to "".
-        netcdf_file_download_location (str, optional): The location you want to
+        netcdf_file_download_directory (str, optional): The location you want to
             download your netcdf file to. Defaults to "".
         echosounder (str, optional): The echosounder used. Can be one of
             ["EK80", "EK70"]. Defaults to "".
@@ -1436,7 +1436,7 @@ def convert_local_raw_to_netcdf(
     """
 
     netcdf_file_download_directory = os.sep.join(
-        [os.path.normpath(netcdf_file_download_location)]
+        [os.path.normpath(netcdf_file_download_directory)]
     )
     print(f"netcdf_file_download_directory{netcdf_file_download_directory}")
 
@@ -1603,7 +1603,7 @@ def convert_raw_to_netcdf(
         # Convert the raw file to netcdf.
         convert_local_raw_to_netcdf(
             raw_file_location=rf.raw_file_download_path,
-            netcdf_file_download_location=rf.netcdf_file_download_path,
+            netcdf_file_download_directory=rf.netcdf_file_download_path,
             echosounder=rf.echosounder,
             overwrite=overwrite,
         )
