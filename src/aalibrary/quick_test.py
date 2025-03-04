@@ -55,7 +55,7 @@ def start():
     survey_name = "RL2107"
     echosounder = "EK80"
     data_source = "TEST"
-    file_download_location = "."
+    file_download_directory = "."
 
     try:
         print("NCEI DOWNLOAD TEST...", end="")
@@ -66,7 +66,7 @@ def start():
             survey_name=survey_name,
             echosounder=echosounder,
             data_source=data_source,
-            file_download_location=file_download_location,
+            file_download_directory=file_download_directory,
             is_metadata=False,
             debug=False,
         )
