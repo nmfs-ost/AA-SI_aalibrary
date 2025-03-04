@@ -940,7 +940,7 @@ def download_raw_file(
             survey_name=rf.survey_name,
             echosounder=rf.echosounder,
             data_source=rf.data_source,
-            file_download_location=rf.file_download_directory,
+            file_download_directory=rf.file_download_directory,
             is_metadata=rf.is_metadata,
             upload_to_gcp=True,
             debug=rf.debug,
