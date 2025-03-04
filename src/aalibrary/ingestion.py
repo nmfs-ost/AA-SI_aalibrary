@@ -23,12 +23,14 @@ if __package__ is None or __package__ == "":
     import config
     from utils import cloud_utils, helpers
     import metadata
+    from raw_file import RawFile
 else:
     # uses current package visibility
     from aalibrary import utils
     from aalibrary import config
     from aalibrary.utils import cloud_utils, helpers
     from aalibrary import metadata
+    from aalibrary.raw_file import RawFile
 
 
 def get_data_lake_directory_client(config_file_path: str = ""):
@@ -1497,7 +1499,7 @@ def convert_raw_to_netcdf(
     survey_name: str = "",
     echosounder: str = "",
     data_source: str = "",
-    file_download_location: str = "",
+    file_download_directory: str = "",
     overwrite: bool = False,
     gcp_bucket: storage.Client.bucket = None,
     is_metadata: bool = False,
@@ -1521,7 +1523,7 @@ def convert_raw_to_netcdf(
         data_source (str, optional): The source of the file. Necessary due to
             the way the storage bucket is organized. Can be one of
             ["NCEI", "OMAO", "HDD"]. Defaults to "".
-        file_download_location (str, optional): The local file path you want
+        file_download_directory (str, optional): The local directory you want
             to store your file in. Defaults to "".
         overwrite (bool, optional): Whether or not to overwrite the netcdf
             file. Defaults to False.
@@ -1536,33 +1538,36 @@ def convert_raw_to_netcdf(
     """
     # TODO: Implement an 'upload' param default to True.
 
-    # User-error-checking
-    check_for_assertion_errors(
+    rf = RawFile(
         file_name=file_name,
         file_type=file_type,
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
         data_source=data_source,
-        file_download_location=file_download_location,
+        file_download_directory=file_download_directory,
+        overwrite=overwrite,
+        gcp_bucket=gcp_bucket,
+        is_metadata=is_metadata,
+        debug=debug,
     )
 
-    file_download_location = os.path.normpath(file_download_location)
-    print(f"file_download_location {file_download_location}")
-    # Create the download directory (path) if it doesn't exist
-    if not os.path.exists(file_download_location):
-        os.makedirs(file_download_location)
+    # file_download_location = os.path.normpath(file_download_location)
+    # print(f"file_download_location {file_download_location}")
+    # # Create the download directory (path) if it doesn't exist
+    # if not os.path.exists(file_download_location):
+    #     os.makedirs(file_download_location)
 
     # Create vars for use later.
     # file_download_location = \
     # os.sep.join([os.path.normpath(file_download_location), file_name])
-    file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
-    # needs to be a directory...
-    file_download_location_netcdf = file_download_location
-    file_path_netcdf = os.sep.join(
-        [os.path.normpath(file_download_location_netcdf), file_name_netcdf]
-    )
-    print(f" file_path_netcdf {file_path_netcdf}")
+    # file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
+    # # needs to be a directory...
+    # file_download_location_netcdf = file_download_location
+    # file_path_netcdf = os.sep.join(
+    #     [os.path.normpath(file_download_location_netcdf), file_name_netcdf]
+    # )
+    # print(f" file_path_netcdf {file_path_netcdf}")
     # TODO: implement check for raw file gcp storage location.
     # gcp_storage_bucket_location_raw = (
     #     helpers.parse_correct_gcp_storage_bucket_location(
@@ -1576,18 +1581,18 @@ def convert_raw_to_netcdf(
     #         debug=debug,
     #     )
     # )
-    gcp_storage_bucket_location_netcdf = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name_netcdf,
-            file_type="netcdf",
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_metadata=is_metadata,
-            debug=debug,
-        )
-    )
+    # gcp_storage_bucket_location_netcdf = (
+    #     helpers.parse_correct_gcp_storage_bucket_location(
+    #         file_name=file_name_netcdf,
+    #         file_type="netcdf",
+    #         ship_name=ship_name,
+    #         survey_name=survey_name,
+    #         echosounder=echosounder,
+    #         data_source=data_source,
+    #         is_metadata=is_metadata,
+    #         debug=debug,
+    #     )
+    # )
     # We check if the netcdf exists in GCP
     # TODO: implement the raw file exists check
     # raw_file_exists_in_gcp_storage = cloud_utils.check_if_file_exists_in_gcp(
@@ -1596,35 +1601,35 @@ def convert_raw_to_netcdf(
 
     # Here we check for a netcdf version of the raw file on GCP
     print("CHECKING FOR NETCDF VERSION ON GCP...")
-    netcdf_exists_in_gcp = cloud_utils.check_if_netcdf_file_exists_in_gcp(
-        file_name=file_name_netcdf,
-        file_type="netcdf",
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
-        gcp_bucket=gcp_bucket,
-        debug=debug,
-    )
-    if netcdf_exists_in_gcp:
+    # netcdf_exists_in_gcp = cloud_utils.check_if_netcdf_file_exists_in_gcp(
+    #     file_name=file_name_netcdf,
+    #     file_type="netcdf",
+    #     ship_name=ship_name,
+    #     survey_name=survey_name,
+    #     echosounder=echosounder,
+    #     data_source=data_source,
+    #     gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
+    #     gcp_bucket=gcp_bucket,
+    #     debug=debug,
+    # )
+    if rf.netcdf_file_exists_in_gcp:
         # Inform the user if a netcdf version exists in cache.
         download_netcdf_file(
-            file_name=file_name_netcdf,
+            file_name=rf.netcdf_file_name,
             file_type="netcdf",
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            file_download_location=file_download_location,
+            ship_name=rf.ship_name,
+            survey_name=rf.survey_name,
+            echosounder=rf.echosounder,
+            data_source=rf.data_source,
+            file_download_location=rf.file_download_directory,
             gcp_bucket=gcp_bucket,
-            is_metadata=False,
-            debug=debug,
+            is_metadata=rf.is_metadata,
+            debug=rf.debug,
         )
     else:
         print(
             (
-                f"FILE `{file_name}` DOES NOT EXIST AS NETCDF."
+                f"FILE `{rf.raw_file_name}` DOES NOT EXIST AS NETCDF."
                 " DOWNLOADING/CONVERTING/UPLOADING RAW..."
             )
         )
@@ -1633,51 +1638,49 @@ def convert_raw_to_netcdf(
 
         # Download the raw file.
         download_raw_file(
-            file_name=file_name,
-            file_type=file_type,
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            file_download_location=file_download_location,
-            is_metadata=is_metadata,
-            debug=debug,
+            file_name=rf.file_name,
+            file_type=rf.file_type,
+            ship_name=rf.ship_name,
+            survey_name=rf.survey_name,
+            echosounder=rf.echosounder,
+            data_source=rf.data_source,
+            file_download_location=rf.file_download_directory,
+            is_metadata=rf.is_metadata,
+            debug=rf.debug,
         )
 
         # Convert the raw file to netcdf.
         convert_local_raw_to_netcdf(
-            raw_file_location=os.sep.join(
-                [os.path.normpath(file_download_location), file_name]
-            ),
-            netcdf_file_download_location=file_download_location_netcdf,
-            echosounder=echosounder,
+            raw_file_location=rf.raw_file_download_path,
+            netcdf_file_download_location=rf.netcdf_file_download_path,
+            echosounder=rf.echosounder,
             overwrite=overwrite,
         )
 
         # Upload the netcdf to the correct location for parsing.
-        print(f"file_path_netcdf {file_path_netcdf}")
+        print(f"file_path_netcdf {rf.netcdf_file_download_path}")
         upload_file_to_gcp_storage_bucket(
-            file_name=file_name_netcdf,
+            file_name=rf.netcdf_file_name,
             file_type="netcdf",
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            file_location=file_path_netcdf,
+            ship_name=rf.ship_name,
+            survey_name=rf.survey_name,
+            echosounder=rf.echosounder,
+            file_location=rf.netcdf_file_download_path,
             gcp_bucket=gcp_bucket,
-            data_source=data_source,
+            data_source=rf.data_source,
             is_metadata=False,
-            debug=debug,
+            debug=rf.debug,
         )
         # Upload the metadata file associated with this
         metadata.create_and_upload_metadata_file(
-            file_name=file_name_netcdf,
+            file_name=rf.netcdf_file_name,
             file_type="netcdf",
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
+            ship_name=rf.ship_name,
+            survey_name=rf.survey_name,
+            echosounder=rf.echosounder,
+            data_source=rf.data_source,
             gcp_bucket=gcp_bucket,
-            netcdf_local_file_location=file_path_netcdf,
+            netcdf_local_file_location=rf.netcdf_file_download_path,
             debug=debug,
         )
 
