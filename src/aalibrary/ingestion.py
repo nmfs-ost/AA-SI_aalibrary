@@ -1557,66 +1557,12 @@ def convert_raw_to_netcdf(
         debug=debug,
     )
 
-    # file_download_location = os.path.normpath(file_download_location)
-    # print(f"file_download_location {file_download_location}")
-    # # Create the download directory (path) if it doesn't exist
-    # if not os.path.exists(file_download_location):
-    #     os.makedirs(file_download_location)
-
-    # Create vars for use later.
-    # file_download_location = \
-    # os.sep.join([os.path.normpath(file_download_location), file_name])
-    # file_name_netcdf = ".".join(file_name.split(".")[:-1]) + ".nc"
-    # # needs to be a directory...
-    # file_download_location_netcdf = file_download_location
-    # file_path_netcdf = os.sep.join(
-    #     [os.path.normpath(file_download_location_netcdf), file_name_netcdf]
-    # )
-    # print(f" file_path_netcdf {file_path_netcdf}")
     # TODO: implement check for raw file gcp storage location.
-    # gcp_storage_bucket_location_raw = (
-    #     helpers.parse_correct_gcp_storage_bucket_location(
-    #         file_name=file_name,
-    #         file_type=file_type,
-    #         ship_name=ship_name,
-    #         survey_name=survey_name,
-    #         echosounder=echosounder,
-    #         data_source=data_source,
-    #         is_metadata=is_metadata,
-    #         debug=debug,
-    #     )
-    # )
-    # gcp_storage_bucket_location_netcdf = (
-    #     helpers.parse_correct_gcp_storage_bucket_location(
-    #         file_name=file_name_netcdf,
-    #         file_type="netcdf",
-    #         ship_name=ship_name,
-    #         survey_name=survey_name,
-    #         echosounder=echosounder,
-    #         data_source=data_source,
-    #         is_metadata=is_metadata,
-    #         debug=debug,
-    #     )
-    # )
     # We check if the netcdf exists in GCP
     # TODO: implement the raw file exists check
-    # raw_file_exists_in_gcp_storage = cloud_utils.check_if_file_exists_in_gcp(
-    #     bucket=gcp_bucket, file_path=gcp_storage_bucket_location_raw
-    # )
 
     # Here we check for a netcdf version of the raw file on GCP
     print("CHECKING FOR NETCDF VERSION ON GCP...")
-    # netcdf_exists_in_gcp = cloud_utils.check_if_netcdf_file_exists_in_gcp(
-    #     file_name=file_name_netcdf,
-    #     file_type="netcdf",
-    #     ship_name=ship_name,
-    #     survey_name=survey_name,
-    #     echosounder=echosounder,
-    #     data_source=data_source,
-    #     gcp_storage_bucket_location=gcp_storage_bucket_location_netcdf,
-    #     gcp_bucket=gcp_bucket,
-    #     debug=debug,
-    # )
     if rf.netcdf_file_exists_in_gcp:
         # Inform the user if a netcdf version exists in cache.
         download_netcdf_file(
@@ -1767,7 +1713,6 @@ def upload_file_to_gcp_storage_bucket(
                     f" `{gcp_storage_bucket_location}`..."
                 )
             )
-            print(f"file_location {file_location}")
             # Upload to storage bucket.
             utils.cloud_utils.upload_file_to_gcp_bucket(
                 bucket=gcp_bucket,
