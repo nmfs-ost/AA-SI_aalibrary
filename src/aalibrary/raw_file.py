@@ -52,6 +52,16 @@ class RawFile:
     def _create_vars_for_use_later(self):
         """Creates vars that will add value and can be utilized later."""
 
+        # Create connection objects if they dont exist
+        if "gcp_bucket" not in self.__dict__:
+            self.gcp_stor_client, self.gcp_bucket_name, self.gcp_bucket = (
+                utils.cloud_utils.setup_gcp_storage_objs()
+            )
+        if "s3_resource" not in self.__dict__:
+            self.s3_client, self.s3_resource, self.s3_bucket = (
+                utils.cloud_utils.create_s3_objs()
+            )
+
         # Create file names for all other files that can exist
         self.raw_file_name = self.file_name
         self.file_name_wo_extension = self.file_name.split(".")[0]
