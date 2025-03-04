@@ -62,6 +62,13 @@ class RawFile:
     def _create_vars_for_use_later(self):
         """Creates vars that will add value and can be utilized later."""
 
+        # Take care of an empty file_download_directory and treat it like the
+        # cwd.
+        if (self.__dict__["file_download_directory"] == "") or (
+            "file_download_directory" not in self.__dict__
+        ):
+            self.file_download_directory = "."
+
         # Create connection objects if they dont exist
         self.s3_bucket_name = "noaa-wcsd-pds"
         if "gcp_bucket" not in self.__dict__:
