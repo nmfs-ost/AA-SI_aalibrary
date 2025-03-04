@@ -5,9 +5,15 @@ import logging
 import os
 import pprint
 
-import aalibrary.utils.helpers
-import config
-import utils
+# For pytests-sake
+if __package__ is None or __package__ == "":
+    # uses current directory visibility
+    import utils
+    import config
+else:
+    # uses current package visibility
+    from aalibrary import utils
+    from aalibrary import config
 
 
 class RawFile:
@@ -29,7 +35,8 @@ class RawFile:
             self.file_download_directory = (
                 os.path.normpath(self.file_download_directory) + os.sep
             )
-            print("normalized", self.file_download_directory)
+            if self.debug:
+                logging.debug("normalized", self.file_download_directory)
 
         # Convert locations into directories as needed.
         if (
@@ -40,7 +47,10 @@ class RawFile:
             self.file_download_directory = (
                 os.path.dirname(self.file_download_directory) + os.sep
             )
-            print("converted to directory", self.file_download_directory)
+            if self.debug:
+                logging.debug(
+                    "converted to directory", self.file_download_directory
+                )
 
     def _create_download_directories_if_not_exists(self):
         """Create the download directory (path) if it doesn't exist."""
@@ -53,6 +63,7 @@ class RawFile:
         """Creates vars that will add value and can be utilized later."""
 
         # Create connection objects if they dont exist
+        self.s3_bucket_name = "noaa-wcsd-pds"
         if "gcp_bucket" not in self.__dict__:
             self.gcp_stor_client, self.gcp_bucket_name, self.gcp_bucket = (
                 utils.cloud_utils.setup_gcp_storage_objs()
@@ -61,7 +72,6 @@ class RawFile:
             self.s3_client, self.s3_resource, self.s3_bucket = (
                 utils.cloud_utils.create_s3_objs()
             )
-            self.s3_bucket_name = "noaa-wcsd-pds"
 
         # Create file names for all other files that can exist
         self.raw_file_name = self.file_name
@@ -110,7 +120,7 @@ class RawFile:
 
         # Create all GCP Storage bucket locations for each possible file
         self.raw_gcp_storage_bucket_location = (
-            aalibrary.utils.helpers.parse_correct_gcp_storage_bucket_location(
+            utils.helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=self.raw_file_name,
                 file_type="raw",
                 ship_name=self.ship_name,
@@ -122,7 +132,7 @@ class RawFile:
             )
         )
         self.idx_gcp_storage_bucket_location = (
-            aalibrary.utils.helpers.parse_correct_gcp_storage_bucket_location(
+            utils.helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=self.idx_file_name,
                 file_type="idx",
                 ship_name=self.ship_name,
@@ -134,7 +144,7 @@ class RawFile:
             )
         )
         self.bot_gcp_storage_bucket_location = (
-            aalibrary.utils.helpers.parse_correct_gcp_storage_bucket_location(
+            utils.helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=self.bot_file_name,
                 file_type="bot",
                 ship_name=self.ship_name,
@@ -146,7 +156,7 @@ class RawFile:
             )
         )
         self.netcdf_gcp_storage_bucket_location = (
-            aalibrary.utils.helpers.parse_correct_gcp_storage_bucket_location(
+            utils.helpers.parse_correct_gcp_storage_bucket_location(
                 file_name=self.netcdf_file_name,
                 file_type="netcdf",
                 ship_name=self.ship_name,
@@ -233,7 +243,6 @@ class RawFile:
             )
         )
 
-        # TODO: create vars for omao data lake locations.
         # TODO: create vars for omao data lake existence.
 
     def _check_for_assertion_errors(self):
