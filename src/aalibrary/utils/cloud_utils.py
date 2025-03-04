@@ -8,7 +8,6 @@ from botocore import UNSIGNED
 from botocore.client import Config
 import boto3
 
-from aalibrary.ingestion import check_for_assertion_errors
 from aalibrary.utils import cloud_utils, helpers
 from aalibrary.utils.helpers import (
     get_netcdf_gcp_location_from_raw_gcp_location,
@@ -385,17 +384,6 @@ def check_if_netcdf_file_exists_in_gcp(
     gcp_bucket: storage.Bucket = None,
     debug: bool = False,
 ):
-
-    check_for_assertion_errors(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        gcp_storage_bucket_location=gcp_storage_bucket_location,
-        gcp_bucket=gcp_bucket,
-    )
 
     if gcp_storage_bucket_location != "":
         gcp_storage_bucket_location = (
