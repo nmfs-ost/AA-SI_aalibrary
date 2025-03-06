@@ -1109,7 +1109,6 @@ def download_netcdf_file(
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
-        data_source=data_source,
         file_download_directory=file_download_directory,
         gcp_bucket=gcp_bucket,
         is_metadata=is_metadata,
