@@ -1065,7 +1065,6 @@ def download_netcdf_file(
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
-    data_source: str = "",
     file_download_directory: str = "",
     gcp_bucket: storage.Client.bucket = None,
     is_metadata: bool = False,
@@ -1090,9 +1089,6 @@ def download_netcdf_file(
             Defaults to "".
         echosounder (str, optional): The echosounder used to gather the data.
             Defaults to "".
-        data_source (str, optional): The source of the file. Necessary due to
-            the way the storage bucket is organized. Can be one of
-            ["NCEI", "OMAO", "HDD"]. Defaults to "".
         file_download_directory (str, optional): The local directory you want
             to store your file in. Defaults to "".
         gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
