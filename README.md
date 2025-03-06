@@ -49,6 +49,7 @@ To securely install this package via pip, use the following:
 Issue the following command, and follow the instructions to login to `gcloud` using your NOAA email. This authentication is necessary if you want to use `aalibrary` with its Google Cloud Platform capabilities.
 
 ```bash
+gcloud auth login
 gcloud auth application-default login
 ```
 
@@ -128,7 +129,8 @@ convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
                       survey_name="RL2107",
                       echosounder="EK80",
                       data_source="NCEI",
-                      file_download_location="./",
+                      file_download_directory="./",
+                      overwrite=False,
                       gcp_bucket=gcp_bucket,
                       is_metadata=False,
                       debug=False)
@@ -148,7 +150,7 @@ download_raw_file_from_ncei(file_name="2107RL_CW-D20210813-T220732.raw",
                             survey_name="RL2107",
                             echosounder="EK80",
                             data_source="NCEI",
-                            file_download_location=".",
+                            file_download_directory=".",
                             is_metadata=False,
                             upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
                             debug=False)
@@ -165,9 +167,8 @@ download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                   survey_name="RL2107",
                   echosounder="EK80",
                   data_source="NCEI",
-                  file_download_location=".",
+                  file_download_directory=".",
                   is_metadata=False,
-                  upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
                   debug=False)
 ```
 
@@ -222,7 +223,7 @@ gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_stora
 
 # This function takes care of downloading the netcdf.
 download_netcdf_file(
-                file_name="2107RL_CW-D20210813-T220732.raw",
+                raw_file_name="2107RL_CW-D20210813-T220732.raw",
                 file_type="netcdf",
                 ship_name="Reuben_Lasker",
                 survey_name="RL2107",
@@ -252,7 +253,7 @@ for file_name in file_names:
     survey_name="RL2107",
     echosounder="EK80",
     data_source="NCEI",
-    file_download_location=".",
+    file_download_directory=".",
     is_metadata=False,
     upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
     debug=False)
