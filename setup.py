@@ -50,6 +50,7 @@ setup_info = dict(
     # Requirements
     install_requires=[
         "echopype>=0.9.0",
+        "zarr==2.18.3"
         "boto3>=1.35.29",
         "Flask>=3.0.3",
         "gcsfs",
