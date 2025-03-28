@@ -186,7 +186,7 @@ download_raw_file_from_azure(
     file_type="raw",
     ship_name="Reuben_Lasker",
     survey_name="RL1601",
-    echosounder="EK_60",
+    echosounder="EK60",
     data_source="OMAO",
     file_download_directory=".",
     config_file_path="./azure_config.ini",
