@@ -15,7 +15,6 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
 RUN pip install --no-cache-dir google-cloud-storage google-cloud-bigquery google-cloud-logging virtualenv
 
 
-
 # Clean up
 RUN rm -rf /var/lib/apt/lists/*
 
@@ -34,6 +33,7 @@ RUN /my-venv/bin/pip install aalibrary@git+https://github.com/nmfs-ost/AA-SI_aal
 # Add script to handle login and account configuration
 COPY gcloud_login.sh /usr/local/bin/gcloud_login.sh
 RUN chmod +x /usr/local/bin/gcloud_login.sh
+RUN ./usr/local/bin/gcloud_login.sh
 
 # Test entrypoint to run quick_test
 COPY test_entrypoint.py /usr/local/bin/test_entrypoint.py
