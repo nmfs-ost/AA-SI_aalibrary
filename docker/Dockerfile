@@ -5,16 +5,16 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get upgrade -y && apt-get clean
 
 # Install dependencies for gcloud SDK and virtualenv
-RUN apt-get install -y apt-transport-https ca-certificates gnupg sudo python3-virtualenv
+RUN apt-get install -y apt-transport-https ca-certificates gnupg sudo python3-virtualenv curl git
 
-# Add the Google Cloud SDK repository
-RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
 
-# Import the Google Cloud public key
-RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | tee /usr/share/keyrings/cloud.google.gpg
 
-# Install the Google Cloud SDK
-RUN apt-get update && apt-get install -y google-cloud-sdk
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-cli -y
+
+# Install Python client libraries for Google Cloud
+RUN pip install --no-cache-dir google-cloud-storage google-cloud-bigquery google-cloud-logging virtualenv
+
+
 
 # Clean up
 RUN rm -rf /var/lib/apt/lists/*
