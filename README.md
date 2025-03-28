@@ -172,7 +172,7 @@ download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                   debug=False)
 ```
 
-### Downloading A Raw File From Azure Data Lake
+### Downloading A Raw File From Azure Data Lake (OMAO)
 
 Use the following code if you would like to download a file from the Azure Data Lake. The code requires a `config.ini` file.
 
@@ -185,7 +185,7 @@ download_raw_file_from_azure(
     file_name="1601RL-D20160107-T074016.raw",
     file_type="raw",
     ship_name="Reuben_Lasker",
-    survey_name="RL_1601",
+    survey_name="RL1601",
     echosounder="EK_60",
     data_source="OMAO",
     file_download_directory=".",
