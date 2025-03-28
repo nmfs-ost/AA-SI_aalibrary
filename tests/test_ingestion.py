@@ -138,8 +138,10 @@ class TestNCEIIngestion:
         assert (
             self.gcp_storage_bucket_location_raw
             == f"TEST/Reuben_Lasker/RL2107/EK80/data/raw/{self.file_name}"
-        ), ("Incorrectly parsed GCP location: "
-            f"`{self.gcp_storage_bucket_location_raw}`")
+        ), (
+            "Incorrectly parsed GCP location: "
+            f"`{self.gcp_storage_bucket_location_raw}`"
+        )
 
     def teardown_class(self):
         """Tears-down any temporary files, variables, or anything that was used
@@ -643,3 +645,114 @@ class TestNCEIIngestionUserErrors:
         """Tears-down any temporary files, variables, or anything that was used
         for testing."""
         os.remove("file.temp")
+
+
+class TestOMAOIngestion:
+    """A class which tests various OMAO ingestion functionality of the API."""
+
+    def setup_class(self):
+        """Used for setting up the class."""
+        self.file_name = "1601RL-D20160107-T074016.raw"
+        self.file_name_idx = "1601RL-D20160107-T074016.idx"
+        self.file_name_bot = "1601RL-D20160107-T074016.bot"
+        self.file_type = "raw"
+        self.ship_name = "Reuben_Lasker"
+        self.survey_name = "RL1601"
+        self.echosounder = "EK60"
+        self.data_source = "OMAO"
+        self.config_file_path = "./azure_config.ini"
+        self.file_download_location = "."
+        self.is_metadata = False
+        self.upload_to_gcp = True
+
+        self.local_raw_file_path = os.sep.join(
+            [self.file_download_location, self.file_name]
+        )
+        self.local_idx_file_path = (
+            ".".join(self.local_raw_file_path.split(".")[:-1]) + ".idx"
+        )
+        self.local_bot_file_path = (
+            ".".join(self.local_raw_file_path.split(".")[:-1]) + ".bot"
+        )
+        self.gcp_storage_bucket_location_raw = (
+            helpers.parse_correct_gcp_storage_bucket_location(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                is_metadata=self.is_metadata,
+            )
+        )
+        self.gcp_storage_bucket_location_idx = (
+            helpers.parse_correct_gcp_storage_bucket_location(
+                file_name=self.file_name_idx,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                is_metadata=self.is_metadata,
+            )
+        )
+        self.gcp_storage_bucket_location_bot = (
+            helpers.parse_correct_gcp_storage_bucket_location(
+                file_name=self.file_name_bot,
+                file_type=self.file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                is_metadata=self.is_metadata,
+            )
+        )
+
+        # set up storage objects
+        _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
+        self.s3_client, self.s3_resource, self.s3_bucket = (
+            cloud_utils.create_s3_objs()
+        )
+
+    def test_download_raw_file_from_azure(self):
+        """Tests downloading the raw and supporting files from Azure Data
+        Lake."""
+        # Delete locally if it exists
+        if os.path.exists(self.local_raw_file_path):
+            os.remove(self.local_raw_file_path)
+        if os.path.exists(self.local_idx_file_path):
+            os.remove(self.local_idx_file_path)
+        if os.path.exists(self.local_bot_file_path):
+            os.remove(self.local_bot_file_path)
+
+        ingestion.download_raw_file_from_azure(
+            file_name=self.file_name,
+            file_type=self.file_type,
+            ship_name=self.ship_name,
+            survey_name=self.survey_name,
+            echosounder=self.echosounder,
+            data_source=self.data_source,
+            file_download_directory=self.file_download_location,
+            config_file_path=self.config_file_path,
+            is_metadata=self.is_metadata,
+            upload_to_gcp=self.upload_to_gcp,
+            debug=False,
+        )
+
+        # assert that both raw and idx files exist after they have been
+        # downloaded.
+        assert (
+            os.path.exists(self.local_raw_file_path)
+            and os.path.exists(self.local_idx_file_path)
+            and os.path.exists(self.local_bot_file_path)
+        ), "Raw or Idx or Bot file has not been downloaded locally."
+
+    def teardown_class(self):
+        """Tears-down any temporary files, variables, or anything that was used
+        for testing."""
+        if os.path.exists(self.local_raw_file_path):
+            os.remove(self.local_raw_file_path)
+        if os.path.exists(self.local_idx_file_path):
+            os.remove(self.local_idx_file_path)
+        if os.path.exists(self.local_bot_file_path):
+            os.remove(self.local_bot_file_path)
