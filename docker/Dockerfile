@@ -1,8 +1,5 @@
 FROM python:3.12-slim
 
-# Set non-interactive mode to prevent user prompts during install
-ENV DEBIAN_FRONTEND=noninteractive
-
 # Update package lists and install dependencies in one go
 RUN apt-get update && apt-get install -y \
     apt-transport-https \
@@ -39,12 +36,10 @@ RUN pip install git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
 # Set working directory for scripts
 WORKDIR /app
 
-# Copy necessary scripts and give execution permissions
-COPY gcloud_login.sh /app/gcloud_login.sh
-RUN chmod +x /app/gcloud_login.sh
+# Copy all .sh and .py files from the host to the container
+COPY *.sh *.py /app/  
+RUN chmod +x /app/google-cloud-login.sh
 
-# Copy test script
-COPY test_entrypoint.py /app/test_entrypoint.py
 
 # Set default command to enter bash shell
 CMD [ "bash" ]
