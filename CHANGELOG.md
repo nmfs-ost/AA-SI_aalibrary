@@ -5,13 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0]
+
+### Added
+
+- Test for omao download.
+- RawFile object is now used throughout the code.
+- File for testing the RawFile object.
+- Check for underscores in ship_name attribute.
+- Added assert statements for checking the echosounder specified in the function, versus the one found in the raw file.
+- Project settings instructions to `README`.
+- Function to get object key for an s3 object.
+- Netcdf metadata to the metadata file that gets uploaded when converting and uploading a netcdf.
+- Implemented overwrite functionality when converting raw to netcdf.
+- Script for linux install.
+- Update(s) to `README`.
+- Comment(s).
+
+### Fixed
+
+- Code is now linted using PyLint.
+- Code is now formatted using Black formatter.
+- Import errors for pytest fixed.
+- `convert_raw_to_netcdf` now uploads a metadata file as well.
+- Changed version of zarr so aalibrary will work with python 3.10.
+- The RawFile object takes care of an empty `file_download_directory` param.
+- Removed `data_source` param from `download_netcdf_file` as it is not needed.
+- Logging message when uploading metadata file is now more clear.
+- Issues with application default login on workstations fixed.
+- Added smaller file to ncei test for faster testing.
+- `convert_local_raw_to_netcdf` now has a try/except clause.
+- Various other errors.
+
+### Changed
+
+- Made installation instructions a little bit more clear.
+- Moved util functions to appropriate places within codebase.
+- Major changes in download logic for raw, idx, and bot files, based on their availability.
+
 ## [0.2.3]
 
 ### Added
 
 - Import hierarchy, so that both `utils.cloud_utils` and `aalibrary.utils.cloud_utils` work
 - Python & numpy version to the metadata files
-- Download directory (or path) is now created if it already doesnt exist.
+- Download directory (or path) is now created if it already doesn't exist.
 - File for checking and automatically testing installations of aalibrary - code setup
 - Install_requires options for dependencies
 - `setup.py` file
@@ -72,7 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependency issues
 - Needed hatchling dependency to fully implement dynamic dependencies
 - A problem with incorrect gcp location
-- Typing change since boto3 doesnt know how to type correctly
+- Typing change since boto3 doesn't know how to type correctly
 - Import errors
 - Incorrect parsing of netcdf file name
 - Issue with file type
