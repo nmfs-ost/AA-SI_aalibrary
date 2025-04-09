@@ -275,6 +275,7 @@ class RawFile:
                 "Please provide a valid ship name "
                 "(Title_Case_With_Underscores_As_Spaces)."
             )
+            # TODO: "b." Bigelow; rule to remove the "."
         if "survey_name" in self.__dict__:
             assert (
                 self.survey_name != ""
