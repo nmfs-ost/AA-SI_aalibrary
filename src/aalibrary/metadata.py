@@ -48,6 +48,7 @@ def create_metadata_json(
             get_curr_user_email_cmd, capture_output=True, text=True
         ).stdout
     email = email.replace("\n", "")
+    # TODO: replace json with a pandas DataFrame.
     metadata_json = {
         "DATE_CREATED": datetime.now(timezone.utc).strftime(
             "%Y-%m-%d %H:%M:%S.%f"
@@ -137,11 +138,22 @@ def create_and_upload_metadata_file(
     return
 
 
-def update_metadata_file(): ...
+def upload_metadata_df_to_bigquery():
+    """Takes a metadata dataframe of a file, and uploads it to the
+    `aalibrary_file_metadata` database table."""
+    ...
 
 
-def get_metadata_in_columnar_format():
-    """Retrieves the metadata associated with all objects in GCP in columnar
+def upload_ncei_metadata_df_to_bigquery():
+    """Takes the metadata obtained from a survey on NCEI, and uploads it to the
+    `ncei_cruise_metadata` database table in bigquery. Also handles for extra
+    database entries that are needed, such as uploading to the 
+    `ncei_instrument_metadata` when necessary."""
+    ...
+
+
+def get_metadata_in_df_format():
+    """Retrieves the metadata associated with all objects in GCP in DataFrame
     format."""
     # TODO:
     ...
