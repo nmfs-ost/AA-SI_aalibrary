@@ -8,6 +8,7 @@ from botocore import UNSIGNED
 from botocore.client import Config
 import boto3
 
+from aalibrary.raw_file import RawFile
 from aalibrary.utils import cloud_utils, helpers
 from aalibrary.utils.helpers import (
     get_netcdf_gcp_location_from_raw_gcp_location,
@@ -407,3 +408,55 @@ def check_if_netcdf_file_exists_in_gcp(
     return cloud_utils.check_if_file_exists_in_gcp(
         bucket=gcp_bucket, file_path=netcdf_gcp_storage_bucket_location
     )
+
+
+def check_existence_of_supplemental_files(
+    file_name: str = "",
+    file_type: str = "raw",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    debug: bool = False,
+) -> RawFile:
+    """Checks the existence of supplemental files (idx, bot, etc.) for a raw
+    files. Will check for existence in all data sources.
+
+    Args:
+        file_name (str, optional): The file name (includes extension).
+            Defaults to "".
+        file_type (str, optional): The file type (do not include the dot ".").
+            Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey.
+            Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults
+            to "".
+        echosounder (str, optional): The echosounder used to gather the data.
+            Defaults to "".
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+
+    Returns:
+        RawFile: Returns a RawFile object, existence can be accessed as a
+            boolean via the variable within.
+            Ex. rf.idx_file_exists_in_ncei
+    """
+
+    # Create connection vars
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
+    s3_client, s3_resource, s3_bucket = create_s3_objs()
+
+    # Create the RawFile object.
+    rf = RawFile(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        debug=debug,
+        gcp_bucket=gcp_bucket,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_stor_client=gcp_stor_client,
+        s3_resource=s3_resource,
+    )
+
+    return rf
