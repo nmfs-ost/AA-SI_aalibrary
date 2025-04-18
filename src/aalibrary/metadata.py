@@ -54,7 +54,7 @@ def create_metadata_json(
         ),
         "UPLOADED_BY": email,
         "ECHOPYPE_VERSION": echopype.__version__,
-        "PYTHON_VERSION": sys.version,
+        "PYTHON_VERSION": sys.version.split(' ')[0],
         "NUMPY_VERSION": np.version.version,
         # maybe just add in echopype's reqs.
         # pip lock file - for current environment as
