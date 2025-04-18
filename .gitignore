@@ -9,7 +9,7 @@
 # For python files
 **/__pycache__/**
 **/.pytest_cache__/**
-
+**/.pytest_cache/**
 
 # For package distribution files
 dist/
