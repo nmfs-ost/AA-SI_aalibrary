@@ -147,7 +147,7 @@ def upload_metadata_df_to_bigquery():
 def upload_ncei_metadata_df_to_bigquery():
     """Takes the metadata obtained from a survey on NCEI, and uploads it to the
     `ncei_cruise_metadata` database table in bigquery. Also handles for extra
-    database entries that are needed, such as uploading to the 
+    database entries that are needed, such as uploading to the
     `ncei_instrument_metadata` when necessary."""
     ...
 
