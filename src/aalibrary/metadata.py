@@ -1,10 +1,8 @@
 """This file contains functions that have to do with metadata."""
 
-import os
 import sys
 from datetime import datetime, timezone
 import subprocess
-import json
 import logging
 import platform
 
@@ -153,9 +151,6 @@ def create_and_upload_metadata_file(
         project_id="ggn-nmfs-aa-dev-1",
         if_exists="append",
     )
-
-    # Remove temp metadata file.
-    os.remove(f"./{file_name}.json")
 
     return
 
