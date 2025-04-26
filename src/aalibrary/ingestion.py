@@ -354,7 +354,7 @@ def download_raw_file_from_azure(
                 debug=debug,
             )
             # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=file_name,
                 file_type=file_type,
                 ship_name=ship_name,
@@ -387,7 +387,7 @@ def download_raw_file_from_azure(
                 debug=debug,
             )
             # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=file_name_idx,
                 file_type=file_type,
                 ship_name=ship_name,
@@ -420,7 +420,7 @@ def download_raw_file_from_azure(
                 debug=debug,
             )
             # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=file_name_bot,
                 file_type=file_type,
                 ship_name=ship_name,
@@ -597,7 +597,7 @@ def download_raw_file_from_ncei(
                 debug=rf.debug,
             )
             # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=rf.file_name,
                 file_type="raw",
                 ship_name=rf.ship_name,
@@ -630,7 +630,7 @@ def download_raw_file_from_ncei(
                 debug=rf.debug,
             )
             # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=rf.idx_file_name,
                 file_type="idx",
                 ship_name=rf.ship_name,
@@ -663,7 +663,7 @@ def download_raw_file_from_ncei(
                 debug=rf.debug,
             )
             # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=rf.bot_file_name,
                 file_type="bot",
                 ship_name=rf.ship_name,
@@ -990,7 +990,7 @@ def download_raw_file(
             debug=rf.debug,
         )
         # Upload the metadata file as well.
-        metadata.create_and_upload_metadata_file(
+        metadata.create_and_upload_metadata_df(
             file_name=rf.idx_file_name,
             file_type="idx",
             ship_name=rf.ship_name,
@@ -1045,7 +1045,7 @@ def download_raw_file(
             debug=rf.debug,
         )
         # Upload the metadata file as well.
-        metadata.create_and_upload_metadata_file(
+        metadata.create_and_upload_metadata_df(
             file_name=rf.bot_file_name,
             file_type="bot",
             ship_name=rf.ship_name,
@@ -1357,7 +1357,7 @@ def convert_raw_to_netcdf(
             debug=rf.debug,
         )
         # Upload the metadata file associated with this
-        metadata.create_and_upload_metadata_file(
+        metadata.create_and_upload_metadata_df(
             file_name=rf.netcdf_file_name,
             file_type="netcdf",
             ship_name=rf.ship_name,
@@ -1574,7 +1574,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=file_name,
                 file_type="raw",
                 ship_name=ship_name,
@@ -1628,7 +1628,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=file_name,
                 file_type="idx",
                 ship_name=ship_name,
@@ -1682,7 +1682,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=file_name,
                 file_type="bot",
                 ship_name=ship_name,
@@ -1736,7 +1736,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            metadata.create_and_upload_metadata_file(
+            metadata.create_and_upload_metadata_df(
                 file_name=file_name,
                 file_type="netcdf",
                 ship_name=ship_name,

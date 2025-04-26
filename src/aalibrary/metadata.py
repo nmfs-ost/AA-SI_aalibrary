@@ -86,7 +86,7 @@ def create_metadata_json(
     return aalibrary_metadata_df
 
 
-def create_and_upload_metadata_file(
+def create_and_upload_metadata_df(
     file_name: str = "",
     file_type: str = "",
     ship_name: str = "",
@@ -186,8 +186,8 @@ if __name__ == "__main__":
     #     survey_name="RL2107",
     #     debug=True,
     # )
-    create_and_upload_metadata_file(
-        file_name="2107RL_CW-D20210813-T220732.raw",
+    create_and_upload_metadata_df(
+        file_name="TEST",
         file_type="raw",
         ship_name="Reuben_Lasker",
         survey_name="RL2107",
