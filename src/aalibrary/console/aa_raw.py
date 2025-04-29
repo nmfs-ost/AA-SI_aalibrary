@@ -1,6 +1,7 @@
 from aalibrary.ingestion import download_raw_file_from_azure
 import argparse
 import sys
+from pathlib import Path
 
 def print_help():
     help_text = """
@@ -68,6 +69,10 @@ def main():
         upload_to_gcp=args.upload_to_gcp,
         debug=args.debug,
     )
+    # THis is the output that may be piped elswhere.
+    downloaded_raw_file_path = Path(args.file_download_directory) / args.file_name
+    print(downloaded_raw_file_path)
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
