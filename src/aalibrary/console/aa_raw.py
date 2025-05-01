@@ -1,4 +1,4 @@
-from aalibrary.ingestion import download_raw_file_from_azure
+from aalibrary.ingestion import download_raw_file_from_ncei
 import argparse
 import sys
 from pathlib import Path
@@ -49,14 +49,13 @@ def main():
     parser.add_argument("--echosounder", required=True, help="Type of echosounder.")
     parser.add_argument("--data_source", required=True, help="Source of the data.")
     parser.add_argument("--file_download_directory", required=True, help="Directory to download the file.")
-    parser.add_argument("--config_file_path", required=True, help="Path to the Azure configuration file.")
     parser.add_argument("--is_metadata", action="store_true", help="Flag to indicate if the file is metadata.")
     parser.add_argument("--upload_to_gcp", action="store_true", help="Flag to upload the file to GCP.")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode.")
 
     args = parser.parse_args()
 
-    download_raw_file_from_azure(
+    download_raw_file_from_ncei(
         file_name=args.file_name,
         file_type=args.file_type,
         ship_name=args.ship_name,
@@ -64,7 +63,6 @@ def main():
         echosounder=args.echosounder,
         data_source=args.data_source,
         file_download_directory=args.file_download_directory,
-        config_file_path=args.config_file_path,
         is_metadata=args.is_metadata,
         upload_to_gcp=args.upload_to_gcp,
         debug=args.debug,
