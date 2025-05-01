@@ -460,3 +460,12 @@ def check_existence_of_supplemental_files(
     )
 
     return rf
+
+
+if __name__ == "__main__":
+    s3_client, s3_resource, s3_bucket = create_s3_objs()
+    all_objs = list_all_objects_in_s3_bucket_location(
+        prefix="data/raw/Reuben_Lasker/RL2107/metadata", bucket=s3_bucket
+    )
+
+    print(all_objs)
