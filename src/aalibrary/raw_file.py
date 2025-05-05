@@ -174,7 +174,44 @@ class RawFile:
                 debug=self.debug,
             )
         )
-        # TODO: Add storage locations for OMAO Azure data lake.
+
+        # Create all OMAO storage locations for each file.
+        self.raw_omao_file_path = (
+            utils.helpers.create_omao_file_path_from_variables(
+                self.raw_file_name,
+                file_type="raw",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+            )
+        )
+        self.idx_omao_file_path = (
+            utils.helpers.create_omao_file_path_from_variables(
+                file_name=self.idx_file_name,
+                file_type="idx",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+            )
+        )
+        self.bot_omao_file_path = (
+            utils.helpers.create_omao_file_path_from_variables(
+                file_name=self.bot_file_name,
+                file_type="bot",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+            )
+        )
+        self.netcdf_omao_file_path = (
+            utils.helpers.create_omao_file_path_from_variables(
+                file_name=self.netcdf_file_name,
+                file_type="netcdf",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+            )
+        )
 
         # Create object keys for NCEI
         self.raw_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
