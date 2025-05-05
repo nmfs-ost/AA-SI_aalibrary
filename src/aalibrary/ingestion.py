@@ -202,138 +202,70 @@ def download_raw_file_from_azure(
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
+    # Create gcp bucket objects
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+        utils.cloud_utils.setup_gcp_storage_objs()
+    )
+    try:
+        s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+    except Exception as e:
+        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        raise
 
-    # User-error-checking
-    check_for_assertion_errors(
+    rf = RawFile(
         file_name=file_name,
         file_type=file_type,
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
         data_source=data_source,
-        file_download_location=file_download_directory,
+        file_download_directory=file_download_directory,
+        is_metadata=is_metadata,
+        upload_to_gcp=upload_to_gcp,
+        debug=debug,
+        gcp_bucket=gcp_bucket,
+        s3_resource=s3_resource,
     )
 
-    # Create the download directory (path) if it doesn't exist
-    if not os.path.exists(file_download_directory):
-        os.makedirs(file_download_directory)
-
-    # Create vars for use later.
+    # Location of temporary file in sandbox environment.
     # https://contracttest4.blob.core.windows.net/testcontainer/Reuben_Lasker/RL_1601/EK_60/1601RL-D20160107-T074016.bot
-    file_azure_file_path = utils.helpers.create_omao_file_path_from_variables(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-    )
-
-    file_name_idx = ".".join(file_name.split(".")[:-1]) + ".idx"
-    file_name_bot = ".".join(file_name.split(".")[:-1]) + ".bot"
-    file_azure_idx_file_path = (
-        ".".join(file_azure_file_path.split(".")[:-1]) + ".idx"
-    )
-    file_azure_bot_file_path = (
-        ".".join(file_azure_file_path.split(".")[:-1]) + ".bot"
-    )
-    file_download_location = os.sep.join(
-        [os.path.normpath(file_download_directory), file_name]
-    )
-    file_download_location_idx = (
-        ".".join(file_download_location.split(".")[:-1]) + ".idx"
-    )
-    file_download_location_bot = (
-        ".".join(file_download_location.split(".")[:-1]) + ".bot"
-    )
-    gcp_storage_bucket_location = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name,
-            file_type=file_type,
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_metadata=is_metadata,
-            debug=debug,
-        )
-    )
-    gcp_storage_bucket_location_idx = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name_idx,
-            file_type="idx",
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_metadata=is_metadata,
-            debug=debug,
-        )
-    )
-    gcp_storage_bucket_location_bot = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name_bot,
-            file_type="bot",
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_metadata=is_metadata,
-            debug=debug,
-        )
-    )
-
-    # Create gcp bucket objects
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        utils.cloud_utils.setup_gcp_storage_objs()
-    )
 
     # Create Azure Directory Client
     azure_datalake_directory_client = get_data_lake_directory_client(
         config_file_path=config_file_path
     )
 
-    # Check if the file(s) exists in cache (GCP).
-    file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
-        bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-    )
-    idx_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
-        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_idx
-    )
-    bot_file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
-        bucket=gcp_bucket, file_path=gcp_storage_bucket_location_bot
-    )
-
     # TODO: check to see if you want to download from gcp instead.
 
-    print(f"DOWNLOADING FILE {file_name} FROM OMAO")
+    print(f"DOWNLOADING FILE {rf.raw_file_name} FROM OMAO")
     download_file_from_azure_directory(
         directory_client=azure_datalake_directory_client,
-        download_directory=file_download_directory,
-        file_path=file_azure_file_path,
+        download_directory=rf.file_download_directory,
+        file_path=rf.raw_omao_file_path,
     )
 
     # Force download the idx file.
-    print(f"DOWNLOADING IDX FILE {file_name_idx} FROM OMAO")
+    print(f"DOWNLOADING IDX FILE {rf.idx_file_name} FROM OMAO")
     download_file_from_azure_directory(
         directory_client=azure_datalake_directory_client,
-        download_directory=file_download_directory,
-        file_path=file_azure_idx_file_path,
+        download_directory=rf.file_download_directory,
+        file_path=rf.idx_omao_file_path,
     )
 
     # Force download the bot file.
-    print(f"DOWNLOADING BOT FILE {file_name_bot} FROM OMAO")
+    print(f"DOWNLOADING BOT FILE {rf.bot_file_name} FROM OMAO")
     download_file_from_azure_directory(
         directory_client=azure_datalake_directory_client,
-        download_directory=file_download_directory,
-        file_path=file_azure_bot_file_path,
+        download_directory=rf.file_download_directory,
+        file_path=rf.bot_omao_file_path,
     )
 
     if upload_to_gcp:
-        if file_exists_in_gcp:
+        if rf.raw_file_exists_in_gcp:
             print(
                 (
                     "RAW FILE ALREADY EXISTS IN GCP AT "
-                    f"`{gcp_storage_bucket_location}`"
+                    f"`{rf.raw_gcp_storage_bucket_location}`"
                 )
             )
         else:
@@ -347,7 +279,7 @@ def download_raw_file_from_azure(
                 ship_name=ship_name,
                 survey_name=survey_name,
                 echosounder=echosounder,
-                file_location=file_download_location,
+                file_location=rf.raw_file_download_path,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=is_metadata,
@@ -355,79 +287,51 @@ def download_raw_file_from_azure(
             )
             # Upload the metadata file as well.
             metadata.create_and_upload_metadata_df(
-                file_name=file_name,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
+                rf=rf,
                 debug=debug,
             )
 
-        if idx_file_exists_in_gcp:
+        if rf.idx_file_exists_in_gcp:
             print(
                 (
                     "IDX FILE ALREADY EXISTS IN GCP AT "
-                    f"`{gcp_storage_bucket_location_idx}`"
+                    f"`{rf.idx_gcp_storage_bucket_location}`"
                 )
             )
         else:
             # Upload idx to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
-                file_name=file_name_idx,
+                file_name=rf.idx_file_name,
                 file_type=file_type,
                 ship_name=ship_name,
                 survey_name=survey_name,
                 echosounder=echosounder,
-                file_location=file_download_location_idx,
+                file_location=rf.idx_file_download_path,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=is_metadata,
                 debug=debug,
             )
-            # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_df(
-                file_name=file_name_idx,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
-                debug=debug,
-            )
 
-        if bot_file_exists_in_gcp:
+        if rf.bot_file_exists_in_gcp:
             print(
                 (
                     "BOT FILE ALREADY EXISTS IN GCP AT"
-                    f" `{gcp_storage_bucket_location_bot}`"
+                    f" `{rf.bot_gcp_storage_bucket_location}`"
                 )
             )
         else:
             # Upload bot to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
-                file_name=file_name_bot,
+                file_name=rf.bot_file_name,
                 file_type=file_type,
                 ship_name=ship_name,
                 survey_name=survey_name,
                 echosounder=echosounder,
-                file_location=file_download_location_bot,
+                file_location=rf.bot_file_download_path,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=is_metadata,
-                debug=debug,
-            )
-            # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_df(
-                file_name=file_name_bot,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
                 debug=debug,
             )
 
@@ -598,13 +502,7 @@ def download_raw_file_from_ncei(
             )
             # Upload the metadata file as well.
             metadata.create_and_upload_metadata_df(
-                file_name=rf.file_name,
-                file_type="raw",
-                ship_name=rf.ship_name,
-                survey_name=rf.survey_name,
-                echosounder=rf.echosounder,
-                data_source=rf.data_source,
-                gcp_bucket=rf.gcp_bucket,
+                rf=rf,
                 debug=rf.debug,
             )
 
@@ -629,17 +527,6 @@ def download_raw_file_from_ncei(
                 is_metadata=False,
                 debug=rf.debug,
             )
-            # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_df(
-                file_name=rf.idx_file_name,
-                file_type="idx",
-                ship_name=rf.ship_name,
-                survey_name=rf.survey_name,
-                echosounder=rf.echosounder,
-                data_source=rf.data_source,
-                gcp_bucket=rf.gcp_bucket,
-                debug=rf.debug,
-            )
 
         if rf.bot_file_exists_in_gcp:
             print(
@@ -660,17 +547,6 @@ def download_raw_file_from_ncei(
                 gcp_bucket=rf.gcp_bucket,
                 data_source=rf.data_source,
                 is_metadata=False,
-                debug=rf.debug,
-            )
-            # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_df(
-                file_name=rf.bot_file_name,
-                file_type="bot",
-                ship_name=rf.ship_name,
-                survey_name=rf.survey_name,
-                echosounder=rf.echosounder,
-                data_source=rf.data_source,
-                gcp_bucket=rf.gcp_bucket,
                 debug=rf.debug,
             )
 
@@ -989,17 +865,6 @@ def download_raw_file(
             is_metadata=False,
             debug=rf.debug,
         )
-        # Upload the metadata file as well.
-        metadata.create_and_upload_metadata_df(
-            file_name=rf.idx_file_name,
-            file_type="idx",
-            ship_name=rf.ship_name,
-            survey_name=rf.survey_name,
-            echosounder=rf.echosounder,
-            data_source=rf.data_source,
-            gcp_bucket=rf.gcp_bucket,
-            debug=rf.debug,
-        )
 
     # Checking to make sure the bot exists in GCP...
     if rf.bot_file_exists_in_gcp:
@@ -1042,17 +907,6 @@ def download_raw_file(
             gcp_bucket=rf.gcp_bucket,
             data_source=rf.data_source,
             is_metadata=False,
-            debug=rf.debug,
-        )
-        # Upload the metadata file as well.
-        metadata.create_and_upload_metadata_df(
-            file_name=rf.bot_file_name,
-            file_type="bot",
-            ship_name=rf.ship_name,
-            survey_name=rf.survey_name,
-            echosounder=rf.echosounder,
-            data_source=rf.data_source,
-            gcp_bucket=rf.gcp_bucket,
             debug=rf.debug,
         )
 
@@ -1357,7 +1211,7 @@ def convert_raw_to_netcdf(
             debug=rf.debug,
         )
         # Upload the metadata file associated with this
-        metadata.create_and_upload_metadata_df(
+        metadata.create_and_upload_metadata_df_for_netcdf(
             file_name=rf.netcdf_file_name,
             file_type="netcdf",
             ship_name=rf.ship_name,
@@ -1574,16 +1428,17 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            metadata.create_and_upload_metadata_df(
-                file_name=file_name,
-                file_type="raw",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
-                debug=debug,
-            )
+            # TODO: create custom object for raw files that are local.
+            # metadata.create_and_upload_metadata_df(
+            #     file_name=file_name,
+            #     file_type="raw",
+            #     ship_name=ship_name,
+            #     survey_name=survey_name,
+            #     echosounder=echosounder,
+            #     data_source=data_source,
+            #     gcp_bucket=gcp_bucket,
+            #     debug=debug,
+            # )
             raw_upload_count += 1
     print(f"{raw_upload_count} RAW FILES UPLOADED.")
 
@@ -1626,16 +1481,6 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=False,
-                debug=debug,
-            )
-            metadata.create_and_upload_metadata_df(
-                file_name=file_name,
-                file_type="idx",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
                 debug=debug,
             )
             idx_upload_count += 1
@@ -1682,16 +1527,6 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            metadata.create_and_upload_metadata_df(
-                file_name=file_name,
-                file_type="bot",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
-                debug=debug,
-            )
             bot_upload_count += 1
     print(f"{bot_upload_count} BOT FILES UPLOADED.")
 
@@ -1736,7 +1571,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            metadata.create_and_upload_metadata_df(
+            metadata.create_and_upload_metadata_df_for_netcdf(
                 file_name=file_name,
                 file_type="netcdf",
                 ship_name=ship_name,
