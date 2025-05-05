@@ -5,6 +5,9 @@ import logging
 import os
 import pprint
 
+from google import storage
+import boto3
+
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
@@ -18,6 +21,19 @@ else:
 
 class RawFile:
     """A class used to represent a raw file, from given parameters."""
+
+    file_name: str = ""
+    file_type: str = ""
+    ship_name: str = ""
+    survey_name: str = ""
+    echosounder: str = ""
+    data_source: str = ""
+    file_download_directory: str = ""
+    is_metadata: bool = False
+    upload_to_gcp: bool = False
+    debug: bool = False
+    gcp_bucket: storage.Client.bucket = None
+    s3_resource: boto3.resource = None
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
