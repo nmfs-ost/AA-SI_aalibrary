@@ -815,7 +815,7 @@ def check_for_assertion_errors(**kwargs):
     if "data_lake_directory_client" in kwargs:
         assert kwargs["data_lake_directory_client"] is not None, (
             f"The data lake directory client cannot be a"
-            f" {type(kwargs["data_lake_directory_client"])} object. It needs "
+            f" {type(kwargs['data_lake_directory_client'])} object. It needs "
             "to be of the type `DataLakeDirectoryClient`."
         )
 
