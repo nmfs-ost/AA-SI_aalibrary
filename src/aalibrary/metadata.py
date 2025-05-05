@@ -73,8 +73,6 @@ def create_metadata_json(
         # maybe just add in echopype's reqs.
         # pip lock file - for current environment
         "NCEI_CRUISE_ID": rf.survey_name,
-        # TODO: add from rf object. `self.raw_file_s3_object_key` and
-        # `self.gcp_uri`
         "NCEI_URI": rf.raw_file_s3_object_key,
         "GCP_URI": rf.raw_gcp_storage_bucket_location,
     }
