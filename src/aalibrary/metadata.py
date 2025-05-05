@@ -8,7 +8,6 @@ import platform
 import boto3
 import json
 
-from google.cloud import storage
 import numpy as np
 import pandas as pd
 
@@ -18,11 +17,15 @@ import echopype
 if __package__ is None or __package__ == "":
     # uses current directory visibility
     import utils
+
     # from utils import nc_reader
     from utils.cloud_utils import list_all_objects_in_s3_bucket_location
+    from raw_file import RawFile
 else:
     # uses current package visibility
     from aalibrary import utils
+    from aalibrary.raw_file import RawFile
+
     # from aalibrary.utils import nc_reader
     from aalibrary.utils.cloud_utils import (
         list_all_objects_in_s3_bucket_location,
@@ -30,21 +33,14 @@ else:
 
 
 def create_metadata_json(
-    file_name: str = "",
-    survey_name: str = "",
-    netcdf_local_file_location: str = "",
+    rf: RawFile = None,
     debug: bool = False,
 ) -> pd.DataFrame:
     """Creates a JSON object containing metadata for the current user.
 
     Args:
-        file_name (str, optional): The file name (includes extension).
-            Defaults to "".
-        survey_name (str, optional): The survey name/identifier.
-            Defaults to "".
-        netcdf_local_file_location (str, optional): The local file path for the
-            netcdf that is to be uploaded. Necessary for extracting headers
-            from the netcdf file. Defaults to "".
+        rf (RawFile, optional): The RawFile object associated with this file.
+            Defaults to None.
         debug (bool, optional): Whether or not to print out the metadata json.
             Defaults to False.
 
@@ -66,7 +62,7 @@ def create_metadata_json(
     email = email.replace("\n", "")
 
     metadata_json = {
-        "FILE_NAME": file_name,
+        "FILE_NAME": rf.raw_file_name,
         "DATE_CREATED": datetime.now(timezone.utc).strftime(
             "%Y-%m-%d %H:%M:%S"
         ),
@@ -76,7 +72,11 @@ def create_metadata_json(
         "NUMPY_VERSION": np.version.version,
         # maybe just add in echopype's reqs.
         # pip lock file - for current environment
-        "NCEI_CRUISE_ID": survey_name,
+        "NCEI_CRUISE_ID": rf.survey_name,
+        # TODO: add from rf object. `self.raw_file_s3_object_key` and
+        # `self.gcp_uri`
+        "NCEI_URI": rf.raw_file_s3_object_key,
+        "GCP_URI": rf.raw_gcp_storage_bucket_location,
     }
 
     aalibrary_metadata_df = pd.json_normalize(metadata_json)
@@ -93,47 +93,22 @@ def create_metadata_json(
 
 
 def create_and_upload_metadata_df(
-    file_name: str = "",
-    file_type: str = "",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    data_source: str = "",
-    gcp_bucket: storage.Bucket = None,
-    netcdf_local_file_location: str = "",
+    rf: RawFile = None,
     debug: bool = False,
 ):
     """Creates a metadata file with appropriate information. Then uploads it
     to the correct table in GCP.
 
     Args:
-        file_name (str, optional): The file name (includes extension).
-            Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
-            Defaults to "".
-        ship_name (str, optional): The ship name associated with this survey.
-            Defaults to "".
-        survey_name (str, optional): The survey name/identifier.
-            Defaults to "".
-        echosounder (str, optional): The echosounder used to gather the data.
-            Defaults to "".
-        data_source (str, optional): The source of the file. Necessary due to
-            the way the storage bucket is organized. Can be one of
-            ["NCEI", "OMAO", "HDD"]. Defaults to "".
-        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
-            used to download the file. Defaults to None.
-        netcdf_local_file_location (str, optional): The local file path for the
-            netcdf that is to be uploaded. Necessary for extracting headers
-            from the netcdf file. Defaults to "".
+        rf (RawFile, optional): The RawFile object associated with this file.
+            Defaults to None.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
 
     # Create the metadata file to be uploaded.
     metadata_df = create_metadata_json(
-        file_name=file_name,
-        survey_name=survey_name,
-        netcdf_local_file_location=netcdf_local_file_location,
+        rf=rf,
         debug=debug,
     )
     # TODO: take care of netcdf files, possibly upload to another table with\
@@ -161,12 +136,12 @@ def create_and_upload_metadata_df(
     return
 
 
-def upload_metadata_df_to_bigquery():
-    """Takes a metadata dataframe of a file, and uploads it to the
-    `aalibrary_file_metadata` database table."""
+def create_and_upload_metadata_df_for_netcdf(**kwargs):
+    # TODO: implement
     ...
 
 
+# TODO: implement this func at an appropriate place.
 def upload_ncei_metadata_df_to_bigquery(
     ship_name: str = "",
     survey_name: str = "",
@@ -217,7 +192,7 @@ def _parse_and_upload_ncei_survey_level_metadata(
     """
 
     # Load the file as a json object
-    with open(file_location, 'r') as file:
+    with open(file_location, "r") as file:
         file_json = json.load(file)
 
     # Get all 'metadata_author'
@@ -299,20 +274,29 @@ if __name__ == "__main__":
         utils.cloud_utils.setup_gcp_storage_objs()
     )
     s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
-
+    rf = RawFile(
+        file_name="2107RL_CW-D20210916-T165047.raw",
+        file_type="raw",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="NCEI",
+        file_download_directory="./test_data_dir",
+        is_metadata=False,
+        debug=True,
+        s3_bucket=s3_bucket,
+        s3_resource=s3_resource,
+        # s3_bucket_name=s3_bucket_name,
+        gcp_bucket=gcp_bucket,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_stor_client=gcp_stor_client,
+    )
     # create_metadata_json(
-    #     file_name="2107RL_CW-D20210813-T220732.raw",
-    #     survey_name="RL2107",
+    #     rf=rf,
     #     debug=True,
     # )
     # create_and_upload_metadata_df(
-    #     file_name="TEST",
-    #     file_type="raw",
-    #     ship_name="Reuben_Lasker",
-    #     survey_name="RL2107",
-    #     echosounder="EK80",
-    #     data_source="NCEI",
-    #     gcp_bucket=gcp_bucket,
+    #     rf=rf,
     #     debug=True,
     # )
     upload_ncei_metadata_df_to_bigquery(
