@@ -1,11 +1,12 @@
 """This script contains the necessary classes RawFile, which is used to obtain
 all of the attributes of a file."""
 
+from collections import OrderedDict
 import logging
 import os
 import pprint
 
-from google import storage
+from google.cloud import storage
 import boto3
 
 # For pytests-sake
@@ -77,6 +78,25 @@ class RawFile:
 
     def _create_vars_for_use_later(self):
         """Creates vars that will add value and can be utilized later."""
+
+        # Get the parsed datetime of the file.
+        # For NCEI - according to their format for naming files.
+        if self.data_source == "NCEI":
+            # ex. 2107RL_CW-D20211001-T132449.raw
+            temp = self.file_name.lower().split("d")[-1].replace(".raw", "")
+            self.year_str = temp[:4]
+            self.month_str = temp[4:6]
+            self.date_str = temp[6:8]
+            self.year = int(self.year_str)
+            self.month = int(self.month_str)
+            self.date = int(self.date_str)
+            temp = temp.split("t")[-1]
+            self.hour_str = temp[:2]
+            self.minute_str = temp[2:4]
+            self.second_str = temp[4:]
+            self.hour = int(self.hour_str)
+            self.minute = int(self.minute_str)
+            self.second = int(self.second_str)
 
         # Take care of an empty file_download_directory and treat it like the
         # cwd.
@@ -388,6 +408,45 @@ class RawFile:
     def __str__(self):
         return pprint.pformat(self.__dict__, indent=4)
 
+    def get_str_times(self):
+        """Gets the parsed times of the current file in dict format."""
+        temp_dict = OrderedDict(
+            [
+                ("year", self.year_str),
+                ("month", self.month_str),
+                ("date", self.date_str),
+                ("hour", self.hour_str),
+                ("minute", self.minute_str),
+                ("second", self.second_str),
+            ]
+        )
+        return temp_dict
+
+    def print_times(self):
+        """Prints the parsed times of the current file in dict format."""
+        temp_dict = OrderedDict(
+            [
+                ("year", self.year),
+                ("month", self.month),
+                ("date", self.date),
+                ("hour", self.hour),
+                ("minute", self.minute),
+                ("second", self.second),
+            ]
+        )
+
+        return pprint.pformat(temp_dict, indent=4)
+
+    def get_file_datetime_str(self):
+        """Gets the datetime as a datetime formatted string.
+        Format: "%Y-%m-%d %H:%M:%S" """
+
+        datetime_str = (
+            f"{self.year_str}-{self.month_str}-{self.date_str} "
+            f"{self.hour_str}:{self.minute_str}:{self.second_str}"
+        )
+        return datetime_str
+
 
 if __name__ == "__main__":
     s3_bucket_name = "noaa-wcsd-pds"
@@ -420,3 +479,6 @@ if __name__ == "__main__":
 
     print(rf)
     print(rf.bot_file_download_path)
+    print(rf.print_times())
+    print(rf.get_str_times())
+    print(rf.get_file_datetime_str())
