@@ -462,6 +462,13 @@ def check_existence_of_supplemental_files(
     return rf
 
 
+def bq_query_to_pandas(client: bigquery.Client = None, query: str = ""):
+    """Takes a SQL query and returns the end result as a DataFrame."""
+
+    job = client.query(query)
+    return job.result().to_dataframe()
+
+
 if __name__ == "__main__":
     s3_client, s3_resource, s3_bucket = create_s3_objs()
     all_objs = list_all_objects_in_s3_bucket_location(
