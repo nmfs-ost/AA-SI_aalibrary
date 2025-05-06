@@ -267,6 +267,50 @@ def _parse_and_upload_ncei_survey_level_metadata(
         if_exists="append",
     )
 
+    # Upload the lookup table values for ncei persons
+    _parse_and_upload_ncei_persons_metadata(file_json=file_json)
+
+
+def _parse_and_upload_ncei_persons_metadata(file_json: dict):
+    """Gets the persons in the file_json object, and uploads them to the
+    correct table in BigQuery.
+
+    Args:
+        file_json (dict): The dictionary obtained from reading the survey level
+            metadata file.
+    """
+
+    ncei_survey_persons = {
+        "UUID": file_json["metadata_author"]["uuid"],
+        "NAME": file_json["metadata_author"]["name"],
+    }
+    # Create DataFrame
+    ncei_survey_persons_df = pd.json_normalize(ncei_survey_persons)
+
+    subsections_to_cover = ["sponsors", "funders", "scientists"]
+    for subsection in subsections_to_cover:
+        for sub_dict in file_json[subsection]:
+            temp_json = {"UUID": sub_dict["uuid"], "NAME": sub_dict["name"]}
+            temp_df = pd.json_normalize(temp_json)
+            ncei_survey_persons_df = pd.concat(
+                [ncei_survey_persons_df, temp_df], axis=0
+            )
+
+    # Get rid of unnecessary duplicates
+    ncei_survey_persons_df.drop_duplicates(subset=["UUID"], inplace=True)
+    # TODO: Implement uploading only unique ids.
+    # Get rid of UUIDs that already exist in the table.
+    # qry = "SELECT DISTINCT(UUID) FROM `ggn-nmfs-aa-dev-1.metadata.
+    # ncei_persons`"
+    # uuids_df = utils.cloud_utils.bq_query_to_pandas(client=)
+
+    # Upload to GCP BigQuery
+    ncei_survey_persons_df.to_gbq(
+        destination_table="metadata.ncei_persons",
+        project_id="ggn-nmfs-aa-dev-1",
+        if_exists="append",
+    )
+
 
 def get_metadata_in_df_format():
     """Retrieves the metadata associated with all objects in GCP in DataFrame
@@ -301,13 +345,13 @@ if __name__ == "__main__":
     #     rf=rf,
     #     debug=True,
     # )
-    create_and_upload_metadata_df(
-        rf=rf,
-        debug=True,
-    )
-    # upload_ncei_metadata_df_to_bigquery(
-    #     ship_name="Reuben_Lasker",
-    #     survey_name="RL2107",
-    #     download_location="RL2107_EK80_WCSD_EK80-metadata.json",
-    #     s3_bucket=s3_bucket,
+    # create_and_upload_metadata_df(
+    #     rf=rf,
+    #     debug=True,
     # )
+    upload_ncei_metadata_df_to_bigquery(
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        download_location="RL2107_EK80_WCSD_EK80-metadata.json",
+        s3_bucket=s3_bucket,
+    )
