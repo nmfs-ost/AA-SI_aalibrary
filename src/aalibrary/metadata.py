@@ -61,6 +61,10 @@ def create_metadata_json(
         ).stdout
     email = email.replace("\n", "")
 
+    file_datetime = datetime.strptime(
+        rf.get_file_datetime_str(), "%Y-%m-%d %H:%M:%S"
+    )
+
     metadata_json = {
         "FILE_NAME": rf.raw_file_name,
         "DATE_CREATED": datetime.now(timezone.utc).strftime(
@@ -75,12 +79,16 @@ def create_metadata_json(
         "NCEI_CRUISE_ID": rf.survey_name,
         "NCEI_URI": rf.raw_file_s3_object_key,
         "GCP_URI": rf.raw_gcp_storage_bucket_location,
+        "FILE_DATETIME": file_datetime,
     }
 
     aalibrary_metadata_df = pd.json_normalize(metadata_json)
     # make sure data types are conserved before upload to BigQuery.
     aalibrary_metadata_df["DATE_CREATED"] = pd.to_datetime(
         aalibrary_metadata_df["DATE_CREATED"], format="%Y-%m-%d %H:%M:%S"
+    )
+    aalibrary_metadata_df["FILE_DATETIME"] = pd.to_datetime(
+        aalibrary_metadata_df["FILE_DATETIME"], format="%Y-%m-%d %H:%M:%S"
     )
 
     if debug:
@@ -293,13 +301,13 @@ if __name__ == "__main__":
     #     rf=rf,
     #     debug=True,
     # )
-    # create_and_upload_metadata_df(
-    #     rf=rf,
-    #     debug=True,
-    # )
-    upload_ncei_metadata_df_to_bigquery(
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        download_location="RL2107_EK80_WCSD_EK80-metadata.json",
-        s3_bucket=s3_bucket,
+    create_and_upload_metadata_df(
+        rf=rf,
+        debug=True,
     )
+    # upload_ncei_metadata_df_to_bigquery(
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     download_location="RL2107_EK80_WCSD_EK80-metadata.json",
+    #     s3_bucket=s3_bucket,
+    # )
