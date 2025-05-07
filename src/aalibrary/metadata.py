@@ -225,6 +225,8 @@ def _parse_and_upload_ncei_survey_level_metadata(
     for instrument_dict in file_json["instruments"]:
         instruments_str.append(instrument_dict["uuid"])
     instruments_str = ",".join(instruments_str)
+    # Get calibration file paths
+    calibration_data_path_str = file_json["instruments"][0]["cal_file_path"]
     # Get all 'package_instruments'
     package_instruments_str = []
     for package_instrument_name in file_json["package_instruments"]:
@@ -255,6 +257,7 @@ def _parse_and_upload_ncei_survey_level_metadata(
         "PROJECTS": projects_str,
         "INSTRUMENTS": instruments_str,
         "PACKAGE_INSTRUMENTS": package_instruments_str,
+        "CALIBRATION_FILE_PATH": calibration_data_path_str,
     }
 
     ncei_survey_level_metadata_df = pd.json_normalize(
