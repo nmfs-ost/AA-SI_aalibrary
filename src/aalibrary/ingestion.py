@@ -1001,7 +1001,7 @@ def download_netcdf_file(
                 " `download_raw_file`."
             )
         )
-        return
+        raise FileNotFoundError
 
 
 def convert_local_raw_to_netcdf(
