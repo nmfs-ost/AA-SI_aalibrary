@@ -137,7 +137,7 @@ class TestNCEIIngestion:
         the raw file."""
         assert (
             self.gcp_storage_bucket_location_raw
-            == f"TEST/Reuben_Lasker/RL2107/EK80/data/raw/{self.file_name}"
+            == f"NCEI/Reuben_Lasker/RL2107/EK80/data/raw/{self.file_name}"
         ), (
             "Incorrectly parsed GCP location: "
             f"`{self.gcp_storage_bucket_location_raw}`"
