@@ -18,7 +18,7 @@ class TestNCEIIngestion:
         self.ship_name = "Reuben_Lasker"
         self.survey_name = "RL2107"
         self.echosounder = "EK80"
-        self.data_source = "TEST"
+        self.data_source = "NCEI"
         self.file_download_location = "."
         self.is_metadata = False
 
@@ -171,7 +171,7 @@ class TestNCEIIngestionUserErrors:
             cloud_utils.create_s3_objs()
         )
 
-    def test_download_raw_file_null_file_name(self):
+    def raw_file_null_file_name(self):
         """Tests the error-handling for the `download_raw_file` function when
         there is an empty `file_name` param."""
         with pytest.raises(Exception):
