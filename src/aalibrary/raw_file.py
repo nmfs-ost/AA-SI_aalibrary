@@ -83,7 +83,7 @@ class RawFile:
         # For NCEI - according to their format for naming files.
         if (self.data_source == "NCEI") or (self.data_source == "OMAO"):
             # ex. 2107RL_CW-D20211001-T132449.raw
-            # TODO: `telegram` within raw file has a time stamp, maybe extract it
+            # TODO: `telegram` within raw file has a time stamp, maybe extract
             temp = self.file_name.lower().split("d")[-1].replace(".raw", "")
             self.year_str = temp[:4]
             self.month_str = temp[4:6]
