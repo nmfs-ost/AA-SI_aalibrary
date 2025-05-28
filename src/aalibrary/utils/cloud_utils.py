@@ -16,7 +16,7 @@ from aalibrary.utils.helpers import (
 
 
 def setup_gbq_client_objs(
-    location: str = "US", project_id: str = "ggn-nmfs-gsds-prod-1"
+    location: str = "US", project_id: str = "ggn-nmfs-aa-dev-1"
 ) -> Tuple[bigquery.Client, gcsfs.GCSFileSystem]:
     """Sets up Google Big Query client objects used to execute queries and
     such.
@@ -26,7 +26,7 @@ def setup_gbq_client_objs(
             tables/database. This is usually set when creating the database in
             big query. Defaults to "US".
         project_id (str, optional): The project id that the big query instance
-            belongs to. Defaults to "ggn-nmfs-gsds-prod-1".
+            belongs to. Defaults to "ggn-nmfs-aa-dev-1".
 
     Returns:
         Tuple: The big query client object, along with an object for the Google
