@@ -4,12 +4,9 @@ File deletion can be delayed using the function in this script, based on the
 file name.
 """
 
-import sys
-import os
 from typing import List
 from datetime import datetime, timedelta
 from google.cloud import bigquery, storage
-import pandas as pd
 
 
 def get_files_ready_to_be_deleted():
