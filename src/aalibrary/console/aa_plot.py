@@ -60,8 +60,8 @@ def main():
 
     # Plot options
     parser.add_argument('--title', type=str, default='Echo Data Plot')
-    parser.add_argument('--xlabel', type=str, default='Time')
-    parser.add_argument('--ylabel', type=str, default='Power (dB)')
+    parser.add_argument('--xlabel', type=str, default='ping_time')
+    parser.add_argument('--ylabel', type=str, default='range_bin')
     parser.add_argument('--color', type=str, default='viridis')
     parser.add_argument('--linestyle', type=str, default='solid')
     parser.add_argument('--linewidth', type=float, default=1.5)
@@ -72,14 +72,18 @@ def main():
     raw_path = args.raw_path
     echosounder = args.echosounder
 
-    print(raw_path, echosounder)
+    print(args_list)
 
     if not os.path.exists(raw_path):
         sys.exit(f"❌ File not found: {raw_path}")
 
     ed = ep.open_raw(raw_path, sonar_model=echosounder)
     ds_Sv = ep.calibrate.compute_Sv(ed, waveform_mode="CW", encode_mode="complex")
-    ds_Sv["Sv"].plot()
+    print(ds_Sv["Sv"][0])
+    ds_Sv["Sv"][0].plot(
+        linestyle=args.linestyle,
+        linewidth=args.linewidth
+    )
     plt.savefig("sv_plot.png", dpi=300, bbox_inches='tight')
 
 if __name__ == '__main__':
