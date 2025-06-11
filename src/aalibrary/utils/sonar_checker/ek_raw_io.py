@@ -13,7 +13,7 @@ import fsspec
 from fsspec.implementations.local import LocalFileSystem
 
 from aalibrary.utils.sonar_checker.log import _init_logger
-from . import ek_raw_parsers as parsers
+import aalibrary.utils.sonar_checker.ek_raw_parsers as parsers
 
 
 
