@@ -2,6 +2,10 @@
 the GCP storage buckets. File deletion is calculated at metadata upload time.
 File deletion can be delayed using the function in this script, based on the
 file name.
+
+The file should get executed weekly at 12:00 AM on Mondays using the crontab
+command below:
+0 0 * * 1 python gcp_file_deletion_job.py
 """
 
 from typing import List
