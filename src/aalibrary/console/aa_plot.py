@@ -80,7 +80,7 @@ def main():
     ed = ep.open_raw(raw_path, sonar_model=echosounder)
     ds_Sv = ep.calibrate.compute_Sv(ed, waveform_mode="CW", encode_mode="complex")
     print(ds_Sv["Sv"][0])
-    ds_Sv["Sv"][0].plot(
+    ds_Sv["Sv"][0].transpose("ping_time", "range_bin").plot(
         linestyle=args.linestyle,
         linewidth=args.linewidth
     )
