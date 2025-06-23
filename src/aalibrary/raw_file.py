@@ -99,6 +99,10 @@ class RawFile:
             self.minute = int(self.minute_str)
             self.second = int(self.second_str)
 
+        # Normalize ship names
+        if "ship_name" in self.__dict__:
+            self.ship_name = utils.helpers.normalize_ship_name(self.ship_name)
+
         # Take care of an empty file_download_directory and treat it like the
         # cwd.
         if (self.__dict__["file_download_directory"] == "") or (
