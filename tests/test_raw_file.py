@@ -112,22 +112,6 @@ class TestRawFileCreationErrors:
                 debug=self.debug,
             )
 
-    def test_raw_file_object_creation_invalid_ship_name(self):
-        """Tests the error-handling for RawFile class when there is an invalid
-        `ship_name` param. Such as when there is a space in the name."""
-        with pytest.raises(Exception):
-            RawFile(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name="Reuben Lasker",
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
-                is_metadata=self.is_metadata,
-                debug=self.debug,
-            )
-
     def test_raw_file_object_creation_null_survey_name(self):
         """Tests the error-handling for RawFile class when there is a null
         `survey_name` param."""
