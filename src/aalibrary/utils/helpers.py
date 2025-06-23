@@ -349,3 +349,6 @@ def normalize_ship_name(ship_name: str = "") -> str:
     ship_name = ship_name.replace(" ", "_")
 
     return ship_name
+
+if __name__ == '__main__':
+    print(normalize_ship_name("Reuben Lasker"))
