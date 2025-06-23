@@ -37,6 +37,10 @@ class RawFile:
     debug: bool = False
     gcp_bucket: storage.Client.bucket = None
     s3_resource: boto3.resource = None
+    # Get all valid and normalized ICES ship names
+    valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
+        normalize_ship_names=True
+    )
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -104,11 +108,6 @@ class RawFile:
         # Normalize ship name
         if "ship_name" in self.__dict__:
             self.ship_name = utils.helpers.normalize_ship_name(self.ship_name)
-
-        # Get all valid and normalized ICES ship names
-        self.valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
-            normalize_ship_names=True
-        )
 
         # Take care of an empty file_download_directory and treat it like the
         # cwd.
