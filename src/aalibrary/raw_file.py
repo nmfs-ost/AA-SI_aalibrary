@@ -14,10 +14,12 @@ if __package__ is None or __package__ == "":
     # uses current directory visibility
     import utils
     import config
+    import ices_ship_names
 else:
     # uses current package visibility
     from aalibrary import utils
     from aalibrary import config
+    from aalibrary import ices_ship_names
 
 
 class RawFile:
@@ -99,9 +101,14 @@ class RawFile:
             self.minute = int(self.minute_str)
             self.second = int(self.second_str)
 
-        # Normalize ship names
+        # Normalize ship name
         if "ship_name" in self.__dict__:
             self.ship_name = utils.helpers.normalize_ship_name(self.ship_name)
+
+        # Get all valid and normalized ICES ship names
+        self.valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
+            normalize_ship_names=True
+        )
 
         # Take care of an empty file_download_directory and treat it like the
         # cwd.
@@ -353,7 +360,10 @@ class RawFile:
                 "Please provide a valid ship name "
                 "(Title_Case_With_Underscores_As_Spaces)."
             )
-            # TODO: "b." Bigelow; rule to remove the "."
+            assert self.ship_name in self.valid_ICES_ship_names, (
+                f"This `ship_name` {self.ship_name} does not"
+                " exist in the ICES database."
+            )
         if "survey_name" in self.__dict__:
             assert (
                 self.survey_name != ""
