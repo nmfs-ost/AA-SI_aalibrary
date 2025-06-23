@@ -97,13 +97,29 @@ class TestRawFileCreationErrors:
             )
 
     def test_raw_file_object_creation_null_ship_name(self):
-        """Tests the error-handling for RawFile class when there is an null
+        """Tests the error-handling for RawFile class when there is an invalid
         `ship_name` param."""
         with pytest.raises(Exception):
             RawFile(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name="",
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                data_source=self.data_source,
+                file_download_directory=self.file_download_directory,
+                is_metadata=self.is_metadata,
+                debug=self.debug,
+            )
+
+    def test_raw_file_object_creation_validity_of_normalized_ship_name(self):
+        """Tests the error-handling for RawFile class when there is an
+        `ship_name` param that does not exist in the ICES database."""
+        with pytest.raises(Exception):
+            RawFile(
+                file_name=self.file_name,
+                file_type=self.file_type,
+                ship_name="Queen Anne's Revenge",
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
