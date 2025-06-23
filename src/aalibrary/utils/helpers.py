@@ -339,6 +339,9 @@ def normalize_ship_name(ship_name: str = "") -> str:
 
     # Lower case the string
     ship_name = ship_name.lower()
+    # Un-normalize (replace `_` with ` ` to help further processing)
+    # In the edge-case that users include an underscore.
+    ship_name = ship_name.replace('_', ' ')
     # Remove all punctuation.
     ship_name = "".join(
         [char for char in ship_name if char not in string.punctuation]
@@ -351,4 +354,5 @@ def normalize_ship_name(ship_name: str = "") -> str:
     return ship_name
 
 if __name__ == '__main__':
+    print(string.punctuation)
     print(normalize_ship_name("Reuben Lasker"))
