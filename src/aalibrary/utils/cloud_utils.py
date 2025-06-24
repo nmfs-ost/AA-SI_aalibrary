@@ -211,7 +211,7 @@ def get_subdirectories_in_s3_bucket_location(
             subdir = subdir_full_path_from_prefix.replace(prefix, "")
             subdir = subdir.replace('/','')
         subdirs.add(subdir)
-    return subdirs
+    return list(subdirs)
 
 
 def list_all_objects_in_s3_bucket_location(
