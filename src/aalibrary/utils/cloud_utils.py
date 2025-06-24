@@ -175,20 +175,23 @@ def count_subdirectories_in_s3_bucket_location(
 
 def get_subdirectories_in_s3_bucket_location(
     prefix: str = "",
-    bucket: boto3.resource = None,
+    s3_client: boto3.resource = None,
     return_full_paths: bool = False,
+    bucket_name: str = "noaa-wcsd-pds",
 ) -> List[str]:
     """Gets a list of all the subdirectories in a specific bucket location
     (called a prefix). The return can be with full paths (root to folder
     inclusive), or just the folder names.
 
     Args:
-        prefix (str, optional): The bucket location. Defaults to "".
-        bucket (boto3.resource, optional): The bucket resource object.
+        prefix (str, optional): The bucket folder location. Defaults to "".
+        s3_resource (boto3.resource, optional): The bucket resource object.
             Defaults to None.
         return_full_paths (bool, optional): Whether or not you want a full
             path from bucket root to the subdirectory returned. Set to false
             if you only want the subdirectory names listed. Defaults to False.
+        bucket_name (str, optional): The bucket name. Defaults to
+            "noaa-wcsd-pds".
 
     Returns:
         List[str]: A list of strings, each being the subdirectory. Whether
@@ -197,16 +200,18 @@ def get_subdirectories_in_s3_bucket_location(
     """
 
     subdirs = set()
-    for obj in bucket.objects.filter(Prefix=prefix):
-        prefix = "/".join(obj.key.split("/")[:-1])
-        if len(prefix) and prefix not in subdirs:
-            subdirs.add(prefix)
-            # print(prefix + "/")
-    if return_full_paths:
-        return list(subdirs)
-    else:
-        subdirs = [x.split("/")[-1] for x in subdirs]
-        return subdirs
+    result = s3_client.list_objects(
+        Bucket=bucket_name, Prefix=prefix, Delimiter="/"
+    )
+    for o in result.get("CommonPrefixes"):
+        subdir_full_path_from_prefix = o.get("Prefix")
+        if return_full_paths:
+            subdir = subdir_full_path_from_prefix
+        else:
+            subdir = subdir_full_path_from_prefix.replace(prefix, "")
+            subdir = subdir.replace('/','')
+        subdirs.add(subdir)
+    return subdirs
 
 
 def list_all_objects_in_s3_bucket_location(
