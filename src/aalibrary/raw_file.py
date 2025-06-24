@@ -5,6 +5,7 @@ from collections import OrderedDict
 import logging
 import os
 import pprint
+from difflib import get_close_matches
 
 from google.cloud import storage
 import boto3
@@ -359,7 +360,16 @@ class RawFile:
                 "Please provide a valid ship name "
                 "(Title_Case_With_Underscores_As_Spaces)."
             )
-            assert self.ship_name in self.valid_ICES_ship_names, (
+            # Check for spell check using custom list
+            spell_check_list = get_close_matches(self.ship_name, self.valid_ICES_ship_names, n=3, cutoff=0.6)
+            if len(spell_check_list) > 0:
+                assert self.ship_name in self.valid_ICES_ship_names, (
+                    f"This `ship_name` {self.ship_name} does not"
+                    " exist in the ICES database. Did you mean one of the following?"
+                    f"{spell_check_list}"
+                )
+            else:
+                assert self.ship_name in self.valid_ICES_ship_names, (
                 f"This `ship_name` {self.ship_name} does not"
                 " exist in the ICES database."
             )
@@ -491,8 +501,8 @@ if __name__ == "__main__":
         gcp_stor_client=gcp_stor_client,
     )
 
-    print(rf)
-    print(rf.bot_file_download_path)
-    print(rf.print_times())
-    print(rf.get_str_times())
-    print(rf.get_file_datetime_str())
+    # print(rf)
+    # print(rf.bot_file_download_path)
+    # print(rf.print_times())
+    # print(rf.get_str_times())
+    # print(rf.get_file_datetime_str())
