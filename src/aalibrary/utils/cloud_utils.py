@@ -175,7 +175,7 @@ def count_subdirectories_in_s3_bucket_location(
 
 def get_subdirectories_in_s3_bucket_location(
     prefix: str = "",
-    s3_client: boto3.resource = None,
+    s3_client: boto3.client = None,
     return_full_paths: bool = False,
     bucket_name: str = "noaa-wcsd-pds",
 ) -> List[str]:
@@ -185,7 +185,7 @@ def get_subdirectories_in_s3_bucket_location(
 
     Args:
         prefix (str, optional): The bucket folder location. Defaults to "".
-        s3_resource (boto3.resource, optional): The bucket resource object.
+        s3_client (boto3.client, optional): The bucket client object.
             Defaults to None.
         return_full_paths (bool, optional): Whether or not you want a full
             path from bucket root to the subdirectory returned. Set to false
@@ -195,7 +195,7 @@ def get_subdirectories_in_s3_bucket_location(
 
     Returns:
         List[str]: A list of strings, each being the subdirectory. Whether
-            these are full paths or not are specified by the
+            these are full paths or just folder names are specified by the
             `return_full_paths` parameter.
     """
 
@@ -209,7 +209,7 @@ def get_subdirectories_in_s3_bucket_location(
             subdir = subdir_full_path_from_prefix
         else:
             subdir = subdir_full_path_from_prefix.replace(prefix, "")
-            subdir = subdir.replace('/','')
+            subdir = subdir.replace('/', '')
         subdirs.add(subdir)
     return list(subdirs)
 
