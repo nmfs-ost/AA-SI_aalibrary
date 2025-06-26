@@ -8,6 +8,7 @@ import shlex
 def plot_data(sv_da, args):
     print("📊 Plotting data...")
 
+    
     # Create the figure and axis
     fig, ax = plt.subplots(figsize=(10, 5))
 
