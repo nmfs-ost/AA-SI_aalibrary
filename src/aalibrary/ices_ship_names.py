@@ -4,7 +4,6 @@ Specifically the `SHIPC` platform code which refers to ship names.
 """
 
 import requests
-from pprint import pprint
 from typing import List
 
 # For pytests-sake
@@ -18,7 +17,7 @@ else:
 
 def get_all_ship_info() -> List:
     """Gets all of the ship's info from the following URL:
-    https://vocab.ices.dk/services/api/Code/7f9a91e1-fb57-464a-8eb0-697e4b0235b5
+    https:/vocab.ices.dk/services/api/Code/7f9a91e1-fb57-464a-8eb0-697e4b0235b5
 
 
     Returns:
@@ -27,7 +26,10 @@ def get_all_ship_info() -> List:
     """
 
     response = requests.get(
-        url="https://vocab.ices.dk/services/api/Code/7f9a91e1-fb57-464a-8eb0-697e4b0235b5"
+        url=(
+            "https://vocab.ices.dk/services/api/Code/"
+            "7f9a91e1-fb57-464a-8eb0-697e4b0235b5"
+        )
     )
     all_ship_info = response.json()
 
@@ -37,7 +39,7 @@ def get_all_ship_info() -> List:
 def get_all_ices_ship_codes_and_names(
     normalize_ship_names: bool = False,
 ) -> dict:
-    """Gets all of the ices ship codes and their corresponding names in a 
+    """Gets all of the ices ship codes and their corresponding names in a
     dictionary format. The keys are the ICES code, and the name is the value.
 
     Args:
@@ -92,5 +94,5 @@ def get_all_ices_ship_names(normalize_ship_names: bool = False) -> List:
 if __name__ == "__main__":
     all_ship_names = get_all_ices_ship_names(normalize_ship_names=True)
     for ship_name in all_ship_names:
-        if 'lasker' in ship_name.lower():
+        if "lasker" in ship_name.lower():
             print(ship_name)
