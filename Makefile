@@ -10,6 +10,9 @@ distribute:
 	python -m build
 	twine upload --repository-url https://us-central1-python.pkg.dev/ggn-nmfs-aa-dev-1/aalibrary/ dist/*
 
+uninstall:
+	pip uninstall aalibrary -y
+
 install:
 	pip install keyring
 	pip install keyrings.google-artifactregistry-auth
@@ -31,3 +34,12 @@ pytest:
 	# to make sure we are testing the current code, not the installed code.
 	python -m pip uninstall aalibrary -y
 	python -m pytest .
+
+mkdocs: uninstall install
+	mkdocs serve
+
+install-editable:
+	python -m pip install -e .
+
+uninstall-editable:
+	python -m pip uninstall aalibrary
