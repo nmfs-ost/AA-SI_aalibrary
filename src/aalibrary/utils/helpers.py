@@ -28,7 +28,7 @@ from aalibrary import config
 #                        os.path.normpath(file_download_location), file_name])
 
 
-def get_file_name_from_url(url: str = ""):
+def get_file_name_from_url(url: str = "") -> str:
     """Extracts the file name from a given storage bucket url. Includes the
     file extension.
 
