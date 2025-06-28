@@ -434,8 +434,14 @@ class RawFile:
     def _bot_file_exists_in_azure_data_lake(self): ...
     def _netcdf_file_exists_in_azure_data_lake(self): ...
 
-    def get_str_times(self):
-        """Gets the parsed times of the current file in dict format."""
+    def get_str_times(self) -> dict:
+        """Gets the parsed times of the current file in dict format
+
+        Returns:
+            dict: An OrderedDict containing all of the data collection times
+                (based on name), for this file.
+        """
+
         temp_dict = OrderedDict(
             [
                 ("year", self.year_str),
@@ -448,8 +454,14 @@ class RawFile:
         )
         return temp_dict
 
-    def print_times(self):
-        """Prints the parsed times of the current file in dict format."""
+    def print_times(self) -> str:
+        """Prints the parsed times of the current file in dict format.
+
+        Returns:
+            str: The pretty print version of a string of the current file's
+                data collection datetime (based on file name).
+        """
+
         temp_dict = OrderedDict(
             [
                 ("year", self.year),
@@ -463,9 +475,13 @@ class RawFile:
 
         return pprint.pformat(temp_dict, indent=4)
 
-    def get_file_datetime_str(self):
+    def get_file_datetime_str(self) -> str:
         """Gets the datetime as a datetime formatted string.
-        Format: "%Y-%m-%d %H:%M:%S" """
+        Format: "%Y-%m-%d %H:%M:%S"
+
+        Returns:
+            str: The datetime formatted string.
+        """
 
         datetime_str = (
             f"{self.year_str}-{self.month_str}-{self.date_str} "
