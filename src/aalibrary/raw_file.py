@@ -51,6 +51,12 @@ class RawFile:
 
         self._check_for_assertion_errors()
 
+    def __repr__(self):
+        pprint.pprint(self.__dict__)
+
+    def __str__(self):
+        return pprint.pformat(self.__dict__, indent=4)
+
     def _handle_paths(self):
         """Handles all minute functions and adjustments related to paths."""
 
@@ -361,18 +367,20 @@ class RawFile:
                 "(Title_Case_With_Underscores_As_Spaces)."
             )
             # Check for spell check using custom list
-            spell_check_list = get_close_matches(self.ship_name, self.valid_ICES_ship_names, n=3, cutoff=0.6)
+            spell_check_list = get_close_matches(
+                self.ship_name, self.valid_ICES_ship_names, n=3, cutoff=0.6
+            )
             if len(spell_check_list) > 0:
                 assert self.ship_name in self.valid_ICES_ship_names, (
                     f"This `ship_name` {self.ship_name} does not"
-                    " exist in the ICES database. Did you mean one of the following?"
-                    f"{spell_check_list}"
+                    " exist in the ICES database. Did you mean one of the"
+                    f" following?\n{spell_check_list}"
                 )
             else:
                 assert self.ship_name in self.valid_ICES_ship_names, (
-                f"This `ship_name` {self.ship_name} does not"
-                " exist in the ICES database."
-            )
+                    f"This `ship_name` {self.ship_name} does not"
+                    " exist in the ICES database."
+                )
         if "survey_name" in self.__dict__:
             assert (
                 self.survey_name != ""
@@ -425,12 +433,6 @@ class RawFile:
     def _idx_file_exists_in_azure_data_lake(self): ...
     def _bot_file_exists_in_azure_data_lake(self): ...
     def _netcdf_file_exists_in_azure_data_lake(self): ...
-
-    def __repr__(self):
-        pprint.pprint(self.__dict__)
-
-    def __str__(self):
-        return pprint.pformat(self.__dict__, indent=4)
 
     def get_str_times(self):
         """Gets the parsed times of the current file in dict format."""
