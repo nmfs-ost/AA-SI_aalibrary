@@ -33,7 +33,9 @@ else:
     from aalibrary.raw_file import RawFile
 
 
-def get_data_lake_directory_client(config_file_path: str = ""):
+def get_data_lake_directory_client(
+    config_file_path: str = "",
+) -> DataLakeServiceClient:
     """Creates a data lake directory client. Returns an object of type
     DataLakeServiceClient.
 
@@ -607,7 +609,7 @@ def download_survey_from_ncei(
     # Get all raw file names associated with this survey from NCEI.
     prefix = f"data/raw/{ship_name}/{survey_name}/{echosounder}/"
     survey_file_names = cloud_utils.get_subdirectories_in_s3_bucket_location(
-        prefix=prefix, bucket=s3_bucket, return_full_paths=False
+        prefix=prefix, s3_client=s3_bucket, return_full_paths=False
     )
     # Filter out only the raw files (the download function takes care of
     # downloading the idx and bot files).
@@ -1623,7 +1625,7 @@ def find_and_upload_survey_metadata_from_s3(
     if num_metadata_objects >= 1:
         # Get object keys
         s3_objects = cloud_utils.list_all_objects_in_s3_bucket_location(
-            prefix=metadata_location_in_s3, bucket=s3_bucket
+            prefix=metadata_location_in_s3, s3_resource=s3_bucket
         )
         # Download and upload each object
         for full_path, file_name in s3_objects:
