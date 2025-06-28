@@ -140,7 +140,7 @@ def count_objects_in_s3_bucket_location(
     Args:
         prefix (str, optional): The bucket location. Defaults to "".
         bucket (boto3.resource, optional): The bucket resource object.
-        Defaults to None.
+            Defaults to None.
 
     Returns:
         int: The count of objects within the location.
@@ -158,7 +158,7 @@ def count_subdirectories_in_s3_bucket_location(
     Args:
         prefix (str, optional): The bucket location. Defaults to "".
         bucket (boto3.resource, optional): The bucket resource object.
-        Defaults to None.
+            Defaults to None.
 
     Returns:
         int: The count of subdirectories within the location.
@@ -227,7 +227,7 @@ def list_all_objects_in_s3_bucket_location(
     Args:
         prefix (str, optional): The bucket location. Defaults to "".
         s3_resource (boto3.resource, optional): The bucket resource object.
-        Defaults to None.
+            Defaults to None.
         return_full_paths (bool, optional): Whether or not you want a full
             path from bucket root to the subdirectory returned. Set to false
             if you only want the subdirectory names listed. Defaults to False.
@@ -278,8 +278,8 @@ def download_file_from_gcp(
     """Downloads a file from the blob storage bucket.
 
     Args:
-        bucket (storage.Client.bucket): The bucket object used for downloading
-            from.
+        gcp_bucket (storage.Client.bucket): The bucket object used for
+            downloading from.
         blob_file_path (str): The blob's file path.
             Ex. "data/itds/logs/execute_rasp_ii/temp.csv"
             NOTE: This must include the file name as well as the extension.
