@@ -1,10 +1,6 @@
 """This file is used to get header information out of a NetCDF file. The
 code reads a .nc file and returns a dict with all of the attributes
 gathered.
-
-Returns:
-    dict: A dict with all of the header metadata that was found in the .nc
-        file.
 """
 
 
@@ -13,11 +9,13 @@ import pprint
 
 
 def get_netcdf_header(file_path: str) -> dict:
-    """
-    Reads a NetCDF file and returns its header as a dictionary.
+    """Reads a NetCDF file and returns its header as a dictionary.
 
-    :param file_path: Path to the NetCDF file.
-    :return: Dictionary containing global attributes, dimensions, and
+    Args:
+        file_path (str): Path to the NetCDF file.
+
+    Returns:
+        dict: Dictionary containing global attributes, dimensions, and
         variables.
     """
     header_info = {}
