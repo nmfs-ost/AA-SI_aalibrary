@@ -174,15 +174,16 @@ def upload_ncei_metadata_df_to_bigquery(
             Defaults to "".
         survey_name (str, optional): The survey name/identifier.
             Defaults to "".
-        bucket (boto3.resource, optional): The bucket resource object.
-            Defaults to None.
         download_location (str, optional): The local download location for the
             file. Defaults to "".
+        s3_bucket (boto3.resource, optional): The bucket resource object.
+            Defaults to None.
     """
 
     # Find all metadata files within the metadata/ folder in NCEI
     all_metadata_obj_keys = list_all_objects_in_s3_bucket_location(
-        prefix=f"data/raw/{ship_name}/{survey_name}/metadata", bucket=s3_bucket
+        prefix=f"data/raw/{ship_name}/{survey_name}/metadata",
+        s3_resource=s3_bucket,
     )
 
     # TODO: Download all metadata files to local for download? Even
