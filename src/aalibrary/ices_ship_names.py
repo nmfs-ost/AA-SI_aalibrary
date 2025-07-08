@@ -131,7 +131,8 @@ def get_ices_code_from_ship_name(
         else:
             print(
                 f"This `ship_name` {ship_name} does not"
-                " exist in the ICES database. A close match could not be found."
+                " exist in the ICES database. A close match could not be "
+                "found."
             )
         return ""
 
