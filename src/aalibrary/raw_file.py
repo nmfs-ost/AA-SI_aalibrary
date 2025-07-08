@@ -115,6 +115,13 @@ class RawFile:
         # Normalize ship name
         if "ship_name" in self.__dict__:
             self.ship_name = utils.helpers.normalize_ship_name(self.ship_name)
+        # If the ship name exists in ICES, get the ICES code for it.
+        if self.ship_name in self.valid_ICES_ship_names:
+            self.ices_code = ices_ship_names.get_ices_code_from_ship_name(
+                ship_name=self.ship_name, is_normalized=True
+            )
+        else:
+            self.ices_code = ""
 
         # Take care of an empty file_download_directory and treat it like the
         # cwd.
