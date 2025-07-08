@@ -87,6 +87,7 @@ def create_metadata_json(
         "GCP_URI": rf.raw_gcp_storage_bucket_location,
         "FILE_DATETIME": file_datetime,
         "DELETION_DATETIME": deletion_datetime,
+        "ICES_CODE": rf.ices_code,
     }
 
     aalibrary_metadata_df = pd.json_normalize(metadata_json)
