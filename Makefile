@@ -35,7 +35,7 @@ pytest:
 	python -m pip uninstall aalibrary -y
 	python -m pytest .
 
-mkdocs: uninstall install
+mkdocs: install-editable
 	mkdocs serve
 
 install-editable:
