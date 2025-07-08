@@ -5,6 +5,7 @@ Specifically the `SHIPC` platform code which refers to ship names.
 
 import requests
 from typing import List
+from difflib import get_close_matches
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -91,8 +92,53 @@ def get_all_ices_ship_names(normalize_ship_names: bool = False) -> List:
     return all_ship_names
 
 
+def get_ices_code_from_ship_name(
+    ship_name: str = "", is_normalized: bool = False
+) -> str:
+    """Gets the ICES Code for a ship given a ship's name.
+
+    Args:
+        ship_name (str, optional): The ship name string. Defaults to "".
+        is_normalized (bool, optional): Whether or not the ship name is already
+            normalized according to aalibrary standards. Defaults to False.
+
+    Returns:
+        str: The ICES Code if one has been found. Empty string if it has not.
+    """
+
+    # Get all of the ship codes and names.
+    all_codes_and_names = get_all_ices_ship_codes_and_names(
+        normalize_ship_names=is_normalized
+    )
+    # Reverse it to make the ship names the keys.
+    all_codes_and_names = {v: k for k, v in all_codes_and_names.items()}
+    valid_ICES_ship_names = list(all_codes_and_names.keys())
+    # Try to find the correct ICES code based on the ship name.
+    try:
+        return all_codes_and_names[ship_name]
+    except KeyError:
+        # Here the ship name does not exactly match any in the ICES DB.
+        # Check for spell check using custom list
+        spell_check_list = get_close_matches(
+            ship_name, valid_ICES_ship_names, n=3, cutoff=0.6
+        )
+        if len(spell_check_list) > 0:
+            print(
+                f"This `ship_name` {ship_name} does not"
+                " exist in the ICES database. Did you mean one of the"
+                f" following?\n{spell_check_list}"
+            )
+        else:
+            print(
+                f"This `ship_name` {ship_name} does not"
+                " exist in the ICES database. A close match could not be found."
+            )
+        return ""
+
+
 if __name__ == "__main__":
-    all_ship_names = get_all_ices_ship_names(normalize_ship_names=True)
-    for ship_name in all_ship_names:
-        if "lasker" in ship_name.lower():
-            print(ship_name)
+    # all_ship_names = get_all_ices_ship_names(normalize_ship_names=True)
+    # for ship_name in all_ship_names:
+    #     if "lasker" in ship_name.lower():
+    #         print(ship_name)
+    print(get_ices_code_from_ship_name("Reuben_Lasker", is_normalized=True))
