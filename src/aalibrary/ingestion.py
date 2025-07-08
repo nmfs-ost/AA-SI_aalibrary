@@ -1011,6 +1011,7 @@ def convert_local_raw_to_netcdf(
     netcdf_file_download_directory: str = "",
     echosounder: str = "",
     overwrite: bool = False,
+    delete_raw_after: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
     Converts a local (on your computer) file from raw into netcdf using
@@ -1025,6 +1026,8 @@ def convert_local_raw_to_netcdf(
             ["EK80", "EK70"]. Defaults to "".
         overwrite (bool, optional): Whether or not to overwrite the netcdf
             file. Defaults to False.
+        delete_raw_after (bool, optional): Whether or not to delete the raw
+            file after conversion is complete. Defaults to False.
     """
 
     netcdf_file_download_directory = os.sep.join(
@@ -1077,6 +1080,16 @@ def convert_local_raw_to_netcdf(
             save_path=netcdf_file_download_directory, overwrite=overwrite
         )
         print("CONVERTED.")
+        if delete_raw_after:
+            try:
+                print("DELETING RAW FILE...")
+                os.remove(raw_file_location)
+                print("DELETED.")
+            except Exception as e:
+                print(e)
+                print(
+                    "THE RAW FILE COULD NOT BE DELETED DUE TO THE ERROR ABOVE."
+                )
     except Exception as e:
         logging.error(
             f"COULD NOT CONVERT `{raw_file_location}` DUE TO ERROR {e}"
@@ -1093,6 +1106,7 @@ def convert_raw_to_netcdf(
     data_source: str = "",
     file_download_directory: str = "",
     overwrite: bool = False,
+    delete_raw_after: bool = False,
     gcp_bucket: storage.Client.bucket = None,
     is_metadata: bool = False,
     debug: bool = False,
@@ -1119,6 +1133,8 @@ def convert_raw_to_netcdf(
             to store your file in. Defaults to "".
         overwrite (bool, optional): Whether or not to overwrite the netcdf
             file. Defaults to False.
+        delete_raw_after (bool, optional): Whether or not to delete the raw
+            file after conversion is complete. Defaults to False.
         gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
             used to download the file. Defaults to None.
         is_metadata (bool, optional): Whether or not the file is a metadata
@@ -1196,10 +1212,10 @@ def convert_raw_to_netcdf(
             netcdf_file_download_directory=rf.netcdf_file_download_path,
             echosounder=rf.echosounder,
             overwrite=overwrite,
+            delete_raw_after=delete_raw_after,
         )
 
         # Upload the netcdf to the correct location for parsing.
-        print(f"file_path_netcdf {rf.netcdf_file_download_path}")
         upload_file_to_gcp_storage_bucket(
             file_name=rf.netcdf_file_name,
             file_type="netcdf",
