@@ -9,5 +9,6 @@ def main():
 
     print(f"You selected: {choice}")
 
+
 if __name__ == "__main__":
     main()
