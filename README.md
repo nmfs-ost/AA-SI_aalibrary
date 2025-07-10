@@ -14,6 +14,10 @@
 </div>
 <hr />
 
+<p align="center">
+  <img src="assets/logo.png" alt="Project Logo" width="70%">
+</p>
+
 The Active Acoustics Strategic Initiative (AASI) aims to bring more data modernization to NOAA NMFS. This library is a data management tool that provides users with an all-in-one solution to load, transform, and analyze acoustics data from all science centers across the United States. Using the library, users now have the ability to:
 
 <div align="left">

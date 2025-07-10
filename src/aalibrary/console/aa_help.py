@@ -12,6 +12,7 @@ def print_console_tools_reference():
     aa-nc : Download or upload .nc file
     aa-kmap : Run a kmeans cluster map operation
     aa-help : Print this example reference or help
+    aa-find : Find a ship name from the ICES database
 
     Example use cases:
 
