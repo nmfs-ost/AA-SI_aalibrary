@@ -108,7 +108,7 @@ def download_file_from_azure_directory(
     # User-error-checking
     check_for_assertion_errors(
         data_lake_directory_client=directory_client,
-        file_download_location=download_directory,
+        file_download_directory=download_directory,
     )
 
     file_client = directory_client.get_file_client(
@@ -560,7 +560,7 @@ def download_survey_from_ncei(
     survey_name: str = "",
     echosounder: str = "",
     data_source: str = "NCEI",
-    file_download_location: str = ".",
+    file_download_directory: str = ".",
     is_metadata: bool = False,
     upload_to_gcp: bool = False,
     debug: bool = False,
@@ -580,7 +580,7 @@ def download_survey_from_ncei(
         data_source (str, optional): The source of the file. Necessary due to
             the way the storage bucket is organized. Can be one of
             ["NCEI", "OMAO", "HDD"]. Defaults to "".
-        file_download_location (str, optional): The local file directory you
+        file_download_directory (str, optional): The local file directory you
             want to store your file in. Defaults to current directory.
             Defaults to ".".
         is_metadata (bool, optional): Whether or not the file is a metadata
@@ -599,12 +599,12 @@ def download_survey_from_ncei(
         survey_name=survey_name,
         echosounder=echosounder,
         data_source=data_source,
-        file_download_location=file_download_location,
+        file_download_directory=file_download_directory,
     )
 
     # Create the download directory (path) if it doesn't exist
-    if not os.path.exists(file_download_location):
-        os.makedirs(file_download_location)
+    if not os.path.exists(file_download_directory):
+        os.makedirs(file_download_directory)
 
     # Get all raw file names associated with this survey from NCEI.
     prefix = f"data/raw/{ship_name}/{survey_name}/{echosounder}/"
@@ -624,7 +624,7 @@ def download_survey_from_ncei(
             survey_name=survey_name,
             echosounder=echosounder,
             data_source="NCEI",
-            file_download_location=file_download_location,
+            file_download_directory=file_download_directory,
             is_metadata=False,
             upload_to_gcp=upload_to_gcp,
             debug=debug,
@@ -671,12 +671,12 @@ def check_for_assertion_errors(**kwargs):
             "Please provide a valid data source from the "
             f"following: {config.VALID_DATA_SOURCES}"
         )
-    if "file_download_location" in kwargs:
+    if "file_download_directory" in kwargs:
         assert (
-            kwargs["file_download_location"] != ""
-        ), "Please provide a valid file download location (a directory)."
-        assert os.path.isdir(kwargs["file_download_location"]), (
-            f"File download location `{kwargs['file_download_location']}` is"
+            kwargs["file_download_directory"] != ""
+        ), "Please provide a valid file download directory."
+        assert os.path.isdir(kwargs["file_download_directory"]), (
+            f"File download location `{kwargs['file_download_directory']}` is"
             " not found to be a valid dir, please reformat it."
         )
     if "gcp_bucket" in kwargs:
@@ -932,7 +932,7 @@ def download_netcdf_file(
     Works as follows:
         1. Checks if the exact netcdf exists in gcp.
             a. If it doesn't exists, prompts user to download it first.
-            b. If it exists, downloads to the `file_download_location`.
+            b. If it exists, downloads to the `file_download_directory`.
 
     Args:
         raw_file_name (str, optional): The raw file name (includes extension).
@@ -1646,19 +1646,19 @@ def find_and_upload_survey_metadata_from_s3(
         # Download and upload each object
         for full_path, file_name in s3_objects:
             # Get the correct full file download location
-            file_download_location = os.sep.join(
+            file_download_directory = os.sep.join(
                 [os.path.normpath("./"), file_name]
             )
             # Download from aws
             download_single_file_from_aws(
-                file_url=full_path, download_location=file_download_location
+                file_url=full_path, download_location=file_download_directory
             )
             # Upload to gcp
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name,
                 ship_name=ship_name,
                 survey_name=survey_name,
-                file_location=file_download_location,
+                file_location=file_download_directory,
                 gcp_bucket=gcp_bucket,
                 data_source="NCEI",
                 is_metadata=False,
@@ -1666,7 +1666,7 @@ def find_and_upload_survey_metadata_from_s3(
                 debug=debug,
             )
             # Remove local file (it's temporary)
-            os.remove(file_download_location)
+            os.remove(file_download_directory)
 
 
 def find_data_source_for_file():
@@ -1772,24 +1772,24 @@ if __name__ == "__main__":
     #                   survey_name="RL2107",
     #                   echosounder="EK80",
     #                   data_source="NCEI",
-    #                   file_download_location=f"./test_data_dir/",
+    #                   file_download_directory=f"./test_data_dir/",
     #                   is_metadata=False,
     #                   debug=True)
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket,
     # file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(
     #     raw_file_location="./test_data_dir/2107RL_FM-D20210804-T214458.raw",
-    #     netcdf_file_download_location="./test_data_dir",
+    #     netcdf_file_download_directory="./test_data_dir",
     #     echosounder="EK80",
     # )
     # convert_local_raw_to_netcdf(
     #     raw_file_location="./test_data_dir/2107RL_FM-D20210808-T033245.raw",
-    #     netcdf_file_download_location="./test_data_dir",
+    #     netcdf_file_download_directory="./test_data_dir",
     #     echosounder="EK80",
     # )
     # convert_local_raw_to_netcdf(
     #     raw_file_location="./test_data_dir/2107RL_FM-D20211012-T022341.raw",
-    #     netcdf_file_download_location="./test_data_dir",
+    #     netcdf_file_download_directory="./test_data_dir",
     #     echosounder="EK80",
     # )
     convert_raw_to_netcdf(
@@ -1799,7 +1799,7 @@ if __name__ == "__main__":
         survey_name="RL2107",
         echosounder="EK80",
         data_source="NCEI",
-        file_download_location="./",
+        file_download_directory="./",
         gcp_bucket=gcp_bucket,
         is_metadata=False,
         debug=True,
@@ -1807,7 +1807,7 @@ if __name__ == "__main__":
     # download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
     #                 file_type="nc", ship_name="Reuben_Lasker",
     #                 survey_name="RL2107", echosounder="EK80",
-    #                 file_download_location=".", gcp_bucket=gcp_bucket,
+    #                 file_download_directory=".", gcp_bucket=gcp_bucket,
     #                 is_metadata=False,debug=False)
 
 """NTH: Not pass a filename, but file type, ship name, echosounder, date
