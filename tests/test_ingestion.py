@@ -4,6 +4,7 @@ import os
 import pytest
 
 from aalibrary import ingestion
+import aalibrary.conversion
 from aalibrary.utils import cloud_utils, helpers
 
 
@@ -471,7 +472,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an empty `file_name` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name="",
                 file_type=self.file_type,
                 ship_name=self.ship_name,
@@ -488,7 +489,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an empty `file_type` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type="",
                 ship_name=self.ship_name,
@@ -505,7 +506,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an invalid `file_type` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type="abc",
                 ship_name=self.ship_name,
@@ -522,7 +523,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an empty `ship_name` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name="",
@@ -539,7 +540,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an empty `survey_name` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
@@ -556,7 +557,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an empty `echosounder` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
@@ -573,7 +574,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an invalid `echosounder` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
@@ -590,7 +591,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an empty `data_source` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
@@ -607,7 +608,7 @@ class TestNCEIIngestionUserErrors:
         """Tests the error-handling for the `convert_raw_to_netcdf` function
         when there is an empty `file_download_location` param."""
         with pytest.raises(Exception):
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
@@ -628,7 +629,7 @@ class TestNCEIIngestionUserErrors:
             with open("file.temp", "a"):
                 os.utime("file.temp", None)
 
-            ingestion.convert_raw_to_netcdf(
+            aalibrary.conversion.convert_raw_to_netcdf(
                 file_name=self.file_name,
                 file_type=self.file_type,
                 ship_name=self.ship_name,
