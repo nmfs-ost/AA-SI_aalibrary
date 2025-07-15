@@ -2,6 +2,7 @@
 
 import traceback
 from typing import List, Tuple
+from azure.storage.filedatalake import DataLakeServiceClient
 import gcsfs
 from google.cloud import bigquery, storage
 from botocore import UNSIGNED
@@ -434,7 +435,7 @@ def check_existence_of_supplemental_files(
     debug: bool = False,
 ) -> RawFile:
     """Checks the existence of supplemental files (idx, bot, etc.) for a raw
-    files. Will check for existence in all data sources.
+    file. Will check for existence in all data sources.
 
     Args:
         file_name (str, optional): The file name (includes extension).
@@ -484,10 +485,127 @@ def bq_query_to_pandas(client: bigquery.Client = None, query: str = ""):
     return job.result().to_dataframe()
 
 
+def list_all_objects_in_gcp_bucket_location(
+    location: str = "", gcp_bucket: storage.Client.bucket = None
+):
+    """Gets all of the files within a GCP storage bucket location.
+
+    Args:
+        location (str, optional): The location to search for files. Defaults
+            to "".
+            Ex. "NCEI/Reuben_Lasker/RL2107"
+        gcp_bucket (storage.Client.bucket, optional): The gcp bucket to use.
+            Defaults to None.
+
+    Returns:
+        List[str]: A list of strings containing all URIs for each file in the
+            bucket.
+    """
+
+    all_blobs_in_this_location = []
+    for blob in gcp_bucket.list_blobs(prefix=location):
+        all_blobs_in_this_location.append(blob.name)
+    return all_blobs_in_this_location
+
+
+def list_all_folders_in_gcp_bucket_location(
+    location: str = "",
+    gcp_bucket: storage.Client.bucket = None,
+    return_full_paths: bool = True
+):
+    if location and not location.endswith("/"):
+        location += "/"
+
+    blobs_iterator = gcp_bucket.list_blobs(prefix=location, delimiter="/")
+
+    folder_prefixes = []
+    # We MUST iterate through all blobs, since this is a lazy-loading iterator.
+    for _ in blobs_iterator:
+        ...
+
+    if blobs_iterator.prefixes:
+        for p in blobs_iterator.prefixes:
+            folder_prefixes.append(p)
+
+    if return_full_paths:
+        return folder_prefixes
+    else:
+        return [b.split("/")[-2] for b in folder_prefixes]
+
+
+def get_existing_netcdf_uris_for_survey(
+    survey_name: str = "",
+) -> List[str]: ...
+
+
 if __name__ == "__main__":
     s3_client, s3_resource, s3_bucket = create_s3_objs()
-    all_objs = list_all_objects_in_s3_bucket_location(
-        prefix="data/raw/Reuben_Lasker/RL2107/metadata", s3_resource=s3_bucket
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
+    # all_objs = list_all_objects_in_s3_bucket_location(
+    #     prefix="data/raw/Reuben_Lasker/RL2107/metadata", s3_resource=s3_bucket
+    # )
+
+    # print(all_objs)
+    # print(
+    #     list_all_objects_in_gcp_bucket_location(
+    #         location="NCEI/Reuben_Lasker/RL2107",
+    #         gcp_bucket=gcp_bucket,
+    #     )
+    # )
+
+    print(
+        list_all_folders_in_gcp_bucket_location(
+            "NCEI/Reuben_Lasker/RL2107/EK80/data/", gcp_bucket, return_full_paths=False
+        )
     )
 
-    print(all_objs)
+
+def get_data_lake_directory_client(
+    config_file_path: str = "",
+) -> DataLakeServiceClient:
+    """Creates a data lake directory client. Returns an object of type
+    DataLakeServiceClient.
+
+    Args:
+        config_file_path (str, optional): The location of the config file.
+            Needs a `[DEFAULT]` section with a `azure_connection_string`
+            variable defined. Defaults to "".
+
+    Returns:
+        DataLakeServiceClient: An object of type DataLakeServiceClient, with
+            connection to the connection string described in the config.
+    """
+
+    config = configparser.ConfigParser()
+    config.read(config_file_path)
+
+    azure_service = DataLakeServiceClient.from_connection_string(
+        conn_str=config["DEFAULT"]["azure_connection_string"]
+    )
+
+    return azure_service
+
+
+def get_service_client_sas(
+    account_name: str, sas_token: str
+) -> DataLakeServiceClient:
+    """Gets an azure service client using an SAS (shared access signature)
+    token. The token must be created in Azure.
+
+    Args:
+        account_name (str): The name of the account you are trying to create a
+            service client with. This is usually a storage account that is
+            attached to the container.
+        sas_token (str): The complete SAS token.
+
+    Returns:
+        DataLakeServiceClient: An object of type DataLakeServiceClient, with
+            connection to the container/file the SAS allows access to.
+    """
+    account_url = f"https://{account_name}.dfs.core.windows.net"
+
+    # The SAS token string can be passed in as credential param or appended to
+    # the account URL
+    service_client = DataLakeServiceClient(account_url, credential=sas_token)
+
+    return service_client

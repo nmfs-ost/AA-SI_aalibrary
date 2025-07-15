@@ -9,12 +9,12 @@ import configparser
 
 from google.cloud import storage
 from azure.storage.filedatalake import (
-    DataLakeServiceClient,
     DataLakeDirectoryClient,
     DataLakeFileClient,
 )
 
 from aalibrary.conversion import convert_raw_to_netcdf
+from aalibrary.utils.cloud_utils import get_data_lake_directory_client
 
 
 # For pytests-sake
@@ -32,57 +32,6 @@ else:
     from aalibrary.utils import cloud_utils, helpers
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
-
-
-def get_data_lake_directory_client(
-    config_file_path: str = "",
-) -> DataLakeServiceClient:
-    """Creates a data lake directory client. Returns an object of type
-    DataLakeServiceClient.
-
-    Args:
-        config_file_path (str, optional): The location of the config file.
-            Needs a `[DEFAULT]` section with a `azure_connection_string`
-            variable defined. Defaults to "".
-
-    Returns:
-        DataLakeServiceClient: An object of type DataLakeServiceClient, with
-            connection to the connection string described in the config.
-    """
-
-    config = configparser.ConfigParser()
-    config.read(config_file_path)
-
-    azure_service = DataLakeServiceClient.from_connection_string(
-        conn_str=config["DEFAULT"]["azure_connection_string"]
-    )
-
-    return azure_service
-
-
-def get_service_client_sas(
-    account_name: str, sas_token: str
-) -> DataLakeServiceClient:
-    """Gets an azure service client using an SAS (shared access signature)
-    token. The token must be created in Azure.
-
-    Args:
-        account_name (str): The name of the account you are trying to create a
-            service client with. This is usually a storage account that is
-            attached to the container.
-        sas_token (str): The complete SAS token.
-
-    Returns:
-        DataLakeServiceClient: An object of type DataLakeServiceClient, with
-            connection to the container/file the SAS allows access to.
-    """
-    account_url = f"https://{account_name}.dfs.core.windows.net"
-
-    # The SAS token string can be passed in as credential param or appended to
-    # the account URL
-    service_client = DataLakeServiceClient(account_url, credential=sas_token)
-
-    return service_client
 
 
 def download_file_from_azure_directory(
@@ -594,6 +543,8 @@ def download_survey_from_ncei(
             Defaults to False.
     """
 
+    # TODO: convert to using RawFile object.
+
     # User-error-checking
     check_for_assertion_errors(
         ship_name=ship_name,
@@ -766,8 +717,6 @@ def download_raw_file(
         gcp_bucket=gcp_bucket,
         s3_resource=s3_resource,
     )
-
-    # TODO: Check for more data_sources
 
     if rf.raw_file_exists_in_gcp:
         # Inform user if file exists in GCP.
@@ -1135,6 +1084,9 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
+
+    # TODO: see if you can convert to using RawFile object.
+
     # Warn user that this function assumes the same metadata for all files
     # within directory.
     logging.warning(
