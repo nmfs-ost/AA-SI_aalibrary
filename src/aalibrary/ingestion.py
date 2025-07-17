@@ -187,6 +187,7 @@ def download_raw_file_from_azure(
 
     # TODO: check to see if you want to download from gcp instead.
 
+    # TODO: add if statement to check if the file exists in azure or not.
     print(f"DOWNLOADING FILE {rf.raw_file_name} FROM OMAO")
     download_file_from_azure_directory(
         directory_client=azure_datalake_directory_client,
