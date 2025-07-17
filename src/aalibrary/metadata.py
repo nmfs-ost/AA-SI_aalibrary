@@ -32,7 +32,7 @@ else:
     )
 
 
-def create_metadata_json(
+def create_metadata_json_for_raw_files(
     rf: RawFile = None,
     debug: bool = False,
 ) -> pd.DataFrame:
@@ -124,7 +124,7 @@ def create_and_upload_metadata_df(
     """
 
     # Create the metadata file to be uploaded.
-    metadata_df = create_metadata_json(
+    metadata_df = create_metadata_json_for_raw_files(
         rf=rf,
         debug=debug,
     )
