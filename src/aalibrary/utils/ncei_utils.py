@@ -4,14 +4,24 @@ through NCEI's s3 bucket."""
 from typing import List
 from difflib import get_close_matches
 import boto3
+from random import randint
 
-# uses current package visibility
-from cloud_utils import (
-    get_subdirectories_in_s3_bucket_location,
-    create_s3_objs,
-    list_all_objects_in_s3_bucket_location,
-)
-from helpers import normalize_ship_name
+# For pytests-sake
+if __package__ is None or __package__ == "":
+    # uses current directory visibility
+    from cloud_utils import (
+        get_subdirectories_in_s3_bucket_location,
+        create_s3_objs,
+        list_all_objects_in_s3_bucket_location,
+    )
+    from helpers import normalize_ship_name
+else:
+    from aalibrary.utils.cloud_utils import (
+        get_subdirectories_in_s3_bucket_location,
+        create_s3_objs,
+        list_all_objects_in_s3_bucket_location,
+    )
+    from aalibrary.utils.helpers import normalize_ship_name
 
 
 def get_all_ship_names_in_ncei(
@@ -267,6 +277,105 @@ def get_all_file_names_from_survey(
     return all_files
 
 
+def get_all_raw_file_names_from_survey(
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    s3_resource: boto3.resource = None,
+    return_full_paths: bool = False,
+) -> List[str]:
+    """Gets all of the file names from a particular NCEI survey.
+
+    Args:
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Defaults to None.
+            NOTE: The ship's name MUST be spelled exactly as it is in NCEI. Use
+            the `get_all_ship_names_in_ncei` function to see all possible NCEI
+            ship names.
+        survey_name (str, optional): The survey name exactly as it is in NCEI.
+            Defaults to "".
+        echosounder (str, optional): The echosounder used. Defaults to "".
+        s3_resource (boto3.resource, optional): The resource used to perform
+            this operation. Defaults to None, but creates a client for you
+            instead.
+        return_full_paths (bool, optional): Whether or not you want a full
+            path from bucket root to the subdirectory returned. Set to false
+            if you only want the subdirectory names listed. Defaults to False.
+
+    Returns:
+        List[str]: A list of strings, each being the raw file name. Whether
+            these are full paths or just folder names are specified by the
+            `return_full_paths` parameter.
+    """
+
+    survey_prefix = f"data/raw/{ship_name}/{survey_name}/{echosounder}/"
+    all_files = list_all_objects_in_s3_bucket_location(
+        prefix=survey_prefix,
+        s3_resource=s3_resource,
+        return_full_paths=return_full_paths,
+    )
+    all_files = [file for file in all_files if file.endswith(".raw")]
+    return all_files
+
+
+def get_random_raw_file_from_ncei() -> List[str]:
+    """Creates a test raw file for NCEI. This is used for testing purposes
+    only. Retries automatically if an error occurs.
+
+    Returns:
+        List[str]: A list object with strings denoting each parameter required
+            for creating a raw file object.
+            Ex. [
+                random_ship_name,
+                random_survey_name,
+                random_echosounder,
+                random_raw_file,
+            ]
+    """
+    
+    try:
+        # Get all of the ship names
+        all_ship_names = get_all_ship_names_in_ncei(
+            normalize=False, return_full_paths=False
+        )
+        random_ship_name = all_ship_names[randint(0, len(all_ship_names) - 1)]
+        # Get all of the surveys for this ship
+        all_surveys_for_this_ship = get_all_survey_names_from_a_ship(
+            ship_name=random_ship_name, return_full_paths=False
+        )
+        random_survey_name = all_surveys_for_this_ship[
+            randint(0, len(all_surveys_for_this_ship) - 1)
+        ]
+        # Get all of the echosounders in this survey
+        all_echosounders_for_this_survey = get_all_echosounders_in_a_survey(
+            ship_name=random_ship_name,
+            survey_name=random_survey_name,
+            return_full_paths=False,
+        )
+        random_echosounder = all_echosounders_for_this_survey[
+            randint(0, len(all_echosounders_for_this_survey) - 1)
+        ]
+        # Get all of the raw files in this echosounder
+        all_raw_files_in_echosounder = get_all_raw_file_names_from_survey(
+            ship_name=random_ship_name,
+            survey_name=random_survey_name,
+            echosounder=random_echosounder,
+            return_full_paths=False,
+        )
+        random_raw_file = all_raw_files_in_echosounder[
+            randint(0, len(all_raw_files_in_echosounder) - 1)
+        ]
+
+        return [
+            random_ship_name,
+            random_survey_name,
+            random_echosounder,
+            random_raw_file,
+        ]
+    except Exception:
+        return get_random_raw_file_from_ncei()
+
+
 def check_if_metadata_json_exists_in_survey(): ...
 
 
@@ -276,21 +385,23 @@ if __name__ == "__main__":
     #   ship_name="Reuben Lasker", s3_client=s3_client, return_full_paths=False
     # )
     # print(subdirs)
-    echos = get_all_echosounders_in_a_survey(
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        s3_client=s3_client,
-        return_full_paths=False,
-    )
-    print(echos)
+    # echos = get_all_echosounders_in_a_survey(
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     s3_client=s3_client,
+    #     return_full_paths=False,
+    # )
+    # print(echos)
 
     # all_echos = get_all_echosounders_that_exist_in_NCEI(s3_client=s3_client)
     # print(all_echos)
 
-    all_files = get_all_file_names_from_survey(
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        s3_resource=s3_resource,
-        return_full_paths=True,
-    )
-    print(all_files)
+    # all_files = get_all_file_names_from_survey(
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     s3_resource=s3_resource,
+    #     return_full_paths=True,
+    # )
+    # print(all_files)
+
+    print(get_random_raw_file_from_ncei())
