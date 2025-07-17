@@ -11,7 +11,7 @@ def start():
     # `gcloud` setup test
     try:
         print("`gcloud` SETUP TEST...", end="")
-        metadata_json = metadata.create_metadata_json()
+        metadata_json = metadata.create_metadata_json_for_raw_files()
         assert (
             metadata_json["UPLOADED_BY"] != ""
         ), "Please login to `gcloud` using `gcloud auth login --no-browser`"
