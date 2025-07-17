@@ -1,5 +1,6 @@
 """This file contains all utility functions for Active Acoustics."""
 
+import configparser
 import traceback
 from typing import List, Tuple
 from azure.storage.filedatalake import DataLakeServiceClient
@@ -199,6 +200,8 @@ def get_subdirectories_in_s3_bucket_location(
             these are full paths or just folder names are specified by the
             `return_full_paths` parameter.
     """
+    if not s3_client:
+        s3_client, _, _ = create_s3_objs(bucket_name)
 
     subdirs = set()
     result = s3_client.list_objects(
@@ -239,6 +242,8 @@ def list_all_objects_in_s3_bucket_location(
         List[str]: A list of strings containing either the objects name or
             path, dependent on the `return_full_paths` parameter.
     """
+    if not s3_resource:
+        _, s3_resource, _ = create_s3_objs(bucket_name)
 
     object_keys = set()
     bucket = s3_resource.Bucket(bucket_name)
@@ -511,7 +516,7 @@ def list_all_objects_in_gcp_bucket_location(
 def list_all_folders_in_gcp_bucket_location(
     location: str = "",
     gcp_bucket: storage.Client.bucket = None,
-    return_full_paths: bool = True
+    return_full_paths: bool = True,
 ):
     if location and not location.endswith("/"):
         location += "/"
@@ -536,28 +541,6 @@ def list_all_folders_in_gcp_bucket_location(
 def get_existing_netcdf_uris_for_survey(
     survey_name: str = "",
 ) -> List[str]: ...
-
-
-if __name__ == "__main__":
-    s3_client, s3_resource, s3_bucket = create_s3_objs()
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
-    # all_objs = list_all_objects_in_s3_bucket_location(
-    #     prefix="data/raw/Reuben_Lasker/RL2107/metadata", s3_resource=s3_bucket
-    # )
-
-    # print(all_objs)
-    # print(
-    #     list_all_objects_in_gcp_bucket_location(
-    #         location="NCEI/Reuben_Lasker/RL2107",
-    #         gcp_bucket=gcp_bucket,
-    #     )
-    # )
-
-    print(
-        list_all_folders_in_gcp_bucket_location(
-            "NCEI/Reuben_Lasker/RL2107/EK80/data/", gcp_bucket, return_full_paths=False
-        )
-    )
 
 
 def get_data_lake_directory_client(
@@ -609,3 +592,28 @@ def get_service_client_sas(
     service_client = DataLakeServiceClient(account_url, credential=sas_token)
 
     return service_client
+
+
+if __name__ == "__main__":
+    s3_client, s3_resource, s3_bucket = create_s3_objs()
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
+    # all_objs = list_all_objects_in_s3_bucket_location(
+    #     prefix="data/raw/Reuben_Lasker/RL2107/metadata",
+    #     s3_resource=s3_bucket
+    # )
+
+    # print(all_objs)
+    # print(
+    #     list_all_objects_in_gcp_bucket_location(
+    #         location="NCEI/Reuben_Lasker/RL2107",
+    #         gcp_bucket=gcp_bucket,
+    #     )
+    # )
+
+    print(
+        list_all_folders_in_gcp_bucket_location(
+            "NCEI/Reuben_Lasker/RL2107/EK80/data/",
+            gcp_bucket,
+            return_full_paths=False,
+        )
+    )
