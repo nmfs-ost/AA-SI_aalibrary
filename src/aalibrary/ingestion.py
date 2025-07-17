@@ -13,10 +13,6 @@ from azure.storage.filedatalake import (
     DataLakeFileClient,
 )
 
-from aalibrary.conversion import convert_raw_to_netcdf
-from aalibrary.utils.cloud_utils import get_data_lake_directory_client
-
-
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
@@ -25,6 +21,7 @@ if __package__ is None or __package__ == "":
     from utils import cloud_utils, helpers
     import metadata
     from raw_file import RawFile
+    from utils.cloud_utils import get_data_lake_directory_client
 else:
     # uses current package visibility
     from aalibrary import utils
@@ -32,6 +29,7 @@ else:
     from aalibrary.utils import cloud_utils, helpers
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
+    from aalibrary.utils.cloud_utils import get_data_lake_directory_client
 
 
 def download_file_from_azure_directory(
@@ -1509,18 +1507,6 @@ if __name__ == "__main__":
     #     netcdf_file_download_directory="./test_data_dir",
     #     echosounder="EK80",
     # )
-    convert_raw_to_netcdf(
-        file_name="2107RL_CW-D20210916-T165047.raw",
-        file_type="raw",
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        echosounder="EK80",
-        data_source="NCEI",
-        file_download_directory="./",
-        gcp_bucket=gcp_bucket,
-        is_metadata=False,
-        debug=True,
-    )
     # download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
     #                 file_type="nc", ship_name="Reuben_Lasker",
     #                 survey_name="RL2107", echosounder="EK80",

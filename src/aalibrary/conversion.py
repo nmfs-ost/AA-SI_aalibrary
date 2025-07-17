@@ -3,7 +3,7 @@
 import os
 import logging
 
-from google.cloud.storage import storage
+from google.cloud import storage
 
 from echopype import open_raw
 
@@ -18,7 +18,7 @@ if __package__ is None or __package__ == "":
     import utils
     import metadata
     from raw_file import RawFile
-    from utils import sonar_checker
+    # from utils import sonar_checker
 else:
     # uses current package visibility
     from aalibrary.ingestion import (
@@ -29,7 +29,7 @@ else:
     from aalibrary import utils
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
-    from aalibrary.utils import sonar_checker
+    # from aalibrary.utils import sonar_checker
 
 
 def convert_local_raw_to_netcdf(
