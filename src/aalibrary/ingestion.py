@@ -289,7 +289,6 @@ def download_raw_file_from_azure(
 
 
 def download_single_file_from_aws(
-    s3_bucket: str = "noaa-wcsd-pds",
     file_url: str = "",
     download_location: str = "",
 ):
@@ -297,8 +296,6 @@ def download_single_file_from_aws(
     repository.
 
     Args:
-        s3_bucket (str, optional): The string name of the s3 bucket. Defaults
-            to "noaa-wcsd-pds".
         file_url (str, optional): The file url. Defaults to "".
         download_location (str, optional): The local download location for the
             file. Defaults to "".
@@ -405,21 +402,18 @@ def download_raw_file_from_ncei(
 
     if rf.raw_file_exists_in_ncei:
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.raw_file_ncei_url,
             download_location=rf.raw_file_download_path,
         )
     if rf.idx_file_exists_in_ncei:
         # Force download the idx file.
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.idx_file_ncei_url,
             download_location=rf.idx_file_download_path,
         )
     if rf.bot_file_exists_in_ncei:
         # Force download the bot file.
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.bot_file_ncei_url,
             download_location=rf.bot_file_download_path,
         )
@@ -798,7 +792,6 @@ def download_raw_file(
         )
         # Safely download and upload the idx file.
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.idx_file_ncei_url,
             download_location=rf.idx_file_download_path,
         )
@@ -842,7 +835,6 @@ def download_raw_file(
         )
         # Safely download and upload the bot file.
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.bot_file_ncei_url,
             download_location=rf.bot_file_download_path,
         )
