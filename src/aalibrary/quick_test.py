@@ -91,6 +91,8 @@ def init_test_folder(folder_name: str = "test_data_dir"):
     test_folder_name = "test_data_dir"
     current_dir = os.getcwd()
     test_folder_directory = os.path.join(current_dir, test_folder_name)
+    # Normalize the path to ensure it ends with a separator
+    test_folder_directory = os.path.normpath(test_folder_directory) + os.sep
     # Create test folder
     print(
         f"Creating test folder '{test_folder_name}' in"
@@ -146,6 +148,15 @@ def init_test_folder(folder_name: str = "test_data_dir"):
         file_download_directory=test_folder_directory,
         is_metadata=False,
         debug=False,
+    )
+    ingestion.download_single_file_from_aws(
+        file_url=(
+            "data/raw/Reuben_L"
+            "asker/RL2107/metadata/RL2107_EK80_WCSD_EK80-metadata.json"
+        ),
+        download_location=os.path.join(
+            test_folder_directory, "RL2107_EK80_WCSD_EK80-metadata.json"
+        ),
     )
     print("Test files downloaded successfully.")
 
