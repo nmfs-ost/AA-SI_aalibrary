@@ -10,7 +10,6 @@ import boto3
 
 from aalibrary import config
 
-
 # def parse_and_check_file_download_location(file_download_location: str = ""):
 #     """Will clean (return a file download location and the file download
 #     location directory) and check if the directory even exists in the first
