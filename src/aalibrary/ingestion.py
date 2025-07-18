@@ -1701,7 +1701,7 @@ def stream_raw_file_from_ncei(
             
     Returns:
         tuple: A tuple containing:
-            - stream (io.BytesIO): A BytesIO object containing the file data to be streamed
+            - stream (file-like object): A file-like object that can be streamed
             - content_type (str): The content type of the file
             - filename (str): The name of the file for use in Content-Disposition headers
     """
@@ -1728,17 +1728,15 @@ def stream_raw_file_from_ncei(
         s3_resource=s3_resource,
     )
 
-    # Create a BytesIO object to stream the file
-    file_stream = io.BytesIO()
     content_type = "application/octet-stream"
     
     if rf.raw_file_exists_in_ncei:
         # Get the file object from S3
         s3_object = s3_resource.Object("noaa-wcsd-pds", rf.raw_file_ncei_url)
-        # Download the file to the BytesIO object
-        s3_object.download_fileobj(file_stream)
-        # Reset the file pointer to the beginning
-        file_stream.seek(0)
+        
+        # Get the response object which can be streamed
+        response = s3_object.get()
+        file_stream = response['Body']
         
         # Determine content type based on file extension
         if file_name.lower().endswith('.raw'):
