@@ -114,7 +114,15 @@ class RawFile:
 
         # Normalize ship name
         if "ship_name" in self.__dict__:
+            self.ship_name_unnormalized = self.ship_name
             self.ship_name = utils.helpers.normalize_ship_name(self.ship_name)
+        # If the ship name exists in ICES, get the ICES code for it.
+        if self.ship_name in self.valid_ICES_ship_names:
+            self.ices_code = ices_ship_names.get_ices_code_from_ship_name(
+                ship_name=self.ship_name, is_normalized=True
+            )
+        else:
+            self.ices_code = ""
 
         # Take care of an empty file_download_directory and treat it like the
         # cwd.
@@ -158,21 +166,23 @@ class RawFile:
         )
 
         # Create all possible NCEI urls that can exist
+        # We have to use the un-normalized version of the ship name since
+        # NCEI does not normalize it.
         self.raw_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.raw_file_name,
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.idx_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.idx_file_name,
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.bot_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.bot_file_name,
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
@@ -271,21 +281,21 @@ class RawFile:
         self.raw_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.raw_file_name,
             file_type="raw",
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.idx_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.idx_file_name,
             file_type="idx",
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.bot_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.bot_file_name,
             file_type="bot",
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )

@@ -1,0 +1,39 @@
+site_name: AALibrary
+
+theme:
+  name: material
+  logo: assets/NOAA-color-logo-no-text-print.png
+  favicon: assets/noaa_favicon.png
+
+markdown_extensions:
+  - admonition
+
+nav:
+  - "Home": index.md
+  - "Getting Started":
+    - "Installation": getting-started/installation.md
+    - "Permissions": getting-started/permissions.md
+    - "Testing": getting-started/testing.md
+    - "Usage": getting-started/usage.md
+  - "Documentation":
+    - "AALibrary": documentation/aalibrary.md
+    - "Utils": documentation/utils.md
+    - "RawFile": documentation/raw_file.md
+  - "Troubleshooting": troubleshooting/troubleshooting.md
+  - "About":
+    - "License": about/license.md
+    - "Notice": about/notice.md
+    - "Disclaimer": about/disclaimer.md
+
+plugins:
+- search:
+    # This separator includes the `.` character to separate words for searching. 
+    separator: '[\s\-\.]+'
+- mkdocstrings:
+    default_handler: python
+    handlers:
+      python:
+        options:
+          show_source: false
+          group_by_category: true
+          summary: true
