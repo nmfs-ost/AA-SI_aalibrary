@@ -2,6 +2,7 @@
 as intended. Also checks to see if a raw file can be downloaded."""
 
 import sys
+import os
 
 from aalibrary.utils import cloud_utils
 from aalibrary import ingestion, metadata
@@ -11,7 +12,7 @@ def start():
     # `gcloud` setup test
     try:
         print("`gcloud` SETUP TEST...", end="")
-        metadata_json = metadata.create_metadata_json()
+        metadata_json = metadata.create_metadata_json_for_raw_files()
         assert (
             metadata_json["UPLOADED_BY"] != ""
         ), "Please login to `gcloud` using `gcloud auth login --no-browser`"
@@ -78,5 +79,88 @@ def start():
         )
 
 
+def init_test_folder(folder_name: str = "test_data_dir"):
+    """Creates a test folder in the current directory for quick tests and
+    downloads test files.
+
+    Args:
+        folder_name (str, optional): The name of the folder you want to
+            download test files into. Defaults to "test_data_dir".
+    """
+
+    test_folder_name = "test_data_dir"
+    current_dir = os.getcwd()
+    test_folder_directory = os.path.join(current_dir, test_folder_name)
+    # Normalize the path to ensure it ends with a separator
+    test_folder_directory = os.path.normpath(test_folder_directory) + os.sep
+    # Create test folder
+    print(
+        f"Creating test folder '{test_folder_name}' in"
+        f" `{test_folder_directory}`..."
+    )
+    os.makedirs(f"{test_folder_directory}", exist_ok=True)
+    print(
+        f"Test folder '{test_folder_name}' created successfully in"
+        f" `{test_folder_directory}`."
+    )
+
+    print("Downloading test files...")
+    ingestion.download_raw_file_from_ncei(
+        file_name="2107RL_FM-D20210804-T214458.raw",
+        file_type="raw",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="TEST",
+        file_download_directory=test_folder_directory,
+        is_metadata=False,
+        debug=False,
+    )
+    ingestion.download_raw_file_from_ncei(
+        file_name="2107RL_FM-D20210808-T033245.raw",
+        file_type="raw",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="TEST",
+        file_download_directory=test_folder_directory,
+        is_metadata=False,
+        debug=False,
+    )
+    ingestion.download_raw_file_from_ncei(
+        file_name="2107RL_FM-D20211012-T022341.raw",
+        file_type="raw",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="TEST",
+        file_download_directory=test_folder_directory,
+        is_metadata=False,
+        debug=False,
+    )
+    ingestion.download_raw_file_from_ncei(
+        file_name="2107RL_CW-D20211001-T132449.raw",
+        file_type="raw",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="TEST",
+        file_download_directory=test_folder_directory,
+        is_metadata=False,
+        debug=False,
+    )
+    ingestion.download_single_file_from_aws(
+        file_url=(
+            "data/raw/Reuben_L"
+            "asker/RL2107/metadata/RL2107_EK80_WCSD_EK80-metadata.json"
+        ),
+        download_location=os.path.join(
+            test_folder_directory, "RL2107_EK80_WCSD_EK80-metadata.json"
+        ),
+    )
+    print("Test files downloaded successfully.")
+
+
 if __name__ == "__main__":
-    start()
+    # start()
+    init_test_folder()

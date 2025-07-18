@@ -9,12 +9,9 @@ import configparser
 
 from google.cloud import storage
 from azure.storage.filedatalake import (
-    DataLakeServiceClient,
     DataLakeDirectoryClient,
     DataLakeFileClient,
 )
-from echopype import open_raw
-
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -24,6 +21,7 @@ if __package__ is None or __package__ == "":
     from utils import cloud_utils, helpers
     import metadata
     from raw_file import RawFile
+    from utils.cloud_utils import get_data_lake_directory_client
 else:
     # uses current package visibility
     from aalibrary import utils
@@ -31,57 +29,7 @@ else:
     from aalibrary.utils import cloud_utils, helpers
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
-
-
-def get_data_lake_directory_client(
-    config_file_path: str = "",
-) -> DataLakeServiceClient:
-    """Creates a data lake directory client. Returns an object of type
-    DataLakeServiceClient.
-
-    Args:
-        config_file_path (str, optional): The location of the config file.
-            Needs a `[DEFAULT]` section with a `azure_connection_string`
-            variable defined. Defaults to "".
-
-    Returns:
-        DataLakeServiceClient: An object of type DataLakeServiceClient, with
-            connection to the connection string described in the config.
-    """
-
-    config = configparser.ConfigParser()
-    config.read(config_file_path)
-
-    azure_service = DataLakeServiceClient.from_connection_string(
-        conn_str=config["DEFAULT"]["azure_connection_string"]
-    )
-
-    return azure_service
-
-
-def get_service_client_sas(
-    account_name: str, sas_token: str
-) -> DataLakeServiceClient:
-    """Gets an azure service client using an SAS (shared access signature)
-    token. The token must be created in Azure.
-
-    Args:
-        account_name (str): The name of the account you are trying to create a
-            service client with. This is usually a storage account that is
-            attached to the container.
-        sas_token (str): The complete SAS token.
-
-    Returns:
-        DataLakeServiceClient: An object of type DataLakeServiceClient, with
-            connection to the container/file the SAS allows access to.
-    """
-    account_url = f"https://{account_name}.dfs.core.windows.net"
-
-    # The SAS token string can be passed in as credential param or appended to
-    # the account URL
-    service_client = DataLakeServiceClient(account_url, credential=sas_token)
-
-    return service_client
+    from aalibrary.utils.cloud_utils import get_data_lake_directory_client
 
 
 def download_file_from_azure_directory(
@@ -108,7 +56,7 @@ def download_file_from_azure_directory(
     # User-error-checking
     check_for_assertion_errors(
         data_lake_directory_client=directory_client,
-        file_download_location=download_directory,
+        file_download_directory=download_directory,
     )
 
     file_client = directory_client.get_file_client(
@@ -239,6 +187,7 @@ def download_raw_file_from_azure(
 
     # TODO: check to see if you want to download from gcp instead.
 
+    # TODO: add if statement to check if the file exists in azure or not.
     print(f"DOWNLOADING FILE {rf.raw_file_name} FROM OMAO")
     download_file_from_azure_directory(
         directory_client=azure_datalake_directory_client,
@@ -341,7 +290,6 @@ def download_raw_file_from_azure(
 
 
 def download_single_file_from_aws(
-    s3_bucket: str = "noaa-wcsd-pds",
     file_url: str = "",
     download_location: str = "",
 ):
@@ -349,8 +297,6 @@ def download_single_file_from_aws(
     repository.
 
     Args:
-        s3_bucket (str, optional): The string name of the s3 bucket. Defaults
-            to "noaa-wcsd-pds".
         file_url (str, optional): The file url. Defaults to "".
         download_location (str, optional): The local download location for the
             file. Defaults to "".
@@ -457,21 +403,18 @@ def download_raw_file_from_ncei(
 
     if rf.raw_file_exists_in_ncei:
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.raw_file_ncei_url,
             download_location=rf.raw_file_download_path,
         )
     if rf.idx_file_exists_in_ncei:
         # Force download the idx file.
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.idx_file_ncei_url,
             download_location=rf.idx_file_download_path,
         )
     if rf.bot_file_exists_in_ncei:
         # Force download the bot file.
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.bot_file_ncei_url,
             download_location=rf.bot_file_download_path,
         )
@@ -560,7 +503,7 @@ def download_survey_from_ncei(
     survey_name: str = "",
     echosounder: str = "",
     data_source: str = "NCEI",
-    file_download_location: str = ".",
+    file_download_directory: str = ".",
     is_metadata: bool = False,
     upload_to_gcp: bool = False,
     debug: bool = False,
@@ -580,7 +523,7 @@ def download_survey_from_ncei(
         data_source (str, optional): The source of the file. Necessary due to
             the way the storage bucket is organized. Can be one of
             ["NCEI", "OMAO", "HDD"]. Defaults to "".
-        file_download_location (str, optional): The local file directory you
+        file_download_directory (str, optional): The local file directory you
             want to store your file in. Defaults to current directory.
             Defaults to ".".
         is_metadata (bool, optional): Whether or not the file is a metadata
@@ -593,18 +536,20 @@ def download_survey_from_ncei(
             Defaults to False.
     """
 
+    # TODO: convert to using RawFile object.
+
     # User-error-checking
     check_for_assertion_errors(
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
         data_source=data_source,
-        file_download_location=file_download_location,
+        file_download_directory=file_download_directory,
     )
 
     # Create the download directory (path) if it doesn't exist
-    if not os.path.exists(file_download_location):
-        os.makedirs(file_download_location)
+    if not os.path.exists(file_download_directory):
+        os.makedirs(file_download_directory)
 
     # Get all raw file names associated with this survey from NCEI.
     prefix = f"data/raw/{ship_name}/{survey_name}/{echosounder}/"
@@ -624,7 +569,7 @@ def download_survey_from_ncei(
             survey_name=survey_name,
             echosounder=echosounder,
             data_source="NCEI",
-            file_download_location=file_download_location,
+            file_download_directory=file_download_directory,
             is_metadata=False,
             upload_to_gcp=upload_to_gcp,
             debug=debug,
@@ -671,12 +616,12 @@ def check_for_assertion_errors(**kwargs):
             "Please provide a valid data source from the "
             f"following: {config.VALID_DATA_SOURCES}"
         )
-    if "file_download_location" in kwargs:
+    if "file_download_directory" in kwargs:
         assert (
-            kwargs["file_download_location"] != ""
-        ), "Please provide a valid file download location (a directory)."
-        assert os.path.isdir(kwargs["file_download_location"]), (
-            f"File download location `{kwargs['file_download_location']}` is"
+            kwargs["file_download_directory"] != ""
+        ), "Please provide a valid file download directory."
+        assert os.path.isdir(kwargs["file_download_directory"]), (
+            f"File download location `{kwargs['file_download_directory']}` is"
             " not found to be a valid dir, please reformat it."
         )
     if "gcp_bucket" in kwargs:
@@ -766,8 +711,6 @@ def download_raw_file(
         s3_resource=s3_resource,
     )
 
-    # TODO: Check for more data_sources
-
     if rf.raw_file_exists_in_gcp:
         # Inform user if file exists in GCP.
         print(
@@ -850,7 +793,6 @@ def download_raw_file(
         )
         # Safely download and upload the idx file.
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.idx_file_ncei_url,
             download_location=rf.idx_file_download_path,
         )
@@ -894,7 +836,6 @@ def download_raw_file(
         )
         # Safely download and upload the bot file.
         download_single_file_from_aws(
-            s3_bucket="noaa-wcsd-pds",
             file_url=rf.bot_file_ncei_url,
             download_location=rf.bot_file_download_path,
         )
@@ -932,7 +873,7 @@ def download_netcdf_file(
     Works as follows:
         1. Checks if the exact netcdf exists in gcp.
             a. If it doesn't exists, prompts user to download it first.
-            b. If it exists, downloads to the `file_download_location`.
+            b. If it exists, downloads to the `file_download_directory`.
 
     Args:
         raw_file_name (str, optional): The raw file name (includes extension).
@@ -1004,242 +945,6 @@ def download_netcdf_file(
             )
         )
         raise FileNotFoundError
-
-
-def convert_local_raw_to_netcdf(
-    raw_file_location: str = "",
-    netcdf_file_download_directory: str = "",
-    echosounder: str = "",
-    overwrite: bool = False,
-    delete_raw_after: bool = False,
-):
-    """ENTRYPOINT FOR END-USERS
-    Converts a local (on your computer) file from raw into netcdf using
-    echopype.
-
-    Args:
-        raw_file_location (str, optional): The location of the raw file.
-            Defaults to "".
-        netcdf_file_download_directory (str, optional): The location you want
-            to download your netcdf file to. Defaults to "".
-        echosounder (str, optional): The echosounder used. Can be one of
-            ["EK80", "EK70"]. Defaults to "".
-        overwrite (bool, optional): Whether or not to overwrite the netcdf
-            file. Defaults to False.
-        delete_raw_after (bool, optional): Whether or not to delete the raw
-            file after conversion is complete. Defaults to False.
-    """
-
-    netcdf_file_download_directory = os.sep.join(
-        [os.path.normpath(netcdf_file_download_directory)]
-    )
-    print(f"netcdf_file_download_directory{netcdf_file_download_directory}")
-
-    # Create the download directory (path) if it doesn't exist
-    if not os.path.exists(netcdf_file_download_directory):
-        os.makedirs(netcdf_file_download_directory)
-
-    # Make sure the echosounder specified matches the raw file data.
-    # if echosounder.lower() == "ek80":
-    #     assert echopype.convert.is_EK80(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "ek60":
-    #     assert echopype.convert.is_EK60(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "azfp6":
-    #     assert echopype.convert.is_AZFP6(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "azfp":
-    #     assert echopype.convert.is_AZFP(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "ad2cp":
-    #     assert echopype.convert.is_AD2CP(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "er60":
-    #     assert echopype.convert.is_ER60(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-
-    try:
-        print("CONVERTING RAW TO NETCDF...")
-        raw_file_echopype = open_raw(
-            raw_file=raw_file_location, sonar_model=echosounder
-        )
-        raw_file_echopype.to_netcdf(
-            save_path=netcdf_file_download_directory, overwrite=overwrite
-        )
-        print("CONVERTED.")
-        if delete_raw_after:
-            try:
-                print("DELETING RAW FILE...")
-                os.remove(raw_file_location)
-                print("DELETED.")
-            except Exception as e:
-                print(e)
-                print(
-                    "THE RAW FILE COULD NOT BE DELETED DUE TO THE ERROR ABOVE."
-                )
-    except Exception as e:
-        logging.error(
-            f"COULD NOT CONVERT `{raw_file_location}` DUE TO ERROR {e}"
-        )
-        raise e
-
-
-def convert_raw_to_netcdf(
-    file_name: str = "",
-    file_type: str = "raw",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    data_source: str = "",
-    file_download_directory: str = "",
-    overwrite: bool = False,
-    delete_raw_after: bool = False,
-    gcp_bucket: storage.Client.bucket = None,
-    is_metadata: bool = False,
-    debug: bool = False,
-):
-    """ENTRYPOINT FOR END-USERS
-    This function allows one to convert a file from raw to netcdf. Then uploads
-    the file to GCP storage for caching.
-
-    Args:
-        file_name (str, optional): The file name (includes extension).
-            Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
-            Defaults to "".
-        ship_name (str, optional): The ship name associated with this survey.
-            Defaults to "".
-        survey_name (str, optional): The survey name/identifier. Defaults
-            to "".
-        echosounder (str, optional): The echosounder used to gather the data.
-            Defaults to "".
-        data_source (str, optional): The source of the file. Necessary due to
-            the way the storage bucket is organized. Can be one of
-            ["NCEI", "OMAO", "HDD"]. Defaults to "".
-        file_download_directory (str, optional): The local directory you want
-            to store your file in. Defaults to "".
-        overwrite (bool, optional): Whether or not to overwrite the netcdf
-            file. Defaults to False.
-        delete_raw_after (bool, optional): Whether or not to delete the raw
-            file after conversion is complete. Defaults to False.
-        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
-            used to download the file. Defaults to None.
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
-        debug (bool, optional): Whether or not to print debug statements.
-            Defaults to False.
-    """
-    # TODO: Implement an 'upload' param default to True.
-
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        utils.cloud_utils.setup_gcp_storage_objs()
-    )
-    s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
-
-    rf = RawFile(
-        file_name=file_name,
-        file_type=file_type,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-        data_source=data_source,
-        file_download_directory=file_download_directory,
-        overwrite=overwrite,
-        gcp_bucket=gcp_bucket,
-        is_metadata=is_metadata,
-        debug=debug,
-        s3_resource=s3_resource,
-        s3_bucket_name="noaa-wcsd-pds",
-    )
-
-    # Here we check for a netcdf version of the raw file on GCP
-    print("CHECKING FOR NETCDF VERSION ON GCP...")
-    if rf.netcdf_file_exists_in_gcp:
-        # Inform the user if a netcdf version exists in cache.
-        download_netcdf_file(
-            raw_file_name=rf.netcdf_file_name,
-            file_type="netcdf",
-            ship_name=rf.ship_name,
-            survey_name=rf.survey_name,
-            echosounder=rf.echosounder,
-            data_source=rf.data_source,
-            file_download_directory=rf.file_download_directory,
-            gcp_bucket=gcp_bucket,
-            is_metadata=rf.is_metadata,
-            debug=rf.debug,
-        )
-    else:
-        logging.info(
-            (
-                f"FILE `{rf.raw_file_name}` DOES NOT EXIST AS NETCDF."
-                " DOWNLOADING/CONVERTING/UPLOADING RAW..."
-            )
-        )
-
-        # Download the raw file.
-        # This function should take care of checking whether the raw file
-        # exists in any of the data sources, and fetching it.
-        download_raw_file(
-            file_name=rf.file_name,
-            file_type=rf.file_type,
-            ship_name=rf.ship_name,
-            survey_name=rf.survey_name,
-            echosounder=rf.echosounder,
-            data_source=rf.data_source,
-            file_download_directory=rf.file_download_directory,
-            is_metadata=rf.is_metadata,
-            debug=rf.debug,
-        )
-
-        # Convert the raw file to netcdf.
-        convert_local_raw_to_netcdf(
-            raw_file_location=rf.raw_file_download_path,
-            netcdf_file_download_directory=rf.netcdf_file_download_path,
-            echosounder=rf.echosounder,
-            overwrite=overwrite,
-            delete_raw_after=delete_raw_after,
-        )
-
-        # Upload the netcdf to the correct location for parsing.
-        upload_file_to_gcp_storage_bucket(
-            file_name=rf.netcdf_file_name,
-            file_type="netcdf",
-            ship_name=rf.ship_name,
-            survey_name=rf.survey_name,
-            echosounder=rf.echosounder,
-            file_location=rf.netcdf_file_download_path,
-            gcp_bucket=gcp_bucket,
-            data_source=rf.data_source,
-            is_metadata=False,
-            debug=rf.debug,
-        )
-        # Upload the metadata file associated with this
-        metadata.create_and_upload_metadata_df_for_netcdf(
-            file_name=rf.netcdf_file_name,
-            file_type="netcdf",
-            ship_name=rf.ship_name,
-            survey_name=rf.survey_name,
-            echosounder=rf.echosounder,
-            data_source=rf.data_source,
-            gcp_bucket=gcp_bucket,
-            netcdf_local_file_location=rf.netcdf_file_download_path,
-            debug=debug,
-        )
 
 
 def upload_file_to_gcp_storage_bucket(
@@ -1370,6 +1075,9 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
+
+    # TODO: see if you can convert to using RawFile object.
+
     # Warn user that this function assumes the same metadata for all files
     # within directory.
     logging.warning(
@@ -1646,19 +1354,19 @@ def find_and_upload_survey_metadata_from_s3(
         # Download and upload each object
         for full_path, file_name in s3_objects:
             # Get the correct full file download location
-            file_download_location = os.sep.join(
+            file_download_directory = os.sep.join(
                 [os.path.normpath("./"), file_name]
             )
             # Download from aws
             download_single_file_from_aws(
-                file_url=full_path, download_location=file_download_location
+                file_url=full_path, download_location=file_download_directory
             )
             # Upload to gcp
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name,
                 ship_name=ship_name,
                 survey_name=survey_name,
-                file_location=file_download_location,
+                file_location=file_download_directory,
                 gcp_bucket=gcp_bucket,
                 data_source="NCEI",
                 is_metadata=False,
@@ -1666,7 +1374,7 @@ def find_and_upload_survey_metadata_from_s3(
                 debug=debug,
             )
             # Remove local file (it's temporary)
-            os.remove(file_download_location)
+            os.remove(file_download_directory)
 
 
 def find_data_source_for_file():
@@ -1859,42 +1567,30 @@ if __name__ == "__main__":
     #                   survey_name="RL2107",
     #                   echosounder="EK80",
     #                   data_source="NCEI",
-    #                   file_download_location=f"./test_data_dir/",
+    #                   file_download_directory=f"./test_data_dir/",
     #                   is_metadata=False,
     #                   debug=True)
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket,
     # file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(
     #     raw_file_location="./test_data_dir/2107RL_FM-D20210804-T214458.raw",
-    #     netcdf_file_download_location="./test_data_dir",
+    #     netcdf_file_download_directory="./test_data_dir",
     #     echosounder="EK80",
     # )
     # convert_local_raw_to_netcdf(
     #     raw_file_location="./test_data_dir/2107RL_FM-D20210808-T033245.raw",
-    #     netcdf_file_download_location="./test_data_dir",
+    #     netcdf_file_download_directory="./test_data_dir",
     #     echosounder="EK80",
     # )
     # convert_local_raw_to_netcdf(
     #     raw_file_location="./test_data_dir/2107RL_FM-D20211012-T022341.raw",
-    #     netcdf_file_download_location="./test_data_dir",
+    #     netcdf_file_download_directory="./test_data_dir",
     #     echosounder="EK80",
     # )
-    convert_raw_to_netcdf(
-        file_name="2107RL_CW-D20210916-T165047.raw",
-        file_type="raw",
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        echosounder="EK80",
-        data_source="NCEI",
-        file_download_location="./",
-        gcp_bucket=gcp_bucket,
-        is_metadata=False,
-        debug=True,
-    )
     # download_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
     #                 file_type="nc", ship_name="Reuben_Lasker",
     #                 survey_name="RL2107", echosounder="EK80",
-    #                 file_download_location=".", gcp_bucket=gcp_bucket,
+    #                 file_download_directory=".", gcp_bucket=gcp_bucket,
     #                 is_metadata=False,debug=False)
 
 """NTH: Not pass a filename, but file type, ship name, echosounder, date

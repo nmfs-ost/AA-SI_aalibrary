@@ -38,7 +38,6 @@ def time_ingestion_and_upload_from_ncei(
     for i in range(n):
         start_time = time.time()
         ingestion.download_single_file_from_aws(
-            s3_bucket=ncei_bucket,
             file_url=ncei_file_url,
             download_location=download_location,
         )

@@ -8,5 +8,3 @@ VALID_FILETYPES = ["raw", "idx", "netcdf", "nc", "json", "bot"]
 
 VALID_ECHOSOUNDERS = ["EK70", "EK80", "ES60", "EK60", "EK500", "EK_60"]
 VALID_DATA_SOURCES = ["NCEI", "OMAO", "HDD", "TEST"]
-
-# TODO: lookup table for ship names, spell correct or "did you mean XYZ...?"

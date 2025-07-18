@@ -50,9 +50,8 @@ setup_info = dict(
     # Requirements
     install_requires=[
         "echopype>=0.9.0",
-        "zarr==2.18.3"
+        "zarr==2.8.3"
         "boto3>=1.35.29",
-        "Flask>=3.0.3",
         "gcsfs",
         "google-api-python-client",
         "google-cloud",
@@ -60,13 +59,13 @@ setup_info = dict(
         "google-cloud-storage",
         "google-cloud-vision",
         "numpy>=1.26.4",
-        "openpyxl>=3.1.5",
+        "openpyxl>=3.1.3",
         "pandas>=2.2.2",
-        "pandas_gbq>=0.22.0",
+        "pandas_gbq",
         "pytest>=8.3.3",
         "pytz>=2024.1",
         "tqdm>=4.66.2",
-        "azure-storage-file-datalake>=12.18.0",
+        "azure-storage-file-datalake>=12.7.0",
     ],
     # Add _ prefix to the names of temporary build dirs
     # options={'build': {'build_base': '_build'}, },
