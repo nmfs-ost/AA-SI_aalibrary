@@ -166,22 +166,23 @@ class RawFile:
         )
 
         # Create all possible NCEI urls that can exist
-        # NCEI uses normalized ship names (with underscores)
+        # We have to use the un-normalized version of the ship name since
+        # NCEI does not normalize it.
         self.raw_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.raw_file_name,
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.idx_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.idx_file_name,
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.bot_file_ncei_url = utils.helpers.create_ncei_url_from_variables(
             file_name=self.bot_file_name,
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
@@ -280,21 +281,21 @@ class RawFile:
         self.raw_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.raw_file_name,
             file_type="raw",
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.idx_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.idx_file_name,
             file_type="idx",
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.bot_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.bot_file_name,
             file_type="bot",
-            ship_name=self.ship_name,
+            ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
