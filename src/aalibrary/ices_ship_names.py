@@ -52,7 +52,6 @@ def get_all_ices_ship_codes_and_names(
             and the name is the value.
     """
 
-    print("HELLO!")
     all_ship_info = get_all_ship_info()
     all_ship_codes_and_names = {}
     for ship_info in all_ship_info:

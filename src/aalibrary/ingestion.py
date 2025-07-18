@@ -1721,8 +1721,7 @@ def stream_raw_file_from_ncei(
             - content_type (str): The content type of the file
             - filename (str): The name of the file for use in Content-Disposition headers
     """
-    import io
-    
+
     try:
         s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     except Exception as e:
@@ -1748,7 +1747,7 @@ def stream_raw_file_from_ncei(
     
     if rf.raw_file_exists_in_ncei:
         # Get the file object from S3
-        s3_object = s3_resource.Object("noaa-wcsd-pds", rf.raw_file_ncei_url)
+        s3_object = s3_resource.Object("noaa-wcsd-pds", rf.raw_file_s3_object_key)
         
         # Get the response object which can be streamed
         response = s3_object.get()
