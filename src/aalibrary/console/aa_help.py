@@ -50,10 +50,11 @@ def print_console_tools_reference():
 
 
 def main():
-    
+
     # Call the function to display the reference
     print_console_tools_reference()
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

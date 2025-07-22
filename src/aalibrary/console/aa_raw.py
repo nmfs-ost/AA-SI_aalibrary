@@ -3,6 +3,7 @@ import argparse
 import sys
 from pathlib import Path
 
+
 def print_help():
     help_text = """
 Usage: aa-raw [OPTIONS]
@@ -31,26 +32,42 @@ Example:
 """
     print(help_text)
 
+
 def main():
-    
+
     # Display help if no arguments are provided or if --help is explicitly passed
     if len(sys.argv) == 1 or "--help" in sys.argv:
         print_help()
         sys.exit(0)
-    
-    parser = argparse.ArgumentParser(description="Download raw file from Azure.")
-    
 
-    
-    parser.add_argument("--file_name", required=True, help="Name of the file to download.")
-    parser.add_argument("--file_type", required=False, default="raw", help="Type of the file.")
+    parser = argparse.ArgumentParser(description="Download raw file from Azure.")
+
+    parser.add_argument(
+        "--file_name", required=True, help="Name of the file to download."
+    )
+    parser.add_argument(
+        "--file_type", required=False, default="raw", help="Type of the file."
+    )
     parser.add_argument("--ship_name", required=True, help="Name of the ship.")
     parser.add_argument("--survey_name", required=True, help="Name of the survey.")
     parser.add_argument("--echosounder", required=True, help="Type of echosounder.")
-    parser.add_argument("--data_source", required=False, default="NCEI", help="Source of the data.")
-    parser.add_argument("--file_download_directory", required=False, default=".", help="Directory to download the file.")
-    parser.add_argument("--is_metadata", action="store_true", help="Flag to indicate if the file is metadata.")
-    parser.add_argument("--upload_to_gcp", action="store_true", help="Flag to upload the file to GCP.")
+    parser.add_argument(
+        "--data_source", required=False, default="NCEI", help="Source of the data."
+    )
+    parser.add_argument(
+        "--file_download_directory",
+        required=False,
+        default=".",
+        help="Directory to download the file.",
+    )
+    parser.add_argument(
+        "--is_metadata",
+        action="store_true",
+        help="Flag to indicate if the file is metadata.",
+    )
+    parser.add_argument(
+        "--upload_to_gcp", action="store_true", help="Flag to upload the file to GCP."
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode.")
 
     args = parser.parse_args()
@@ -67,12 +84,13 @@ def main():
         upload_to_gcp=args.upload_to_gcp,
         debug=args.debug,
     )
-    
+
     # This is the output that may be piped elsewhere.
     downloaded_raw_file_path = Path(args.file_download_directory) / args.file_name
     print(downloaded_raw_file_path.resolve())
     print(args.echosounder)
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
