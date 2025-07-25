@@ -6,6 +6,7 @@ import sys
 import logging
 import os
 import pprint
+import logging
 
 from google.cloud import storage
 import boto3
@@ -79,9 +80,7 @@ class Survey:
                 os.path.dirname(self.file_download_directory) + os.sep
             )
             if self.debug:
-                logging.debug(
-                    "converted to directory", self.file_download_directory
-                )
+                logging.debug("converted to directory", self.file_download_directory)
 
     def _create_download_directories_if_not_exists(self):
         """Create the download directory (path) if it doesn't exist."""
@@ -119,12 +118,18 @@ class Survey:
 
         # Create connection objects if they dont exist
         self.s3_bucket_name = "noaa-wcsd-pds"
-        if "gcp_bucket" not in self.__dict__:
+        if (
+            ("gcp_bucket" not in self.__dict__)
+            or ("gcp_bucket_name" not in self.__dict__)
+            or ("gcp_stor_client" not in self.__dict__)
+        ):
             self.gcp_stor_client, self.gcp_bucket_name, self.gcp_bucket = (
                 utils.cloud_utils.setup_gcp_storage_objs()
             )
-        if ("s3_resource" not in self.__dict__) or (
-            "s3_client" not in self.__dict__
+        if (
+            ("s3_resource" not in self.__dict__)
+            or ("s3_client" not in self.__dict__)
+            or ("s3_bucket" not in self.__dict__)
         ):
             self.s3_client, self.s3_resource, self.s3_bucket = (
                 utils.cloud_utils.create_s3_objs()
@@ -147,18 +152,14 @@ class Survey:
                 s3_resource=self.s3_resource,
                 return_full_paths=True,
             )
-            self.all_files = [
-                file.split("/")[-1] for file in self.all_files_paths
-            ]
+            self.all_files = [file.split("/")[-1] for file in self.all_files_paths]
 
         # Get all raw files in this survey
         if self.data_source == "NCEI":
             self.raw_files_paths = [
                 file for file in self.all_files_paths if file.endswith(".raw")
             ]
-            self.raw_files = [
-                file.split("/")[-1] for file in self.raw_files_paths
-            ]
+            self.raw_files = [file.split("/")[-1] for file in self.raw_files_paths]
 
         # TODO: Get all metadata files in this survey.
 
@@ -173,7 +174,7 @@ class Survey:
         if self.data_source == "NCEI":
             if not self._raw_file_objects_created:
                 self.raw_file_objects = []
-                for raw_file in tqdm(self.raw_files):
+                for raw_file in tqdm(self.raw_files, desc="Creating RawFile Objects"):
                     # Get the echosounder for this raw file
                     echosounder = ncei_utils.get_echosounder_from_raw_file(
                         file_name=raw_file,
@@ -228,7 +229,11 @@ if __name__ == "__main__":
         file_download_directory="./data/",
         upload_to_gcp=False,
         debug=True,
+        gcp_stor_client=gcp_stor_client,
         gcp_bucket=gcp_bucket,
+        gcp_bucket_name=gcp_bucket_name,
+        s3_client=s3_client,
+        s3_bucket=s3_bucket,
         s3_resource=s3_resource,
     )
 
