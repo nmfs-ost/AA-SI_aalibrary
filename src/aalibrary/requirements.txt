@@ -17,3 +17,4 @@ tqdm
 azure-storage-file-datalake>=12.7.0
 zarr==2.8.3
 inquirerpy
+numcodecs==0.15.1
