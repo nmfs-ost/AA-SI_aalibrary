@@ -6,6 +6,8 @@ from difflib import get_close_matches
 import boto3
 from random import randint
 
+from tqdm import tqdm
+
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
@@ -13,7 +15,7 @@ if __package__ is None or __package__ == "":
         get_subdirectories_in_s3_bucket_location,
         create_s3_objs,
         list_all_objects_in_s3_bucket_location,
-        check_if_file_exists_in_s3
+        check_if_file_exists_in_s3,
     )
     from helpers import normalize_ship_name
 else:
@@ -21,7 +23,7 @@ else:
         get_subdirectories_in_s3_bucket_location,
         create_s3_objs,
         list_all_objects_in_s3_bucket_location,
-        check_if_file_exists_in_s3
+        check_if_file_exists_in_s3,
     )
     from aalibrary.utils.helpers import normalize_ship_name
 
@@ -84,7 +86,7 @@ def get_all_surveys_in_ncei(
         normalize=False, s3_client=s3_client, return_full_paths=True
     )
     all_surveys = set()
-    for ship_prefix in all_ship_prefixes:
+    for ship_prefix in tqdm(all_ship_prefixes, desc="Getting Surveys"):
         # Get a list of all of this ship's survey names
         all_ship_survey_names = get_subdirectories_in_s3_bucket_location(
             prefix=ship_prefix,
@@ -223,7 +225,7 @@ def get_all_echosounders_that_exist_in_NCEI(
         s3_client=s3_client, return_full_paths=True
     )
     all_echosounders = set()
-    for survey_prefix in all_survey_prefixes:
+    for survey_prefix in tqdm(all_survey_prefixes, desc="Getting Echosounders"):
         # Remove trailing `/`
         survey_prefix = survey_prefix.strip("/")
         survey_name = survey_prefix.split("/")[-1]
@@ -383,11 +385,12 @@ def get_echosounder_from_raw_file(
     echosounders: List[str] = None,
     s3_client: boto3.client = None,
     s3_resource: boto3.resource = None,
+    s3_bucket: boto3.resource = None,
 ):
     """Gets the echosounder used for a particular raw file."""
 
-    if (s3_client is None) or (s3_resource is None):
-        s3_client, s3_resource, s3_bucket = cloud_utils.create_s3_objs()
+    if (s3_client is None) or (s3_resource is None) or (s3_bucket is None):
+        s3_client, s3_resource, s3_bucket = create_s3_objs()
 
     if echosounders is None:
         echosounders = get_all_echosounders_in_a_survey(
@@ -404,7 +407,7 @@ def get_echosounder_from_raw_file(
         raw_file_exists = check_if_file_exists_in_s3(
             object_key=raw_file_location,
             s3_resource=s3_resource,
-            bucket_name=s3_bucket.name,
+            s3_bucket_name=s3_bucket.name,
         )
         if raw_file_exists:
             return echosounder
@@ -429,8 +432,8 @@ if __name__ == "__main__":
     # )
     # print(echos)
 
-    # all_echos = get_all_echosounders_that_exist_in_NCEI(s3_client=s3_client)
-    # print(all_echos)
+    all_echos = get_all_echosounders_that_exist_in_NCEI(s3_client=s3_client)
+    print(all_echos)
 
     # all_files = get_all_file_names_from_survey(
     #     ship_name="Reuben_Lasker",
@@ -440,4 +443,4 @@ if __name__ == "__main__":
     # )
     # print(all_files)
 
-    print(get_random_raw_file_from_ncei())
+    # print(get_random_raw_file_from_ncei())
