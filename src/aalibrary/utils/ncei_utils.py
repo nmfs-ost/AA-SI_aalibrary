@@ -126,9 +126,7 @@ def get_all_survey_names_from_a_ship(
         normalize=False, s3_client=s3_client, return_full_paths=False
     )
     if ship_name not in all_ship_names:
-        close_matches = get_close_matches(
-            ship_name, all_ship_names, n=3, cutoff=0.6
-        )
+        close_matches = get_close_matches(ship_name, all_ship_names, n=3, cutoff=0.6)
     assert ship_name in all_ship_names, (
         f"The ship name provided `{ship_name}` "
         "needs to be spelled exactly like in NCEI.\n"
@@ -374,6 +372,42 @@ def get_random_raw_file_from_ncei() -> List[str]:
         ]
     except Exception:
         return get_random_raw_file_from_ncei()
+
+
+def get_echosounder_from_raw_file(
+    file_name: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounders: List[str] = None,
+    s3_client: boto3.client = None,
+    s3_resource: boto3.resource = None,
+):
+    """Gets the echosounder used for a particular raw file."""
+
+    if (s3_client is None) or (s3_resource is None):
+        s3_client, s3_resource, s3_bucket = cloud_utils.create_s3_objs()
+
+    if echosounders is None:
+        echosounders = get_all_echosounders_in_a_survey(
+            ship_name=ship_name,
+            survey_name=survey_name,
+            s3_client=s3_client,
+            return_full_paths=False,
+        )
+
+    for echosounder in echosounders:
+        raw_file_location = (
+            f"data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}"
+        )
+        raw_file_exists = cloud_utils.check_if_file_exists_in_s3(
+            object_key=raw_file_location,
+            s3_resource=s3_resource,
+            bucket_name=s3_bucket.name,
+        )
+        if raw_file_exists:
+            return echosounder
+
+    return ValueError("An echosounder could not be found for this raw file.")
 
 
 def check_if_metadata_json_exists_in_survey(): ...
