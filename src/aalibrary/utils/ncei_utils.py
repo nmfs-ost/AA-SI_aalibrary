@@ -13,6 +13,7 @@ if __package__ is None or __package__ == "":
         get_subdirectories_in_s3_bucket_location,
         create_s3_objs,
         list_all_objects_in_s3_bucket_location,
+        check_if_file_exists_in_s3
     )
     from helpers import normalize_ship_name
 else:
@@ -20,6 +21,7 @@ else:
         get_subdirectories_in_s3_bucket_location,
         create_s3_objs,
         list_all_objects_in_s3_bucket_location,
+        check_if_file_exists_in_s3
     )
     from aalibrary.utils.helpers import normalize_ship_name
 
@@ -399,7 +401,7 @@ def get_echosounder_from_raw_file(
         raw_file_location = (
             f"data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}"
         )
-        raw_file_exists = cloud_utils.check_if_file_exists_in_s3(
+        raw_file_exists = check_if_file_exists_in_s3(
             object_key=raw_file_location,
             s3_resource=s3_resource,
             bucket_name=s3_bucket.name,
