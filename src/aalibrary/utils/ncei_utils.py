@@ -471,6 +471,44 @@ def get_closest_ncei_formatted_ship_name(ship_name: str = "") -> Union[str, None
         return None
 
 
+def get_all_metadata_files_in_survey(
+    ship_name: str = "",
+    survey_name: str = "",
+    s3_resource: boto3.resource = None,
+    return_full_paths: bool = False,
+) -> List[str]:
+    """Gets all of the file names from a particular NCEI survey.
+
+    Args:
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Defaults to None.
+            NOTE: The ship's name MUST be spelled exactly as it is in NCEI. Use
+            the `get_all_ship_names_in_ncei` function to see all possible NCEI
+            ship names.
+        survey_name (str, optional): The survey name exactly as it is in NCEI.
+            Defaults to "".
+        s3_resource (boto3.resource, optional): The resource used to perform
+            this operation. Defaults to None, but creates a client for you
+            instead.
+        return_full_paths (bool, optional): Whether or not you want a full
+            path from bucket root to the subdirectory returned. Set to false
+            if you only want the subdirectory names listed. Defaults to False.
+
+    Returns:
+        List[str]: A list of strings, each being the metadata file name. Whether
+            these are full paths or just folder names are specified by the
+            `return_full_paths` parameter.
+    """
+
+    survey_prefix = f"data/raw/{ship_name}/{survey_name}/metadata/"
+    all_metadata_files = list_all_objects_in_s3_bucket_location(
+        prefix=survey_prefix,
+        s3_resource=s3_resource,
+        return_full_paths=return_full_paths,
+    )
+    return all_metadata_files
+
+
 if __name__ == "__main__":
     s3_client, s3_resource, _ = create_s3_objs()
     # subdirs = get_all_survey_names_from_a_ship(
