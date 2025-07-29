@@ -59,7 +59,7 @@ def convert_local_raw_to_netcdf(
     netcdf_file_download_directory = os.sep.join(
         [os.path.normpath(netcdf_file_download_directory)]
     )
-    print(f"netcdf_file_download_directory{netcdf_file_download_directory}")
+    print(f"netcdf_file_download_directory {netcdf_file_download_directory}")
 
     # Create the download directory (path) if it doesn't exist
     if not os.path.exists(netcdf_file_download_directory):
@@ -235,7 +235,7 @@ def convert_raw_to_netcdf(
         # Convert the raw file to netcdf.
         convert_local_raw_to_netcdf(
             raw_file_location=rf.raw_file_download_path,
-            netcdf_file_download_directory=rf.netcdf_file_download_path,
+            netcdf_file_download_directory=rf.file_download_directory,
             echosounder=rf.echosounder,
             overwrite=overwrite,
             delete_raw_after=delete_raw_after,
