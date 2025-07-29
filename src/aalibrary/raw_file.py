@@ -78,9 +78,7 @@ class RawFile:
                 os.path.dirname(self.file_download_directory) + os.sep
             )
             if self.debug:
-                logging.debug(
-                    "converted to directory", self.file_download_directory
-                )
+                logging.debug("converted to directory", self.file_download_directory)
 
     def _create_download_directories_if_not_exists(self):
         """Create the download directory (path) if it doesn't exist."""
@@ -116,6 +114,14 @@ class RawFile:
         if "ship_name" in self.__dict__:
             self.ship_name_unnormalized = self.ship_name
             self.ship_name = utils.helpers.normalize_ship_name(self.ship_name)
+            # Get the NCEI formatted name if the data source is NCEI.
+            # This is basically a spell checker for NCEI.
+            if self.data_source == "NCEI":
+                self.ship_name_unnormalized = (
+                    utils.ncei_utils.get_closest_ncei_formatted_ship_name(
+                        ship_name=self.ship_name
+                    )
+                )
         # If the ship name exists in ICES, get the ICES code for it.
         if self.ship_name in self.valid_ICES_ship_names:
             self.ices_code = ices_ship_names.get_ices_code_from_ship_name(
@@ -147,9 +153,7 @@ class RawFile:
         self.file_name_wo_extension = self.file_name.split(".")[0]
         self.idx_file_name = ".".join(self.file_name.split(".")[:-1]) + ".idx"
         self.bot_file_name = ".".join(self.file_name.split(".")[:-1]) + ".bot"
-        self.netcdf_file_name = (
-            ".".join(self.file_name.split(".")[:-1]) + ".nc"
-        )
+        self.netcdf_file_name = ".".join(self.file_name.split(".")[:-1]) + ".nc"
 
         # Create download paths for all four types of files
         self.raw_file_download_path = os.path.normpath(
@@ -240,41 +244,33 @@ class RawFile:
         )
 
         # Create all OMAO storage locations for each file.
-        self.raw_omao_file_path = (
-            utils.helpers.create_omao_file_path_from_variables(
-                self.raw_file_name,
-                file_type="raw",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-            )
+        self.raw_omao_file_path = utils.helpers.create_omao_file_path_from_variables(
+            self.raw_file_name,
+            file_type="raw",
+            ship_name=self.ship_name,
+            survey_name=self.survey_name,
+            echosounder=self.echosounder,
         )
-        self.idx_omao_file_path = (
-            utils.helpers.create_omao_file_path_from_variables(
-                file_name=self.idx_file_name,
-                file_type="idx",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-            )
+        self.idx_omao_file_path = utils.helpers.create_omao_file_path_from_variables(
+            file_name=self.idx_file_name,
+            file_type="idx",
+            ship_name=self.ship_name,
+            survey_name=self.survey_name,
+            echosounder=self.echosounder,
         )
-        self.bot_omao_file_path = (
-            utils.helpers.create_omao_file_path_from_variables(
-                file_name=self.bot_file_name,
-                file_type="bot",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-            )
+        self.bot_omao_file_path = utils.helpers.create_omao_file_path_from_variables(
+            file_name=self.bot_file_name,
+            file_type="bot",
+            ship_name=self.ship_name,
+            survey_name=self.survey_name,
+            echosounder=self.echosounder,
         )
-        self.netcdf_omao_file_path = (
-            utils.helpers.create_omao_file_path_from_variables(
-                file_name=self.netcdf_file_name,
-                file_type="netcdf",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-            )
+        self.netcdf_omao_file_path = utils.helpers.create_omao_file_path_from_variables(
+            file_name=self.netcdf_file_name,
+            file_type="netcdf",
+            ship_name=self.ship_name,
+            survey_name=self.survey_name,
+            echosounder=self.echosounder,
         )
 
         # Create object keys for NCEI
@@ -302,53 +298,39 @@ class RawFile:
         # NCEI does not have netcdf files, so we will not create object keys.
 
         # Check if the file(s) exist in NCEI
-        self.raw_file_exists_in_ncei = (
-            utils.cloud_utils.check_if_file_exists_in_s3(
-                object_key=self.raw_file_s3_object_key,
-                s3_resource=self.s3_resource,
-                s3_bucket_name=self.s3_bucket_name,
-            )
+        self.raw_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+            object_key=self.raw_file_s3_object_key,
+            s3_resource=self.s3_resource,
+            s3_bucket_name=self.s3_bucket_name,
         )
-        self.idx_file_exists_in_ncei = (
-            utils.cloud_utils.check_if_file_exists_in_s3(
-                object_key=self.idx_file_s3_object_key,
-                s3_resource=self.s3_resource,
-                s3_bucket_name=self.s3_bucket_name,
-            )
+        self.idx_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+            object_key=self.idx_file_s3_object_key,
+            s3_resource=self.s3_resource,
+            s3_bucket_name=self.s3_bucket_name,
         )
-        self.bot_file_exists_in_ncei = (
-            utils.cloud_utils.check_if_file_exists_in_s3(
-                object_key=self.bot_file_s3_object_key,
-                s3_resource=self.s3_resource,
-                s3_bucket_name=self.s3_bucket_name,
-            )
+        self.bot_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
+            object_key=self.bot_file_s3_object_key,
+            s3_resource=self.s3_resource,
+            s3_bucket_name=self.s3_bucket_name,
         )
         # NCEI does not store netcdf files, so we will not be checking.
 
         # Check if the file(s) exist in GCP
-        self.raw_file_exists_in_gcp = (
-            utils.cloud_utils.check_if_file_exists_in_gcp(
-                bucket=self.gcp_bucket,
-                file_path=self.raw_gcp_storage_bucket_location,
-            )
+        self.raw_file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
+            bucket=self.gcp_bucket,
+            file_path=self.raw_gcp_storage_bucket_location,
         )
-        self.idx_file_exists_in_gcp = (
-            utils.cloud_utils.check_if_file_exists_in_gcp(
-                bucket=self.gcp_bucket,
-                file_path=self.idx_gcp_storage_bucket_location,
-            )
+        self.idx_file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
+            bucket=self.gcp_bucket,
+            file_path=self.idx_gcp_storage_bucket_location,
         )
-        self.bot_file_exists_in_gcp = (
-            utils.cloud_utils.check_if_file_exists_in_gcp(
-                bucket=self.gcp_bucket,
-                file_path=self.bot_gcp_storage_bucket_location,
-            )
+        self.bot_file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
+            bucket=self.gcp_bucket,
+            file_path=self.bot_gcp_storage_bucket_location,
         )
-        self.netcdf_file_exists_in_gcp = (
-            utils.cloud_utils.check_if_file_exists_in_gcp(
-                bucket=self.gcp_bucket,
-                file_path=self.netcdf_gcp_storage_bucket_location,
-            )
+        self.netcdf_file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
+            bucket=self.gcp_bucket,
+            file_path=self.netcdf_gcp_storage_bucket_location,
         )
 
         # TODO: create vars for omao data lake existence.
@@ -392,13 +374,9 @@ class RawFile:
                     " exist in the ICES database."
                 )
         if "survey_name" in self.__dict__:
-            assert (
-                self.survey_name != ""
-            ), "Please provide a valid survey name."
+            assert self.survey_name != "", "Please provide a valid survey name."
         if "echosounder" in self.__dict__:
-            assert (
-                self.echosounder != ""
-            ), "Please provide a valid echosounder."
+            assert self.echosounder != "", "Please provide a valid echosounder."
             assert self.echosounder in config.VALID_ECHOSOUNDERS, (
                 "Please provide a valid echosounder from the "
                 f"following: {config.VALID_ECHOSOUNDERS}"
@@ -514,7 +492,7 @@ if __name__ == "__main__":
     rf = RawFile(
         file_name="2107RL_CW-D20210916-T165047.raw",
         file_type="raw",
-        ship_name="Reuben_Lasker",
+        ship_name="henry b bigelow",
         survey_name="RL2107",
         echosounder="EK80",
         data_source="NCEI",
@@ -528,6 +506,7 @@ if __name__ == "__main__":
         gcp_bucket_name=gcp_bucket_name,
         gcp_stor_client=gcp_stor_client,
     )
+    print(rf.ship_name_unnormalized)
 
     # print(rf)
     # print(rf.bot_file_download_path)

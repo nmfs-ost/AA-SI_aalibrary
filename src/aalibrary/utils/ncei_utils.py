@@ -449,6 +449,28 @@ def check_if_tugboat_metadata_json_exists_in_survey(
     return None
 
 
+def get_closest_ncei_formatted_ship_name(ship_name: str = "") -> Union[str, None]:
+    """Gets the closest NCEI formatted ship name to the given ship name.
+    NOTE: Only use if the `data_source`=="NCEI".
+
+    Args:
+        ship_name (str, optional): The ship name to search the closest match for.
+            Defaults to "".
+
+    Returns:
+        Union[str, None]: The NCEI formatted ship name or None, if none matched.
+    """
+
+    all_ship_names = get_all_ship_names_in_ncei(
+        normalize=False, return_full_paths=False
+    )
+    close_matches = get_close_matches(ship_name, all_ship_names, n=3, cutoff=0.85)
+    if len(close_matches) >= 1:
+        return close_matches[0]
+    else:
+        return None
+
+
 if __name__ == "__main__":
     s3_client, s3_resource, _ = create_s3_objs()
     # subdirs = get_all_survey_names_from_a_ship(
