@@ -422,10 +422,15 @@ def check_if_tugboat_metadata_json_exists_in_survey(
     Returns the file's object key or False if it does not exist.
 
     Args:
-        ship_name (str, optional): _description_. Defaults to "".
-        survey_name (str, optional): _description_. Defaults to "".
-        s3_bucket (boto3.resource, optional): _description_. Defaults to None.
-
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Defaults to None.
+            NOTE: The ship's name MUST be spelled exactly as it is in NCEI. Use
+            the `get_all_ship_names_in_ncei` function to see all possible NCEI
+            ship names.
+        survey_name (str, optional): The survey name exactly as it is in NCEI.
+            Defaults to "".
+        s3_bucket (boto3.resource, optional): The bucket resource object.
+            Defaults to None.
     Returns:
         Union[str, bool]: Returns the file's object key string or False if it does not exist.
     """
