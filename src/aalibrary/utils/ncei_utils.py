@@ -477,7 +477,7 @@ def get_all_metadata_files_in_survey(
     s3_resource: boto3.resource = None,
     return_full_paths: bool = False,
 ) -> List[str]:
-    """Gets all of the file names from a particular NCEI survey.
+    """Gets all of the metadata file names from a particular NCEI survey.
 
     Args:
         ship_name (str, optional): The ship's name you want to get all surveys
@@ -497,7 +497,8 @@ def get_all_metadata_files_in_survey(
     Returns:
         List[str]: A list of strings, each being the metadata file name. Whether
             these are full paths or just folder names are specified by the
-            `return_full_paths` parameter.
+            `return_full_paths` parameter. Returns empty list '[]' if no metadata
+            files are present.
     """
 
     survey_prefix = f"data/raw/{ship_name}/{survey_name}/metadata/"
@@ -523,8 +524,16 @@ if __name__ == "__main__":
     # )
     # print(echos)
 
-    all_echos = get_all_echosounders_that_exist_in_NCEI(s3_client=s3_client)
-    print(all_echos)
+    # all_echos = get_all_echosounders_that_exist_in_NCEI(s3_client=s3_client)
+    # print(all_echos)
+
+    md_files = get_all_metadata_files_in_survey(
+        ship_name="Alaska_Knight",
+        survey_name="EBS11AK",
+        s3_resource=s3_resource,
+        return_full_paths=True,
+    )
+    print(md_files)
 
     # all_files = get_all_file_names_from_survey(
     #     ship_name="Reuben_Lasker",
