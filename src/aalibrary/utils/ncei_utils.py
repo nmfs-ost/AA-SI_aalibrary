@@ -1,7 +1,7 @@
 """This file contains code pertaining to auxiliary functions related to parsing
 through NCEI's s3 bucket."""
 
-from typing import List
+from typing import List, Union
 from difflib import get_close_matches
 import boto3
 from random import randint
@@ -415,7 +415,33 @@ def get_echosounder_from_raw_file(
     return ValueError("An echosounder could not be found for this raw file.")
 
 
-def check_if_metadata_json_exists_in_survey(): ...
+def check_if_tugboat_metadata_json_exists_in_survey(
+    ship_name: str = "", survey_name: str = "", s3_bucket: boto3.resource = None
+) -> Union[str, bool]:
+    """Checks whether a Tugboat metadata JSON file exists within a survey.
+    Returns the file's object key or False if it does not exist.
+
+    Args:
+        ship_name (str, optional): _description_. Defaults to "".
+        survey_name (str, optional): _description_. Defaults to "".
+        s3_bucket (boto3.resource, optional): _description_. Defaults to None.
+
+    Returns:
+        Union[str, bool]: Returns the file's object key string or False if it does not exist.
+    """
+
+    # Find all metadata files within the metadata/ folder in NCEI
+    all_metadata_obj_keys = list_all_objects_in_s3_bucket_location(
+        prefix=f"data/raw/{ship_name}/{survey_name}/metadata",
+        s3_resource=s3_bucket,
+    )
+
+    for obj_key, file_name in all_metadata_obj_keys:
+        # Handle for main metadata file for upload to BigQuery.
+        if file_name.endswith("metadata.json"):
+            return obj_key
+
+    return False
 
 
 if __name__ == "__main__":

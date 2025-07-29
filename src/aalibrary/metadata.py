@@ -21,6 +21,7 @@ if __package__ is None or __package__ == "":
     # from utils import nc_reader
     from utils.cloud_utils import list_all_objects_in_s3_bucket_location
     from raw_file import RawFile
+    from utils.ncei_utils import check_if_tugboat_metadata_json_exists_in_survey
 else:
     # uses current package visibility
     from aalibrary import utils
@@ -29,6 +30,9 @@ else:
     # from aalibrary.utils import nc_reader
     from aalibrary.utils.cloud_utils import (
         list_all_objects_in_s3_bucket_location,
+    )
+    from aalibrary.utils.ncei_utils import (
+        check_if_tugboat_metadata_json_exists_in_survey,
     )
 
 
@@ -62,9 +66,7 @@ def create_metadata_json_for_raw_files(
     email = email.replace("\n", "")
 
     # get the survey datetime.
-    file_datetime = datetime.strptime(
-        rf.get_file_datetime_str(), "%Y-%m-%d %H:%M:%S"
-    )
+    file_datetime = datetime.strptime(rf.get_file_datetime_str(), "%Y-%m-%d %H:%M:%S")
 
     # calculate the deletion datetime
     curr_datetime = datetime.now()
@@ -73,9 +75,7 @@ def create_metadata_json_for_raw_files(
 
     metadata_json = {
         "FILE_NAME": rf.raw_file_name,
-        "DATE_CREATED": datetime.now(timezone.utc).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
+        "DATE_CREATED": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "UPLOADED_BY": email,
         "ECHOPYPE_VERSION": echopype.__version__,
         "PYTHON_VERSION": sys.version.split(" ")[0],
@@ -181,23 +181,19 @@ def upload_ncei_metadata_df_to_bigquery(
             Defaults to None.
     """
 
-    # Find all metadata files within the metadata/ folder in NCEI
-    all_metadata_obj_keys = list_all_objects_in_s3_bucket_location(
-        prefix=f"data/raw/{ship_name}/{survey_name}/metadata",
-        s3_resource=s3_bucket,
+    metadata_file_exists = check_if_tugboat_metadata_json_exists_in_survey(
+        ship_name=ship_name, survey_name=survey_name, s3_bucket=s3_bucket
     )
 
-    # TODO: Download all metadata files to local for download? Even
-    # calibration files?
-
-    for obj_key, file_name in all_metadata_obj_keys:
+    if metadata_file_exists:
+        # TODO: Download all metadata files to local for download? Even
+        # calibration files?
         # Handle for main metadata file for upload to BigQuery.
-        if file_name.endswith("metadata.json"):
-            s3_bucket.download_file(obj_key, download_location)
-            # Subroutine to parse this file and upload to gcp.
-            _parse_and_upload_ncei_survey_level_metadata(
-                survey_name=survey_name, file_location=download_location
-            )
+        s3_bucket.download_file(metadata_file_exists, download_location)
+        # Subroutine to parse this file and upload to gcp.
+        _parse_and_upload_ncei_survey_level_metadata(
+            survey_name=survey_name, file_location=download_location
+        )
 
 
 def _parse_and_upload_ncei_survey_level_metadata(
@@ -272,9 +268,7 @@ def _parse_and_upload_ncei_survey_level_metadata(
         "CALIBRATION_FILE_PATH": calibration_data_path_str,
     }
 
-    ncei_survey_level_metadata_df = pd.json_normalize(
-        ncei_survey_level_metadata_json
-    )
+    ncei_survey_level_metadata_df = pd.json_normalize(ncei_survey_level_metadata_json)
     # Upload to GCP BigQuery
     ncei_survey_level_metadata_df.to_gbq(
         destination_table="metadata.ncei_cruise_metadata",
