@@ -417,9 +417,9 @@ def get_echosounder_from_raw_file(
 
 def check_if_tugboat_metadata_json_exists_in_survey(
     ship_name: str = "", survey_name: str = "", s3_bucket: boto3.resource = None
-) -> Union[str, bool]:
+) -> Union[str, None]:
     """Checks whether a Tugboat metadata JSON file exists within a survey.
-    Returns the file's object key or False if it does not exist.
+    Returns the file's object key or None if it does not exist.
 
     Args:
         ship_name (str, optional): The ship's name you want to get all surveys
@@ -432,7 +432,7 @@ def check_if_tugboat_metadata_json_exists_in_survey(
         s3_bucket (boto3.resource, optional): The bucket resource object.
             Defaults to None.
     Returns:
-        Union[str, bool]: Returns the file's object key string or False if it does not exist.
+        Union[str, None]: Returns the file's object key string or None if it does not exist.
     """
 
     # Find all metadata files within the metadata/ folder in NCEI
@@ -446,7 +446,7 @@ def check_if_tugboat_metadata_json_exists_in_survey(
         if file_name.endswith("metadata.json"):
             return obj_key
 
-    return False
+    return None
 
 
 if __name__ == "__main__":

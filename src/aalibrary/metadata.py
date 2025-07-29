@@ -181,6 +181,7 @@ def upload_ncei_metadata_df_to_bigquery(
             Defaults to None.
     """
 
+    # This var can either be a string with the file's location, or None.
     metadata_file_exists = check_if_tugboat_metadata_json_exists_in_survey(
         ship_name=ship_name, survey_name=survey_name, s3_bucket=s3_bucket
     )
