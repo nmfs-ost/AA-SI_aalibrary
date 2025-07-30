@@ -162,6 +162,7 @@ class Survey:
             self.raw_files = [file.split("/")[-1] for file in self.raw_files_paths]
 
         # TODO: Get all metadata files in this survey.
+        self.metadata_files = 
 
         # TODO:
 
