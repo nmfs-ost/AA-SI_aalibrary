@@ -97,20 +97,22 @@ class RawFile:
         if (self.data_source == "NCEI") or (self.data_source == "OMAO"):
             # ex. 2107RL_CW-D20211001-T132449.raw
             # TODO: `telegram` within raw file has a time stamp, maybe extract
+            
             temp = self.file_name.lower().split("d")[-1].replace(".raw", "")
-            self.year_str = temp[:4]
-            self.month_str = temp[4:6]
-            self.date_str = temp[6:8]
-            self.year = int(self.year_str)
-            self.month = int(self.month_str)
-            self.date = int(self.date_str)
-            temp = temp.split("t")[-1]
-            self.hour_str = temp[:2]
-            self.minute_str = temp[2:4]
-            self.second_str = temp[4:]
-            self.hour = int(self.hour_str)
-            self.minute = int(self.minute_str)
-            self.second = int(self.second_str)
+            print(temp)
+            #self.year_str = temp[:4]
+            #self.month_str = temp[4:6]
+            #self.date_str = temp[6:8]
+            #self.year = int(self.year_str)
+            #self.month = int(self.month_str)
+            #self.date = int(self.date_str)
+            #temp = temp.split("t")[-1]
+            #self.hour_str = temp[:2]
+            #self.minute_str = temp[2:4]
+            #self.second_str = temp[4:]
+            #self.hour = int(self.hour_str)
+            #self.minute = int(self.minute_str)
+            #self.second = int(self.second_str)
 
         # Normalize ship name
         if "ship_name" in self.__dict__:
