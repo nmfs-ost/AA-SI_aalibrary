@@ -12,7 +12,7 @@ from loguru import logger
 
 
 def main():
-
+    os.system('cls' if os.name == 'nt' else 'clear')
     mode = inquirer.select(
         message="Select option",
         choices=[
@@ -62,7 +62,7 @@ def main():
                 f"Downloading {echosounder} data for {ship_name} in {survey} to {folder_name}"
             )
             logger.debug(
-                f"Running command: aa-raw --file_name {folder_name} --ship_name {ship_name} --survey_name {survey} --echosounder {echosounder} --file_download_directory {folder_name} from directory: {os.getcwd()} in python environment: {os.environ.get('VIRTUAL_ENV', 'No virtual environment')}"
+                f"Running command: aa-raw --file_name {file_name} --ship_name {ship_name} --survey_name {survey} --echosounder {echosounder} --file_download_directory {folder_name} from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
             )
             subprocess.run(
                 [

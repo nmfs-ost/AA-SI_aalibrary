@@ -60,9 +60,10 @@ def main():
         description="Plot from .raw file path using echopype."
     )
     parser.add_argument("raw_path", help="Path to .raw file")
-    parser.add_argument("echosounder", help="Sonar model (examples: EK60, EK80)")
+    parser.add_argument("--sonar_model", help="Sonar model (examples: EK60, EK80)")
 
     # Plot options
+    
     parser.add_argument("--title", type=str, default="Echo Data Plot")
     parser.add_argument("--xlabel", type=str, default="ping_time")
     parser.add_argument("--ylabel", type=str, default="range_bin")
@@ -70,18 +71,18 @@ def main():
     parser.add_argument("--linestyle", type=str, default="solid")
     parser.add_argument("--linewidth", type=float, default=1.5)
     parser.add_argument("--output-file", type=str, help="Path to save the plot image")
-
+    
     args = parser.parse_args(args_list)
 
     raw_path = args.raw_path
-    echosounder = args.echosounder
+    sonar_model = args.sonar_model
 
     print(args_list)
 
     if not os.path.exists(raw_path):
         sys.exit(f"❌ File not found: {raw_path}")
 
-    ed = ep.open_raw(raw_path, sonar_model=echosounder)
+    ed = ep.open_raw(raw_path, sonar_model=sonar_model)
     ds_Sv = ep.calibrate.compute_Sv(ed, waveform_mode="CW", encode_mode="complex")
     print(ds_Sv["Sv"][0])
     ds_Sv["Sv"][0].plot(linestyle=args.linestyle, linewidth=args.linewidth)
