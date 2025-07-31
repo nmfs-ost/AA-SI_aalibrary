@@ -36,6 +36,8 @@ class RawFile:
     is_metadata: bool = False
     upload_to_gcp: bool = False
     debug: bool = False
+    gcp_project_id: str = "ggn-nmfs-aa-dev-1"
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data"
     gcp_bucket: storage.Client.bucket = None
     s3_resource: boto3.resource = None
     # Get all valid and normalized ICES ship names
@@ -139,11 +141,21 @@ class RawFile:
 
         # Create connection objects if they dont exist
         self.s3_bucket_name = "noaa-wcsd-pds"
-        if "gcp_bucket" not in self.__dict__:
+        if (
+            ("gcp_bucket" not in self.__dict__)
+            or ("gcp_bucket_name" not in self.__dict__)
+            or ("gcp_stor_client" not in self.__dict__)
+        ):
             self.gcp_stor_client, self.gcp_bucket_name, self.gcp_bucket = (
-                utils.cloud_utils.setup_gcp_storage_objs()
+                utils.cloud_utils.setup_gcp_storage_objs(
+                    project_id=self.gcp_project_id, bucket_name=self.gcp_bucket_name
+                )
             )
-        if "s3_resource" not in self.__dict__:
+        if (
+            ("s3_resource" not in self.__dict__)
+            or ("s3_client" not in self.__dict__)
+            or ("s3_bucket" not in self.__dict__)
+        ):
             self.s3_client, self.s3_resource, self.s3_bucket = (
                 utils.cloud_utils.create_s3_objs()
             )
