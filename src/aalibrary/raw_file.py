@@ -150,7 +150,7 @@ class RawFile:
         ):
             self.gcp_stor_client, self.gcp_bucket_name, self.gcp_bucket = (
                 utils.cloud_utils.setup_gcp_storage_objs(
-                    project_id=self.gcp_project_id, bucket_name=self.gcp_bucket_name
+                    project_id=self.gcp_project_id, gcp_bucket_name=self.gcp_bucket_name
                 )
             )
         if (
