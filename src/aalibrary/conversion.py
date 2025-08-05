@@ -203,7 +203,6 @@ def convert_raw_to_netcdf(
             ship_name=rf.ship_name,
             survey_name=rf.survey_name,
             echosounder=rf.echosounder,
-            data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
             gcp_bucket=gcp_bucket,
             is_metadata=rf.is_metadata,
