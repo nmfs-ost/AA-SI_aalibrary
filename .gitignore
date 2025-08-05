@@ -23,3 +23,6 @@ test_data_dir/
 # For files that store azure account credentials
 azure_config.ini
 
+# For files that are used for site building (GH Pages)
+site/
+
