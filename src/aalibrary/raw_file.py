@@ -26,13 +26,13 @@ else:
 class RawFile:
     """A class used to represent a raw file, from given parameters."""
 
-    file_name: str = ""
-    file_type: str = ""
-    ship_name: str = ""
-    survey_name: str = ""
-    echosounder: str = ""
-    data_source: str = ""
-    file_download_directory: str = ""
+    file_name: str = None
+    file_type: str = None
+    ship_name: str = None
+    survey_name: str = None
+    echosounder: str = None
+    data_source: str = None
+    file_download_directory: str = None
     is_metadata: bool = False
     upload_to_gcp: bool = False
     debug: bool = False
@@ -52,6 +52,8 @@ class RawFile:
         self._create_download_directories_if_not_exists()
 
         self._check_for_assertion_errors()
+        if self.debug:
+            logging.debug("RawFile object created:", self)
 
     def __repr__(self):
         pprint.pprint(self.__dict__)
@@ -67,8 +69,6 @@ class RawFile:
             self.file_download_directory = (
                 os.path.normpath(self.file_download_directory) + os.sep
             )
-            if self.debug:
-                logging.debug("normalized", self.file_download_directory)
 
         # Convert locations into directories as needed.
         if (
