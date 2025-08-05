@@ -38,6 +38,10 @@ pytest:
 mkdocs: install-editable
 	mkdocs serve
 
+mkdocs-publish: install-editable
+	echo "Make sure you are in the main branch when executing. Changes get automatically published to the Github Pages Site."
+	mkdocs gh-deploy --force 
+
 install-editable:
 	python -m pip install -e .
 
