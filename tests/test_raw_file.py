@@ -257,7 +257,7 @@ class TestRawFileVarsHandling:
                 is_metadata=self.is_metadata,
                 debug=self.debug,
             ).file_download_directory
-            == ".\\"
+            == (os.path.normpath(self.file_download_directory) + os.sep)
         ), (
             "RawFile is not handling an empty `file_download_directory` "
             "correctly."
@@ -281,7 +281,7 @@ class TestRawFileVarsHandling:
                 is_metadata=self.is_metadata,
                 debug=self.debug,
             ).file_download_directory
-            == ".\\"
+            == (os.path.normpath(self.file_download_directory) + os.sep)
         ), (
             "RawFile is not normalizing the `file_download_directory` "
             "param correctly."
