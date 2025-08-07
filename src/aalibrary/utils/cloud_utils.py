@@ -305,6 +305,31 @@ def download_file_from_gcp(
         raise
 
 
+def download_file_from_gcp_as_string(
+    gcp_bucket: storage.Client.bucket,
+    blob_file_path: str,
+    debug: bool = False,
+):
+    """Downloads a file from the blob storage bucket as a text string.
+
+    Args:
+        gcp_bucket (storage.Client.bucket): The bucket object used for
+            downloading from.
+        blob_file_path (str): The blob's file path.
+            Ex. "data/itds/logs/execute_rasp_ii/temp.csv"
+            NOTE: This must include the file name as well as the extension.
+
+        debug (bool): Whether or not to print debug statements.
+    """
+
+    blob = gcp_bucket.blob(blob_file_path, chunk_size=1024 * 1024 * 1)
+    # Download from blob
+    try:
+        return blob.download_as_text(encoding='utf-8')
+    except Exception:
+        print(traceback.format_exc())
+        raise
+
 def delete_file_from_gcp(
     gcp_bucket: storage.Client.bucket, blob_file_path: str, debug: bool = False
 ):
