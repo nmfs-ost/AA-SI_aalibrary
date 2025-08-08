@@ -5,6 +5,10 @@ import matplotlib.pyplot as plt
 import echopype as ep
 import shlex
 
+import holoviews as hv
+hv.extension("bokeh")
+
+from loguru import logger
 
 def plot_data(sv_da, args):
     print("📊 Plotting data...")
@@ -46,6 +50,32 @@ def plot_data(sv_da, args):
         print("👀 Displaying plot interactively")
         plt.show()
 
+def save_echogram(self, data_array, channel):
+    
+    frequency = self.get_frequency(channel)
+        # Get the channel index from the frequency string.
+    #cmap = plt.get_cmap(self.color_map, self.n_clusters)
+    logger.info("Saving echogram for frequency: " + frequency + ", channel: " + str(channel))      
+    # Transpose and plot using hvplot
+    # Create the plot
+    channel_int = int(channel)
+    plot = data_array[channel_int].transpose("depth", "ping_time").hvplot(
+        x="ping_time",
+        y="range_sample",
+        cmap=self.echogram_color_map,
+        title=f"frequency = {frequency},    file = {self.input_path},    colormap = {self.echogram_color_map}",
+        invert_yaxis=True,
+        aspect='auto',
+        width=2400,   # adjust as needed
+        height=1600
+    )
+
+    # Save the plot as HTML
+    hv.save(plot, f"{self.asset_path}/eg_{self.name}_{frequency}.html")
+
+def full_save(self, Sv):
+    for channel in self.Sv["Sv"]:
+        self.save_echogram(self.Sv["Sv"], channel)
 
 def main():
 
@@ -61,6 +91,7 @@ def main():
     )
     parser.add_argument("raw_path", help="Path to .raw file")
     parser.add_argument("--sonar_model", help="Sonar model (examples: EK60, EK80)")
+    parser.add_argument("--frequency", help="Sonar frequency (examples: 18kHz, 38kHz, 70kHz)")
 
     # Plot options
     
@@ -84,9 +115,9 @@ def main():
 
     ed = ep.open_raw(raw_path, sonar_model=sonar_model)
     ds_Sv = ep.calibrate.compute_Sv(ed, waveform_mode="CW", encode_mode="complex")
-    print(ds_Sv["Sv"][0])
-    ds_Sv["Sv"][0].plot(linestyle=args.linestyle, linewidth=args.linewidth)
-    plt.savefig("sv_plot.png", dpi=300, bbox_inches="tight")
+    
+
+
 
 
 if __name__ == "__main__":

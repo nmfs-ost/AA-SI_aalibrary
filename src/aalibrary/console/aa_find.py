@@ -9,7 +9,10 @@ from aalibrary.utils.ncei_utils import (
 from InquirerPy import inquirer
 import subprocess, os
 from loguru import logger
+import warnings
 
+
+warnings.filterwarnings("ignore")
 
 def main():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -81,6 +84,32 @@ def main():
                     "NCEI",
                     "--file_download_directory",
                     folder_name,
+                ]
+            )
+            
+        if operation == "Plot Echogram":
+            # Define the folder name
+            folder_name = ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+
+            # Create the full path using '.'
+            path = os.path.join(".", folder_name)
+
+            # Make the directory (does nothing if it already exists)
+            os.makedirs(path, exist_ok=True)
+            logger.info(
+                f"Plotting {echosounder} data for {ship_name} in {survey} to {folder_name}"
+            )
+            logger.debug(
+                f"Running command: aa-plot {file_name} --sonar_model {echosounder} --output-file {folder_name}/echogram.png from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
+            )
+            subprocess.run(
+                [
+                    "aa-plot",
+                    file_name,
+                    "--sonar_model",
+                    echosounder,
+                    "--output-file",
+                    f"{folder_name}/echogram.png",
                 ]
             )
 
