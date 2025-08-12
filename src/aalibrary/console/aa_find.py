@@ -163,6 +163,7 @@ def main():
                     "AA-SI GitHub",
                     "NCEI Website",
                     "OMAO Website",
+                    "OST Website",
                 ],
             ).execute()
 
@@ -207,6 +208,12 @@ def main():
 
             if resource == "NCEI Website":
                 link = "https://www.ncei.noaa.gov/"
+                logger.info("For more information, visit: " + link)
+
+            if resource == "OST Website":
+                link = (
+                    "https://www.fisheries.noaa.gov/about/office-science-and-technology"
+                )
                 logger.info("For more information, visit: " + link)
 
         if mode == "Exit":
