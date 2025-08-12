@@ -10,13 +10,14 @@ from InquirerPy import inquirer
 import subprocess, os
 from loguru import logger
 import warnings
+import webbrowser
 
 
 warnings.filterwarnings("ignore")
 
 
 def main():
-
+    os.system("cls" if os.name == "nt" else "clear")
     while True:
         os.system("cls" if os.name == "nt" else "clear")
         mode = inquirer.select(
@@ -168,13 +169,12 @@ def main():
             ).execute()
 
             if resource == "AA-SI Homepage":
-                link = "https://www.ametecosystems.org/aa-si/"
-                logger.info("For more information, visit: " + link)
-                logger.info(f"This functionality is not yet available.")
+                # link = "https://www.ametecosystems.org/aa-si/"
+                webbrowser.open_new(link)
 
             if resource == "AA-SI GitHub":
-                link = "https://github.com/orgs/nmfs-ost/repositories?q=AA"
-                logger.info("For more information, visit: " + link)
+                # link = "https://github.com/orgs/nmfs-ost/repositories?q=AA" # Behaviorwise this makes sense but in practice, it is annoying and doesnt help the flow IMO (Michael Ryan). I keep this here as a cautionary tale for for the devs.
+                # webbrowser.open_new(link)
                 repo = inquirer.select(
                     message="Select Repository",
                     choices=[
@@ -188,38 +188,47 @@ def main():
 
                 if repo == "AA-SI_aalibrary":
                     link = "https://github.com/nmfs-ost/AA-SI_aalibrary"
-                    logger.info("For more information, visit: " + link)
+                    # Or open in a new window
+                    webbrowser.open_new(link)
+                    break
                 if repo == "AA-SI_GCPSetup":
                     link = "https://github.com/nmfs-ost/AA-SI_GCPSetup"
-                    logger.info("For more information, visit: " + link)
+                    webbrowser.open_new(link)
+                    break
                 if repo == "AA-SI_DataRoadMap":
                     link = "https://github.com/nmfs-ost/AA-SI_DataRoadMap"
-                    logger.info("For more information, visit: " + link)
+                    webbrowser.open_new(link)
+                    break
                 if repo == "AA-SI_KMeans":
                     link = "https://github.com/nmfs-ost/AA-SI_KMeans"
-                    logger.info("For more information, visit: " + link)
+                    webbrowser.open_new(link)
+                    break
                 if repo == "AA-SI_DBScan":
                     link = "https://github.com/nmfs-ost/AA-SI_DBScan"
-                    logger.info("For more information, visit: " + link)
+                    webbrowser.open_new(link)
+                    break
 
             if resource == "OMAO Website":
                 link = "https://www.omao.noaa.gov/"
-                logger.info("For more information, visit: " + link)
+                webbrowser.open_new(link)
+                break
 
             if resource == "NCEI Website":
                 link = "https://www.ncei.noaa.gov/"
-                logger.info("For more information, visit: " + link)
-
+                webbrowser.open_new(link)
+                break
             if resource == "OST Website":
                 link = (
                     "https://www.fisheries.noaa.gov/about/office-science-and-technology"
                 )
-                logger.info("For more information, visit: " + link)
+                webbrowser.open_new(link)
+                break
 
         if mode == "Exit":
-            logger.info("Exiting aa-find")
+            os.system("cls" if os.name == "nt" else "clear")
             break
 
 
 if __name__ == "__main__":
     main()
+    os.system("cls" if os.name == "nt" else "clear")
