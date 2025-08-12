@@ -161,7 +161,6 @@ def main():
                 choices=[
                     "AA-SI Homepage",
                     "AA-SI GitHub",
-                    "AA-SI YouTube",
                     "NCEI Website",
                     "OMAO Website",
                 ],
@@ -201,6 +200,14 @@ def main():
                 if repo == "AA-SI_DBScan":
                     link = "https://github.com/nmfs-ost/AA-SI_DBScan"
                     logger.info("For more information, visit: " + link)
+
+            if resource == "OMAO Website":
+                link = "https://www.omao.noaa.gov/"
+                logger.info("For more information, visit: " + link)
+
+            if resource == "NCEI Website":
+                link = "https://www.ncei.noaa.gov/"
+                logger.info("For more information, visit: " + link)
 
         if mode == "Exit":
             logger.info("Exiting aa-find")
