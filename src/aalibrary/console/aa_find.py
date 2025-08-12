@@ -14,11 +14,11 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+
 def main():
-    
-    
+
     while True:
-        os.system('cls' if os.name == 'nt' else 'clear')
+        os.system("cls" if os.name == "nt" else "clear")
         mode = inquirer.select(
             message="Select option",
             choices=[
@@ -26,11 +26,11 @@ def main():
                 "Search OMAO Data by Vessel",
                 "Authenticate with Google",
                 "Resources and Documentation",
-                "Exit"
+                "Exit",
             ],
             default="Search NCEI Data by Vessel",
         ).execute()
-        
+
         if mode == "Search NCEI Data by Vessel":
             ship_name = inquirer.fuzzy(
                 message="Select a vessel:",
@@ -51,17 +51,27 @@ def main():
 
             file_name = inquirer.select(
                 message="Select Files from " + survey,
-                choices=get_all_raw_file_names_from_survey(ship_name, survey, echosounder),
+                choices=get_all_raw_file_names_from_survey(
+                    ship_name, survey, echosounder
+                ),
             ).execute()
 
             operation = inquirer.select(
                 message="Select Operation for " + echosounder,
-                choices=["Download .raw", "Download .nc ", "Plot Echograms", "Run KMeans", "Run DBScan"],
+                choices=[
+                    "Download .raw",
+                    "Download .nc ",
+                    "Plot Echograms",
+                    "Run KMeans",
+                    "Run DBScan",
+                ],
             ).execute()
 
             if operation == "Download .raw":
                 # Define the folder name
-                folder_name = ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+                folder_name = (
+                    ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+                )
 
                 # Create the full path using '.'
                 path = os.path.join(".", folder_name)
@@ -96,7 +106,9 @@ def main():
 
             if operation == "Plot Echograms":
                 # Define the folder name
-                folder_name = ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+                folder_name = (
+                    ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+                )
 
                 # Create the full path using '.'
                 path = os.path.join(".", folder_name)
@@ -119,54 +131,61 @@ def main():
                         f"{folder_name}/echogram.png",
                     ]
                 )
-                
+
             if operation == "Run KMeans":
                 logger.info(
                     f"Running KMeans on {echosounder} data for {ship_name} in {survey}"
                 )
                 logger.info(f"This functionality is not yet available")
-                
+
             if operation == "Run DBScan":
                 logger.info(
                     f"Running DBScan on {echosounder} data for {ship_name} in {survey}"
                 )
                 logger.info(f"This functionality is not yet available")
-                
+
         if mode == "Search OMAO Data by Vessel":
             logger.info("Searching OMAO Data by Vessel...")
             logger.info(f"This functionality is not yet available. ")
-            
-
-
-
 
         if mode == "Authenticate with Google":
             logger.info("Authenticating with Google...")
-            
+
             logger.info(f"This functionality is not yet available. ")
 
         if mode == "Resources and Documentation":
             logger.info("Accessing Resources and Documentation...")
-            
-            
+
             resource = inquirer.select(
                 message="Select Resource",
-                choices=["AA-SI Homepage", "AA-SI GitHub", "AA-SI YouTube", "NCEI Website", "OMAO Website"]
+                choices=[
+                    "AA-SI Homepage",
+                    "AA-SI GitHub",
+                    "AA-SI YouTube",
+                    "NCEI Website",
+                    "OMAO Website",
+                ],
             ).execute()
-            
+
             if resource == "AA-SI Homepage":
                 link = "https://www.ametecosystems.org/aa-si/"
                 logger.info("For more information, visit: " + link)
                 logger.info(f"This functionality is not yet available.")
-                
+
             if resource == "AA-SI GitHub":
                 link = "https://github.com/orgs/nmfs-ost/repositories?q=AA"
                 logger.info("For more information, visit: " + link)
                 repo = inquirer.select(
                     message="Select Repository",
-                    choices=["AA-SI_aalibrary", "AA-SI_GCPSetup", "AA-SI_DataRoadMap", "AA-SI_KMeans", "AA-SI_DBScan"]
+                    choices=[
+                        "AA-SI_aalibrary",
+                        "AA-SI_GCPSetup",
+                        "AA-SI_DataRoadMap",
+                        "AA-SI_KMeans",
+                        "AA-SI_DBScan",
+                    ],
                 ).execute()
-                
+
                 if repo == "AA-SI_aalibrary":
                     link = "https://github.com/nmfs-ost/AA-SI_aalibrary"
                     logger.info("For more information, visit: " + link)
@@ -182,12 +201,11 @@ def main():
                 if repo == "AA-SI_DBScan":
                     link = "https://github.com/nmfs-ost/AA-SI_DBScan"
                     logger.info("For more information, visit: " + link)
-                    
+
         if mode == "Exit":
             logger.info("Exiting aa-find")
             break
 
-    
-    
+
 if __name__ == "__main__":
     main()
