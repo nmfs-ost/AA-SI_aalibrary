@@ -14,61 +14,67 @@ import webbrowser
 
 
 warnings.filterwarnings("ignore")
+# ANSI colorized string
+prompt_str = "aa-tools>"
 
 
 def main():
     os.system("cls" if os.name == "nt" else "clear")
     while True:
-        os.system("cls" if os.name == "nt" else "clear")
+        #os.system("cls" if os.name == "nt" else "clear")
         mode = inquirer.select(
-            message="Select option",
+            message=prompt_str,
             choices=[
-                "Search NCEI Data by Vessel",
-                "Search OMAO Data by Vessel",
-                "Authenticate with Google",
-                "Resources and Documentation",
-                "Exit",
+                "search NCEI vessel data",
+                "search OMAO vessel data",
+                "authenticate with Google",
+                "resources and documentation",
+                "exit",
             ],
-            default="Search NCEI Data by Vessel",
+            default="search NCEI vessel data",
         ).execute()
-
-        if mode == "Search NCEI Data by Vessel":
+        os.system("cls" if os.name == "nt" else "clear")
+        if mode == "search NCEI vessel data":
+            
             ship_name = inquirer.fuzzy(
-                message="Select a vessel:",
-                choices=get_all_ship_names_in_ncei(),
+                message="select NCEI vessel:",
+                choices=["Back"]+get_all_ship_names_in_ncei(),
             ).execute()
 
+            if ship_name == "Back":
+                continue
+
             survey = inquirer.fuzzy(
-                message="Select Survey from " + ship_name,
+                message="select survey from vessel : " + ship_name,
                 choices=get_all_survey_names_from_a_ship(ship_name),
             ).execute()
 
             echosounder = inquirer.select(
-                message="Select Echosounder from " + survey,
+                message="select echosounder from survey : " + survey,
                 choices=get_all_echosounders_in_a_survey(ship_name, survey),
             ).execute()
 
             # Get all file names for the selected survey
 
             file_name = inquirer.select(
-                message="Select Files from " + survey,
+                message="select .raw files from survey : " + survey,
                 choices=get_all_raw_file_names_from_survey(
                     ship_name, survey, echosounder
                 ),
             ).execute()
 
             operation = inquirer.select(
-                message="Select Operation for " + echosounder,
+                message="select operation for " + file_name,
                 choices=[
-                    "Download .raw",
-                    "Download .nc ",
-                    "Plot Echograms",
-                    "Run KMeans",
-                    "Run DBScan",
+                    "download .raw",
+                    "download .nc ",
+                    "plot echograms",
+                    "run kmeans",
+                    "run dbscan",
                 ],
             ).execute()
 
-            if operation == "Download .raw":
+            if operation == "download .raw":
                 # Define the folder name
                 folder_name = (
                     ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
@@ -105,7 +111,7 @@ def main():
                     ]
                 )
 
-            if operation == "Plot Echograms":
+            if operation == "plot echograms":
                 # Define the folder name
                 folder_name = (
                     ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
@@ -133,98 +139,50 @@ def main():
                     ]
                 )
 
-            if operation == "Run KMeans":
+            if operation == "run kmeans":
                 logger.info(
                     f"Running KMeans on {echosounder} data for {ship_name} in {survey}"
                 )
                 logger.info(f"This functionality is not yet available")
 
-            if operation == "Run DBScan":
+            if operation == "run dbscan":
                 logger.info(
                     f"Running DBScan on {echosounder} data for {ship_name} in {survey}"
                 )
                 logger.info(f"This functionality is not yet available")
 
-        if mode == "Search OMAO Data by Vessel":
-            logger.info("Searching OMAO Data by Vessel...")
+        if mode == "search OMAO vessel data":
             logger.info(f"This functionality is not yet available. ")
 
-        if mode == "Authenticate with Google":
-            logger.info("Authenticating with Google...")
+        if mode == "authenticate with Google":
+            logger.info("Authenticating via Google...")
 
             logger.info(f"This functionality is not yet available. ")
 
-        if mode == "Resources and Documentation":
+        if mode == "resources and documentation":
             logger.info("Accessing Resources and Documentation...")
 
-            resource = inquirer.select(
-                message="Select Resource",
-                choices=[
-                    "AA-SI Homepage",
-                    "AA-SI GitHub",
-                    "NCEI Website",
-                    "OMAO Website",
-                    "OST Website",
-                ],
-            ).execute()
 
-            if resource == "AA-SI Homepage":
-                # link = "https://www.ametecosystems.org/aa-si/"
-                webbrowser.open_new(link)
 
-            if resource == "AA-SI GitHub":
-                # link = "https://github.com/orgs/nmfs-ost/repositories?q=AA" # Behaviorwise this makes sense but in practice, it is annoying and doesnt help the flow IMO (Michael Ryan). I keep this here as a cautionary tale for for the devs.
-                # webbrowser.open_new(link)
-                repo = inquirer.select(
-                    message="Select Repository",
-                    choices=[
-                        "AA-SI_aalibrary",
-                        "AA-SI_GCPSetup",
-                        "AA-SI_DataRoadMap",
-                        "AA-SI_KMeans",
-                        "AA-SI_DBScan",
-                    ],
-                ).execute()
+            os.system("cls" if os.name == "nt" else "clear")
+            logger.info(                    
+                    "\n".join([
+                        "   AA-SI Homepage",
+                        "   NCEI Website : https://www.ncei.noaa.gov/",
+                        "   OMAO Website : https://www.omao.noaa.gov/",
+                        "   OST Website : https://www.fisheries.noaa.gov/about/office-science-and-technology",
+                        "   AA-SI GitHub : https://github.com/orgs/nmfs-ost/repositories?q=AA",
+                        "   AA-SI_aalibrary : https://github.com/nmfs-ost/AA-SI_aalibrary",
+                        "   AA-SI_GCPSetup : https://github.com/nmfs-ost/AA-SI_GCPSetup",
+                        "   AA-SI_DataRoadMap : https://github.com/nmfs-ost/AA-SI_DataRoadMap",
+                        "   AA-SI_KMeans : https://github.com/nmfs-ost/AA-SI_KMeans",
+                        "   AA-SI_DBScan : https://github.com/nmfs-ost/AA-SI_DBScan"
+                    ])
+                    )
+            
 
-                if repo == "AA-SI_aalibrary":
-                    link = "https://github.com/nmfs-ost/AA-SI_aalibrary"
-                    # Or open in a new window
-                    webbrowser.open_new(link)
-                    break
-                if repo == "AA-SI_GCPSetup":
-                    link = "https://github.com/nmfs-ost/AA-SI_GCPSetup"
-                    webbrowser.open_new(link)
-                    break
-                if repo == "AA-SI_DataRoadMap":
-                    link = "https://github.com/nmfs-ost/AA-SI_DataRoadMap"
-                    webbrowser.open_new(link)
-                    break
-                if repo == "AA-SI_KMeans":
-                    link = "https://github.com/nmfs-ost/AA-SI_KMeans"
-                    webbrowser.open_new(link)
-                    break
-                if repo == "AA-SI_DBScan":
-                    link = "https://github.com/nmfs-ost/AA-SI_DBScan"
-                    webbrowser.open_new(link)
-                    break
-
-            if resource == "OMAO Website":
-                link = "https://www.omao.noaa.gov/"
-                webbrowser.open_new(link)
-                break
-
-            if resource == "NCEI Website":
-                link = "https://www.ncei.noaa.gov/"
-                webbrowser.open_new(link)
-                break
-            if resource == "OST Website":
-                link = (
-                    "https://www.fisheries.noaa.gov/about/office-science-and-technology"
-                )
-                webbrowser.open_new(link)
-                break
-
-        if mode == "Exit":
+        
+        if mode == "exit":
             os.system("cls" if os.name == "nt" else "clear")
             break
 
