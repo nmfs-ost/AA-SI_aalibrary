@@ -157,6 +157,18 @@ def main():
         if mode == "authenticate with Google":
             logger.info("Authenticating via Google...")
 
+
+            commands = [
+                "gcloud auth login",
+                "gcloud auth application-default login",
+                "gcloud config set account {ACCOUNT}",
+                "gcloud config set project ggn-nmfs-aa-dev-1",
+            ]
+
+            for cmd in commands:
+                subprocess.run(cmd, shell=True, check=True)
+
+
             logger.info(f"This functionality is not yet available. ")
 
         if mode == "resources and documentation":
