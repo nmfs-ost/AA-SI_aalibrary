@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 Copyright 2025. Hannan Khan working as a contractor for NOAA.
 
 
