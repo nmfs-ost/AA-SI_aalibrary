@@ -11,7 +11,7 @@
 # Installing `AALibrary`
 
 ???+ info "Google Cloud Workstations"
-    If you are using Google Cloud Workstations, please follow the instructions outlined in the <a href="https://github.com/nmfs-ost/AA-SI_GCPSetup" target="_blank">repo here</a>.
+     If you are using Google Cloud Workstations, please follow the instructions outlined in the <a href="https://github.com/nmfs-ost/AA-SI_GCPSetup" target="_blank">repo here</a>.
 
 ## Dependencies
 
