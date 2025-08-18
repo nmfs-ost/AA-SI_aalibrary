@@ -13,10 +13,6 @@
 ???+ info "Google Cloud Workstations"
      If you are using Google Cloud Workstations, please follow the instructions outlined in the <a href="https://github.com/nmfs-ost/AA-SI_GCPSetup" target="_blank">repo here</a>.
 
-## Dependencies
-
-Dependencies are listed within `requirements.txt` and `setup.py`, however, they should be automatically installed when you first install `aalibrary`.
-
 ## Installation
 
 To securely install this package via pip, use the following:
