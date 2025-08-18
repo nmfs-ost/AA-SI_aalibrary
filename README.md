@@ -232,6 +232,7 @@ download_netcdf_file(
                 ship_name="Reuben_Lasker",
                 survey_name="RL2107",
                 echosounder="EK80",
+                data_source="NCEI",
                 file_download_location=".",
                 gcp_bucket=gcp_bucket,
                 is_metadata=False,
