@@ -21,3 +21,4 @@ numcodecs==0.15.1
 mkdocs
 mkdocs-material
 mkdocstrings-python
+mkdocs-git-revision-date-localized-plugin
