@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 <!-- markdownlint-configure-file {
   "MD013": {
     "code_blocks": true,
