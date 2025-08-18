@@ -4,9 +4,9 @@
     options:
       members:
         - config
-        - extensions
         - ices_ship_names
         - ingestion
+        - conversion
         - metadata
         - queries
       show_root_heading: false
