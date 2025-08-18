@@ -1,8 +1,10 @@
 # Troubleshooting
 
-## The `Google Cloud` Warning
+## Cloud Errors
+
+### The `Google Cloud SDK` Warning
 >
->C:\Users\hannan.khan\AppData\Local\conda\conda\envs\aalibrary\Lib\site-packages\google\auth\_default.py:76: UserWarning: Your application has authenticated using end user credentials from Google Cloud SDK without a quota project. You might receive a "quota exceeded" or "API not enabled" error. See the following page for troubleshooting: <https://cloud.google.com/docs/authentication/adc-troubleshooting/user-creds>.
+>UserWarning: Your application has authenticated using end user credentials from Google Cloud SDK without a quota project. You might receive a "quota exceeded" or "API not enabled" error. See the following page for troubleshooting: <https://cloud.google.com/docs/authentication/adc-troubleshooting/user-creds>.
 >
 > warnings.warn(_CLOUD_SDK_CREDENTIALS_WARNING)
 
