@@ -264,7 +264,6 @@ class RawFile:
         self.raw_omao_file_path = (
             utils.helpers.create_omao_file_path_from_variables(
                 self.raw_file_name,
-                file_type="raw",
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,

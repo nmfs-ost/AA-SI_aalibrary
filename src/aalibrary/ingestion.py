@@ -634,6 +634,7 @@ def download_raw_file(
     echosounder: str = "",
     data_source: str = "",
     file_download_directory: str = ".",
+    gcp_bucket: storage.Bucket = None,
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
@@ -666,12 +667,16 @@ def download_raw_file(
         file_download_directory (str, optional): The local file directory you
             want to store your file in. Defaults to current directory.
             Defaults to ".".
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
+            used to download the file. Defaults to None.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
 
-    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
-    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
+    if gcp_bucket is None:
+        _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
+    if s3_resource is None:
+        _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
         file_name=file_name,

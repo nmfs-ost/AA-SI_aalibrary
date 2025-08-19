@@ -60,7 +60,7 @@ class TestNCEIIngestion:
 
     def download_from_NCEI_upload_to_GCP(self): ...
 
-    def test_download_from_NCEI(self):
+    def test_download_from_ncei(self):
         """Tests downloading a raw and idx file direct from NCEI, but without
         the forced downloads on."""
         # Delete from GCP if it exists; to bypass cache and download direct
@@ -96,7 +96,6 @@ class TestNCEIIngestion:
             echosounder=self.echosounder,
             data_source=self.data_source,
             file_download_directory=self.file_download_location,
-            is_metadata=False,
             debug=False,
         )
 
@@ -106,7 +105,7 @@ class TestNCEIIngestion:
             self.local_idx_file_path
         ), "Raw or Idx file has not been downloaded locally."
 
-    def test_download_raw_idx_from_GCP(self):
+    def test_download_raw_idx_from_gcp(self):
         """Tests downloading the raw and idx files from GCP
         (cached versions)."""
         # Delete locally if it exists
@@ -123,7 +122,6 @@ class TestNCEIIngestion:
             echosounder=self.echosounder,
             data_source=self.data_source,
             file_download_directory=self.file_download_location,
-            is_metadata=False,
             debug=False,
         )
 
@@ -184,7 +182,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder=self.echosounder,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -200,7 +197,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder=self.echosounder,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -216,7 +212,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder=self.echosounder,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -232,7 +227,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder=self.echosounder,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -248,7 +242,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder=self.echosounder,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -264,7 +257,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder="",
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -280,7 +272,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder="abc",
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -296,7 +287,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder=self.echosounder,
                 file_download_directory="",
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -305,7 +295,7 @@ class TestNCEIIngestionUserErrors:
         there is an invalid `file_download_location` param (not a dir)."""
         with pytest.raises(Exception):
             # Create a test file to point the file download location to.
-            with open("file.temp", "a"):
+            with open("file.temp", "a", encoding="utf-8"):
                 os.utime("file.temp", None)
 
             ingestion.download_raw_file(
@@ -316,7 +306,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder=self.echosounder,
                 file_download_directory="file.temp",
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -333,7 +322,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -350,7 +338,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -367,7 +354,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -384,7 +370,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -401,7 +386,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -418,7 +402,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -435,7 +418,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -452,7 +434,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory="",
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -461,7 +442,7 @@ class TestNCEIIngestionUserErrors:
         when there is an invalid `file_download_location` param (not a dir)."""
         with pytest.raises(Exception):
             # Create a test file to point the file download location to.
-            with open("file.temp", "a"):
+            with open("file.temp", "a", encoding="utf-8"):
                 os.utime("file.temp", None)
 
             ingestion.download_netcdf_file(
@@ -473,7 +454,6 @@ class TestNCEIIngestionUserErrors:
                 data_source=self.data_source,
                 file_download_directory="file.temp",
                 gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
                 debug=False,
             )
 
@@ -488,7 +468,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_location=self.file_download_directory,
+                file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -505,7 +485,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_location=self.file_download_directory,
+                file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -522,7 +502,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_location=self.file_download_directory,
+                file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -539,7 +519,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_location=self.file_download_directory,
+                file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -556,7 +536,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name="",
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_location=self.file_download_directory,
+                file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -573,7 +553,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder="",
                 data_source=self.data_source,
-                file_download_location=self.file_download_directory,
+                file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -590,7 +570,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder="abc",
                 data_source=self.data_source,
-                file_download_location=self.file_download_directory,
+                file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -607,7 +587,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source="",
-                file_download_location=self.file_download_directory,
+                file_download_directory=self.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -624,7 +604,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_location="",
+                file_download_directory="",
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -635,7 +615,7 @@ class TestNCEIIngestionUserErrors:
         when there is an invalid `file_download_location` param (not a dir)."""
         with pytest.raises(Exception):
             # Create a test file to point the file download location to.
-            with open("file.temp", "a"):
+            with open("file.temp", "a", encoding="utf-8"):
                 os.utime("file.temp", None)
 
             aalibrary.conversion.convert_raw_to_netcdf(
@@ -645,7 +625,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_location="file.temp",
+                file_download_directory="file.temp",
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -744,7 +724,6 @@ class TestOMAOIngestion:
             data_source=self.data_source,
             file_download_directory=self.file_download_location,
             config_file_path=self.config_file_path,
-            is_metadata=self.is_metadata,
             upload_to_gcp=self.upload_to_gcp,
             debug=False,
         )
