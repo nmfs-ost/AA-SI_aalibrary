@@ -56,7 +56,7 @@ def main():
 
             # Get all file names for the selected survey
 
-            file_name = inquirer.select(
+            file_name = inquirer.fuzzy(
                 message="select .raw files from survey : " + survey,
                 choices=get_all_raw_file_names_from_survey(
                     ship_name, survey, echosounder
