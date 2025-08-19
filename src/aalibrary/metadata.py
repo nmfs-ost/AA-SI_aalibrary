@@ -5,9 +5,9 @@ from datetime import datetime, timezone, timedelta
 import subprocess
 import logging
 import platform
-import boto3
 import json
 
+import boto3
 import numpy as np
 import pandas as pd
 
@@ -19,18 +19,16 @@ if __package__ is None or __package__ == "":
     import utils
 
     # from utils import nc_reader
-    from utils.cloud_utils import list_all_objects_in_s3_bucket_location
+    from utils.ncei_utils import (
+        check_if_tugboat_metadata_json_exists_in_survey,
+    )
     from raw_file import RawFile
-    from utils.ncei_utils import check_if_tugboat_metadata_json_exists_in_survey
 else:
     # uses current package visibility
     from aalibrary import utils
     from aalibrary.raw_file import RawFile
 
     # from aalibrary.utils import nc_reader
-    from aalibrary.utils.cloud_utils import (
-        list_all_objects_in_s3_bucket_location,
-    )
     from aalibrary.utils.ncei_utils import (
         check_if_tugboat_metadata_json_exists_in_survey,
     )
@@ -57,16 +55,25 @@ def create_metadata_json_for_raw_files(
     get_curr_user_email_cmd = ["gcloud", "config", "get-value", "account"]
     if platform.system() == "Windows":
         email = subprocess.run(
-            get_curr_user_email_cmd, shell=True, capture_output=True, text=True
+            get_curr_user_email_cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout
     else:
         email = subprocess.run(
-            get_curr_user_email_cmd, capture_output=True, text=True
+            get_curr_user_email_cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout
     email = email.replace("\n", "")
 
     # get the survey datetime.
-    file_datetime = datetime.strptime(rf.get_file_datetime_str(), "%Y-%m-%d %H:%M:%S")
+    file_datetime = datetime.strptime(
+        rf.get_file_datetime_str(), "%Y-%m-%d %H:%M:%S"
+    )
 
     # calculate the deletion datetime
     curr_datetime = datetime.now()
@@ -75,7 +82,9 @@ def create_metadata_json_for_raw_files(
 
     metadata_json = {
         "FILE_NAME": rf.raw_file_name,
-        "DATE_CREATED": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "DATE_CREATED": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
         "UPLOADED_BY": email,
         "ECHOPYPE_VERSION": echopype.__version__,
         "PYTHON_VERSION": sys.version.split(" ")[0],
@@ -153,9 +162,10 @@ def create_and_upload_metadata_df(
     return
 
 
-def create_and_upload_metadata_df_for_netcdf(**kwargs):
+def create_and_upload_metadata_df_for_netcdf():
+    """Creates a metadata file with appropriate information for netcdf files.
+    Then uploads it to the correct table in GCP."""
     # TODO: implement
-    ...
 
 
 # TODO: implement this func at an appropriate place.
@@ -198,7 +208,6 @@ def upload_ncei_metadata_df_to_bigquery(
 
 
 def _parse_and_upload_ncei_survey_level_metadata(
-    ship_name: str = "",
     survey_name: str = "",
     file_location: str = "",
 ):
@@ -207,7 +216,7 @@ def _parse_and_upload_ncei_survey_level_metadata(
     """
 
     # Load the file as a json object
-    with open(file_location, "r") as file:
+    with open(file_location, "r", encoding="utf-8") as file:
         file_json = json.load(file)
 
     # Get all 'metadata_author'
@@ -269,7 +278,9 @@ def _parse_and_upload_ncei_survey_level_metadata(
         "CALIBRATION_FILE_PATH": calibration_data_path_str,
     }
 
-    ncei_survey_level_metadata_df = pd.json_normalize(ncei_survey_level_metadata_json)
+    ncei_survey_level_metadata_df = pd.json_normalize(
+        ncei_survey_level_metadata_json
+    )
     # Upload to GCP BigQuery
     ncei_survey_level_metadata_df.to_gbq(
         destination_table="metadata.ncei_cruise_metadata",
@@ -326,7 +337,6 @@ def get_metadata_in_df_format():
     """Retrieves the metadata associated with all objects in GCP in DataFrame
     format."""
     # TODO:
-    ...
 
 
 if __name__ == "__main__":

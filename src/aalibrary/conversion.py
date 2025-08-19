@@ -118,7 +118,7 @@ def convert_local_raw_to_netcdf(
                 )
     except Exception as e:
         logging.error(
-            f"COULD NOT CONVERT `{raw_file_location}` DUE TO ERROR {e}"
+            "COULD NOT CONVERT `%s` DUE TO ERROR %s", raw_file_location, e
         )
         raise e
 
@@ -172,10 +172,10 @@ def convert_raw_to_netcdf(
     """
     # TODO: Implement an 'upload' param default to True.
 
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+    _, _, gcp_bucket = (
         utils.cloud_utils.setup_gcp_storage_objs()
     )
-    s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
         file_name=file_name,
@@ -211,10 +211,9 @@ def convert_raw_to_netcdf(
         )
     else:
         logging.info(
-            (
-                f"FILE `{rf.raw_file_name}` DOES NOT EXIST AS NETCDF."
-                " DOWNLOADING/CONVERTING/UPLOADING RAW..."
-            )
+            "FILE `%s` DOES NOT EXIST AS NETCDF. DOWNLOADING/CONVERTING/"
+            "UPLOADING RAW...",
+            rf.raw_file_name
         )
 
         # Download the raw file.

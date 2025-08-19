@@ -47,7 +47,6 @@ class TugboatAPI:
 
     def _get_tugboat_credentials(self):
         """Gets the tugboat credentials for AALibrary from the google storage bucket."""
-        local_creds_file_path = r"./tugboat_credentials.json"
 
         # Download as string so that we dont have to worry about storing it anywhere
         self._tugboat_cred = cloud_utils.download_file_from_gcp_as_string(

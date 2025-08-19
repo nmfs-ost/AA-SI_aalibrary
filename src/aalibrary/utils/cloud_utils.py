@@ -11,7 +11,7 @@ from botocore.client import Config
 import boto3
 
 from aalibrary.raw_file import RawFile
-from aalibrary.utils import cloud_utils, helpers
+from aalibrary.utils import helpers
 from aalibrary.utils.helpers import (
     get_netcdf_gcp_location_from_raw_gcp_location,
 )
@@ -95,7 +95,7 @@ def upload_file_to_gcp_bucket(
     try:
         blob.upload_from_filename(local_file_path)
         if debug:
-            print("New data uploaded to {}".format(blob.name))
+            print(f"New data uploaded to {blob.name}")
     except Exception:
         print(traceback.format_exc())
         raise
@@ -169,7 +169,7 @@ def count_subdirectories_in_s3_bucket_location(
     subdirs = set()
     for obj in bucket.objects.filter(Prefix=prefix):
         prefix = "/".join(obj.key.split("/")[:-1])
-        if len(prefix) and prefix not in subdirs:
+        if prefix and prefix not in subdirs:
             subdirs.add(prefix)
             # print(prefix + "/")
     return len(subdirs)
@@ -299,7 +299,7 @@ def download_file_from_gcp(
     try:
         blob.download_to_filename(local_file_path)
         if debug:
-            print("New data downloaded to {}".format(local_file_path))
+            print(f"New data downloaded to {local_file_path}")
     except Exception:
         print(traceback.format_exc())
         raise
@@ -308,7 +308,6 @@ def download_file_from_gcp(
 def download_file_from_gcp_as_string(
     gcp_bucket: storage.Client.bucket,
     blob_file_path: str,
-    debug: bool = False,
 ):
     """Downloads a file from the blob storage bucket as a text string.
 
@@ -318,8 +317,6 @@ def download_file_from_gcp_as_string(
         blob_file_path (str): The blob's file path.
             Ex. "data/itds/logs/execute_rasp_ii/temp.csv"
             NOTE: This must include the file name as well as the extension.
-
-        debug (bool): Whether or not to print debug statements.
     """
 
     blob = gcp_bucket.blob(blob_file_path, chunk_size=1024 * 1024 * 1)
@@ -330,9 +327,23 @@ def download_file_from_gcp_as_string(
         print(traceback.format_exc())
         raise
 
+
 def delete_file_from_gcp(
-    gcp_bucket: storage.Client.bucket, blob_file_path: str, debug: bool = False
+    gcp_bucket: storage.Client.bucket, blob_file_path: str
 ):
+    """Deletes a file from the storage bucket.
+
+    Args:
+        gcp_bucket (storage.Client.bucket): The bucket object used for
+            downloading from.
+        blob_file_path (str): The blob's file path.
+            Ex. "data/itds/logs/execute_rasp_ii/temp.csv"
+            NOTE: This must include the file name as well as the extension.
+    Raises:
+        AssertionError: If the file does not exist in GCP.
+        Exception: If there is an error deleting the file.
+    """
+
     file_exists_in_gcp = check_if_file_exists_in_gcp(
         gcp_bucket, blob_file_path
     )
@@ -380,7 +391,6 @@ def check_if_file_exists_in_s3(
 def get_object_key_for_s3(
     file_url: str = "",
     file_name: str = "",
-    file_type: str = "raw",
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
@@ -393,8 +403,6 @@ def get_object_key_for_s3(
             NOTE: If this is specified, there is no need to provide the other
             parameters.
         file_name (str, optional): The file name (includes extension).
-            Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
@@ -422,7 +430,6 @@ def get_object_key_for_s3(
 
 def check_if_netcdf_file_exists_in_gcp(
     file_name: str = "",
-    file_type: str = "",
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
@@ -430,7 +437,31 @@ def check_if_netcdf_file_exists_in_gcp(
     gcp_storage_bucket_location: str = "",
     gcp_bucket: storage.Bucket = None,
     debug: bool = False,
-):
+) -> bool:
+    """Checks if a netcdf file exists in GCP storage. If the bucket location is
+    not specified, it will use the helpers to parse the correct location.
+
+    Args:
+        file_name (str, optional): The file name (includes extension).
+            Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey.
+            Defaults to "".
+        survey_name (str, optional): The survey name/identifier.
+            Defaults to "".
+        echosounder (str, optional): The echosounder used to gather the data.
+            Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to
+            the way the storage bucket is organized. Can be one of
+            ["NCEI", "OMAO", "HDD"]. Defaults to "".
+        gcp_storage_bucket_location (str, optional): The string representing
+            the blob's location within the storage bucket. Defaults to "".
+        gcp_bucket (storage.Bucket): The bucket object used for downloading.
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+
+    Returns:
+        bool: True if the file exists in GCP, False otherwise.
+    """
 
     if gcp_storage_bucket_location != "":
         gcp_storage_bucket_location = (
@@ -451,7 +482,7 @@ def check_if_netcdf_file_exists_in_gcp(
         )
     )
     # check if the file exists in gcp
-    return cloud_utils.check_if_file_exists_in_gcp(
+    return check_if_file_exists_in_gcp(
         bucket=gcp_bucket, file_path=netcdf_gcp_storage_bucket_location
     )
 
@@ -489,7 +520,7 @@ def check_existence_of_supplemental_files(
 
     # Create connection vars
     gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
-    s3_client, s3_resource, s3_bucket = create_s3_objs()
+    _, s3_resource, _ = create_s3_objs()
 
     # Create the RawFile object.
     rf = RawFile(
@@ -542,7 +573,21 @@ def list_all_folders_in_gcp_bucket_location(
     location: str = "",
     gcp_bucket: storage.Client.bucket = None,
     return_full_paths: bool = True,
-):
+) -> List[str]:
+    """Lists all of the folders in a GCP storage bucket location.
+
+    Args:
+        location (str, optional): The blob location you would like to get the
+            folders of. Defaults to "".
+        gcp_bucket (storage.Client.bucket, optional): The gcp bucket to use.
+            Defaults to None.
+        return_full_paths (bool, optional): Whether or not to return full
+            paths. Defaults to True.
+
+    Returns:
+        List[str]: A list of strings containing the folder names or full paths.
+    """
+
     if location and not location.endswith("/"):
         location += "/"
 

@@ -3,9 +3,9 @@ through NCEI's s3 bucket."""
 
 from typing import List, Union
 from difflib import get_close_matches
-import boto3
 from random import randint
 
+import boto3
 from tqdm import tqdm
 
 # For pytests-sake
@@ -130,7 +130,9 @@ def get_all_survey_names_from_a_ship(
         normalize=False, s3_client=s3_client, return_full_paths=False
     )
     if ship_name not in all_ship_names:
-        close_matches = get_close_matches(ship_name, all_ship_names, n=3, cutoff=0.6)
+        close_matches = get_close_matches(
+            ship_name, all_ship_names, n=3, cutoff=0.6
+        )
     assert ship_name in all_ship_names, (
         f"The ship name provided `{ship_name}` "
         "needs to be spelled exactly like in NCEI.\n"
@@ -201,7 +203,7 @@ def get_all_echosounders_in_a_survey(
     return all_echosounders
 
 
-def get_all_echosounders_that_exist_in_NCEI(
+def get_all_echosounders_that_exist_in_ncei(
     s3_client: boto3.client = None,
 ) -> List[str]:
     """Gets a list of all possible echosounders from NCEI.
@@ -225,7 +227,9 @@ def get_all_echosounders_that_exist_in_NCEI(
         s3_client=s3_client, return_full_paths=True
     )
     all_echosounders = set()
-    for survey_prefix in tqdm(all_survey_prefixes, desc="Getting Echosounders"):
+    for survey_prefix in tqdm(
+        all_survey_prefixes, desc="Getting Echosounders"
+    ):
         # Remove trailing `/`
         survey_prefix = survey_prefix.strip("/")
         survey_name = survey_prefix.split("/")[-1]
@@ -416,7 +420,9 @@ def get_echosounder_from_raw_file(
 
 
 def check_if_tugboat_metadata_json_exists_in_survey(
-    ship_name: str = "", survey_name: str = "", s3_bucket: boto3.resource = None
+    ship_name: str = "",
+    survey_name: str = "",
+    s3_bucket: boto3.resource = None,
 ) -> Union[str, None]:
     """Checks whether a Tugboat metadata JSON file exists within a survey.
     Returns the file's object key or None if it does not exist.
@@ -432,7 +438,8 @@ def check_if_tugboat_metadata_json_exists_in_survey(
         s3_bucket (boto3.resource, optional): The bucket resource object.
             Defaults to None.
     Returns:
-        Union[str, None]: Returns the file's object key string or None if it does not exist.
+        Union[str, None]: Returns the file's object key string or None if it
+            does not exist.
     """
 
     # Find all metadata files within the metadata/ folder in NCEI
@@ -449,22 +456,28 @@ def check_if_tugboat_metadata_json_exists_in_survey(
     return None
 
 
-def get_closest_ncei_formatted_ship_name(ship_name: str = "") -> Union[str, None]:
+def get_closest_ncei_formatted_ship_name(
+    ship_name: str = "",
+) -> Union[str, None]:
     """Gets the closest NCEI formatted ship name to the given ship name.
     NOTE: Only use if the `data_source`=="NCEI".
 
     Args:
-        ship_name (str, optional): The ship name to search the closest match for.
+        ship_name (str, optional): The ship name to search the closest match
+            for.
             Defaults to "".
 
     Returns:
-        Union[str, None]: The NCEI formatted ship name or None, if none matched.
+        Union[str, None]: The NCEI formatted ship name or None, if none
+            matched.
     """
 
     all_ship_names = get_all_ship_names_in_ncei(
         normalize=False, return_full_paths=False
     )
-    close_matches = get_close_matches(ship_name, all_ship_names, n=3, cutoff=0.85)
+    close_matches = get_close_matches(
+        ship_name, all_ship_names, n=3, cutoff=0.85
+    )
     if len(close_matches) >= 1:
         return close_matches[0]
     else:
@@ -495,10 +508,10 @@ def get_all_metadata_files_in_survey(
             if you only want the subdirectory names listed. Defaults to False.
 
     Returns:
-        List[str]: A list of strings, each being the metadata file name. Whether
-            these are full paths or just folder names are specified by the
-            `return_full_paths` parameter. Returns empty list '[]' if no metadata
-            files are present.
+        List[str]: A list of strings, each being the metadata file name.
+            Whether these are full paths or just folder names are specified by
+            the `return_full_paths` parameter. Returns empty list '[]' if no
+            metadata files are present.
     """
 
     survey_prefix = f"data/raw/{ship_name}/{survey_name}/metadata/"

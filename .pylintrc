@@ -1,0 +1,2 @@
+[MESSAGES CONTROL]
+    disable=import-error,broad-exception-caught,too-many-lines,fixme,redefined-outer-name,use-maxsplit-arg

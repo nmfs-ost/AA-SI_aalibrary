@@ -52,11 +52,9 @@ class RawFile:
         self._create_download_directories_if_not_exists()
 
         self._check_for_assertion_errors()
-        if self.debug:
-            logging.debug("RawFile object created:", self)
 
     def __repr__(self):
-        pprint.pprint(self.__dict__)
+        return pprint.pformat(self.__dict__, indent=4)
 
     def __str__(self):
         return pprint.pformat(self.__dict__, indent=4)
@@ -80,7 +78,9 @@ class RawFile:
                 os.path.dirname(self.file_download_directory) + os.sep
             )
             if self.debug:
-                logging.debug("converted to directory", self.file_download_directory)
+                logging.debug(
+                    "converted to directory %s", self.file_download_directory
+                )
 
     def _create_download_directories_if_not_exists(self):
         """Create the download directory (path) if it doesn't exist."""
@@ -97,7 +97,7 @@ class RawFile:
         if (self.data_source == "NCEI") or (self.data_source == "OMAO"):
             # ex. 2107RL_CW-D20211001-T132449.raw
             # TODO: `telegram` within raw file has a time stamp, maybe extract
-            
+
             temp = self.file_name.lower().split("d")[-1].replace(".raw", "")
             print(temp)
             self.year_str = temp[:4]
@@ -150,7 +150,8 @@ class RawFile:
         ):
             self.gcp_stor_client, self.gcp_bucket_name, self.gcp_bucket = (
                 utils.cloud_utils.setup_gcp_storage_objs(
-                    project_id=self.gcp_project_id, gcp_bucket_name=self.gcp_bucket_name
+                    project_id=self.gcp_project_id,
+                    gcp_bucket_name=self.gcp_bucket_name,
                 )
             )
         if (
@@ -167,7 +168,9 @@ class RawFile:
         self.file_name_wo_extension = self.file_name.split(".")[0]
         self.idx_file_name = ".".join(self.file_name.split(".")[:-1]) + ".idx"
         self.bot_file_name = ".".join(self.file_name.split(".")[:-1]) + ".bot"
-        self.netcdf_file_name = ".".join(self.file_name.split(".")[:-1]) + ".nc"
+        self.netcdf_file_name = (
+            ".".join(self.file_name.split(".")[:-1]) + ".nc"
+        )
 
         # Create download paths for all four types of files
         self.raw_file_download_path = os.path.normpath(
@@ -258,33 +261,41 @@ class RawFile:
         )
 
         # Create all OMAO storage locations for each file.
-        self.raw_omao_file_path = utils.helpers.create_omao_file_path_from_variables(
-            self.raw_file_name,
-            file_type="raw",
-            ship_name=self.ship_name,
-            survey_name=self.survey_name,
-            echosounder=self.echosounder,
+        self.raw_omao_file_path = (
+            utils.helpers.create_omao_file_path_from_variables(
+                self.raw_file_name,
+                file_type="raw",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+            )
         )
-        self.idx_omao_file_path = utils.helpers.create_omao_file_path_from_variables(
-            file_name=self.idx_file_name,
-            file_type="idx",
-            ship_name=self.ship_name,
-            survey_name=self.survey_name,
-            echosounder=self.echosounder,
+        self.idx_omao_file_path = (
+            utils.helpers.create_omao_file_path_from_variables(
+                file_name=self.idx_file_name,
+                file_type="idx",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+            )
         )
-        self.bot_omao_file_path = utils.helpers.create_omao_file_path_from_variables(
-            file_name=self.bot_file_name,
-            file_type="bot",
-            ship_name=self.ship_name,
-            survey_name=self.survey_name,
-            echosounder=self.echosounder,
+        self.bot_omao_file_path = (
+            utils.helpers.create_omao_file_path_from_variables(
+                file_name=self.bot_file_name,
+                file_type="bot",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+            )
         )
-        self.netcdf_omao_file_path = utils.helpers.create_omao_file_path_from_variables(
-            file_name=self.netcdf_file_name,
-            file_type="netcdf",
-            ship_name=self.ship_name,
-            survey_name=self.survey_name,
-            echosounder=self.echosounder,
+        self.netcdf_omao_file_path = (
+            utils.helpers.create_omao_file_path_from_variables(
+                file_name=self.netcdf_file_name,
+                file_type="netcdf",
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+            )
         )
 
         # Create object keys for NCEI
@@ -312,39 +323,53 @@ class RawFile:
         # NCEI does not have netcdf files, so we will not create object keys.
 
         # Check if the file(s) exist in NCEI
-        self.raw_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
-            object_key=self.raw_file_s3_object_key,
-            s3_resource=self.s3_resource,
-            s3_bucket_name=self.s3_bucket_name,
+        self.raw_file_exists_in_ncei = (
+            utils.cloud_utils.check_if_file_exists_in_s3(
+                object_key=self.raw_file_s3_object_key,
+                s3_resource=self.s3_resource,
+                s3_bucket_name=self.s3_bucket_name,
+            )
         )
-        self.idx_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
-            object_key=self.idx_file_s3_object_key,
-            s3_resource=self.s3_resource,
-            s3_bucket_name=self.s3_bucket_name,
+        self.idx_file_exists_in_ncei = (
+            utils.cloud_utils.check_if_file_exists_in_s3(
+                object_key=self.idx_file_s3_object_key,
+                s3_resource=self.s3_resource,
+                s3_bucket_name=self.s3_bucket_name,
+            )
         )
-        self.bot_file_exists_in_ncei = utils.cloud_utils.check_if_file_exists_in_s3(
-            object_key=self.bot_file_s3_object_key,
-            s3_resource=self.s3_resource,
-            s3_bucket_name=self.s3_bucket_name,
+        self.bot_file_exists_in_ncei = (
+            utils.cloud_utils.check_if_file_exists_in_s3(
+                object_key=self.bot_file_s3_object_key,
+                s3_resource=self.s3_resource,
+                s3_bucket_name=self.s3_bucket_name,
+            )
         )
         # NCEI does not store netcdf files, so we will not be checking.
 
         # Check if the file(s) exist in GCP
-        self.raw_file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
-            bucket=self.gcp_bucket,
-            file_path=self.raw_gcp_storage_bucket_location,
+        self.raw_file_exists_in_gcp = (
+            utils.cloud_utils.check_if_file_exists_in_gcp(
+                bucket=self.gcp_bucket,
+                file_path=self.raw_gcp_storage_bucket_location,
+            )
         )
-        self.idx_file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
-            bucket=self.gcp_bucket,
-            file_path=self.idx_gcp_storage_bucket_location,
+        self.idx_file_exists_in_gcp = (
+            utils.cloud_utils.check_if_file_exists_in_gcp(
+                bucket=self.gcp_bucket,
+                file_path=self.idx_gcp_storage_bucket_location,
+            )
         )
-        self.bot_file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
-            bucket=self.gcp_bucket,
-            file_path=self.bot_gcp_storage_bucket_location,
+        self.bot_file_exists_in_gcp = (
+            utils.cloud_utils.check_if_file_exists_in_gcp(
+                bucket=self.gcp_bucket,
+                file_path=self.bot_gcp_storage_bucket_location,
+            )
         )
-        self.netcdf_file_exists_in_gcp = utils.cloud_utils.check_if_file_exists_in_gcp(
-            bucket=self.gcp_bucket,
-            file_path=self.netcdf_gcp_storage_bucket_location,
+        self.netcdf_file_exists_in_gcp = (
+            utils.cloud_utils.check_if_file_exists_in_gcp(
+                bucket=self.gcp_bucket,
+                file_path=self.netcdf_gcp_storage_bucket_location,
+            )
         )
 
         # TODO: create vars for omao data lake existence.
@@ -388,9 +413,13 @@ class RawFile:
                     " exist in the ICES database."
                 )
         if "survey_name" in self.__dict__:
-            assert self.survey_name != "", "Please provide a valid survey name."
+            assert (
+                self.survey_name != ""
+            ), "Please provide a valid survey name."
         if "echosounder" in self.__dict__:
-            assert self.echosounder != "", "Please provide a valid echosounder."
+            assert (
+                self.echosounder != ""
+            ), "Please provide a valid echosounder."
             assert self.echosounder in config.VALID_ECHOSOUNDERS, (
                 "Please provide a valid echosounder from the "
                 f"following: {config.VALID_ECHOSOUNDERS}"
@@ -416,18 +445,6 @@ class RawFile:
             assert self.gcp_bucket is not None, (
                 "Please provide a gcp_bucket object with"
                 " `utils.cloud_utils.setup_gcp_storage()`"
-            )
-        if "directory" in self.__dict__:
-            assert self.directory != "", "Please provide a valid directory."
-            assert os.path.isdir(self.directory), (
-                f"Directory location `{self.directory}` is not found to be a"
-                " valid dir, please reformat it."
-            )
-        if "data_lake_directory_client" in self.__dict__:
-            assert self.data_lake_directory_client is not None, (
-                f"The data lake directory client cannot be a"
-                f" {type(self.data_lake_directory_client)} object. It needs "
-                "to be of the type `DataLakeDirectoryClient`."
             )
 
     # TODO:
@@ -497,7 +514,7 @@ if __name__ == "__main__":
     try:
         s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     except Exception as e:
-        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n%s", e)
         raise
     # Create gcp bucket objects
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (

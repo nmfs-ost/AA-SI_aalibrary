@@ -3,9 +3,10 @@ https://vocab.ices.dk/?ref=315
 Specifically the `SHIPC` platform code which refers to ship names.
 """
 
-import requests
 from typing import List
 from difflib import get_close_matches
+
+import requests
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -30,7 +31,8 @@ def get_all_ship_info() -> List:
         url=(
             "https://vocab.ices.dk/services/api/Code/"
             "7f9a91e1-fb57-464a-8eb0-697e4b0235b5"
-        )
+        ),
+        timeout=10
     )
     all_ship_info = response.json()
 
@@ -112,7 +114,7 @@ def get_ices_code_from_ship_name(
     )
     # Reverse it to make the ship names the keys.
     all_codes_and_names = {v: k for k, v in all_codes_and_names.items()}
-    valid_ICES_ship_names = list(all_codes_and_names.keys())
+    valid_ices_ship_names = list(all_codes_and_names.keys())
     # Try to find the correct ICES code based on the ship name.
     try:
         return all_codes_and_names[ship_name]
@@ -120,7 +122,7 @@ def get_ices_code_from_ship_name(
         # Here the ship name does not exactly match any in the ICES DB.
         # Check for spell check using custom list
         spell_check_list = get_close_matches(
-            ship_name, valid_ICES_ship_names, n=3, cutoff=0.6
+            ship_name, valid_ices_ship_names, n=3, cutoff=0.6
         )
         if len(spell_check_list) > 0:
             print(

@@ -3,9 +3,9 @@ code reads a .nc file and returns a dict with all of the attributes
 gathered.
 """
 
+import pprint
 
 from netCDF4 import Dataset
-import pprint
 
 
 def get_netcdf_header(file_path: str) -> dict:

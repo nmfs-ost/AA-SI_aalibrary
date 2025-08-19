@@ -8,14 +8,10 @@ comparing:
 """
 
 import hashlib
-import sys
 import os
 import glob
 
-import boto3
-
 import cloud_utils
-import ncei_utils
 
 
 def compare_local_cruise_files_to_cloud(

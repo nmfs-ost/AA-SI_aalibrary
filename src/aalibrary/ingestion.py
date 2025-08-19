@@ -12,16 +12,17 @@ from azure.storage.filedatalake import (
     DataLakeDirectoryClient,
     DataLakeFileClient,
 )
+import boto3
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
     import utils
-    import config
     from utils import cloud_utils, helpers
+    from utils.cloud_utils import get_data_lake_directory_client
+    import config
     import metadata
     from raw_file import RawFile
-    from utils.cloud_utils import get_data_lake_directory_client
 else:
     # uses current package visibility
     from aalibrary import utils
@@ -92,11 +93,11 @@ def download_specific_file_from_azure(
             would like downloaded. Defaults to "".
     """
 
-    config = configparser.ConfigParser()
-    config.read(config_file_path)
+    conf = configparser.ConfigParser()
+    conf.read(config_file_path)
 
     file = DataLakeFileClient.from_connection_string(
-        config["DEFAULT"]["azure_connection_string"],
+        conf["DEFAULT"]["azure_connection_string"],
         file_system_name=container_name,
         file_path=file_path_in_container,
     )
@@ -117,7 +118,6 @@ def download_raw_file_from_azure(
     data_source: str = "OMAO",
     file_download_directory: str = ".",
     config_file_path: str = "",
-    is_metadata: bool = False,
     upload_to_gcp: bool = False,
     debug: bool = False,
 ):
@@ -143,23 +143,17 @@ def download_raw_file_from_azure(
         config_file_path (str, optional): The location of the config file.
             Needs a `[DEFAULT]` section with a `azure_connection_string`
             variable defined. Defaults to "".
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
         upload_to_gcp (bool, optional): Whether or not you want to upload to
             GCP. Defaults to False.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
     # Create gcp bucket objects
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        utils.cloud_utils.setup_gcp_storage_objs()
-    )
+    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
     try:
-        s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+        _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
     except Exception as e:
-        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n %s", e)
         raise
 
     rf = RawFile(
@@ -170,7 +164,7 @@ def download_raw_file_from_azure(
         echosounder=echosounder,
         data_source=data_source,
         file_download_directory=file_download_directory,
-        is_metadata=is_metadata,
+        is_metadata=False,
         upload_to_gcp=upload_to_gcp,
         debug=debug,
         gcp_bucket=gcp_bucket,
@@ -233,7 +227,6 @@ def download_raw_file_from_azure(
                 file_location=rf.raw_file_download_path,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
-                is_metadata=is_metadata,
                 debug=debug,
             )
             # Upload the metadata file as well.
@@ -260,7 +253,6 @@ def download_raw_file_from_azure(
                 file_location=rf.idx_file_download_path,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
-                is_metadata=is_metadata,
                 debug=debug,
             )
 
@@ -282,7 +274,6 @@ def download_raw_file_from_azure(
                 file_location=rf.bot_file_download_path,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
-                is_metadata=is_metadata,
                 debug=debug,
             )
 
@@ -303,9 +294,9 @@ def download_single_file_from_aws(
     """
 
     try:
-        s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+        _, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
     except Exception as e:
-        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{%s}", e)
         raise
 
     # We replace the beginning of common file paths
@@ -322,15 +313,19 @@ def download_single_file_from_aws(
     if file_exists:
         # Finally download the file.
         try:
-            logging.info(f"DOWNLOADING `{file_name}`...")
+            logging.info("DOWNLOADING `%s`...", file_name)
             s3_bucket.download_file(file_url, download_location)
-            logging.info(f"DOWNLOADED `{file_name}` TO `{download_location}`")
+            logging.info(
+                "DOWNLOADED `%s` TO `%s`", file_name, download_location
+            )
         except Exception as e:
-            logging.error(f"ERROR DOWNLOADING FILE `{file_name}` DUE TO\n{e}")
+            logging.error(
+                "ERROR DOWNLOADING FILE `%s` DUE TO\n%s", file_name, e
+            )
             raise
     else:
         logging.error(
-            f"FILE {file_name} DOES NOT EXIST IN NCEI S3 BUCKET. SKIPPING..."
+            "FILE %s DOES NOT EXIST IN NCEI S3 BUCKET. SKIPPING...", file_name
         )
 
 
@@ -342,7 +337,6 @@ def download_raw_file_from_ncei(
     echosounder: str = "",
     data_source: str = "NCEI",
     file_download_directory: str = ".",
-    is_metadata: bool = False,
     upload_to_gcp: bool = False,
     debug: bool = False,
 ):
@@ -368,22 +362,16 @@ def download_raw_file_from_ncei(
         file_download_directory (str, optional): The local file directory you
             want to store your file in. Defaults to current directory.
             Defaults to ".".
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
         upload_to_gcp (bool, optional): Whether or not you want to upload to
             GCP. Defaults to False.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        utils.cloud_utils.setup_gcp_storage_objs()
-    )
+    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
     try:
-        s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+        _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
     except Exception as e:
-        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n%s", e)
         raise
 
     rf = RawFile(
@@ -394,7 +382,6 @@ def download_raw_file_from_ncei(
         echosounder=echosounder,
         data_source=data_source,
         file_download_directory=file_download_directory,
-        is_metadata=is_metadata,
         upload_to_gcp=upload_to_gcp,
         debug=debug,
         gcp_bucket=gcp_bucket,
@@ -442,7 +429,6 @@ def download_raw_file_from_ncei(
                 file_location=rf.raw_file_download_path,
                 gcp_bucket=rf.gcp_bucket,
                 data_source=rf.data_source,
-                is_metadata=False,
                 debug=rf.debug,
             )
             # Upload the metadata file as well.
@@ -504,7 +490,7 @@ def download_survey_from_ncei(
     echosounder: str = "",
     data_source: str = "NCEI",
     file_download_directory: str = ".",
-    is_metadata: bool = False,
+    s3_client: boto3.client = None,
     upload_to_gcp: bool = False,
     debug: bool = False,
 ):
@@ -526,10 +512,8 @@ def download_survey_from_ncei(
         file_download_directory (str, optional): The local file directory you
             want to store your file in. Defaults to current directory.
             Defaults to ".".
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
+        s3_client (boto3.client, optional): The bucket client object.
+            Defaults to None.
         upload_to_gcp (bool, optional): Whether or not you want to upload to
             GCP. Defaults to False.
         debug (bool, optional): Whether or not to print debug statements.
@@ -554,7 +538,7 @@ def download_survey_from_ncei(
     # Get all raw file names associated with this survey from NCEI.
     prefix = f"data/raw/{ship_name}/{survey_name}/{echosounder}/"
     survey_file_names = cloud_utils.get_subdirectories_in_s3_bucket_location(
-        prefix=prefix, s3_client=s3_bucket, return_full_paths=False
+        prefix=prefix, s3_client=s3_client, return_full_paths=False
     )
     # Filter out only the raw files (the download function takes care of
     # downloading the idx and bot files).
@@ -570,7 +554,6 @@ def download_survey_from_ncei(
             echosounder=echosounder,
             data_source="NCEI",
             file_download_directory=file_download_directory,
-            is_metadata=False,
             upload_to_gcp=upload_to_gcp,
             debug=debug,
         )
@@ -651,7 +634,6 @@ def download_raw_file(
     echosounder: str = "",
     data_source: str = "",
     file_download_directory: str = ".",
-    is_metadata: bool = False,
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
@@ -684,18 +666,12 @@ def download_raw_file(
         file_download_directory (str, optional): The local file directory you
             want to store your file in. Defaults to current directory.
             Defaults to ".".
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
 
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        utils.cloud_utils.setup_gcp_storage_objs()
-    )
-    s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
+    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
         file_name=file_name,
@@ -705,7 +681,6 @@ def download_raw_file(
         echosounder=echosounder,
         data_source=data_source,
         file_download_directory=file_download_directory,
-        is_metadata=is_metadata,
         debug=debug,
         gcp_bucket=gcp_bucket,
         s3_resource=s3_resource,
@@ -762,7 +737,6 @@ def download_raw_file(
             echosounder=rf.echosounder,
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
-            is_metadata=rf.is_metadata,
             upload_to_gcp=True,
             debug=rf.debug,
         )
@@ -806,7 +780,6 @@ def download_raw_file(
             file_location=rf.idx_file_download_path,
             gcp_bucket=rf.gcp_bucket,
             data_source=rf.data_source,
-            is_metadata=False,
             debug=rf.debug,
         )
 
@@ -849,7 +822,6 @@ def download_raw_file(
             file_location=rf.bot_file_download_path,
             gcp_bucket=rf.gcp_bucket,
             data_source=rf.data_source,
-            is_metadata=False,
             debug=rf.debug,
         )
 
@@ -865,7 +837,6 @@ def download_netcdf_file(
     data_source: str = "",
     file_download_directory: str = "",
     gcp_bucket: storage.Client.bucket = None,
-    is_metadata: bool = False,
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
@@ -902,7 +873,7 @@ def download_netcdf_file(
             Defaults to False.
     """
 
-    s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
         file_name=raw_file_name,
@@ -913,7 +884,6 @@ def download_netcdf_file(
         data_source=data_source,
         file_download_directory=file_download_directory,
         gcp_bucket=gcp_bucket,
-        is_metadata=is_metadata,
         debug=debug,
         s3_resource=s3_resource,
     )
@@ -938,16 +908,13 @@ def download_netcdf_file(
         return
     else:
         logging.error(
-            (
-                f"NETCDF FILE `{raw_file_name}` DOES NOT EXIST IN GCP AT THE"
-                f" LOCATION: `{rf.netcdf_gcp_storage_bucket_location}`."
-            )
+            "NETCDF FILE `%s` DOES NOT EXIST IN GCP AT THE LOCATION: `%s`.",
+            raw_file_name,
+            rf.netcdf_gcp_storage_bucket_location,
         )
         logging.error(
-            (
-                "PLEASE CONVERT AND UPLOAD THE RAW FILE FIRST VIA"
-                " `download_raw_file`."
-            )
+            "PLEASE CONVERT AND UPLOAD THE RAW FILE FIRST VIA"
+            " `download_raw_file`."
         )
         raise FileNotFoundError
 
@@ -1039,11 +1006,11 @@ def upload_file_to_gcp_storage_bucket(
             print("UPLOADED.")
         except Exception as e:
             logging.error(
-                (
-                    f"COULD NOT UPLOAD FILE {file_name} TO GCP "
-                    f"({gcp_storage_bucket_location}) STORAGE BUCKET DUE TO "
-                    f"THE FOLLOWING ERROR:\n{e}"
-                )
+                "COULD NOT UPLOAD FILE %s TO GCP (%s) STORAGE BUCKET DUE TO "
+                "THE FOLLOWING ERROR:\n%s",
+                file_name,
+                gcp_storage_bucket_location,
+                e,
             )
 
     return
@@ -1208,7 +1175,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 ship_name=ship_name,
                 survey_name=survey_name,
                 echosounder=echosounder,
-                file_location=raw_file,
+                file_location=idx_file,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=False,
@@ -1252,7 +1219,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 ship_name=ship_name,
                 survey_name=survey_name,
                 echosounder=echosounder,
-                file_location=raw_file,
+                file_location=bot_file,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=False,
@@ -1296,7 +1263,7 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 ship_name=ship_name,
                 survey_name=survey_name,
                 echosounder=echosounder,
-                file_location=raw_file,
+                file_location=netcdf_file,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=False,
@@ -1326,17 +1293,29 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
 def find_and_upload_survey_metadata_from_s3(
     ship_name: str = "",
     survey_name: str = "",
+    gcp_bucket: storage.Client.bucket = None,
     debug: bool = False,
 ):
     """Finds the metadata that is associated with a particular survey in s3,
-    then uploads all of those files into the correct gcp location."""
+    then uploads all of those files into the correct gcp location.
+
+    Args:
+        ship_name (str, optional): The ship name associated with this survey.
+            Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults
+            to "".
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
+            used to download the file. Defaults to None.
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+    """
 
     metadata_location_in_s3 = f"data/raw/{ship_name}/{survey_name}/metadata/"
 
     try:
-        s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+        _, _, s3_bucket = utils.cloud_utils.create_s3_objs()
     except Exception as e:
-        logging.error(f"CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{e}")
+        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n%s", e)
         raise
 
     num_metadata_objects = cloud_utils.count_objects_in_s3_bucket_location(
@@ -1345,10 +1324,10 @@ def find_and_upload_survey_metadata_from_s3(
 
     if debug:
         logging.debug(
-            (
-                f"{num_metadata_objects} FOUND IN S3 FOR {ship_name} -"
-                f" {survey_name}"
-            )
+            "%d num_metadata_objects FOUND IN S3 FOR %s - %s",
+            num_metadata_objects,
+            ship_name,
+            survey_name,
         )
 
     if num_metadata_objects >= 1:
@@ -1389,7 +1368,6 @@ def find_data_source_for_file():
     # Check HDD storage bucket on GCP
     # Check NCEI S3 bucket.
     # TODO: Check OMAO Data Lake
-    ...
 
 
 if __name__ == "__main__":
@@ -1432,10 +1410,10 @@ if __name__ == "__main__":
     # )
 
     # set up storage objects
-    s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        utils.cloud_utils.setup_gcp_storage_objs()
-    )
+    # s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
+    # gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+    #     utils.cloud_utils.setup_gcp_storage_objs()
+    # )
 
     # find_and_upload_survey_metadata_from_s3(
     #     ship_name="Reuben_Lasker", survey_name="RL2107"
@@ -1476,7 +1454,8 @@ if __name__ == "__main__":
     #                                                 is_metadata=False,
     #                                                 debug=True))
     # https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx
-    # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
+    # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/"
+    # "Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
     # download_raw_file(file_name="2107RL_FM-D20210808-T033245.raw",
@@ -1510,19 +1489,3 @@ if __name__ == "__main__":
     #                 survey_name="RL2107", echosounder="EK80",
     #                 file_download_directory=".", gcp_bucket=gcp_bucket,
     #                 is_metadata=False,debug=False)
-
-"""NTH: Not pass a filename, but file type, ship name, echosounder, date
-field, to match
-with a file name(s).
-
-We need to be able to support MULTIPLE file names.
-
-multiple file names option.
-
-add endpoint for multiple raw files
-
-Keep api responses consistent
-
-API should be predictable.
-
-conversion to netcdf should have its own endpoint"""

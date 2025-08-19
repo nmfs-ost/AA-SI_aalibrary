@@ -1,10 +1,11 @@
 """For helper functions."""
 
 from typing import List
-import requests
 import json
 import logging
 import string
+import requests
+
 
 import boto3
 
@@ -54,7 +55,7 @@ def get_file_paths_via_json_link(link: str = ""):
         link (str, optional): The link to the json url. Defaults to "".
     """
 
-    url = requests.get(link)
+    url = requests.get(link, timeout=10)
     text = url.text
     contents = json.loads(text)
     for k in contents.keys():
@@ -110,8 +111,8 @@ def get_all_ship_objects_from_ncei(
 
     ship_objects = []
 
-    for object in bucket.objects.filter(Prefix=f"data/raw/{ship_name}"):
-        ship_objects.append(object.key)
+    for obj in bucket.objects.filter(Prefix=f"data/raw/{ship_name}"):
+        ship_objects.append(obj.key)
 
     return ship_objects
 
@@ -149,26 +150,25 @@ def get_all_objects_in_survey_from_ncei(
 
     survey_objects = []
 
-    for object in s3_bucket.objects.filter(
+    for obj in s3_bucket.objects.filter(
         Prefix=f"data/raw/{ship_name}/{survey_name}"
     ):
-        survey_objects.append(object.key)
+        survey_objects.append(obj.key)
 
     return survey_objects
 
 
 def create_omao_file_path_from_variables(
     file_name: str = "",
-    file_type: str = "",
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
-    year: str = "",
-    month: str = "",
-    date: str = "",
-    hours: str = "",
-    minutes: str = "",
-    seconds: str = "",
+    # year: str = "",
+    # month: str = "",
+    # date: str = "",
+    # hours: str = "",
+    # minutes: str = "",
+    # seconds: str = "",
 ):
     if file_name != "":
         azure_url = f"{ship_name}/{survey_name}/{echosounder}/{file_name}"
@@ -186,16 +186,15 @@ def create_omao_file_path_from_variables(
 
 def create_ncei_url_from_variables(
     file_name: str = "",
-    file_type: str = "",
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
-    year: str = "",
-    month: str = "",
-    date: str = "",
-    hours: str = "",
-    minutes: str = "",
-    seconds: str = "",
+    # year: str = "",
+    # month: str = "",
+    # date: str = "",
+    # hours: str = "",
+    # minutes: str = "",
+    # seconds: str = "",
 ):
     if file_name != "":
         ncei_url = (
@@ -297,10 +296,8 @@ def parse_correct_gcp_storage_bucket_location(
 
     if debug:
         logging.debug(
-            (
-                "PARSED GCP_STORAGE_BUCKET_LOCATION: "
-                f"{gcp_storage_bucket_location}"
-            )
+            "PARSED GCP_STORAGE_BUCKET_LOCATION: %s",
+            gcp_storage_bucket_location
         )
 
     return gcp_storage_bucket_location

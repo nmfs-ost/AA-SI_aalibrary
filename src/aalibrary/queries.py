@@ -20,13 +20,13 @@ class MetadataQueries:
     SELECT ship_name from `ggn-nmfs-aa-dev-1.metadata.aalibrary_file_metadata`
     """
 
-    def get_all_surveys_associated_with_a_ship_name(ship_name: str = ""):
+    def get_all_surveys_associated_with_a_ship_name(self, ship_name: str = ""):
         get_all_surveys_associated_with_a_ship_name_query: str = """"""
         return get_all_surveys_associated_with_a_ship_name_query
 
-    def get_all_echosounders_used_in_a_survey(survey: str = ""): ...
+    def get_all_echosounders_used_in_a_survey(self, survey: str = ""): ...
 
-    def get_all_netcdf_files_in_database(): ...
+    def get_all_netcdf_files_in_database(self): ...
 
 
 if __name__ == "__main__":

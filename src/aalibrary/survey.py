@@ -6,7 +6,6 @@ import sys
 import logging
 import os
 import pprint
-import logging
 
 from google.cloud import storage
 import boto3
@@ -54,7 +53,7 @@ class Survey:
 
     def __repr__(self):
         """Return a string representation of the Survey object."""
-        pprint.pprint(self.__dict__)
+        return pprint.pformat(self.__dict__, indent=4)
 
     def __str__(self):
         return pprint.pformat(self.__dict__, indent=4)
@@ -68,7 +67,10 @@ class Survey:
                 os.path.normpath(self.file_download_directory) + os.sep
             )
             if self.debug:
-                logging.debug("normalized", self.file_download_directory)
+                logging.debug(
+                    "normalized file download directory = %s",
+                    self.file_download_directory,
+                )
 
         # Convert locations into directories as needed.
         if (
@@ -80,7 +82,10 @@ class Survey:
                 os.path.dirname(self.file_download_directory) + os.sep
             )
             if self.debug:
-                logging.debug("converted to directory", self.file_download_directory)
+                logging.debug(
+                    "converted file_download_directory to directory %s",
+                    self.file_download_directory,
+                )
 
     def _create_download_directories_if_not_exists(self):
         """Create the download directory (path) if it doesn't exist."""
@@ -95,6 +100,7 @@ class Survey:
         # Creating RawFile objects for all raw files in this survey takes a lot
         # of time and memory, so we will implement a boolean to check if
         # we have created them or not.
+        self.raw_file_objects = []
         self._raw_file_objects_created = False
 
         # Normalize ship name
@@ -152,30 +158,36 @@ class Survey:
                 s3_resource=self.s3_resource,
                 return_full_paths=True,
             )
-            self.all_files = [file.split("/")[-1] for file in self.all_files_paths]
+            self.all_files = [
+                file.split("/")[-1] for file in self.all_files_paths
+            ]
 
         # Get all raw files in this survey
         if self.data_source == "NCEI":
             self.raw_files_paths = [
                 file for file in self.all_files_paths if file.endswith(".raw")
             ]
-            self.raw_files = [file.split("/")[-1] for file in self.raw_files_paths]
+            self.raw_files = [
+                file.split("/")[-1] for file in self.raw_files_paths
+            ]
 
         # TODO: Get all metadata files in this survey.
-        self.metadata_files = 
+        self.metadata_files = None
 
         # TODO:
 
     def _check_for_assertion_errors(self):
         """Check for assertion errors in the survey object."""
-        ...
+        # TODO: Implement this function to check for assertion errors
 
     def create_raw_file_objects(self):
         """Create RawFile objects for all raw files in this survey."""
         if self.data_source == "NCEI":
             if not self._raw_file_objects_created:
                 self.raw_file_objects = []
-                for raw_file in tqdm(self.raw_files, desc="Creating RawFile Objects"):
+                for raw_file in tqdm(
+                    self.raw_files, desc="Creating RawFile Objects"
+                ):
                     # Get the echosounder for this raw file
                     echosounder = ncei_utils.get_echosounder_from_raw_file(
                         file_name=raw_file,
