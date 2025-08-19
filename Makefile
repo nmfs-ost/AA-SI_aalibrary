@@ -30,9 +30,8 @@ local-build-and-install:
 	python -m pip uninstall aalibrary -y
 	python -m pip install dist/*.whl
 
-pytest:
+pytest: uninstall-editable install-editable
 	# to make sure we are testing the current code, not the installed code.
-	python -m pip uninstall aalibrary -y
 	python -m pytest .
 
 mkdocs: install-editable
