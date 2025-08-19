@@ -523,8 +523,57 @@ def get_all_metadata_files_in_survey(
     return all_metadata_files
 
 
+def get_file_size_from_s3(object_key, s3_resource):
+    """Gets the file size of an object in s3."""
+    obj = s3_resource.Object("noaa-wcsd-pds", object_key)
+    file_size = obj.content_length
+    return file_size
+
+
+def get_folder_size_from_s3(
+    folder_prefix: str, s3_resource: boto3.resource
+) -> int:
+    """Gets the folder size in bytes from S3.
+
+    Args:
+        folder_prefix (str): The object key prefix of the folder in S3.
+        s3_resource (boto3.resource, optional): The resource used to perform
+            this operation. Defaults to None, but creates a client for you
+            instead.
+
+    Returns:
+        int: The total size of the folder in bytes.
+    """
+    if s3_resource is None:
+        _, s3_resource, _ = create_s3_objs()
+
+    # Initialize total size
+    total_size = 0
+
+    # Get all objects' keys in the folder
+    all_files_object_keys = list_all_objects_in_s3_bucket_location(
+        prefix=folder_prefix,
+        s3_resource=s3_resource,
+        return_full_paths=True,
+    )
+
+    for file_object_key in tqdm(
+        all_files_object_keys, desc="Calculating Folder Size"
+    ):
+        total_size += get_file_size_from_s3(
+            object_key=file_object_key, s3_resource=s3_resource
+        )
+
+    return total_size
+
+
 if __name__ == "__main__":
     s3_client, s3_resource, _ = create_s3_objs()
+    # x = get_folder_size_from_s3(
+    #     folder_prefix="data/raw/Reuben_Lasker/RL2107/metadata/",
+    #     s3_resource=s3_resource,
+    # )
+    # print(f"Folder size: {x} bytes")
     # subdirs = get_all_survey_names_from_a_ship(
     #   ship_name="Reuben Lasker", s3_client=s3_client, return_full_paths=False
     # )
@@ -540,13 +589,13 @@ if __name__ == "__main__":
     # all_echos = get_all_echosounders_that_exist_in_NCEI(s3_client=s3_client)
     # print(all_echos)
 
-    md_files = get_all_metadata_files_in_survey(
-        ship_name="Alaska_Knight",
-        survey_name="EBS11AK",
-        s3_resource=s3_resource,
-        return_full_paths=True,
-    )
-    print(md_files)
+    # md_files = get_all_metadata_files_in_survey(
+    #     ship_name="Alaska_Knight",
+    #     survey_name="EBS11AK",
+    #     s3_resource=s3_resource,
+    #     return_full_paths=True,
+    # )
+    # print(md_files)
 
     # all_files = get_all_file_names_from_survey(
     #     ship_name="Reuben_Lasker",

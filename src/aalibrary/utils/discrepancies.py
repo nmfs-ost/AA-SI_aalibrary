@@ -12,6 +12,7 @@ import os
 import glob
 
 import cloud_utils
+from aalibrary.utils.ncei_utils import get_file_size_from_s3
 
 
 def compare_local_cruise_files_to_cloud(
@@ -62,13 +63,6 @@ def compare_local_cruise_files_to_cloud(
     s3_object_key = (
         f"data/raw/{ship_name}/{survey_name}/{echosounder}/{file_name}"
     )
-
-
-def get_file_size_from_s3(object_key, s3_resource):
-    """Gets the file size of an object in s3."""
-    obj = s3_resource.Object("noaa-wcsd-pds", object_key)
-    file_size = obj.content_length
-    return file_size
 
 
 def get_local_file_size(local_file_path):
