@@ -675,8 +675,7 @@ def download_raw_file(
 
     if gcp_bucket is None:
         _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
-    if s3_resource is None:
-        _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
+    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
         file_name=file_name,

@@ -272,7 +272,6 @@ class RawFile:
         self.idx_omao_file_path = (
             utils.helpers.create_omao_file_path_from_variables(
                 file_name=self.idx_file_name,
-                file_type="idx",
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
@@ -281,7 +280,6 @@ class RawFile:
         self.bot_omao_file_path = (
             utils.helpers.create_omao_file_path_from_variables(
                 file_name=self.bot_file_name,
-                file_type="bot",
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
@@ -290,7 +288,6 @@ class RawFile:
         self.netcdf_omao_file_path = (
             utils.helpers.create_omao_file_path_from_variables(
                 file_name=self.netcdf_file_name,
-                file_type="netcdf",
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
@@ -300,21 +297,18 @@ class RawFile:
         # Create object keys for NCEI
         self.raw_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.raw_file_name,
-            file_type="raw",
             ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.idx_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.idx_file_name,
-            file_type="idx",
             ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
         )
         self.bot_file_s3_object_key = utils.cloud_utils.get_object_key_for_s3(
             file_name=self.bot_file_name,
-            file_type="bot",
             ship_name=self.ship_name_unnormalized,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
