@@ -23,7 +23,7 @@ class TugboatAPI:
 
     project_id: str = "ggn-nmfs-aa-dev-1"
     gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data"
-    empty_submission_file_path: str = "other/tugboat_empty_submission.json"
+    empty_submission_file_path: str = "other/tugboat_empty_submission_template.json"
     _tugboat_cred: str = None
     tugboat_api_url: str = "https://ccog.colorado.edu/tugboat/api/v1/"
     headers = {
