@@ -85,6 +85,8 @@ def main():
                     s3_resource=s3_resource,
                 )
                 print(f"Folder size: {x} bytes")
+                print(f"Folder size: {x / (1024 ** 2):.2f} MB")
+                print(f"Folder size: {x / (1024 ** 3):.2f} GB")
 
             operation = inquirer.select(
                 message="Select operation for " + file_name,
