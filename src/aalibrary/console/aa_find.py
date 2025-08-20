@@ -1,11 +1,15 @@
 from aalibrary.ices_ship_names import get_all_ices_ship_names
+from aalibrary.utils.cloud_utils import create_s3_objs
 from aalibrary.utils.ncei_utils import (
     get_all_survey_names_from_a_ship,
     get_all_echosounders_in_a_survey,
     get_all_ship_names_in_ncei,
     get_all_file_names_from_survey,
     get_all_raw_file_names_from_survey,
+    get_folder_size_from_s3,
+    get_file_size_from_s3
 )
+from aalibrary.utils.discrepancies import get_file_size_from_s3
 from InquirerPy import inquirer
 import subprocess, os
 from loguru import logger
@@ -15,7 +19,7 @@ import webbrowser
 
 warnings.filterwarnings("ignore")
 # ANSI colorized string
-prompt_str = "aa-tools>"
+prompt_str = "Select Action:"
 
 
 def main():
@@ -25,17 +29,17 @@ def main():
         mode = inquirer.select(
             message=prompt_str,
             choices=[
-                "search NCEI vessel data",
-                "search OMAO vessel data",
-                "authenticate with Google",
-                "resources and documentation",
-                "exit",
+                "Search NCEI Vessel Data",
+                "Search OMAO Vessel Data",
+                "Authenticate with Google",
+                "View Resources & Documentation",
+                "Exit Application",
             ],
-            default="search NCEI vessel data",
+            default="Search NCEI Vessel Data",
         ).execute()
         os.system("cls" if os.name == "nt" else "clear")
-        if mode == "search NCEI vessel data":
-            
+        if mode == "Search NCEI Vessel Data":
+
             ship_name = inquirer.fuzzy(
                 message="select NCEI vessel:",
                 choices=["Back"]+get_all_ship_names_in_ncei(),
@@ -45,36 +49,59 @@ def main():
                 continue
 
             survey = inquirer.fuzzy(
-                message="select survey from vessel : " + ship_name,
-                choices=get_all_survey_names_from_a_ship(ship_name),
+                message="Select survey from vessel : " + ship_name,
+                choices=["Back"]+get_all_survey_names_from_a_ship(ship_name),
             ).execute()
+            
+            if survey == "Back":
+                continue
+
+
 
             echosounder = inquirer.select(
-                message="select echosounder from survey : " + survey,
-                choices=get_all_echosounders_in_a_survey(ship_name, survey),
+                message="Select echosounder from survey : " + survey,
+                choices=["Back"]+get_all_echosounders_in_a_survey(ship_name, survey),
             ).execute()
+            
+            if echosounder == "Back":
+                continue
 
             # Get all file names for the selected survey
 
             file_name = inquirer.fuzzy(
-                message="select .raw files from survey : " + survey,
-                choices=get_all_raw_file_names_from_survey(
+                message="Select .raw files from survey : " + survey,
+                choices=["Back"]+["Survey Disk Usage"]+get_all_raw_file_names_from_survey(
                     ship_name, survey, echosounder
                 ),
             ).execute()
 
+            if file_name == "Back":
+                continue
+
+            if file_name == "Survey Disk Usage":
+                s3_client, s3_resource, _ = create_s3_objs()
+                x = get_folder_size_from_s3(
+                    folder_prefix=f"data/raw/{ship_name}/{survey}/{echosounder}/",
+                    s3_resource=s3_resource,
+                )
+                print(f"Folder size: {x} bytes")
+
             operation = inquirer.select(
-                message="select operation for " + file_name,
-                choices=[
-                    "download .raw",
-                    "download .nc ",
-                    "plot echograms",
-                    "run kmeans",
-                    "run dbscan",
+                message="Select operation for " + file_name,
+                choices=["Back"]+[
+                    "Download .raw",
+                    "Download .nc ",
+                    "Plot Echogram(s)",
+                    "Run KMeans",
+                    "Run DBScan",
+                    "Check Disk Usage"
                 ],
             ).execute()
 
-            if operation == "download .raw":
+            if operation == "Back":
+                continue
+
+            if operation == "Download .raw":
                 # Define the folder name
                 folder_name = (
                     ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
@@ -111,7 +138,7 @@ def main():
                     ]
                 )
 
-            if operation == "plot echograms":
+            if operation == "Plot Echograms":
                 # Define the folder name
                 folder_name = (
                     ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
@@ -139,22 +166,22 @@ def main():
                     ]
                 )
 
-            if operation == "run kmeans":
+            if operation == "Run KMeans":
                 logger.info(
                     f"Running KMeans on {echosounder} data for {ship_name} in {survey}"
                 )
                 logger.info(f"This functionality is not yet available")
 
-            if operation == "run dbscan":
+            if operation == "Run DBScan":
                 logger.info(
                     f"Running DBScan on {echosounder} data for {ship_name} in {survey}"
                 )
                 logger.info(f"This functionality is not yet available")
 
-        if mode == "search OMAO vessel data":
+        if mode == "Search OMAO Vessel Data":
             logger.info(f"This functionality is not yet available. ")
 
-        if mode == "authenticate with Google":
+        if mode == "Authenticate with Google":
             logger.info("Authenticating via Google...")
 
 
@@ -169,9 +196,9 @@ def main():
                 subprocess.run(cmd, shell=True, check=True)
 
 
-            logger.info(f"This functionality is not yet available. ")
+            #logger.info(f"This functionality is not yet available. ")
 
-        if mode == "resources and documentation":
+        if mode == "View Resources & Documentation":
             logger.info("Accessing Resources and Documentation...")
 
 
@@ -194,7 +221,7 @@ def main():
             
 
         
-        if mode == "exit":
+        if mode == "Exit Application":
             os.system("cls" if os.name == "nt" else "clear")
             break
 

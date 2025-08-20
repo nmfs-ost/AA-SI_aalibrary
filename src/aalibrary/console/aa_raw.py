@@ -17,7 +17,6 @@ Options:
   --data_source              Source of the data. (Required)
   --file_download_directory  Directory to download the file. (Required)
   --config_file_path         Path to the Azure configuration file. (Required)
-  --is_metadata              Flag to indicate if the file is metadata. (Optional)
   --upload_to_gcp            Flag to upload the file to GCP. (Optional)
   --debug                    Enable debug mode. (Optional)
 
@@ -28,7 +27,7 @@ Example:
   aa-raw --file_name "example.raw" --file_type "raw" --ship_name "ShipName" \\
          --survey_name "SurveyName" --echosounder "EchosounderType" \\
          --data_source "DataSource" --file_download_directory "/path/to/dir" \\
-         --config_file_path "/path/to/config.ini" --is_metadata --upload_to_gcp
+         --config_file_path "/path/to/config.ini" --upload_to_gcp True
 """
     print(help_text)
 
@@ -61,11 +60,6 @@ def main():
         help="Directory to download the file.",
     )
     parser.add_argument(
-        "--is_metadata",
-        action="store_true",
-        help="Flag to indicate if the file is metadata.",
-    )
-    parser.add_argument(
         "--upload_to_gcp", action="store_true", help="Flag to upload the file to GCP."
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode.")
@@ -80,7 +74,6 @@ def main():
         echosounder=args.echosounder,
         data_source=args.data_source,
         file_download_directory=args.file_download_directory,
-        is_metadata=args.is_metadata,
         upload_to_gcp=args.upload_to_gcp,
         debug=args.debug,
     )
