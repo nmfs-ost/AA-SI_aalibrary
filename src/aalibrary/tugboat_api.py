@@ -24,7 +24,7 @@ class TugboatAPI:
     project_id: str = "ggn-nmfs-aa-dev-1"
     gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data"
     empty_submission_file_path: str = "other/tugboat_empty_submission_template.json"
-    _tugboat_cred: str = None
+    __tugboat_cred: str = None
     tugboat_api_url: str = "https://ccog.colorado.edu/tugboat/api/v1/"
     headers = {
         "Accept": "application/json",
@@ -67,8 +67,8 @@ class TugboatAPI:
                 blob_file_path="other/tugboat_creds",
             )
         )
-        self._tugboat_cred = os.environ.get("TUGBOAT_CREDENTIALS")
-        self.headers["Authorization"] = f"Bearer {self._tugboat_cred}"
+        self.__tugboat_cred = os.environ.get("TUGBOAT_CREDENTIALS")
+        self.headers["Authorization"] = f"Bearer {self.__tugboat_cred}"
 
     def _get_request_as_json(self, url: str) -> dict:
         """Helper function to make a GET request and return the response as JSON."""
@@ -79,7 +79,6 @@ class TugboatAPI:
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"Error during GET request: {e}")
-
 
     def create_empty_submission_file(
         self, file_download_directory: str = ".", file_name: str = ""
@@ -177,4 +176,5 @@ if __name__ == "__main__":
     #     submission_json_file_path="./tugboat_test_submission.json"
     # )
     # tb_api.get_submission_by_id(submission_id="test0")
+    # print(tb_api._tugboat_cred)
     tb_api.get_all_submissions()
