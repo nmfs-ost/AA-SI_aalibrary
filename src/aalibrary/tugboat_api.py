@@ -1,9 +1,7 @@
 """This file contains functions to interface with the Tugboat API."""
 
-import sys
 import os
 import json
-import tempfile
 import urllib
 import requests
 
@@ -71,7 +69,9 @@ class TugboatAPI:
         self.headers["Authorization"] = f"Bearer {self.__tugboat_cred}"
 
     def _get_request_as_json(self, url: str) -> dict:
-        """Helper function to make a GET request and return the response as JSON."""
+        """Helper function to make a GET request and return the response as
+        JSON."""
+
         try:
             response = requests.get(url, headers=self.headers, timeout=10)
             # Raise an HTTPError for bad responses(4xx or 5xx)
@@ -170,8 +170,8 @@ if __name__ == "__main__":
     #     file_download_directory=".",
     #     file_name="tugboat_test_submission.json",
     # )
-    # tb_api.get_all_platforms()
-    # tb_api.get_all_instruments()
+    print(tb_api.get_all_platforms())
+    print(tb_api.get_all_instruments())
     # tb_api.post_new_submission(
     #     submission_json_file_path="./tugboat_test_submission.json"
     # )
