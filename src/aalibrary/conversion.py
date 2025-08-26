@@ -18,7 +18,7 @@ if __package__ is None or __package__ == "":
     import utils
     import metadata
     from raw_file import RawFile
-    # from utils import sonar_checker
+    from utils.sonar_checker import sonar_checker
 else:
     # uses current package visibility
     from aalibrary.ingestion import (
@@ -29,7 +29,7 @@ else:
     from aalibrary import utils
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
-    # from aalibrary.utils import sonar_checker
+    from aalibrary.utils.sonar_checker import sonar_checker
 
 
 def convert_local_raw_to_netcdf(
@@ -66,36 +66,36 @@ def convert_local_raw_to_netcdf(
         os.makedirs(netcdf_file_download_directory)
 
     # Make sure the echosounder specified matches the raw file data.
-    # if echosounder.lower() == "ek80":
-    #     assert is_EK80(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "ek60":
-    #     assert is_EK60(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "azfp6":
-    #     assert is_AZFP6(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "azfp":
-    #     assert is_AZFP(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "ad2cp":
-    #     assert is_AD2CP(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
-    # elif echosounder.lower() == "er60":
-    #     assert is_ER60(raw_file=raw_file_location), (
-    #         f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
-    #         "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
-    #     )
+    if echosounder.lower() == "ek80":
+        assert sonar_checker.is_EK80(raw_file=raw_file_location), (
+            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+        )
+    elif echosounder.lower() == "ek60":
+        assert sonar_checker.is_EK60(raw_file=raw_file_location), (
+            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+        )
+    elif echosounder.lower() == "azfp6":
+        assert sonar_checker.is_AZFP6(raw_file=raw_file_location), (
+            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+        )
+    elif echosounder.lower() == "azfp":
+        assert sonar_checker.is_AZFP(raw_file=raw_file_location), (
+            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+        )
+    elif echosounder.lower() == "ad2cp":
+        assert sonar_checker.is_AD2CP(raw_file=raw_file_location), (
+            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+        )
+    elif echosounder.lower() == "er60":
+        assert sonar_checker.is_ER60(raw_file=raw_file_location), (
+            f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
+            "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
+        )
 
     try:
         print("CONVERTING RAW TO NETCDF...")
