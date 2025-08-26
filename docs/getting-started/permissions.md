@@ -12,7 +12,11 @@
 
 ## GCP Environment
 
-There are currently two GCP environments being used by AASI. In order to get permissions to these, please reach out to <a href="mailto:hannan.khan@noaa.gov" target="_blank">Hannan Khan</a>.
+There are currently two GCP environments being used by AASI. In order to use AALibrary fully, please get permissions to these by reaching out to <a href="mailto:hannan.khan@noaa.gov" target="_blank">Hannan Khan</a>.
+
+## GCP Workstations
+
+You can gain access to the workstations project by following the <a href="https://docs.google.com/document/d/1u7R5KjfEDYdwYTvO9kU6EyeHfG7dV9TQizIyCn8seO0/edit?tab=t.0" target="_blank">documentation here</a> (see Section 1.2).
 
 ## NCEI S3 Buckets
 
