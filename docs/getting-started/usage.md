@@ -23,7 +23,6 @@ convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
                       file_download_directory="./",
                       overwrite=False,
                       gcp_bucket=gcp_bucket,
-                      is_metadata=False,
                       debug=False)
 ```
 
@@ -42,7 +41,6 @@ download_raw_file_from_ncei(file_name="2107RL_CW-D20210813-T220732.raw",
                             echosounder="EK80",
                             data_source="NCEI",
                             file_download_directory=".",
-                            is_metadata=False,
                             upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
                             debug=False)
 ```
@@ -59,7 +57,6 @@ download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                   echosounder="EK80",
                   data_source="NCEI",
                   file_download_directory=".",
-                  is_metadata=False,
                   debug=False)
 ```
 
@@ -81,7 +78,6 @@ download_raw_file_from_azure(
     data_source="OMAO",
     file_download_directory=".",
     config_file_path="./azure_config.ini",
-    is_metadata=False,
     upload_to_gcp=True,
     debug=True,
 )
@@ -122,7 +118,6 @@ download_netcdf_file(
                 data_source="NCEI",
                 file_download_location=".",
                 gcp_bucket=gcp_bucket,
-                is_metadata=False,
                 debug=False)
 ```
 
@@ -146,7 +141,6 @@ for file_name in file_names:
     echosounder="EK80",
     data_source="NCEI",
     file_download_directory=".",
-    is_metadata=False,
     upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
     debug=False)
 ```
