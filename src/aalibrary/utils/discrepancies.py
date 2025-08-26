@@ -11,7 +11,7 @@ import hashlib
 import os
 import glob
 
-import cloud_utils
+import aalibrary.utils.cloud_utils as cloud_utils
 from aalibrary.utils.ncei_utils import get_file_size_from_s3
 
 

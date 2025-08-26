@@ -1,11 +1,15 @@
 from aalibrary.ices_ship_names import get_all_ices_ship_names
+from aalibrary.utils.cloud_utils import create_s3_objs
 from aalibrary.utils.ncei_utils import (
     get_all_survey_names_from_a_ship,
     get_all_echosounders_in_a_survey,
     get_all_ship_names_in_ncei,
     get_all_file_names_from_survey,
     get_all_raw_file_names_from_survey,
+    get_folder_size_from_s3,
+    get_file_size_from_s3
 )
+from aalibrary.utils.discrepancies import get_file_size_from_s3
 from InquirerPy import inquirer
 import subprocess, os
 from loguru import logger
@@ -15,7 +19,7 @@ import webbrowser
 
 warnings.filterwarnings("ignore")
 # ANSI colorized string
-prompt_str = "aa-tools>"
+prompt_str = "Select Action:"
 
 
 def main():
@@ -25,136 +29,173 @@ def main():
         mode = inquirer.select(
             message=prompt_str,
             choices=[
-                "search NCEI vessel data",
-                "search OMAO vessel data",
-                "authenticate with Google",
-                "resources and documentation",
-                "exit",
+                "Search NCEI Vessel Data",
+                "Search OMAO Vessel Data",
+                "Authenticate with Google",
+                "View Resources & Documentation",
+                "Exit Application",
             ],
-            default="search NCEI vessel data",
+            default="Search NCEI Vessel Data",
         ).execute()
         os.system("cls" if os.name == "nt" else "clear")
-        if mode == "search NCEI vessel data":
-            
-            ship_name = inquirer.fuzzy(
-                message="select NCEI vessel:",
-                choices=["Back"]+get_all_ship_names_in_ncei(),
-            ).execute()
+        if mode == "Search NCEI Vessel Data":
 
-            if ship_name == "Back":
-                continue
 
-            survey = inquirer.fuzzy(
-                message="select survey from vessel : " + ship_name,
-                choices=get_all_survey_names_from_a_ship(ship_name),
-            ).execute()
+            while True:
 
-            echosounder = inquirer.select(
-                message="select echosounder from survey : " + survey,
-                choices=get_all_echosounders_in_a_survey(ship_name, survey),
-            ).execute()
+                ship_name = inquirer.fuzzy(
+                    message="select NCEI vessel:",
+                    choices=["Back"]+get_all_ship_names_in_ncei(),
+                ).execute()
 
-            # Get all file names for the selected survey
+                
+                if ship_name == "Back":
+                    ship_name = None
+                    break
 
-            file_name = inquirer.fuzzy(
-                message="select .raw files from survey : " + survey,
-                choices=get_all_raw_file_names_from_survey(
-                    ship_name, survey, echosounder
-                ),
-            ).execute()
+                while True:
 
-            operation = inquirer.select(
-                message="select operation for " + file_name,
-                choices=[
-                    "download .raw",
-                    "download .nc ",
-                    "plot echograms",
-                    "run kmeans",
-                    "run dbscan",
-                ],
-            ).execute()
 
-            if operation == "download .raw":
-                # Define the folder name
-                folder_name = (
-                    ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
-                )
 
-                # Create the full path using '.'
-                path = os.path.join(".", folder_name)
+                    survey = inquirer.fuzzy(
+                        message="Select survey from vessel : " + ship_name,
+                        choices=["Back"]+get_all_survey_names_from_a_ship(ship_name),
+                    ).execute()
+                    
+                    if survey == "Back":
+                        survey = None
+                        break
 
-                # Make the directory (does nothing if it already exists)
-                os.makedirs(path, exist_ok=True)
-                logger.info(
-                    f"Downloading {echosounder} data for {ship_name} in {survey} to {folder_name}"
-                )
-                logger.debug(
-                    f"Running command: aa-raw --file_name {file_name} --ship_name {ship_name} --survey_name {survey} --echosounder {echosounder} --file_download_directory {folder_name} from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
-                )
-                subprocess.run(
-                    [
-                        "aa-raw",
-                        "--file_name",
-                        file_name,
-                        "--file_type",
-                        "raw",
-                        "--ship_name",
-                        ship_name,
-                        "--survey_name",
-                        survey,
-                        "--echosounder",
-                        echosounder,
-                        "--data_source",
-                        "NCEI",
-                        "--file_download_directory",
-                        folder_name,
-                    ]
-                )
 
-            if operation == "plot echograms":
-                # Define the folder name
-                folder_name = (
-                    ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
-                )
 
-                # Create the full path using '.'
-                path = os.path.join(".", folder_name)
+                    echosounder = inquirer.select(
+                        message="Select echosounder from survey : " + survey,
+                        choices=["Back"]+get_all_echosounders_in_a_survey(ship_name, survey),
+                    ).execute()
+                    
+                    if echosounder == "Back":
+                        continue
 
-                # Make the directory (does nothing if it already exists)
-                os.makedirs(path, exist_ok=True)
-                logger.info(
-                    f"Plotting {echosounder} data for {ship_name} in {survey} to {folder_name}"
-                )
-                logger.debug(
-                    f"Running command: aa-plot {file_name} --sonar_model {echosounder} --output-file {folder_name}/echogram.png from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
-                )
-                subprocess.run(
-                    [
-                        "aa-plot",
-                        file_name,
-                        "--sonar_model",
-                        echosounder,
-                        "--output-file",
-                        f"{folder_name}/echogram.png",
-                    ]
-                )
+                    # Get all file names for the selected survey
 
-            if operation == "run kmeans":
-                logger.info(
-                    f"Running KMeans on {echosounder} data for {ship_name} in {survey}"
-                )
-                logger.info(f"This functionality is not yet available")
+                    file_name = inquirer.fuzzy(
+                        message="Select .raw files from survey : " + survey,
+                        choices=["Back"]+["Survey Disk Usage"]+get_all_raw_file_names_from_survey(
+                            ship_name, survey, echosounder
+                        ),
+                    ).execute()
 
-            if operation == "run dbscan":
-                logger.info(
-                    f"Running DBScan on {echosounder} data for {ship_name} in {survey}"
-                )
-                logger.info(f"This functionality is not yet available")
+                    if file_name == "Back":
+                        continue
 
-        if mode == "search OMAO vessel data":
+
+                    if file_name == "Survey Disk Usage":
+                        s3_client, s3_resource, _ = create_s3_objs()
+                        x = get_folder_size_from_s3(
+                            folder_prefix=f"data/raw/{ship_name}/{survey}/{echosounder}/",
+                            s3_resource=s3_resource,
+                        )
+                        print(f"Folder size: {x} bytes")
+                        print(f"Folder size: {x / (1024 ** 2):.2f} MB")
+                        print(f"Folder size: {x / (1024 ** 3):.2f} GB")
+                        continue
+
+                    operation = inquirer.select(
+                        message="Select operation for " + file_name,
+                        choices=["Back"]+[
+                            "Download .raw",
+                            "Download .nc ",
+                            "Plot Echogram(s)",
+                            "Run KMeans",
+                            "Run DBScan",
+                            "Check Disk Usage"
+                        ],
+                    ).execute()
+
+                    if operation == "Back":
+                        continue
+
+                    if operation == "Download .raw":
+                        # Define the folder name
+                        folder_name = (
+                            ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+                        )
+
+                        # Create the full path using '.'
+                        path = os.path.join(".", folder_name)
+
+                        # Make the directory (does nothing if it already exists)
+                        os.makedirs(path, exist_ok=True)
+                        logger.info(
+                            f"Downloading {echosounder} data for {ship_name} in {survey} to {folder_name}"
+                        )
+                        logger.debug(
+                            f"Running command: aa-raw --file_name {file_name} --ship_name {ship_name} --survey_name {survey} --echosounder {echosounder} --file_download_directory {folder_name} from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
+                        )
+                        subprocess.run(
+                            [
+                                "aa-raw",
+                                "--file_name",
+                                file_name,
+                                "--file_type",
+                                "raw",
+                                "--ship_name",
+                                ship_name,
+                                "--survey_name",
+                                survey,
+                                "--echosounder",
+                                echosounder,
+                                "--data_source",
+                                "NCEI",
+                                "--file_download_directory",
+                                folder_name,
+                            ]
+                        )
+
+                    if operation == "Plot Echograms":
+                        # Define the folder name
+                        folder_name = (
+                            ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+                        )
+
+                        # Create the full path using '.'
+                        path = os.path.join(".", folder_name)
+
+                        # Make the directory (does nothing if it already exists)
+                        os.makedirs(path, exist_ok=True)
+                        logger.info(
+                            f"Plotting {echosounder} data for {ship_name} in {survey} to {folder_name}"
+                        )
+                        logger.debug(
+                            f"Running command: aa-plot {file_name} --sonar_model {echosounder} --output-file {folder_name}/echogram.png from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
+                        )
+                        subprocess.run(
+                            [
+                                "aa-plot",
+                                file_name,
+                                "--sonar_model",
+                                echosounder,
+                                "--output-file",
+                                f"{folder_name}/echogram.png",
+                            ]
+                        )
+
+                    if operation == "Run KMeans":
+                        logger.info(
+                            f"Running KMeans on {echosounder} data for {ship_name} in {survey}"
+                        )
+                        logger.info(f"This functionality is not yet available")
+
+                    if operation == "Run DBScan":
+                        logger.info(
+                            f"Running DBScan on {echosounder} data for {ship_name} in {survey}"
+                        )
+                        logger.info(f"This functionality is not yet available")
+
+        if mode == "Search OMAO Vessel Data":
             logger.info(f"This functionality is not yet available. ")
 
-        if mode == "authenticate with Google":
+        if mode == "Authenticate with Google":
             logger.info("Authenticating via Google...")
 
 
@@ -169,9 +210,9 @@ def main():
                 subprocess.run(cmd, shell=True, check=True)
 
 
-            logger.info(f"This functionality is not yet available. ")
+            #logger.info(f"This functionality is not yet available. ")
 
-        if mode == "resources and documentation":
+        if mode == "View Resources & Documentation":
             logger.info("Accessing Resources and Documentation...")
 
 
@@ -194,7 +235,7 @@ def main():
             
 
         
-        if mode == "exit":
+        if mode == "Exit Application":
             os.system("cls" if os.name == "nt" else "clear")
             break
 
