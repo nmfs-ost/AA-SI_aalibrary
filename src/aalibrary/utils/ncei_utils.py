@@ -382,6 +382,169 @@ def get_random_raw_file_from_ncei() -> List[str]:
         return get_random_raw_file_from_ncei()
 
 
+# def get_random_raw_file_from_ncei_with_search_parameter(
+#     ship_name: str = "",
+#     survey_name: str = "",
+#     echosounder: str = "",
+# ) -> List[str]:
+#     """Gets a test raw file's parameters for NCEI. This is used for testing
+#     purposes only. You can specify whichever parameters you would like. Retries
+#     automatically if an error occurs or no files are found.
+#     NOTE: Will keep retrying indefinitely until a valid raw file is found. If
+#     you notice that it is taking too long, try specifying more parameters.
+
+#     Args:
+#         ship_name (str, optional): The ship's name you want to get all surveys
+#             from. Defaults to None.
+#             NOTE: The ship's name MUST be spelled exactly as it is in NCEI. Use
+#             the `get_all_ship_names_in_ncei` function to see all possible NCEI
+#             ship names.
+#         survey_name (str, optional): The survey name exactly as it is in NCEI.
+#             Defaults to "".
+#         echosounder (str, optional): The echosounder used. Defaults to "".
+
+#     Returns:
+#         List[str]: A list object with strings denoting each parameter required
+#             for creating a raw file object.
+#             Ex. [
+#                 random_ship_name,
+#                 random_survey_name,
+#                 random_echosounder,
+#                 random_raw_file,
+#             ]
+#     """
+
+#     try:
+#         # Get all of the ship names
+#         all_ship_names = get_all_ship_names_in_ncei(
+#             normalize=False, return_full_paths=False
+#         )
+#         # If ship_name is not provided, get a random ship_name
+#         if ship_name == "":
+#             random_ship_name = all_ship_names[
+#                 randint(0, len(all_ship_names) - 1)
+#             ]
+#         else:
+#             random_ship_name = get_closest_ncei_formatted_ship_name(
+#                 ship_name=ship_name
+#             )
+#         # Get all of the surveys for this ship
+#         all_surveys_for_this_ship = get_all_survey_names_from_a_ship(
+#             ship_name=random_ship_name, return_full_paths=False
+#         )
+#         # If survey_name is not provided, get a random survey_name
+#         if survey_name == "":
+#             random_survey_name = all_surveys_for_this_ship[
+#                 randint(0, len(all_surveys_for_this_ship) - 1)
+#             ]
+#         else:
+#             random_survey_name = survey_name
+#         # Get all of the echosounders in this survey
+#         all_echosounders_for_this_survey = get_all_echosounders_in_a_survey(
+#             ship_name=random_ship_name,
+#             survey_name=random_survey_name,
+#             return_full_paths=False,
+#         )
+#         # If echosounder is not provided, get a random echosounder
+#         if echosounder == "":
+#             random_echosounder = all_echosounders_for_this_survey[
+#                 randint(0, len(all_echosounders_for_this_survey) - 1)
+#             ]
+#         else:
+#             random_echosounder = echosounder
+#         # Get all of the raw files in this echosounder
+#         all_raw_files_in_echosounder = get_all_raw_file_names_from_survey(
+#             ship_name=random_ship_name,
+#             survey_name=random_survey_name,
+#             echosounder=random_echosounder,
+#             return_full_paths=False,
+#         )
+#         random_raw_file = all_raw_files_in_echosounder[
+#             randint(0, len(all_raw_files_in_echosounder) - 1)
+#         ]
+
+#         return [
+#             random_ship_name,
+#             random_survey_name,
+#             random_echosounder,
+#             random_raw_file,
+#         ]
+#     except Exception:
+#         return get_random_raw_file_from_ncei_with_search_parameter(
+#             ship_name=ship_name,
+#             survey_name=survey_name,
+#             echosounder=echosounder,
+#         )
+
+
+def search_ncei_objects_for_string(search_param: str = "") -> List[str]:
+    """Searches NCEI for object keys that contain a particular string. This
+    string can be anything, such as an echosounder name, ship name,
+    survey name, or even a partial file name.
+    NOTE: This function takes a long time to run, as it has to search through
+    ALL of NCEI's objects.
+    NOTE: Use a folder name as the search_param to get all object keys that
+    contain that folder name. (e.g. '/EK80/')
+
+    Args:
+        search_param (str, optional): The string to search for. Defaults to "".
+
+    Returns:
+        List[str]: A list of strings, each being an object key that contains
+            the search parameter.
+    """
+
+    s3_client, _, _ = create_s3_objs()
+    paginator = s3_client.get_paginator("list_objects_v2")
+    page_iterator = paginator.paginate(Bucket="noaa-wcsd-pds")
+    matching_object_keys = []
+    # Vpcs[?contains(`["vpc-blabla1", "vpc-blabla2"]`, VpcId)].OtherKey
+    # objects = page_iterator.search(f"
+    # Contents[?contains(Key, `{search_param}`) && ends_with(Key, `.raw`)][]")
+    objects = page_iterator.search(
+        f"Contents[?contains(Key, `{search_param}`)][]"
+    )
+    # objects = page_iterator.search("Contents[?ends_with(Key, `.csv`)][]")
+    for item in objects:
+        print(item["Key"])
+        matching_object_keys.append(item["Key"])
+    return matching_object_keys
+
+
+def search_ncei_file_objects_for_string(
+    search_param: str = "", file_extension: str = ".raw"
+) -> List[str]:
+    """Searches NCEI for a file type's object keys that contain a particular
+    string. This string can be anything, such as an echosounder name,
+    ship name, survey name, or even a partial file name. The file type can be
+    specified by the file_extension parameter.
+    NOTE: This function takes a long time to run, as it has to search through
+    ALL of NCEI's objects.
+
+    Args:
+        search_param (str, optional): The string to search for. Defaults to "".
+        file_extension (str, optional): The file extension to filter results
+            by. Defaults to ".raw".
+
+    Returns:
+        List[str]: A list of strings, each being an object key that contains
+            the search parameter.
+    """
+
+    s3_client, _, _ = create_s3_objs()
+    paginator = s3_client.get_paginator("list_objects_v2")
+    page_iterator = paginator.paginate(Bucket="noaa-wcsd-pds")
+    matching_object_keys = []
+    objects = page_iterator.search(
+        f"Contents[?contains(Key, `{search_param}`)"
+        f" && ends_with(Key, `{file_extension}`)][]"
+    )
+    for item in objects:
+        print(item["Key"])
+        matching_object_keys.append(item["Key"])
+    return matching_object_keys
+
+
 def get_echosounder_from_raw_file(
     file_name: str = "",
     ship_name: str = "",
@@ -606,3 +769,4 @@ if __name__ == "__main__":
     # print(all_files)
 
     # print(get_random_raw_file_from_ncei())
+    print(search_ncei_objects_for_string(search_param="EK500"))
