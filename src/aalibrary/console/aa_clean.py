@@ -42,10 +42,14 @@ def print_help():
 def main():
 
 
-    # Display help if no arguments are provided or if --help is explicitly passed
-    if len(sys.argv) == 1 or "--help" in sys.argv:
-        print_help()
-        sys.exit(0)
+    if len(sys.argv) == 1:
+        if not sys.stdin.isatty():
+            stdin_data = sys.stdin.read().strip()
+            if stdin_data:
+                sys.argv.append(stdin_data)
+        else:
+            print_help()
+            sys.exit(0)
     
     parser = argparse.ArgumentParser(
         description="Process .raw or .netcdf4 files with Echopype and remove background noise."
@@ -73,14 +77,14 @@ def main():
     parser.add_argument(
         "--ping_num",
         type=int,
-        required=True,
+        default=20,
         help="Number of pings to use for background noise removal."
     )
 
     parser.add_argument(
         "--range_sample_num",
         type=int,
-        required=True,
+        default=20,
         help="Number of range samples to use for background noise removal."
     )
 
