@@ -14,20 +14,24 @@ from echopype.clean import remove_background_noise
 import sys
 import signal
 
-
 def print_help():
-    help_text = ""
-
+    help_text = "HHHHHHHHHHHHHHHHEEEEEEEEEEEEEEEEELLLLLLLLLLLLLLLLLLPPPPPPPPPPPPPPPPPPP"
+    print(help_text)
 
 
 def main():
 
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
-    # Display help if no arguments are provided or if --help is explicitly passed
-    if len(sys.argv) == 1 or "--help" in sys.argv:
-        print_help()
-        sys.exit(0)
+
+    if len(sys.argv) == 1:
+        if not sys.stdin.isatty():
+            stdin_data = sys.stdin.read().strip()
+            if stdin_data:
+                sys.argv.append(stdin_data)
+        else:
+            print_help()
+            sys.exit(0)
     
     parser = argparse.ArgumentParser(
         description="Compute Mean Volume Backscattering Strength (MVBS) from an Sv dataset using Echopype."
@@ -132,7 +136,7 @@ def main():
     if args.input_path is None:
         # Read from stdin
         
-        args.input_path = Path(sys.stdin.read().strip())
+        args.input_path = Path(sys.stdin.readline().strip())
         logger.info(f"Read input path from stdin: {args.input_path}")
         
     if not args.input_path.exists():
@@ -373,4 +377,5 @@ def transform_to_mvbs(
 
 
 if __name__ == "__main__":
+    
     main()
