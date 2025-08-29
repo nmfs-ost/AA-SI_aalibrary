@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""
+Console tool for converting RAW files to NetCDF using Echopype,
+removing background noise, applying transformations, and saving back.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+# Move temp file to final output
+import shutil
+
+from loguru import logger
+import echopype as ep  # make sure echopype is installed
+from echopype.clean import remove_background_noise
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Process .raw or .netcdf4 files with Echopype and remove background noise."
+    )
+
+    # ---------------------------
+    # Required file arguments
+    # ---------------------------
+    parser.add_argument(
+        "input_path",
+        type=Path,
+        help="Path to the .raw or .netcdf4 file.",
+        nargs="?",                # makes it optional
+    )
+
+    parser.add_argument(
+        "-o", "--output_path",
+        type=Path,
+        help="Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW."
+    )
+
+    # ---------------------------
+    # remove_background_noise arguments
+    # ---------------------------
+    parser.add_argument(
+        "--ping_num",
+        type=int,
+        required=True,
+        help="Number of pings to use for background noise removal."
+    )
+
+    parser.add_argument(
+        "--range_sample_num",
+        type=int,
+        required=True,
+        help="Number of range samples to use for background noise removal."
+    )
+
+    parser.add_argument(
+        "--background_noise_max",
+        type=str,
+        default=None,
+        help="Optional maximum background noise value."
+    )
+
+    parser.add_argument(
+        "--snr_threshold",
+        type=float,
+        default=3.0,
+        help="SNR threshold in dB (default: 3.0)."
+    )
+
+
+
+    args = parser.parse_args()
+
+    # ---------------------------
+    # Validate input
+    # ---------------------------
+
+
+    if args.input_path is None:
+        # Read from stdin
+        
+        args.input_path = Path(sys.stdin.read().strip())
+        print (f"Read input path from stdin: {args.input_path}")
+        
+    if not args.input_path.exists():
+        logger.error(f"File '{args.input_path}' does not exist.")
+        sys.exit(1)
+
+    allowed_extensions = {
+        ".raw": "raw",
+        ".netcdf4": "netcdf",
+        ".nc": "netcdf"
+    }
+
+    ext = args.input_path.suffix.lower()
+    if ext not in allowed_extensions:
+        logger.error(
+            f"'{args.input_path.name}' is not a supported file type. "
+            f"Allowed: {', '.join(allowed_extensions.keys())}"
+        )
+        sys.exit(1)
+
+    file_type = allowed_extensions[ext]
+
+    # ---------------------------
+    # Set default output path
+    # ---------------------------
+    if args.output_path is None:
+        if file_type == "netcdf":
+            # Overwrite the existing NetCDF
+            args.output_path = args.input_path
+            
+        else:
+            # RAW file → produce NetCDF with same stem
+            args.output_path = args.input_path.with_suffix(".nc")
+
+    # ---------------------------
+    # Process file
+    # ---------------------------
+    try:
+        process_file(
+            input_path=args.input_path,
+            output_path=args.output_path,
+            file_type=file_type,
+            ping_num=args.ping_num,
+            range_sample_num=args.range_sample_num,
+            background_noise_max=args.background_noise_max,
+            snr_threshold=args.snr_threshold
+        )
+        # Print output path to stdout for piping
+        print(args.output_path)
+    except Exception as e:
+        logger.exception(f"Error during processing: {e}")
+        sys.exit(1)
+
+def clean_attrs(Sv):
+    # Dataset-level attrs
+    for k, v in Sv.attrs.items():
+        if v is None:
+            Sv.attrs[k] = "NA"  # or float('nan') if numeric
+
+    # Variable-level attrs
+    for var in Sv.data_vars:
+        for k, v in Sv[var].attrs.items():
+            if v is None:
+                Sv[var].attrs[k] = "NA"  # or float('nan') if numeric
+    return Sv
+
+def process_file(input_path: Path, output_path: Path, file_type: str,
+                 ping_num: int, range_sample_num: int,
+                 background_noise_max: str = None, snr_threshold: float = 3.0):
+    """
+    Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
+    """
+    # Step 1: Load file into EchoData object
+    if file_type == "raw":
+        logger.info(f"Loading RAW file {input_path} into EchoData...")
+        ed = ep.open_raw(input_path)  # add sonar_type if needed
+    elif file_type == "netcdf":
+        logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+        ed = ep.open_converted(input_path)
+        print(ed)
+
+
+    # Step 3: Apply any additional transformation
+    logger.info("Applying transformations to EchoData...")
+    #Sv = ep.calibrate.compute_Sv(ed)
+    Sv_clean = transform_echo_data(ed, ping_num, range_sample_num, background_noise_max, snr_threshold)
+
+
+    # Step 4: Save back to NetCDF
+    logger.info(f"Saving processed EchoData to {output_path} ...")
+
+
+    Sv_clean_copy = clean_attrs(Sv_clean)
+    Sv_clean = Sv_clean_copy  # Ensure we use the cleaned version
+    #.to_netcdf(output_path, overwrite=True)
+    #ed.ds_Sv_clean = Sv_clean  # Update EchoData with cleaned Sv
+    
+    tmp_path = output_path.with_suffix(".tmp.nc")
+    Sv_clean.to_netcdf(tmp_path)
+    logger.info("Processing complete.")
+
+
+def transform_echo_data(ed: ep.echodata, ping_num: int, range_sample_num: int,
+                 background_noise_max: str = None, snr_threshold: float = 3.0):
+    
+    # Step 2: Remove background noise
+    logger.info("Removing background noise...")
+    # ds_Sv comes from the EchoData object internally
+    
+    Sv = ep.calibrate.compute_Sv(ed)
+    Sv_clean = remove_background_noise(
+        Sv,
+        ping_num=ping_num,
+        range_sample_num=range_sample_num,
+        background_noise_max=background_noise_max,
+        SNR_threshold=f"{snr_threshold}dB"
+    )
+    return Sv_clean
+
+
+if __name__ == "__main__":
+    main()

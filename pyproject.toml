@@ -42,6 +42,7 @@ Changelog = ""
 
 [project.scripts]
 aa-raw = "aalibrary.console.aa_raw:main"
+aa-nc = "aalibrary.console.aa_nc:main"
 aa-plot = "aalibrary.console.aa_plot:main"
 aa-help = "aalibrary.console.aa_help:main"
 aa-test = "aalibrary.console.aa_test:main"
