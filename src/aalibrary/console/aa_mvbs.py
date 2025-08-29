@@ -8,12 +8,12 @@ import argparse
 import math
 import sys
 from pathlib import Path
-# Move temp file to final output
-import shutil
-
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
 from echopype.clean import remove_background_noise
+import sys
+import signal
+
 
 def print_help():
     help_text = ""
@@ -22,6 +22,7 @@ def print_help():
 
 def main():
 
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
     # Display help if no arguments are provided or if --help is explicitly passed
     if len(sys.argv) == 1 or "--help" in sys.argv:
@@ -38,7 +39,8 @@ def main():
     parser.add_argument(
         "input_path",
         type=Path,
-        help="Path to the .nc file containing Sv data."
+        help="Path to the .raw or .netcdf4 file.",
+        nargs="?",                # makes it optional
     )
 
     parser.add_argument(
@@ -122,18 +124,16 @@ def main():
     )
 
     args = parser.parse_args()
-    
-    
+
     # ---------------------------
     # Validate input
     # ---------------------------
-
 
     if args.input_path is None:
         # Read from stdin
         
         args.input_path = Path(sys.stdin.read().strip())
-        print (f"Read input path from stdin: {args.input_path}")
+        logger.info(f"Read input path from stdin: {args.input_path}")
         
     if not args.input_path.exists():
         logger.error(f"File '{args.input_path}' does not exist.")
@@ -161,23 +161,12 @@ def main():
         if file_type == "netcdf":
             # Overwrite the existing NetCDF
             args.output_path = args.input_path
+            logger.info(f"No output path provided. Overwriting input NetCDF: {args.output_path}")
             
         else:
             # RAW file → produce NetCDF with same stem
             args.output_path = args.input_path.with_suffix(".nc")
-
-
-    # ---------------------------
-    # Set default output path
-    # ---------------------------
-    if args.output_path is None:
-        if file_type == "netcdf":
-            # Overwrite the existing NetCDF
-            args.output_path = args.input_path
-            
-        else:
-            # RAW file → produce NetCDF with same stem
-            args.output_path = args.input_path.with_suffix(".nc")
+            logger.info(f"No output path provided. Saving to: {args.output_path}")
 
     # ---------------------------
     # Process file
@@ -201,13 +190,12 @@ def main():
                 if args.flox_kwargs else {}
             ),
         )
-        
-        # Print output path to stdout for piping
-        print(args.output_path)
+        print(args.output_path.resolve())
     
     except Exception as e:
         logger.exception(f"Error during processing: {e}")
         sys.exit(1)
+        
 
 def clean_attrs(Sv):
     """
@@ -282,7 +270,7 @@ def process_file(
     elif file_type == "netcdf":
         logger.info(f"Loading NetCDF file {input_path} into EchoData...")
         ed = ep.open_converted(input_path)
-        print(ed)
+        #print(ed)
 
 
     # Step 3: Apply any additional transformation
@@ -367,7 +355,7 @@ def transform_to_mvbs(
     ds_Sv = ep.calibrate.compute_Sv(ed)
 
     logger.info("Computing MVBS...")
-    ds_mvbs = ep.commongrid.compute_MVBS(
+    Sv_mvbs = ep.commongrid.compute_MVBS(
         ds_Sv,
         range_var=range_var,
         range_bin=range_bin,
@@ -381,7 +369,7 @@ def transform_to_mvbs(
         **flox_kwargs
     )
 
-    return ds_mvbs
+    return Sv_mvbs
 
 
 if __name__ == "__main__":

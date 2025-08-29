@@ -7,8 +7,7 @@ removing background noise, applying transformations, and saving back.
 import argparse
 import sys
 from pathlib import Path
-# Move temp file to final output
-import shutil
+
 
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
@@ -111,15 +110,14 @@ def main():
     if args.input_path is None:
         # Read from stdin
         
-        args.input_path = Path(sys.stdin.read().strip())
-        print (f"Read input path from stdin: {args.input_path}")
-        
+        args.input_path = Path(sys.stdin.readline().strip())
+        logger.info(f"Read input path from stdin: {args.input_path}")
+
     if not args.input_path.exists():
         logger.error(f"File '{args.input_path}' does not exist.")
         sys.exit(1)
 
     allowed_extensions = {
-        ".raw": "raw",
         ".netcdf4": "netcdf",
         ".nc": "netcdf"
     }
@@ -161,7 +159,7 @@ def main():
         )
         
         # Print output path to stdout for piping
-        print(args.output_path)
+        print(args.output_path.resolve())
     
     except Exception as e:
         logger.exception(f"Error during processing: {e}")
@@ -193,7 +191,7 @@ def process_file(input_path: Path, output_path: Path, file_type: str,
     elif file_type == "netcdf":
         logger.info(f"Loading NetCDF file {input_path} into EchoData...")
         ed = ep.open_converted(input_path)
-        print(ed)
+
 
 
     # Step 3: Apply any additional transformation
