@@ -14,7 +14,40 @@ from loguru import logger
 import echopype as ep  # make sure echopype is installed
 from echopype.clean import remove_background_noise
 
+def print_help():
+    help_text = """
+    Usage: aa-clean [OPTIONS] [INPUT_PATH]
+
+    Arguments:
+    INPUT_PATH                 Path to the .raw or .netcdf4 file. (Optional, defaults to stdin)
+
+    Options:
+    -o, --output_path           Path to save processed output.
+                                Default: overwrites .nc files or creates a new .nc for RAW.
+    --ping_num                  Number of pings to use for background noise removal. (Required)
+    --range_sample_num          Number of range samples to use for background noise removal. (Required)
+    --background_noise_max      Optional maximum background noise value.
+    --snr_threshold             SNR threshold in dB. Default: 3.0
+
+    Description:
+    This tool processes .raw or .netcdf4 files with Echopype and removes
+    background noise using ping-based and range-based thresholds.
+
+    Example:
+    aa-clean /path/to/input.raw --ping_num 50 --range_sample_num 200 \\
+            --snr_threshold 5.0 -o /path/to/output.nc
+    """
+    print(help_text)
+
+
 def main():
+
+
+    # Display help if no arguments are provided or if --help is explicitly passed
+    if len(sys.argv) == 1 or "--help" in sys.argv:
+        print_help()
+        sys.exit(0)
+    
     parser = argparse.ArgumentParser(
         description="Process .raw or .netcdf4 files with Echopype and remove background noise."
     )
@@ -126,8 +159,10 @@ def main():
             background_noise_max=args.background_noise_max,
             snr_threshold=args.snr_threshold
         )
+        
         # Print output path to stdout for piping
         print(args.output_path)
+    
     except Exception as e:
         logger.exception(f"Error during processing: {e}")
         sys.exit(1)

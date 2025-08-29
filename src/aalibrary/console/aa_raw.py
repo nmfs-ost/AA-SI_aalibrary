@@ -80,7 +80,7 @@ def main():
 
     # This is the output that may be piped elsewhere.
     downloaded_raw_file_path = Path(args.file_download_directory) / args.file_name
-    #print(downloaded_raw_file_path.resolve())
+    print(downloaded_raw_file_path.resolve())
     #print(args.echosounder)
     sys.exit(0)
 

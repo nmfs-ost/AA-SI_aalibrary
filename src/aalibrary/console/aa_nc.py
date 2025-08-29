@@ -10,8 +10,33 @@ from pathlib import Path
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
 
+def print_help():
+    help_text = """
+    Usage: aa-nc [OPTIONS] INPUT_PATH
+
+    Options:
+    INPUT_PATH                  Path to the .raw or .netcdf4 file. (Required)
+    -o, --output_path           Path to save processed output.
+                                Default: overwrites .nc files or creates a new .nc for RAW.
+    --sonar_model               Sonar model number (e.g., EK60, EK80). (Required)
+
+    Description:
+    This script processes .raw and produces a NetCDF file using echopype.
+
+    Example:
+    aa-nc /path/to/input.raw --sonar_model EK80 -o /path/to/output.nc
+    """
+    print(help_text)
+
 
 def main():
+    
+    
+    # Display help if no arguments are provided or if --help is explicitly passed
+    if len(sys.argv) == 1 or "--help" in sys.argv:
+        print_help()
+        sys.exit(0)
+    
     parser = argparse.ArgumentParser(
         description="Process .raw or .netcdf4 files with Echopype and remove background noise."
     )
