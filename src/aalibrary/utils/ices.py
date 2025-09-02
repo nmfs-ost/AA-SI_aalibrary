@@ -6,12 +6,12 @@ import numpy as np
 
 
 def ragged_data_type_ices(echodata, variable_name: str = "") -> np.ndarray:
-    """Transforms a gridded 4 dimensional variable from an Echodata object 
+    """Transforms a gridded 4 dimensional variable from an Echodata object
     into a ragged array representation.
 
     Args:
     echodata (echopype.Echodata): Echopype echodata object containing a variable in the Beam_group1.
-    variable_name (str): The name of the variable that needs to be transformed to 
+    variable_name (str): The name of the variable that needs to be transformed to
     a ragged array representation.
 
     Returns:
@@ -86,7 +86,7 @@ def correct_dimensions_ices(echodata, variable_name: str = "") -> np.ndarray:
 
     Args:
     echodata (echopype.DataArray): Echopype echodata object containing data.
-    variable_name (str): The name of the variable that needs to be transformed to 
+    variable_name (str): The name of the variable that needs to be transformed to
     a ragged array representation.
 
     Returns:
@@ -111,7 +111,7 @@ def write_ek80_beamgroup_to_netcdf(echodata, export_file):
     """Writes echodata Beam_group ds to a Beam_groupX netcdf file.
 
     Args:
-    echodata (echopype.echodata): Echopype echodata object containing beam_group_data. 
+    echodata (echopype.echodata): Echopype echodata object containing beam_group_data.
     (echopype.DataArray): Echopype DataArray to be written.
     export_file (str or Path): Path to the NetCDF file.
     """
@@ -636,12 +636,20 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
     export_file (str or Path): Path to the output NetCDF file.
     """
     ragged_backscatter_r_data = ragged_data_type_ices(echodata, "backscatter_r")
-    beamwidth_receive_major_data = correct_dimensions_ices(echodata, "beamwidth_twoway_athwartship")
-    beamwidth_receive_minor_data = correct_dimensions_ices(echodata, "beamwidth_twoway_alongship")
+    beamwidth_receive_major_data = correct_dimensions_ices(
+        echodata, "beamwidth_twoway_athwartship"
+    )
+    beamwidth_receive_minor_data = correct_dimensions_ices(
+        echodata, "beamwidth_twoway_alongship"
+    )
     echoangle_major_data = ragged_data_type_ices(echodata, "angle_athwartship")
     echoangle_minor_data = ragged_data_type_ices(echodata, "angle_alongship")
-    equivalent_beam_angle_data = correct_dimensions_ices(echodata, "equivalent_beam_angle")
-    rx_beam_rotation_phi_data = ragged_data_type_ices(echodata, "angle_athwartship") * -1
+    equivalent_beam_angle_data = correct_dimensions_ices(
+        echodata, "equivalent_beam_angle"
+    )
+    rx_beam_rotation_phi_data = (
+        ragged_data_type_ices(echodata, "angle_athwartship") * -1
+    )
     rx_beam_rotation_psi_data = np.zeros(
         (echodata["Sonar/Beam_group1"].sizes["ping_time"], 1)
     )
@@ -651,16 +659,15 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
 
         with netCDF4.Dataset(export_file, "a", format="netcdf4") as ncfile:
             grp = ncfile.createGroup(f"Sonar/Beam_group{i+1}")
+            grp.setncattr("beam_mode", echodata["Sonar/Beam_group1"].attrs["beam_mode"])
             grp.setncattr(
-                'beam_mode', echodata["Sonar/Beam_group1"].attrs['beam_mode']
+                "conversion_equation_type",
+                echodata["Sonar/Beam_group1"].attrs["conversion_equation_t"],
             )
             grp.setncattr(
-                'conversion_equation_type', echodata["Sonar/Beam_group1"].attrs['conversion_equation_t']
+                "long_name", echodata["Sonar/Beam_group1"].coords["channel"].values[i]
             )
-            grp.setncattr(
-                'long_name', echodata["Sonar/Beam_group1"].coords["channel"].values[i]
-            )
-            
+
             # Create the VLEN type for 32-bit floats
             sample_t = grp.createVLType(np.float32, "sample_t")
             angle_t = grp.createVLType(np.float32, "angle_t")
@@ -910,7 +917,9 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
             platoform_vertical_offset = grp.createVariable(
                 "platoform_vertical_offset", np.float64, ("ping_time")
             )
-            platoform_vertical_offset[:] = echodata["Platform"]["vertical_offset"].values
+            platoform_vertical_offset[:] = echodata["Platform"][
+                "vertical_offset"
+            ].values
             platoform_vertical_offset.setncattr(
                 "long_name",
                 "Platform vertical distance from reference point to the water line",
@@ -955,7 +964,9 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
                 "sample_interval", np.float64, ("ping_time", "beam")
             )
             sample_interval[:] = (
-                echodata["Sonar/Beam_group1"]["sample_interval"].transpose().values[:, i]
+                echodata["Sonar/Beam_group1"]["sample_interval"]
+                .transpose()
+                .values[:, i]
             )
             sample_interval.setncattr("long_name", "Equivalent beam angle")
             sample_interval.units = "s"
@@ -969,7 +980,9 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
                 "sample_time_offset", np.float64, ("ping_time", "beam")
             )
             sample_time_offset[:] = (
-                echodata["Sonar/Beam_group1"]["sample_time_offset"].transpose().values[:, i]
+                echodata["Sonar/Beam_group1"]["sample_time_offset"]
+                .transpose()
+                .values[:, i]
             )
             sample_time_offset.setncattr(
                 "long_name",
@@ -996,10 +1009,9 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
             transmit_frequency_start = grp.createVariable(
                 "transmit_frequency_start", np.float64, ("ping_time")
             )
-            transmit_frequency_start[:] = (
-                echodata["Sonar/Beam_group1"]["transmit_frequency_start"]
-                .values[i]
-            )
+            transmit_frequency_start[:] = echodata["Sonar/Beam_group1"][
+                "transmit_frequency_start"
+            ].values[i]
             transmit_frequency_start.setncattr(
                 "long_name", "Start frequency in transmitted pulse"
             )
@@ -1010,10 +1022,9 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
             transmit_frequency_stop = grp.createVariable(
                 "transmit_frequency_stop", np.float64, ("ping_time")
             )
-            transmit_frequency_stop[:] = (
-                echodata["Sonar/Beam_group1"]["transmit_frequency_stop"]
-                .values[i]
-            )
+            transmit_frequency_stop[:] = echodata["Sonar/Beam_group1"][
+                "transmit_frequency_stop"
+            ].values[i]
             transmit_frequency_stop.setncattr(
                 "long_name", "Stop frequency in transmitted pulse"
             )
@@ -1032,9 +1043,7 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
             transmit_power.valid_min = 0.0
 
             # Create transmit_type
-            transmit_type = grp.createVariable(
-                "transmit_type", np.float64, ()
-            )
+            transmit_type = grp.createVariable("transmit_type", np.float64, ())
             transmit_type[:] = 0
             transmit_type.setncattr("long_name", "Type of transmitted pulse")
 
@@ -1073,70 +1082,69 @@ def write_ek60_beamgroup_to_netcdf(echodata, export_file):
             tx_beam_roation_theta.units = "arc_degree"
             tx_beam_roation_theta.valid_range = [-90.0, 90.0]
 
+
 def echopype_ek60_raw_to_ices_netcdf(echodata, export_file):
     """Writes echodata Beam_group ds to a Beam_groupX netcdf file.
 
     Args:
-    echodata (echopype.echodata): Echopype echodata object containing beam_group_data. 
+    echodata (echopype.echodata): Echopype echodata object containing beam_group_data.
     (echopype.DataArray): Echopype DataArray to be written.
     export_file (str or Path): Path to the NetCDF file.
     """
 
-    engine="netcdf4"
-    
+    engine = "netcdf4"
+
     save_file(
-            echodata["Top-level"],
-            path=export_file,
-            mode="w",
-            engine= engine,
-            compression_settings=COMPRESSION_SETTINGS[engine],
-            
+        echodata["Top-level"],
+        path=export_file,
+        mode="w",
+        engine=engine,
+        compression_settings=COMPRESSION_SETTINGS[engine],
     )
     save_file(
-            echodata["Environment"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Environment",
-            compression_settings=COMPRESSION_SETTINGS[engine],
-            
+        echodata["Environment"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Environment",
+        compression_settings=COMPRESSION_SETTINGS[engine],
     )
     save_file(
-            echodata["Platform"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Platform",
-            compression_settings=COMPRESSION_SETTINGS[engine],
+        echodata["Platform"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Platform",
+        compression_settings=COMPRESSION_SETTINGS[engine],
     )
 
     save_file(
-            echodata["Platform/NMEA"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Platform/NMEA",
-            compression_settings=COMPRESSION_SETTINGS[engine],
+        echodata["Platform/NMEA"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Platform/NMEA",
+        compression_settings=COMPRESSION_SETTINGS[engine],
     )
 
     save_file(
-            echodata["Sonar"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Sonar",
-            compression_settings=COMPRESSION_SETTINGS[engine],
+        echodata["Sonar"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Sonar",
+        compression_settings=COMPRESSION_SETTINGS[engine],
     )
-    
+
     echopype_ek60_raw_to_ices_netcdf(echodata, export_file)
-    
+
     save_file(
-            echodata["Vendor_specific"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Vendor_specific",
-            compression_settings=COMPRESSION_SETTINGS[engine],
+        echodata["Vendor_specific"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Vendor_specific",
+        compression_settings=COMPRESSION_SETTINGS[engine],
     )
 
 
@@ -1144,64 +1152,57 @@ def echopype_ek80_raw_to_ices_netcdf(echodata, export_file):
     """Writes echodata Beam_group ds to a Beam_groupX netcdf file.
 
     Args:
-    echodata (echopype.echodata): Echopype echodata object containing beam_group_data. 
+    echodata (echopype.echodata): Echopype echodata object containing beam_group_data.
     (echopype.DataArray): Echopype DataArray to be written.
     export_file (str or Path): Path to the NetCDF file.
     """
 
-    engine="netcdf4"
-    
+    engine = "netcdf4"
     save_file(
-            echodata["Top-level"],
-            path=export_file,
-            mode="w",
-            engine= engine,
-            compression_settings=COMPRESSION_SETTINGS[engine],
-            
+        echodata["Top-level"],
+        path=export_file,
+        mode="w",
+        engine=engine,
+        compression_settings=COMPRESSION_SETTINGS[engine]
     )
     save_file(
-            echodata["Environment"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Environment",
-            compression_settings=COMPRESSION_SETTINGS[engine],
-            
+        echodata["Environment"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Environment",
+        compression_settings=COMPRESSION_SETTINGS[engine]
     )
     save_file(
-            echodata["Platform"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Platform",
-            compression_settings=COMPRESSION_SETTINGS[engine],
+        echodata["Platform"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Platform",
+        compression_settings=COMPRESSION_SETTINGS[engine]
     )
-
     save_file(
-            echodata["Platform/NMEA"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Platform/NMEA",
-            compression_settings=COMPRESSION_SETTINGS[engine],
+        echodata["Platform/NMEA"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Platform/NMEA",
+        compression_settings=COMPRESSION_SETTINGS[engine]
     )
-
     save_file(
-            echodata["Sonar"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Sonar",
-            compression_settings=COMPRESSION_SETTINGS[engine],
+        echodata["Sonar"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Sonar",
+        compression_settings=COMPRESSION_SETTINGS[engine]
     )
-    
     write_ek80_beamgroup_to_netcdf(echodata, export_file)
-    
     save_file(
-            echodata["Vendor_specific"],
-            path=export_file,
-            mode="a",
-            engine= engine,
-            group="Vendor_specific",
-            compression_settings=COMPRESSION_SETTINGS[engine],
+        echodata["Vendor_specific"],
+        path=export_file,
+        mode="a",
+        engine=engine,
+        group="Vendor_specific",
+        compression_settings=COMPRESSION_SETTINGS[engine]
     )

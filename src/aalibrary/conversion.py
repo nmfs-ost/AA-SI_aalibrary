@@ -450,11 +450,10 @@ def convert_raw_to_netcdf_ices(
         )
 
         # Convert the raw file to netcdf.
-        convert_local_raw_to_netcdf(
+        convert_local_raw_to_ices_netcdf(
             raw_file_location=rf.raw_file_download_path,
             netcdf_file_download_directory=rf.file_download_directory,
             echosounder=rf.echosounder,
-            overwrite=overwrite,
             delete_raw_after=delete_raw_after,
         )
 
