@@ -16,7 +16,7 @@ from echopype.clean import remove_background_noise
 
 def print_help():
     help_text = """
-    Usage: aa-clean [OPTIONS] [INPUT_PATH]
+    Usage: aa-ts [OPTIONS] [INPUT_PATH]
 
     Arguments:
     INPUT_PATH                 Path to the .raw or .netcdf4 file. (Optional, defaults to stdin)
@@ -24,10 +24,6 @@ def print_help():
     Options:
     -o, --output_path           Path to save processed output.
                                 Default: overwrites .nc files or creates a new .nc for RAW.
-    --ping_num                  Number of pings to use for background noise removal. (Required)
-    --range_sample_num          Number of range samples to use for background noise removal. (Required)
-    --background_noise_max      Optional maximum background noise value.
-    --snr_threshold             SNR threshold in dB. Default: 3.0
 
     Description:
     This tool processes .raw or .netcdf4 files with Echopype and removes
@@ -39,6 +35,26 @@ def print_help():
     """
     print(help_text)
 
+
+def parse_env_params(pair_list):
+    """Parses key=value pairs into dict for env_params."""
+    env = {}
+    for pair in pair_list or []:
+        if '=' not in pair:
+            raise argparse.ArgumentTypeError(f"Invalid env param: {pair}")
+        key, value = pair.split('=', 1)
+        env[key.strip()] = float(value)
+    return env
+
+def parse_cal_params(pair_list):
+    """Parses key=value pairs into dict for cal_params."""
+    cal = {}
+    for pair in pair_list or []:
+        if '=' not in pair:
+            raise argparse.ArgumentTypeError(f"Invalid cal param: {pair}")
+        key, value = pair.split('=', 1)
+        cal[key.strip()] = float(value)
+    return cal
 
 def main():
 
@@ -72,36 +88,18 @@ def main():
         help="Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
     )
 
+    parser.add_argument("--env-param", dest="env_params", nargs='*',
+                        type=parse_env_params,
+                        help="Environmental parameter(s) as key=value (e.g. sound_speed=1500)")
+    parser.add_argument("--cal-param", dest="cal_params", nargs='*',
+                        type=parse_cal_params,
+                        help="Calibration parameter(s) as key=value (e.g. gain_correction=1.0)")
+    args = parser.parse_args()
+
     # ---------------------------
     # remove_background_noise arguments
     # ---------------------------
-    parser.add_argument(
-        "--ping_num",
-        type=int,
-        default=20,
-        help="Number of pings to use for background noise removal.",
-    )
 
-    parser.add_argument(
-        "--range_sample_num",
-        type=int,
-        default=20,
-        help="Number of range samples to use for background noise removal.",
-    )
-
-    parser.add_argument(
-        "--background_noise_max",
-        type=str,
-        default=None,
-        help="Optional maximum background noise value.",
-    )
-
-    parser.add_argument(
-        "--snr_threshold",
-        type=float,
-        default=3.0,
-        help="SNR threshold in dB (default: 3.0).",
-    )
 
     args = parser.parse_args()
 
@@ -139,22 +137,16 @@ def main():
             # Overwrite the existing NetCDF
             args.output_path = args.input_path
 
-        else:
-            # RAW file → produce NetCDF with same stem
-            args.output_path = args.input_path.with_suffix(".nc")
-
     # ---------------------------
     # Process file
     # ---------------------------
     try:
+        
+        args.output_path = args.output_path.with_stem(args.output_path.stem + "_ts")
+        args.output_path = args.output_path.with_suffix(".nc")
         process_file(
             input_path=args.input_path,
-            output_path=args.output_path,
-            file_type=file_type,
-            ping_num=args.ping_num,
-            range_sample_num=args.range_sample_num,
-            background_noise_max=args.background_noise_max,
-            snr_threshold=args.snr_threshold,
+            output_path=args.output_path
         )
 
         # Print output path to stdout for piping
@@ -165,81 +157,47 @@ def main():
         sys.exit(1)
 
 
-def clean_attrs(Sv):
+def clean_attrs(TS):
     # Dataset-level attrs
-    for k, v in Sv.attrs.items():
+    for k, v in TS.attrs.items():
         if v is None:
-            Sv.attrs[k] = "NA"  # or float('nan') if numeric
+            TS.attrs[k] = "NA"  # or float('nan') if numeric
 
     # Variable-level attrs
-    for var in Sv.data_vars:
-        for k, v in Sv[var].attrs.items():
+    for var in TS.data_vars:
+        for k, v in TS[var].attrs.items():
             if v is None:
-                Sv[var].attrs[k] = "NA"  # or float('nan') if numeric
-    return Sv
+                TS[var].attrs[k] = "NA"  # or float('nan') if numeric
+    return TS
 
 
 def process_file(
     input_path: Path,
-    output_path: Path,
-    file_type: str,
-    ping_num: int,
-    range_sample_num: int,
-    background_noise_max: str = None,
-    snr_threshold: float = 3.0,
+    output_path: Path
 ):
     """
-    Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
+    Load EchoData from RAW or NetCDF, compute TS and save to NetCDF.
     """
-    # Step 1: Load file into EchoData object
-    if file_type == "raw":
-        logger.info(f"Loading RAW file {input_path} into EchoData...")
-        ed = ep.open_raw(input_path)  # add sonar_type if needed
-    elif file_type == "netcdf":
-        logger.info(f"Loading NetCDF file {input_path} into EchoData...")
-        ed = ep.open_converted(input_path)
 
-    # Step 3: Apply any additional transformation
-    logger.info("Applying transformations to EchoData...")
-    # Sv = ep.calibrate.compute_Sv(ed)
-    Sv_clean = transform_echo_data(
-        ed, ping_num, range_sample_num, background_noise_max, snr_threshold
-    )
+
+    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    ed = ep.open_converted(input_path)
+
+    logger.info(f"Computing TS from EchoData...")
+    ds_TS = ep.calibrate.compute_TS(ed)
 
     # Step 4: Save back to NetCDF
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
-    Sv_clean_copy = clean_attrs(Sv_clean)
-    Sv_clean = Sv_clean_copy  # Ensure we use the cleaned version
+    ds_TS_clean_copy = clean_attrs(ds_TS)
+    ds_TS = ds_TS_clean_copy  # Ensure we use the cleaned version
     # .to_netcdf(output_path, overwrite=True)
-    # ed.ds_Sv_clean = Sv_clean  # Update EchoData with cleaned Sv
+    # ed.ds_TS_clean = TS_clean  # Update EchoData with cleaned TS
 
-    tmp_path = output_path.with_suffix(".tmp.nc")
-    Sv_clean.to_netcdf(tmp_path)
-    logger.info("Processing complete.")
+    output_path = output_path.with_suffix(".nc")
+    ds_TS.to_netcdf(output_path)
+    logger.info("TS computation complete.")
 
-
-def transform_echo_data(
-    ed: ep.echodata,
-    ping_num: int,
-    range_sample_num: int,
-    background_noise_max: str = None,
-    snr_threshold: float = 3.0,
-):
-
-    # Step 2: Remove background noise
-    logger.info("Removing background noise...")
-    # ds_Sv comes from the EchoData object internally
-
-    Sv = ep.calibrate.compute_Sv(ed)
-    Sv_clean = remove_background_noise(
-        Sv,
-        ping_num=ping_num,
-        range_sample_num=range_sample_num,
-        background_noise_max=background_noise_max,
-        SNR_threshold=f"{snr_threshold}dB",
-    )
-    return Sv_clean
 
 
 if __name__ == "__main__":

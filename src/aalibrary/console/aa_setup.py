@@ -1,10 +1,8 @@
 import subprocess
 
 
-
 def main():
 
-    
     cmd = f"""
     cd ~ && \
     sudo rm -f init.sh && \
@@ -20,6 +18,7 @@ def main():
 
     # Run the full shell command
     subprocess.run(cmd, shell=True, executable="/bin/bash")
+
 
 if __name__ == "__main__":
     main()

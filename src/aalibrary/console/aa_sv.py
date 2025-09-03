@@ -5,18 +5,29 @@ removing background noise, applying transformations, and saving back.
 """
 
 import argparse
+from html import parser
 import sys
 from pathlib import Path
+
 
 
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
 from echopype.clean import remove_background_noise
 
+import panel as pn
+import hvplot.xarray
+import hvplot
+import holoviews as hv
+import panel as pn
+
+hv.extension('bokeh')
+pn.extension('bokeh')
+#hvplot.extension('matplotlib')
 
 def print_help():
     help_text = """
-    Usage: aa-clean [OPTIONS] [INPUT_PATH]
+    Usage: aa-sv [OPTIONS] [INPUT_PATH]
 
     Arguments:
     INPUT_PATH                 Path to the .raw or .netcdf4 file. (Optional, defaults to stdin)
@@ -24,10 +35,6 @@ def print_help():
     Options:
     -o, --output_path           Path to save processed output.
                                 Default: overwrites .nc files or creates a new .nc for RAW.
-    --ping_num                  Number of pings to use for background noise removal. (Required)
-    --range_sample_num          Number of range samples to use for background noise removal. (Required)
-    --background_noise_max      Optional maximum background noise value.
-    --snr_threshold             SNR threshold in dB. Default: 3.0
 
     Description:
     This tool processes .raw or .netcdf4 files with Echopype and removes
@@ -71,37 +78,22 @@ def main():
         type=Path,
         help="Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
     )
+    
+    
+    parser.add_argument(
+        "--plot",
+        nargs="?",        # means "0 or 1 values allowed"
+        const="Sv",  # value to use if provided without a value
+        default=None,     # value if the option is not provided at all
+        type=str,
+        help="Optional argument with an optional value"
+    )
+
 
     # ---------------------------
     # remove_background_noise arguments
     # ---------------------------
-    parser.add_argument(
-        "--ping_num",
-        type=int,
-        default=20,
-        help="Number of pings to use for background noise removal.",
-    )
 
-    parser.add_argument(
-        "--range_sample_num",
-        type=int,
-        default=20,
-        help="Number of range samples to use for background noise removal.",
-    )
-
-    parser.add_argument(
-        "--background_noise_max",
-        type=str,
-        default=None,
-        help="Optional maximum background noise value.",
-    )
-
-    parser.add_argument(
-        "--snr_threshold",
-        type=float,
-        default=3.0,
-        help="SNR threshold in dB (default: 3.0).",
-    )
 
     args = parser.parse_args()
 
@@ -147,14 +139,14 @@ def main():
     # Process file
     # ---------------------------
     try:
+        
+        args.output_path = args.output_path.with_stem(args.output_path.stem + "_Sv")
+        args.output_path = args.output_path.with_suffix(".nc")
+        
         process_file(
             input_path=args.input_path,
             output_path=args.output_path,
-            file_type=file_type,
-            ping_num=args.ping_num,
-            range_sample_num=args.range_sample_num,
-            background_noise_max=args.background_noise_max,
-            snr_threshold=args.snr_threshold,
+            plot=args.plot
         )
 
         # Print output path to stdout for piping
@@ -178,69 +170,73 @@ def clean_attrs(Sv):
                 Sv[var].attrs[k] = "NA"  # or float('nan') if numeric
     return Sv
 
+    # Function to update plot based on channel
+    
+def plot_channel(ds, plot, channel=0):
+    data = ds[plot].isel(channel=channel)
+    return data.hvplot(
+    x="ping_time",
+    y="range_sample",
+    cmap="viridis",
+    responsive=True,   # let it auto-resize, no aspect math
+    width=2400,
+    height=1200,
+    invert_yaxis=True,
+    title=f"Sv Plot - Channel {channel}"
+    )
+    
+
 
 def process_file(
     input_path: Path,
     output_path: Path,
-    file_type: str,
-    ping_num: int,
-    range_sample_num: int,
-    background_noise_max: str = None,
-    snr_threshold: float = 3.0,
+    plot: str = None
 ):
     """
-    Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
+    Load EchoData from RAW or NetCDF, compute Sv and save to NetCDF.
     """
-    # Step 1: Load file into EchoData object
-    if file_type == "raw":
-        logger.info(f"Loading RAW file {input_path} into EchoData...")
-        ed = ep.open_raw(input_path)  # add sonar_type if needed
-    elif file_type == "netcdf":
-        logger.info(f"Loading NetCDF file {input_path} into EchoData...")
-        ed = ep.open_converted(input_path)
 
-    # Step 3: Apply any additional transformation
-    logger.info("Applying transformations to EchoData...")
-    # Sv = ep.calibrate.compute_Sv(ed)
-    Sv_clean = transform_echo_data(
-        ed, ping_num, range_sample_num, background_noise_max, snr_threshold
-    )
+
+    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    ed = ep.open_converted(input_path)
+
+    logger.info(f"Computing Sv from EchoData...")
+    ds_Sv = ep.calibrate.compute_Sv(ed)
 
     # Step 4: Save back to NetCDF
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
-    Sv_clean_copy = clean_attrs(Sv_clean)
-    Sv_clean = Sv_clean_copy  # Ensure we use the cleaned version
-    # .to_netcdf(output_path, overwrite=True)
-    # ed.ds_Sv_clean = Sv_clean  # Update EchoData with cleaned Sv
+    #ds_Sv = clean_attrs(ds_Sv)
 
-    tmp_path = output_path.with_suffix(".tmp.nc")
-    Sv_clean.to_netcdf(tmp_path)
-    logger.info("Processing complete.")
+    output_path = output_path.with_suffix(".nc")
+    ds_Sv.to_netcdf(output_path)
+    
+    
+    logger.info("Sv computation complete.")
 
-
-def transform_echo_data(
-    ed: ep.echodata,
-    ping_num: int,
-    range_sample_num: int,
-    background_noise_max: str = None,
-    snr_threshold: float = 3.0,
-):
-
-    # Step 2: Remove background noise
-    logger.info("Removing background noise...")
-    # ds_Sv comes from the EchoData object internally
-
-    Sv = ep.calibrate.compute_Sv(ed)
-    Sv_clean = remove_background_noise(
-        Sv,
-        ping_num=ping_num,
-        range_sample_num=range_sample_num,
-        background_noise_max=background_noise_max,
-        SNR_threshold=f"{snr_threshold}dB",
+        
+        # Slider for channel selection
+    channel_slider = pn.widgets.IntSlider(
+        name='Channel',
+        start=0,
+        end=ds_Sv.sizes['channel']-1,
+        step=1,
+        value=0
     )
-    return Sv_clean
 
+    # Bind slider to plot
+    interactive_plot = pn.bind(plot_channel, ds=ds_Sv, plot=plot, channel=channel_slider)
+
+    # Layout: slider above plot
+    dashboard = pn.Column(channel_slider, interactive_plot)
+
+        
+    # Serve interactive plot
+    output_path = output_path.with_suffix(".html")
+    #hvplot.save(plt, output_path)
+    
+    # Save standalone interactive HTML
+    dashboard.save(output_path, embed=True)    
 
 if __name__ == "__main__":
     main()

@@ -26,12 +26,13 @@ def main():
 
     if len(sys.argv) == 1:
         if not sys.stdin.isatty():
-            stdin_data = sys.stdin.read().strip()
+            stdin_data = sys.stdin.readline().strip()
             if stdin_data:
                 sys.argv.append(stdin_data)
         else:
             print_help()
             sys.exit(0)
+
     
     parser = argparse.ArgumentParser(
         description="Compute Mean Volume Backscattering Strength (MVBS) from an Sv dataset using Echopype."
@@ -175,6 +176,11 @@ def main():
     # ---------------------------
     # Process file
     # ---------------------------
+    
+    args.output_path = args.output_path.with_stem(args.output_path.stem + "_mvbs")
+    args.output_path = args.output_path.with_suffix(".nc")
+    logger.trace(f"Output path set to: {args.output_path}")
+    
     try:
         process_file(
             input_path=args.input_path,
@@ -194,6 +200,7 @@ def main():
                 if args.flox_kwargs else {}
             ),
         )
+        
         print(args.output_path.resolve())
     
     except Exception as e:
@@ -274,13 +281,12 @@ def process_file(
     elif file_type == "netcdf":
         logger.info(f"Loading NetCDF file {input_path} into EchoData...")
         ed = ep.open_converted(input_path)
-        #print(ed)
 
 
     # Step 3: Apply any additional transformation
     logger.info("Applying mean volume backscattering strength (MVBS) transformations to EchoData...")
     #Sv = ep.calibrate.compute_Sv(ed)
-    Sv_mvbs = transform_to_mvbs(
+    ds_Sv_mvbs = transform_to_mvbs(
         ed=ed,
         range_var=range_var,
         range_bin=range_bin,
@@ -299,13 +305,11 @@ def process_file(
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
 
-    Sv_mvbs_copy = clean_attrs(Sv_mvbs)
-    Sv_mvbs = Sv_mvbs_copy  # Ensure we use the cleaned version
+    ds_Sv_mvbs_copy = clean_attrs(ds_Sv_mvbs)
+    ds_Sv_mvbs = ds_Sv_mvbs_copy  # Ensure we use the cleaned version
     #.to_netcdf(output_path, overwrite=True)
     #ed.ds_Sv_clean = Sv_clean  # Update EchoData with cleaned Sv
-    
-    tmp_path = output_path.with_suffix(".tmp.nc")
-    Sv_mvbs.to_netcdf(tmp_path)
+    ds_Sv_mvbs.to_netcdf(output_path, mode="w", format="NETCDF4")
     logger.info("Processing complete.")
 
 
@@ -359,7 +363,7 @@ def transform_to_mvbs(
     ds_Sv = ep.calibrate.compute_Sv(ed)
 
     logger.info("Computing MVBS...")
-    Sv_mvbs = ep.commongrid.compute_MVBS(
+    ds_Sv_mvbs = ep.commongrid.compute_MVBS(
         ds_Sv,
         range_var=range_var,
         range_bin=range_bin,
@@ -373,7 +377,7 @@ def transform_to_mvbs(
         **flox_kwargs
     )
 
-    return Sv_mvbs
+    return ds_Sv_mvbs
 
 
 if __name__ == "__main__":
