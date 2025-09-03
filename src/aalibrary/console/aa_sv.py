@@ -232,7 +232,7 @@ def process_file(
 
         
     # Serve interactive plot
-    output_path = output_path.with_suffix(".html")
+    output_path = output_path.with_suffix(".ipynb")
     #hvplot.save(plt, output_path)
     
     # Save standalone interactive HTML
