@@ -283,6 +283,47 @@ def get_all_file_names_from_survey(
     return all_files
 
 
+def get_all_file_names_in_a_surveys_echosounder_folder(
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    s3_resource: boto3.resource = None,
+    return_full_paths: bool = False,
+) -> List[str]:
+    """Gets all of the file names from a particular NCEI survey's echosounder
+    folder.
+
+    Args:
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Defaults to None.
+            NOTE: The ship's name MUST be spelled exactly as it is in NCEI. Use
+            the `get_all_ship_names_in_ncei` function to see all possible NCEI
+            ship names.
+        survey_name (str, optional): The survey name exactly as it is in NCEI.
+            Defaults to "".
+        echosounder (str, optional): The echosounder used. Defaults to "".
+        s3_resource (boto3.resource, optional): The resource used to perform
+            this operation. Defaults to None, but creates a client for you
+            instead.
+        return_full_paths (bool, optional): Whether or not you want a full
+            path from bucket root to the subdirectory returned. Set to false
+            if you only want the subdirectory names listed. Defaults to False.
+
+    Returns:
+        List[str]: A list of strings, each being the file name. Whether
+            these are full paths or just file names are specified by the
+            `return_full_paths` parameter.
+    """
+
+    survey_prefix = f"data/raw/{ship_name}/{survey_name}/{echosounder}/"
+    all_files = list_all_objects_in_s3_bucket_location(
+        prefix=survey_prefix,
+        s3_resource=s3_resource,
+        return_full_paths=return_full_paths,
+    )
+    return all_files
+
+
 def get_all_raw_file_names_from_survey(
     ship_name: str = "",
     survey_name: str = "",
@@ -728,6 +769,13 @@ def get_folder_size_from_s3(
         )
 
     return total_size
+
+
+def get_checksum_sha256_from_s3(object_key, s3_resource):
+    """Gets the SHA-256 checksum of the s3 object."""
+    obj = s3_resource.Object("noaa-wcsd-pds", object_key)
+    checksum = obj.checksum_sha256
+    return checksum
 
 
 if __name__ == "__main__":

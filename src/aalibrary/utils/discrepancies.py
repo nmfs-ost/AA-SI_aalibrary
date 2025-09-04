@@ -16,6 +16,7 @@ from aalibrary.utils.cloud_utils import (
     create_s3_objs,
 )
 from aalibrary.utils.ncei_utils import (
+    get_checksum_sha256_from_s3,
     get_file_size_from_s3,
     get_all_file_names_in_a_surveys_echosounder_folder,
 )
@@ -152,13 +153,6 @@ def get_local_file_size(local_file_path: str) -> int:
         int: The size of the file in bytes.
     """
     return os.path.getsize(local_file_path)
-
-
-def get_checksum_sha256_from_s3(object_key, s3_resource):
-    """Gets the SHA-256 checksum of the s3 object."""
-    obj = s3_resource.Object("noaa-wcsd-pds", object_key)
-    checksum = obj.checksum_sha256
-    return checksum
 
 
 def get_local_sha256_checksum(local_file_path, chunk_size=65536) -> str:
