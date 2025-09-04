@@ -2,6 +2,8 @@
 echopype
 boto3
 gcsfs
+hvplot
+panel
 google-api-python-client
 google-cloud
 google-cloud-bigquery

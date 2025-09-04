@@ -13,17 +13,103 @@ from pathlib import Path
 
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
-from echopype.clean import remove_background_noise
+
 
 import panel as pn
 import hvplot.xarray
 import hvplot
 import holoviews as hv
 import panel as pn
-
+import nbformat as nbf
 hv.extension('bokeh')
 pn.extension('bokeh')
 #hvplot.extension('matplotlib')
+
+
+
+def write_panel_notebook(output_path: Path):
+    nb = nbf.v4.new_notebook()
+
+    # Intro markdown cell
+    imports = """from loguru import logger
+import echopype as ep  # make sure echopype is installed
+
+
+import panel as pn
+import hvplot.xarray
+import hvplot
+import holoviews as hv
+import panel as pn
+import nbformat as nbf
+hv.extension('bokeh')
+pn.extension('bokeh')
+"""
+    nb.cells.append(nbf.v4.new_markdown_cell(imports))
+
+    # Panel + hvplot setup
+    functions = """def process_file(
+    input_path: Path,
+    output_path: Path,
+    plot: str = None
+):
+    
+
+
+    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    ed = ep.open_converted(input_path)
+
+    logger.info(f"Computing Sv from EchoData...")
+    ds_Sv = ep.calibrate.compute_Sv(ed)
+
+    # Step 4: Save back to NetCDF
+    logger.info(f"Saving processed EchoData to {output_path} ...")
+
+    #ds_Sv = clean_attrs(ds_Sv)
+
+    output_path = output_path.with_suffix(".nc")
+    ds_Sv.to_netcdf(output_path)
+    
+    
+    logger.info("Sv computation complete.")
+
+        
+        # Slider for channel selection
+    channel_slider = pn.widgets.IntSlider(
+        name='Channel',
+        start=0,
+        end=ds_Sv.sizes['channel']-1,
+        step=1,
+        value=0
+    )
+
+    # Bind slider to plot
+    interactive_plot = pn.bind(plot_channel, ds=ds_Sv, plot=plot, channel=channel_slider)
+
+    # Layout: slider above plot
+    dashboard = pn.Column(channel_slider, interactive_plot)
+"""
+    nb.cells.append(nbf.v4.new_code_cell(functions))
+
+    # Example widget/plot cell
+    executions = """import pandas as pd
+import numpy as np
+
+df = pd.DataFrame({
+    'x': np.linspace(0, 10, 200),
+    'y': np.sin(np.linspace(0, 10, 200))
+})
+
+plot = df.hvplot.line(x='x', y='y')
+pn.panel(plot).servable()
+"""
+    nb.cells.append(nbf.v4.new_code_cell(executions))
+
+    # Save the notebook
+    with output_path.open("w") as f:
+        nbf.write(nb, f)
+
+# Usage
+write_panel_notebook(Path("panel_demo.ipynb"))
 
 def print_help():
     help_text = """
@@ -89,6 +175,23 @@ def main():
         help="Optional argument with an optional value"
     )
 
+    parser.add_argument(
+
+        "--waveform_mode",
+        type=str,
+        help="Optional argument to specify the waveform mode",
+        default="CW",     # value if the option is not provided at all
+        choices=["CW", "BB", "FM"]
+    )
+    
+    
+    parser.add_argument(
+        "--encode_mode",
+        default=complex,     # value if the option is not provided at all
+        type=str,
+        choices=["complex", "power"],
+        help="Optional argument with an optional value"
+    )
 
     # ---------------------------
     # remove_background_noise arguments
@@ -214,29 +317,42 @@ def process_file(
     
     logger.info("Sv computation complete.")
 
+
+    if plot:
         
         # Slider for channel selection
-    channel_slider = pn.widgets.IntSlider(
-        name='Channel',
-        start=0,
-        end=ds_Sv.sizes['channel']-1,
-        step=1,
-        value=0
-    )
+        channel_slider = pn.widgets.IntSlider(
+            name='Channel',
+            start=0,
+            end=ds_Sv.sizes['channel']-1,
+            step=1,
+            value=0
+        )
 
-    # Bind slider to plot
-    interactive_plot = pn.bind(plot_channel, ds=ds_Sv, plot=plot, channel=channel_slider)
+        # Bind slider to plot
+        interactive_plot = pn.bind(plot_channel, ds=ds_Sv, plot=plot, channel=channel_slider)
 
-    # Layout: slider above plot
-    dashboard = pn.Column(channel_slider, interactive_plot)
+        # Layout: slider above plot
+        dashboard = pn.Column(channel_slider, interactive_plot)
 
+            
+        # Serve interactive plot
+        output_path = output_path.with_suffix(".html")
+        #hvplot.save(plt, output_path)
         
-    # Serve interactive plot
-    output_path = output_path.with_suffix(".ipynb")
-    #hvplot.save(plt, output_path)
+        # Save standalone interactive HTML
+        dashboard.save(output_path, embed=True)
+        
+        # Serve interactive plot
+        output_path = output_path.with_suffix(".png")
+        #hvplot.save(plt, output_path)
+        
+        # Save standalone interactive HTML
+        #dashboard.save(output_path, embed=True)
+        
+        write_panel_notebook()
     
-    # Save standalone interactive HTML
-    dashboard.save(output_path, embed=True)    
+    
 
 if __name__ == "__main__":
     main()

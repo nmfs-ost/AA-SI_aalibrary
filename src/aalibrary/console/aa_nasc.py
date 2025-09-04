@@ -18,6 +18,15 @@ def print_help():
     help_text = "HHHHHHHHHHHHHHHHEEEEEEEEEEEEEEEEELLLLLLLLLLLLLLLLLLPPPPPPPPPPPPPPPPPPP"
     print(help_text)
 
+def parse_flox_kwargs(pair_list):
+    """Parse flox keyword arguments from key=value strings."""
+    flox = {}
+    for pair in pair_list or []:
+        if '=' not in pair:
+            raise argparse.ArgumentTypeError(f"Invalid flox-kv pair: {pair}")
+        key, value = pair.split('=', 1)
+        flox[key.strip()] = eval(value)  # or safer parsing if needed
+    return flox
 
 def main():
 
@@ -35,7 +44,7 @@ def main():
 
     
     parser = argparse.ArgumentParser(
-        description="Compute Mean Volume Backscattering Strength (MVBS) from an Sv dataset using Echopype."
+        description="Compute Mean Volume Backscattering Strength (nasc) from an Sv dataset using Echopype."
     )
 
     # ---------------------------
@@ -51,82 +60,26 @@ def main():
     parser.add_argument(
         "-o", "--output_path",
         type=Path,
-        help="Path to save processed MVBS output. Default overwrites input .nc with MVBS group or creates a new .nc."
+        help="Path to save processed nasc output. Default overwrites input .nc with nasc group or creates a new .nc."
     )
 
     # ---------------------------
-    # compute_MVBS arguments
+    # compute_nasc arguments
     # ---------------------------
-    parser.add_argument(
-        "--range_var",
-        type=str,
-        choices=["echo_range", "depth"],
-        default="echo_range",
-        help="Range coordinate to bin over (default: echo_range)."
-    )
-
-    parser.add_argument(
-        "--range_bin",
-        type=str,
-        default="20m",
-        help="Bin size along range dimension (default: 20m)."
-    )
-
-    parser.add_argument(
-        "--ping_time_bin",
-        type=str,
-        default="20s",
-        help="Bin size along ping_time dimension (default: 20s)."
-    )
-
-    parser.add_argument(
-        "--method",
-        type=str,
-        choices=["map-reduce", "coarsen", "block"],
-        default="map-reduce",
-        help="Computation method for binning (default: map-reduce)."
-    )
-
-    parser.add_argument(
-        "--reindex",
-        action="store_true",
-        help="If set, reindex the result to match uniform bin edges (default: False)."
-    )
-
-    parser.add_argument(
-        "--skipna",
-        action="store_true",
-        help="Skip NaN values when averaging (default: True)."
-    )
-
-    parser.add_argument(
-        "--fill_value",
-        type=float,
-        default=math.nan,
-        help="Fill value for empty bins (default: NaN)."
-    )
-
-    parser.add_argument(
-        "--closed",
-        type=str,
-        choices=["left", "right"],
-        default="left",
-        help="Which side of bins are closed (default: left)."
-    )
-
-    parser.add_argument(
-        "--range_var_max",
-        type=str,
-        default=None,
-        help="Optional maximum value for range_var (default: None)."
-    )
-
-    # flox_kwargs could be passed as key=value pairs, but often users don’t need it.
-    parser.add_argument(
-        "--flox_kwargs",
-        nargs="*",
-        help="Optional advanced arguments for flox (format: key=value)."
-    )
+    parser.add_argument("--range-bin", default="10m",
+                        help="Depth bin size in meters (default: 10m)")
+    parser.add_argument("--dist-bin", default="0.5nmi",
+                        help="Horizontal distance bin size in nautical miles (default: 0.5nmi)")
+    parser.add_argument("--method", default="map-reduce",
+                        help="Flox reduction strategy (default: map-reduce)")
+    parser.add_argument("--skipna", action="store_true", default=True,
+                        help="Skip NaN values in mean (default: enabled)")
+    parser.add_argument("--no-skipna", dest="skipna", action="store_false",
+                        help="Include NaN values in mean calculations")
+    parser.add_argument("--closed", choices=["left", "right"], default="left",
+                        help="Which side of the bin interval is closed (default: left)")
+    parser.add_argument("--flox-kwargs", nargs="*", type=parse_flox_kwargs,
+                        help="Additional flox kwargs as key=value pairs")
 
     args = parser.parse_args()
 
@@ -177,7 +130,7 @@ def main():
     # Process file
     # ---------------------------
     
-    args.output_path = args.output_path.with_stem(args.output_path.stem + "_mvbs")
+    args.output_path = args.output_path.with_stem(args.output_path.stem + "_nasc")
     args.output_path = args.output_path.with_suffix(".nc")
     logger.trace(f"Output path set to: {args.output_path}")
     
@@ -185,22 +138,14 @@ def main():
         process_file(
             input_path=args.input_path,
             output_path=args.output_path,
-            file_type=file_type,
-            range_var=args.range_var,
             range_bin=args.range_bin,
-            ping_time_bin=args.ping_time_bin,
+            dist_bin=args.dist_bin,
             method=args.method,
-            reindex=args.reindex,
             skipna=args.skipna,
-            fill_value=args.fill_value,
             closed=args.closed,
-            range_var_max=args.range_var_max,
-            flox_kwargs=(
-                dict(kv.split("=", 1) for kv in args.flox_kwargs)
-                if args.flox_kwargs else {}
-            ),
+            flox_kwargs=parse_flox_kwargs(args.flox_kwargs)
         )
-        
+
         print(args.output_path.resolve())
     
     except Exception as e:
@@ -255,17 +200,12 @@ def clean_attrs(Sv):
 def process_file(
     input_path: Path,
     output_path: Path = None,
-    file_type: str = "netcdf",
-    range_var: str = "echo_range",
-    range_bin: str = "20m",
-    ping_time_bin: str = "20s",
+    range_bin: str = "10m",
+    dist_bin: str = "0.5nmi",
     method: str = "map-reduce",
-    reindex: bool = False,
     skipna: bool = True,
-    fill_value: float = float("nan"),
     closed: str = "left",
-    range_var_max: str = None,
-    flox_kwargs: dict = None,
+    flox_kwargs: dict = None
 ):
     
     
@@ -275,28 +215,26 @@ def process_file(
     Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
     """
     # Step 1: Load file into EchoData object
-    if file_type == "raw":
-        logger.info(f"Loading RAW file {input_path} into EchoData...")
-        ed = ep.open_raw(input_path)  # add sonar_type if needed
-    elif file_type == "netcdf":
-        logger.info(f"Loading NetCDF file {input_path} into EchoData...")
-        ed = ep.open_converted(input_path)
+
+
+    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    ed = ep.open_converted(input_path)
 
 
     # Step 3: Apply any additional transformation
-    logger.info("Applying mean volume backscattering strength (MVBS) transformations to EchoData...")
+    logger.info("Applying mean volume backscattering strength (nasc) transformations to EchoData...")
     #Sv = ep.calibrate.compute_Sv(ed)
-    ds_Sv_mvbs = transform_to_mvbs(
-        ed=ed,
-        range_var=range_var,
+    logger.info("Calibrating EchoData to Sv...")
+    ds_Sv = ep.calibrate.compute_Sv(ed)
+
+    logger.info("Computing NASC...")
+    ds_Sv_nasc = ep.commongrid.compute_NASC(
+        ds_Sv,
         range_bin=range_bin,
-        ping_time_bin=ping_time_bin,
+        dist_bin=dist_bin,
         method=method,
-        reindex=reindex,
         skipna=skipna,
-        fill_value=fill_value,
         closed=closed,
-        range_var_max=range_var_max,
         **(flox_kwargs if flox_kwargs else {})
     )
 
@@ -305,75 +243,13 @@ def process_file(
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
 
-    ds_Sv_mvbs.to_netcdf(output_path, mode="w", format="NETCDF4")
+    ds_Sv_nasc_copy = clean_attrs(ds_Sv_nasc)
+    ds_Sv_nasc = ds_Sv_nasc_copy  # Ensure we use the cleaned version
+    #.to_netcdf(output_path, overwrite=True)
+    #ed.ds_Sv_clean = Sv_clean  # Update EchoData with cleaned Sv
+    ds_Sv_nasc.to_netcdf(output_path, mode="w", format="NETCDF4")
     logger.info("Processing complete.")
 
-
-def transform_to_mvbs(
-    ed: ep.echodata,
-    range_var: str = "echo_range",
-    range_bin: str = "20m",
-    ping_time_bin: str = "20s",
-    method: str = "map-reduce",
-    reindex: bool = False,
-    skipna: bool = True,
-    fill_value: float = math.nan,
-    closed: str = "left",
-    range_var_max: str = None,
-    **flox_kwargs
-):
-    """
-    Compute MVBS from an EchoData object.
-
-    Parameters
-    ----------
-    ed : ep.echodata
-        EchoData object containing calibrated Sv data.
-    range_var : {"echo_range", "depth"}, default "echo_range"
-        Range coordinate to bin over.
-    range_bin : str, default "20m"
-        Bin size along range dimension.
-    ping_time_bin : str, default "20s"
-        Bin size along ping_time dimension.
-    method : {"map-reduce", "coarsen", "block"}, default "map-reduce"
-        Method for binning.
-    reindex : bool, default False
-        Reindex the result to uniform bin edges.
-    skipna : bool, default True
-        Skip NaN values during averaging.
-    fill_value : float, default NaN
-        Fill value for empty bins.
-    closed : {"left", "right"}, default "left"
-        Which side of the interval is closed.
-    range_var_max : str, optional
-        Maximum value for the range variable.
-    **flox_kwargs
-        Additional keyword arguments passed to flox.
-
-    Returns
-    -------
-    xarray.Dataset
-        Dataset containing MVBS.
-    """
-    logger.info("Calibrating EchoData to Sv...")
-    ds_Sv = ep.calibrate.compute_Sv(ed)
-
-    logger.info("Computing MVBS...")
-    ds_Sv_mvbs = ep.commongrid.compute_MVBS(
-        ds_Sv,
-        range_var=range_var,
-        range_bin=range_bin,
-        ping_time_bin=ping_time_bin,
-        method=method,
-        reindex=reindex,
-        skipna=skipna,
-        fill_value=fill_value,
-        closed=closed,
-        range_var_max=range_var_max,
-        **flox_kwargs
-    )
-
-    return ds_Sv_mvbs
 
 
 if __name__ == "__main__":

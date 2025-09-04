@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
-
+import termios
 
 def print_help():
     help_text = """
@@ -45,7 +45,10 @@ def main():
     # Required file arguments
     # ---------------------------
     parser.add_argument(
-        "input_path", type=Path, help="Path to the .raw or .netcdf4 file."
+        "input_path",
+        type=Path,
+        help="Path to the .raw or .netcdf4 file.",
+        nargs="?",  # makes it optional
     )
 
     parser.add_argument(
@@ -67,9 +70,17 @@ def main():
 
     args = parser.parse_args()
 
+
     # ---------------------------
     # Validate input
     # ---------------------------
+    
+    if args.input_path is None:
+        # Read from stdin
+
+        args.input_path = Path(sys.stdin.readline().strip())
+        logger.debug(f"aa-nc recieving input path: {args.input_path}")
+
     if not args.input_path.exists():
         logger.error(f"File '{args.input_path}' does not exist.")
         sys.exit(1)
@@ -104,6 +115,7 @@ def main():
             sonar_model=args.sonar_model,
         )
         # Print output path to stdout for piping
+
         print(args.output_path.resolve())
     except Exception as e:
         logger.exception(f"Error during processing: {e}")

@@ -2,8 +2,10 @@ from aalibrary.ingestion import download_raw_file_from_ncei
 import argparse
 import sys
 from pathlib import Path
+from loguru import logger
+import warnings
 
-
+warnings.filterwarnings("ignore")
 def print_help():
     help_text = """
 Usage: aa-raw [OPTIONS]
@@ -34,10 +36,14 @@ Example:
 
 def main():
 
-    # Display help if no arguments are provided or if --help is explicitly passed
-    if len(sys.argv) == 1 or "--help" in sys.argv:
-        print_help()
-        sys.exit(0)
+    if len(sys.argv) == 1:
+        if not sys.stdin.isatty():
+            stdin_data = sys.stdin.readline().strip()
+            if stdin_data:
+                sys.argv.append(stdin_data)
+        else:
+            print_help()
+            sys.exit(0)
 
     parser = argparse.ArgumentParser(description="Download raw file from Azure.")
 
@@ -80,7 +86,8 @@ def main():
 
     # This is the output that may be piped elsewhere.
     downloaded_raw_file_path = Path(args.file_download_directory) / args.file_name
-    print(downloaded_raw_file_path.resolve())
+    logger.debug(f"aa-raw is generating : {downloaded_raw_file_path.resolve()}")
+    print(f"{downloaded_raw_file_path.resolve()}")
     # print(args.echosounder)
     sys.exit(0)
 

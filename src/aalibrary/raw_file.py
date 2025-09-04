@@ -99,7 +99,7 @@ class RawFile:
             # TODO: `telegram` within raw file has a time stamp, maybe extract
 
             temp = self.file_name.lower().split("d")[-1].replace(".raw", "")
-            print(temp)
+            #print(temp)
             self.year_str = temp[:4]
             self.month_str = temp[4:6]
             self.date_str = temp[6:8]
