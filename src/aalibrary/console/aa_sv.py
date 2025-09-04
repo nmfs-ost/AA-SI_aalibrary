@@ -187,7 +187,7 @@ def main():
     
     parser.add_argument(
         "--encode_mode",
-        default=complex,     # value if the option is not provided at all
+        default="complex",     # value if the option is not provided at all
         type=str,
         choices=["complex", "power"],
         help="Optional argument with an optional value"
@@ -249,7 +249,9 @@ def main():
         process_file(
             input_path=args.input_path,
             output_path=args.output_path,
-            plot=args.plot
+            plot=args.plot,
+            waveform_mode=args.waveform_mode,
+            encode_mode=args.encode_mode
         )
 
         # Print output path to stdout for piping
@@ -294,8 +296,8 @@ def process_file(
     input_path: Path,
     output_path: Path,
     plot: str = None,
-    waveform_mode: str = "CW",
-    encode_mode: str = "power"
+    waveform_mode: str = None,
+    encode_mode: str = None
 ):
     """
     Load EchoData from RAW or NetCDF, compute Sv and save to NetCDF.
@@ -311,7 +313,7 @@ def process_file(
     # Step 4: Save back to NetCDF
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
-    #ds_Sv = clean_attrs(ds_Sv)
+    ds_Sv = clean_attrs(ds_Sv)
 
     output_path = output_path.with_suffix(".nc")
     ds_Sv.to_netcdf(output_path)
