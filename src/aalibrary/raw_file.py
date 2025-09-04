@@ -47,8 +47,8 @@ class RawFile:
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
-        self._create_vars_for_use_later()
         self._handle_paths()
+        self._create_vars_for_use_later()
         self._create_download_directories_if_not_exists()
 
         self._check_for_assertion_errors()
@@ -64,23 +64,9 @@ class RawFile:
 
         # Normalize paths
         if "file_download_directory" in self.__dict__:
-            self.file_download_directory = (
-                os.path.normpath(self.file_download_directory) + os.sep
+            self.file_download_directory = os.path.normpath(
+                os.sep.join([os.path.abspath(self.file_download_directory)])
             )
-
-        # Convert locations into directories as needed.
-        if (
-            "file_download_directory" in self.__dict__
-            and self.file_download_directory != "."
-        ):
-            # Edge-case: when dirname is passed ".", it responds with ""
-            self.file_download_directory = (
-                os.path.dirname(self.file_download_directory) + os.sep
-            )
-            if self.debug:
-                logging.debug(
-                    "converted to directory %s", self.file_download_directory
-                )
 
     def _create_download_directories_if_not_exists(self):
         """Create the download directory (path) if it doesn't exist."""
@@ -99,7 +85,6 @@ class RawFile:
             # TODO: `telegram` within raw file has a time stamp, maybe extract
 
             temp = self.file_name.lower().split("d")[-1].replace(".raw", "")
-            print(temp)
             self.year_str = temp[:4]
             self.month_str = temp[4:6]
             self.date_str = temp[6:8]
@@ -530,7 +515,8 @@ if __name__ == "__main__":
         gcp_bucket_name=gcp_bucket_name,
         gcp_stor_client=gcp_stor_client,
     )
-    print(rf.ship_name_unnormalized)
+    print(rf.file_download_directory)
+    print(rf.raw_file_download_path)
 
     # print(rf)
     # print(rf.bot_file_download_path)
