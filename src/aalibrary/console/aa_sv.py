@@ -293,7 +293,9 @@ def plot_channel(ds, plot, channel=0):
 def process_file(
     input_path: Path,
     output_path: Path,
-    plot: str = None
+    plot: str = None,
+    waveform_mode: str = "CW",
+    encode_mode: str = "power"
 ):
     """
     Load EchoData from RAW or NetCDF, compute Sv and save to NetCDF.
@@ -304,7 +306,7 @@ def process_file(
     ed = ep.open_converted(input_path)
 
     logger.info(f"Computing Sv from EchoData...")
-    ds_Sv = ep.calibrate.compute_Sv(ed)
+    ds_Sv = ep.calibrate.compute_Sv(ed, waveform_mode=waveform_mode, encode_mode=encode_mode)
 
     # Step 4: Save back to NetCDF
     logger.info(f"Saving processed EchoData to {output_path} ...")
