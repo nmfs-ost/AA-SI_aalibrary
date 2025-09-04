@@ -208,7 +208,7 @@ def convert_raw_to_netcdf(
     if rf.netcdf_file_exists_in_gcp:
         # Inform the user if a netcdf version exists in cache.
         download_netcdf_file(
-            raw_file_name=rf.raw_file_name,
+            raw_file_name=rf.netcdf_file_name,
             file_type="netcdf",
             ship_name=rf.ship_name,
             survey_name=rf.survey_name,
@@ -216,6 +216,7 @@ def convert_raw_to_netcdf(
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
             gcp_bucket=gcp_bucket,
+            is_metadata=rf.is_metadata,
             debug=rf.debug,
         )
     else:
@@ -262,18 +263,17 @@ def convert_raw_to_netcdf(
             debug=rf.debug,
         )
         # Upload the metadata file associated with this
-        # TODO: implement metadata generation here.
-        # metadata.create_and_upload_metadata_df_for_netcdf(
-        #     file_name=rf.netcdf_file_name,
-        #     file_type="netcdf",
-        #     ship_name=rf.ship_name,
-        #     survey_name=rf.survey_name,
-        #     echosounder=rf.echosounder,
-        #     data_source=rf.data_source,
-        #     gcp_bucket=gcp_bucket,
-        #     netcdf_local_file_location=rf.netcdf_file_download_path,
-        #     debug=debug,
-        # )
+        metadata.create_and_upload_metadata_df_for_netcdf(
+            file_name=rf.netcdf_file_name,
+            file_type="netcdf",
+            ship_name=rf.ship_name,
+            survey_name=rf.survey_name,
+            echosounder=rf.echosounder,
+            data_source=rf.data_source,
+            gcp_bucket=gcp_bucket,
+            netcdf_local_file_location=rf.netcdf_file_download_path,
+            debug=debug,
+        )
 
 
 if __name__ == "__main__":
