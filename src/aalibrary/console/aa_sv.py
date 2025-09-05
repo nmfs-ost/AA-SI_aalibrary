@@ -206,7 +206,7 @@ def main():
 
     if args.input_path is None:
         # Read from stdin
-
+        logger.debug(args)
         args.input_path = Path(sys.stdin.readline().strip())
         logger.info(f"Read input path from stdin: {args.input_path}")
 

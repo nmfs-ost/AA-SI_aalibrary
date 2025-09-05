@@ -22,7 +22,7 @@ def print_help():
 
 def main():
 
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
 
 
     if len(sys.argv) == 1:
@@ -142,6 +142,7 @@ def main():
         logger.info(f"Read input path from stdin: {args.input_path}")
         
     if not args.input_path.exists():
+        logger.debug(args)
         logger.error(f"File '{args.input_path}' does not exist.")
         sys.exit(1)
 

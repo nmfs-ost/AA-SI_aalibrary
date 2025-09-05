@@ -3,7 +3,8 @@
 Console tool for converting RAW files to NetCDF using Echopype,
 removing background noise, applying transformations, and saving back.
 """
-
+import io
+from contextlib import redirect_stdout
 import argparse
 import sys
 from pathlib import Path
@@ -194,14 +195,14 @@ def process_file(
     """
     Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
     """
-    # Step 1: Load file into EchoData object
-    if file_type == "raw":
-        logger.info(f"Loading RAW file {input_path} into EchoData...")
-        ed = ep.open_raw(input_path)  # add sonar_type if needed
-    elif file_type == "netcdf":
-        logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    
+    
+
+
+    f = io.StringIO()
+    with redirect_stdout(f):
         ed = xr.open_dataset(input_path)
-        print(ed)
 
     # Step 3: Apply any additional transformation
     logger.info("Applying transformations to EchoData...")
