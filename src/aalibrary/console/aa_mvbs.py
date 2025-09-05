@@ -16,8 +16,53 @@ import signal
 import xarray as xr
 
 def print_help():
-    help_text = "HHHHHHHHHHHHHHHHEEEEEEEEEEEEEEEEELLLLLLLLLLLLLLLLLLPPPPPPPPPPPPPPPPPPP"
+    help_text = """
+    Usage: aa-mvbs [OPTIONS] [INPUT_PATH]
+
+    Arguments:
+    INPUT_PATH                  Path to the .netcdf4 file.
+                                Optional. Defaults to stdin if not provided.
+
+    Options:
+    -o, --output_path           Path to save processed MVBS output.
+                                Default: overwrites input .nc with MVBS group
+                                or creates a new .nc.
+
+    --range_var                 Range coordinate to bin over.
+                                Choices: echo_range, depth
+                                Default: echo_range
+    --range_bin                 Bin size along range dimension.
+                                Default: 20m
+    --ping_time_bin             Bin size along ping_time dimension.
+                                Default: 20s
+    --method                    Computation method for binning.
+                                Choices: map-reduce, coarsen, block
+                                Default: map-reduce
+    --reindex                   Reindex result to match uniform bin edges.
+                                Default: False
+    --skipna                    Skip NaN values when averaging.
+                                Default: True
+    --fill_value                Fill value for empty bins.
+                                Default: NaN
+    --closed                    Which side of bins are closed.
+                                Choices: left, right
+                                Default: left
+    --range_var_max             Optional maximum value for range_var.
+                                Default: None
+    --flox_kwargs               Optional advanced arguments for flox.
+                                Format: key=value
+
+    Description:
+    This tool computes MVBS (Mean Volume Backscattering Strength) from
+    .raw or .netcdf4 files using Echopype. Data are binned along
+    range and ping_time dimensions with configurable methods.
+
+    Example:
+    aa-mvbs /path/to/input.nc --range_var depth --range_bin 50m \\
+            --ping_time_bin 60s --method coarsen -o /path/to/output.nc
+    """
     print(help_text)
+
 
 
 def main():

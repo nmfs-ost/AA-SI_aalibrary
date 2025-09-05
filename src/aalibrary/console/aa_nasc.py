@@ -19,7 +19,7 @@ def print_help():
     Usage: aa-nasc [OPTIONS] [INPUT_PATH]
 
     Arguments:
-    INPUT_PATH                 Path to the .raw or .netcdf4 file.
+    INPUT_PATH                  Path to the .netcdf4 file.
                                 Optional. Defaults to stdin if not provided.
 
     Options:
@@ -49,7 +49,7 @@ def print_help():
     standardized measures for biomass estimation and comparison.
 
     Example:
-    aa-nasc /path/to/input.raw --range-bin 20m --dist-bin 1nmi \\
+    aa-nasc /path/to/input.nc --range-bin 20m --dist-bin 1nmi \\
             --method map-reduce -o /path/to/output.nc
     """
     print(help_text)

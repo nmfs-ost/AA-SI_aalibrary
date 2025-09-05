@@ -143,7 +143,7 @@ def print_help():
     EK80-specific waveform/encoding configuration.
 
     Example:
-    aa-sv /path/to/input.raw --waveform_mode FM --encode_mode power \\
+    aa-sv /path/to/input.nc --waveform_mode FM --encode_mode power \\
           --plot Sv -o /path/to/output.nc
     """
     print(help_text)

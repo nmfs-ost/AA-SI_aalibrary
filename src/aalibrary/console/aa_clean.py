@@ -20,7 +20,7 @@ def print_help():
     Usage: aa-clean [OPTIONS] [INPUT_PATH]
 
     Arguments:
-    INPUT_PATH                 Path to the .raw or .netcdf4 file.
+    INPUT_PATH                  Path to the .netcdf4 file.
                                 Optional. Defaults to stdin if not provided.
 
     Options:
@@ -36,11 +36,11 @@ def print_help():
                                 Default: 3.0
 
     Description:
-    This tool processes .raw or .netcdf4 files with Echopype and removes
+    This tool processes .netcdf4 files with Echopype and removes
     background noise using ping-based and range-based thresholds.
 
     Example:
-    aa-clean /path/to/input.raw --ping_num 50 --range_sample_num 200 \\
+    aa-clean /path/to/input.nc --ping_num 50 --range_sample_num 200 \\
             --snr_threshold 5.0 -o /path/to/output.nc
     """
     print(help_text)
