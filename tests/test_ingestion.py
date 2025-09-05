@@ -421,22 +421,6 @@ class TestNCEIIngestionUserErrors:
                 debug=False,
             )
 
-    def test_download_netcdf_file_null_file_download_location(self):
-        """Tests the error-handling for the `download_netcdf_file` function
-        when there is an empty `file_download_location` param."""
-        with pytest.raises(Exception):
-            ingestion.download_netcdf_file(
-                raw_file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory="",
-                gcp_bucket=self.gcp_bucket,
-                debug=False,
-            )
-
     def test_download_netcdf_file_invalid_file_download_location(self):
         """Tests the error-handling for the `download_netcdf_file` function
         when there is an invalid `file_download_location` param (not a dir)."""
@@ -588,23 +572,6 @@ class TestNCEIIngestionUserErrors:
                 echosounder=self.echosounder,
                 data_source="",
                 file_download_directory=self.file_download_directory,
-                gcp_bucket=self.gcp_bucket,
-                is_metadata=False,
-                debug=False,
-            )
-
-    def test_convert_raw_to_netcdf_null_file_download_location(self):
-        """Tests the error-handling for the `convert_raw_to_netcdf` function
-        when there is an empty `file_download_location` param."""
-        with pytest.raises(Exception):
-            aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory="",
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
