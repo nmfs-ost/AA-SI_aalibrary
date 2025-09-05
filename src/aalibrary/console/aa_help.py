@@ -4,8 +4,12 @@ import sys
 
 def print_console_tools_reference():
     reference = """
-    Console Tools Reference
-    -----------------------
+
+    
+    Active Acoustics Console Tooling Reference
+    ------------------------------------------
+
+    (For specific details of an individual tool, use the --help flag)
 
     Most tools are designed to work with NetCDF (.nc) files and support
     piping workflows, where the output of one tool is passed as input
@@ -67,7 +71,7 @@ def print_console_tools_reference():
     entire processing workflow to be executed in a single, streamlined command. Defaults are supplied with 
     argparse library.
 
-    Commands:
+    Command:
     aa-raw --file_name "2107RL_CW-D20210813-T220732.raw" --file_type "raw" --ship_name "Reuben_Lasker" --survey_name "RL2107" --echosounder "EK80" --data_source "NCEI" --file_download_directory "."
     aa-nc <path-to-raw> --sonar_model <sonar_model> | aa-sv --plot Sv --x ping_time --y range_sample | aa-clean --plot Sv --x ping_time --y range_sample | aa-mvbs
 

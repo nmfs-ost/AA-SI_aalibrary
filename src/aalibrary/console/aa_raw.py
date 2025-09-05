@@ -8,30 +8,33 @@ import warnings
 warnings.filterwarnings("ignore")
 def print_help():
     help_text = """
-Usage: aa-raw [OPTIONS]
+    Usage: aa-raw [OPTIONS]
 
-Options:
-  --file_name                Name of the file to download. (Required)
-  --file_type                Type of the file. (Required)
-  --ship_name                Name of the ship. (Required)
-  --survey_name              Name of the survey. (Required)
-  --echosounder              Type of echosounder. (Required)
-  --data_source              Source of the data. (Required)
-  --file_download_directory  Directory to download the file. (Required)
-  --config_file_path         Path to the Azure configuration file. (Required)
-  --upload_to_gcp            Flag to upload the file to GCP. (Optional)
-  --debug                    Enable debug mode. (Optional)
+    Options:
+    --file_name                 Name of the file to download. (Required)
+    --file_type                 Type of the file. Default: raw
+    --ship_name                 Name of the ship. (Required)
+    --survey_name               Name of the survey. (Required)
+    --sonar_model               Type of echosounder. (Required)
+    --data_source               Source of the data. Default: NCEI
+    --file_download_directory   Directory to download the file. Default: current directory (.)
+    --upload_to_gcp             Flag to upload the downloaded file to GCP.
+    --debug                     Enable debug mode for verbose output.
 
-Description:
-  This script downloads raw files from Azure and optionally uploads them to GCP.
+    Description:
+    This tool downloads a raw file from Azure based on the specified
+    ship, survey, and sonar model. Optionally, the file can be uploaded
+    to GCP after download. Useful for automating access to remote
+    acoustic data.
 
-Example:
-  aa-raw --file_name "example.raw" --file_type "raw" --ship_name "ShipName" \\
-         --survey_name "SurveyName" --echosounder "EchosounderType" \\
-         --data_source "DataSource" --file_download_directory "/path/to/dir" \\
-         --config_file_path "/path/to/config.ini" --upload_to_gcp True
-"""
+    Example:
+    aa-raw --file_name D20190804-T113723.raw --ship_name Henry_B._Bigelow \\
+           --survey_name HB1907 --sonar_model EK60 \\
+           --file_download_directory Henry_B._Bigelow_HB1907_EK60_NCEI
+    """
     print(help_text)
+
+
 
 
 def main():
@@ -55,7 +58,7 @@ def main():
     )
     parser.add_argument("--ship_name", required=True, help="Name of the ship.")
     parser.add_argument("--survey_name", required=True, help="Name of the survey.")
-    parser.add_argument("--echosounder", required=True, help="Type of echosounder.")
+    parser.add_argument("--sonar_model", required=True, help="Type of echosounder.")
     parser.add_argument(
         "--data_source", required=False, default="NCEI", help="Source of the data."
     )
@@ -77,7 +80,7 @@ def main():
         file_type=args.file_type,
         ship_name=args.ship_name,
         survey_name=args.survey_name,
-        echosounder=args.echosounder,
+        echosounder=args.sonar_model,
         data_source=args.data_source,
         file_download_directory=args.file_download_directory,
         upload_to_gcp=args.upload_to_gcp,
