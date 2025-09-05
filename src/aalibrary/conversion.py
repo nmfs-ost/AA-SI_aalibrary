@@ -216,7 +216,6 @@ def convert_raw_to_netcdf(
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
             gcp_bucket=gcp_bucket,
-            is_metadata=rf.is_metadata,
             debug=rf.debug,
         )
     else:
