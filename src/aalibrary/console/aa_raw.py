@@ -88,7 +88,6 @@ def main():
     downloaded_raw_file_path = Path(args.file_download_directory) / args.file_name
     logger.debug(f"aa-raw is generating : {downloaded_raw_file_path.resolve()}")
     print(f"{downloaded_raw_file_path.resolve()}")
-    # print(args.echosounder)
     sys.exit(0)
 
 

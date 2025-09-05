@@ -13,6 +13,7 @@ import echopype as ep  # make sure echopype is installed
 from echopype.clean import remove_background_noise
 import sys
 import signal
+import xarray as xr
 
 def print_help():
     help_text = "HHHHHHHHHHHHHHHHEEEEEEEEEEEEEEEEELLLLLLLLLLLLLLLLLLPPPPPPPPPPPPPPPPPPP"
@@ -275,12 +276,8 @@ def process_file(
     Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
     """
     # Step 1: Load file into EchoData object
-    if file_type == "raw":
-        logger.info(f"Loading RAW file {input_path} into EchoData...")
-        ed = ep.open_raw(input_path)  # add sonar_type if needed
-    elif file_type == "netcdf":
-        logger.info(f"Loading NetCDF file {input_path} into EchoData...")
-        ed = ep.open_converted(input_path)
+    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    ed = xr.open_dataset(input_path)
 
 
     # Step 3: Apply any additional transformation
@@ -356,11 +353,10 @@ def transform_to_mvbs(
         Dataset containing MVBS.
     """
     logger.info("Calibrating EchoData to Sv...")
-    ds_Sv = ep.calibrate.compute_Sv(ed)
 
     logger.info("Computing MVBS...")
     ds_Sv_mvbs = ep.commongrid.compute_MVBS(
-        ds_Sv,
+        ed,
         range_var=range_var,
         range_bin=range_bin,
         ping_time_bin=ping_time_bin,

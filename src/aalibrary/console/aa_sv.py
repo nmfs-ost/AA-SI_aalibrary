@@ -264,6 +264,9 @@ def main():
 
 def clean_attrs(Sv):
     # Dataset-level attrs
+    #keywords = top_check.attrs.get("keywords", "")
+    #is_kongsberg = bool(re.search(combined_pattern, keywords))
+    
     for k, v in Sv.attrs.items():
         if v is None:
             Sv.attrs[k] = "NA"  # or float('nan') if numeric
@@ -314,9 +317,9 @@ def process_file(
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
     ds_Sv = clean_attrs(ds_Sv)
-
+    ed.Sv = ds_Sv.Sv  # Update EchoData with cleaned Sv
     output_path = output_path.with_suffix(".nc")
-    ds_Sv.to_netcdf(output_path)
+    ed.to_netcdf(output_path)
     
     
     logger.info("Sv computation complete.")

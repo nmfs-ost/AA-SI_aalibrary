@@ -7,7 +7,7 @@ removing background noise, applying transformations, and saving back.
 import argparse
 import sys
 from pathlib import Path
-
+import xarray as xr
 
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
@@ -147,6 +147,9 @@ def main():
     # Process file
     # ---------------------------
     try:
+        
+        args.output_path = args.output_path.with_stem(args.output_path.stem + "_clean")
+        args.output_path = args.output_path.with_suffix(".nc")
         process_file(
             input_path=args.input_path,
             output_path=args.output_path,
@@ -197,7 +200,8 @@ def process_file(
         ed = ep.open_raw(input_path)  # add sonar_type if needed
     elif file_type == "netcdf":
         logger.info(f"Loading NetCDF file {input_path} into EchoData...")
-        ed = ep.open_converted(input_path)
+        ed = xr.open_dataset(input_path)
+        print(ed)
 
     # Step 3: Apply any additional transformation
     logger.info("Applying transformations to EchoData...")
@@ -209,13 +213,12 @@ def process_file(
     # Step 4: Save back to NetCDF
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
-    Sv_clean_copy = clean_attrs(Sv_clean)
-    Sv_clean = Sv_clean_copy  # Ensure we use the cleaned version
+    Sv_clean = clean_attrs(Sv_clean)
+
     # .to_netcdf(output_path, overwrite=True)
     # ed.ds_Sv_clean = Sv_clean  # Update EchoData with cleaned Sv
 
-    tmp_path = output_path.with_suffix(".tmp.nc")
-    Sv_clean.to_netcdf(tmp_path)
+    Sv_clean.to_netcdf(output_path.with_suffix(".nc"))
     logger.info("Processing complete.")
 
 
@@ -231,9 +234,11 @@ def transform_echo_data(
     logger.info("Removing background noise...")
     # ds_Sv comes from the EchoData object internally
 
-    Sv = ep.calibrate.compute_Sv(ed)
+
+
+    #Sv = ep.calibrate.compute_Sv(ed)
     Sv_clean = remove_background_noise(
-        Sv,
+        ed,
         ping_num=ping_num,
         range_sample_num=range_sample_num,
         background_noise_max=background_noise_max,

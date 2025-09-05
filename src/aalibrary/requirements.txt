@@ -24,3 +24,4 @@ mkdocs
 mkdocs-material
 mkdocstrings-python
 mkdocs-git-revision-date-localized-plugin
+nbformat
