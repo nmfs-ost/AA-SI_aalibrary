@@ -16,7 +16,7 @@
       
       
       <link rel="icon" href="../../assets/noaa_favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.17">
     
     
       
@@ -135,6 +135,8 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
       
     </form>
     <div class="md-search__output">
@@ -304,15 +306,6 @@
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#dependencies" class="md-nav__link">
-    <span class="md-ellipsis">
-      Dependencies
-    </span>
-  </a>
-  
-</li>
       
         <li class="md-nav__item">
   <a href="#installation" class="md-nav__link">
@@ -760,15 +753,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#dependencies" class="md-nav__link">
-    <span class="md-ellipsis">
-      Dependencies
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#installation" class="md-nav__link">
     <span class="md-ellipsis">
       Installation
@@ -879,44 +863,46 @@
 } -->
 
 <h1 id="installing-aalibrary">Installing <code>AALibrary</code></h1>
-<h2 id="dependencies">Dependencies</h2>
-<p>Dependencies are listed within <code>requirements.txt</code> and <code>setup.py</code>, however, they should be automatically installed when you first install <code>aalibrary</code>.</p>
+<details class="info" open="open">
+<summary>Google Cloud Workstations</summary>
+<p>If you are using Google Cloud Workstations, please follow the instructions outlined in the <a href="https://github.com/nmfs-ost/AA-SI_GCPSetup" target="_blank">repo here</a>.</p>
+</details>
 <h2 id="installation">Installation</h2>
 <p>To securely install this package via pip, use the following:</p>
 <h3 id="step-1-log-into-gcloud">Step 1 - Log Into <code>gcloud</code></h3>
 <p>Issue the following command, and follow the instructions to login to <code>gcloud</code> using your NOAA email. This authentication is necessary if you want to use <code>aalibrary</code> with its Google Cloud Platform capabilities.</p>
-<pre><code class="language-bash">gcloud auth login
-gcloud auth application-default login
-</code></pre>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>gcloud<span class="w"> </span>auth<span class="w"> </span>login
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>gcloud<span class="w"> </span>auth<span class="w"> </span>application-default<span class="w"> </span>login
+</span></code></pre></div>
 <h3 id="step-11-set-your-account-as-the-active-account-for-gcloud">Step 1.1 - Set Your Account As The Active Account For <code>gcloud</code></h3>
-<pre><code class="language-bash">gcloud config set account {ACCOUNT} 
-</code></pre>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>gcloud<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>account<span class="w"> </span><span class="o">{</span>ACCOUNT<span class="o">}</span><span class="w"> </span>
+</span></code></pre></div>
 <p>Here, <code>{ACCOUNT}</code> should be your noaa.gov email. The same one you used to sign-in in the step above.</p>
 <h3 id="step-12-set-the-aa-gcp-project-as-the-active-project-for-gcloud">Step 1.2 - Set The AA GCP Project As The Active Project For <code>gcloud</code></h3>
-<pre><code class="language-bash">gcloud config set project ggn-nmfs-aa-dev-1 
-</code></pre>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>gcloud<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>project<span class="w"> </span>ggn-nmfs-aa-dev-1<span class="w"> </span>
+</span></code></pre></div>
 <h3 id="step-2-install-necessary-dependencies-before-the-pip-install">Step 2 - Install Necessary Dependencies Before The <code>pip install</code></h3>
 <p>We need to install some dependencies, and check two authentication parameters before we install.</p>
 <h4 id="step-21-run-the-following-commands-to-install-dependencies">Step 2.1 - Run The Following Commands To Install Dependencies</h4>
-<pre><code class="language-bash">sudo apt-get update &amp;&amp; sudo apt-get install python3-virtualenv -y
-python -m virtualenv my-venv
-</code></pre>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>sudo<span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>python3-virtualenv<span class="w"> </span>-y
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>python<span class="w"> </span>-m<span class="w"> </span>virtualenv<span class="w"> </span>my-venv
+</span></code></pre></div>
 <h3 id="step-3-its-finally-pip-install-time">Step 3 - It's Finally <code>pip install</code> Time</h3>
 <p>To finally be able to pip-install the library use the following command:</p>
-<pre><code class="language-bash">my-venv/bin/pip install aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
-</code></pre>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>my-venv/bin/pip<span class="w"> </span>install<span class="w"> </span>aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
+</span></code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">NOTE</p>
 <p>Since we have created a virtual environment, in order to use <code>aalibrary</code> simply replace all <code>python</code> commands with <code>my-venv/bin/python</code> and all <code>pip</code> commands with <code>my-venv/bin/pip</code>.</p>
 </div>
 <h3 id="step-4-test-it-out">Step 4 - Test it Out</h3>
 <p>Now that the library is installed, we can finally test it out. Open up a python  using the following command:</p>
-<pre><code class="language-bash">my-venv/bin/python
-</code></pre>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>my-venv/bin/python
+</span></code></pre></div>
 <p>Next, we will enter the following code line-by-line. This will run a test function that will allow us to quickly test connectivity in our environment.</p>
-<pre><code class="language-python">from aalibrary import quick_test
-quick_test.start()
-</code></pre>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary</span><span class="w"> </span><span class="kn">import</span> <span class="n">quick_test</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">quick_test</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</span></code></pre></div>
 
 
 
@@ -924,6 +910,27 @@ quick_test.start()
 
 
 
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 18, 2025 22:49:04 UTC">August 18, 2025</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
 
 
 
@@ -965,10 +972,10 @@ quick_test.start()
     
     
       
-      <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"base": "../..", "features": ["search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.50899def.min.js"></script>
+      <script src="../../assets/javascripts/bundle.92b07e13.min.js"></script>
       
     
   </body>
