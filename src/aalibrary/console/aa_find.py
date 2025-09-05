@@ -7,7 +7,7 @@ from aalibrary.utils.ncei_utils import (
     get_all_file_names_from_survey,
     get_all_raw_file_names_from_survey,
     get_folder_size_from_s3,
-    get_file_size_from_s3
+    get_file_size_from_s3,
 )
 from aalibrary.utils.discrepancies import get_file_size_from_s3
 from InquirerPy import inquirer
@@ -25,7 +25,7 @@ prompt_str = "Select Action:"
 def main():
     os.system("cls" if os.name == "nt" else "clear")
     while True:
-        #os.system("cls" if os.name == "nt" else "clear")
+        # os.system("cls" if os.name == "nt" else "clear")
         mode = inquirer.select(
             message=prompt_str,
             choices=[
@@ -40,39 +40,34 @@ def main():
         os.system("cls" if os.name == "nt" else "clear")
         if mode == "Search NCEI Vessel Data":
 
-
             while True:
 
                 ship_name = inquirer.fuzzy(
                     message="select NCEI vessel:",
-                    choices=["Back"]+get_all_ship_names_in_ncei(),
+                    choices=["Back"] + get_all_ship_names_in_ncei(),
                 ).execute()
 
-                
                 if ship_name == "Back":
                     ship_name = None
                     break
 
                 while True:
 
-
-
                     survey = inquirer.fuzzy(
                         message="Select survey from vessel : " + ship_name,
-                        choices=["Back"]+get_all_survey_names_from_a_ship(ship_name),
+                        choices=["Back"] + get_all_survey_names_from_a_ship(ship_name),
                     ).execute()
-                    
+
                     if survey == "Back":
                         survey = None
                         break
 
-
-
                     echosounder = inquirer.select(
                         message="Select echosounder from survey : " + survey,
-                        choices=["Back"]+get_all_echosounders_in_a_survey(ship_name, survey),
+                        choices=["Back"]
+                        + get_all_echosounders_in_a_survey(ship_name, survey),
                     ).execute()
-                    
+
                     if echosounder == "Back":
                         continue
 
@@ -80,14 +75,15 @@ def main():
 
                     file_name = inquirer.fuzzy(
                         message="Select .raw files from survey : " + survey,
-                        choices=["Back"]+["Survey Disk Usage"]+get_all_raw_file_names_from_survey(
+                        choices=["Back"]
+                        + ["Survey Disk Usage"]
+                        + get_all_raw_file_names_from_survey(
                             ship_name, survey, echosounder
                         ),
                     ).execute()
 
                     if file_name == "Back":
                         continue
-
 
                     if file_name == "Survey Disk Usage":
                         s3_client, s3_resource, _ = create_s3_objs()
@@ -102,13 +98,14 @@ def main():
 
                     operation = inquirer.select(
                         message="Select operation for " + file_name,
-                        choices=["Back"]+[
+                        choices=["Back"]
+                        + [
                             "Download .raw",
                             "Download .nc ",
                             "Plot Echogram(s)",
                             "Run KMeans",
                             "Run DBScan",
-                            "Check Disk Usage"
+                            "Check Disk Usage",
                         ],
                     ).execute()
 
@@ -198,7 +195,6 @@ def main():
         if mode == "Authenticate with Google":
             logger.info("Authenticating via Google...")
 
-
             commands = [
                 "gcloud auth login",
                 "gcloud auth application-default login",
@@ -209,17 +205,15 @@ def main():
             for cmd in commands:
                 subprocess.run(cmd, shell=True, check=True)
 
-
-            #logger.info(f"This functionality is not yet available. ")
+            # logger.info(f"This functionality is not yet available. ")
 
         if mode == "View Resources & Documentation":
             logger.info("Accessing Resources and Documentation...")
 
-
-
             os.system("cls" if os.name == "nt" else "clear")
-            logger.info(                    
-                    "\n".join([
+            logger.info(
+                "\n".join(
+                    [
                         "   AA-SI Homepage",
                         "   NCEI Website : https://www.ncei.noaa.gov/",
                         "   OMAO Website : https://www.omao.noaa.gov/",
@@ -229,12 +223,11 @@ def main():
                         "   AA-SI_GCPSetup : https://github.com/nmfs-ost/AA-SI_GCPSetup",
                         "   AA-SI_DataRoadMap : https://github.com/nmfs-ost/AA-SI_DataRoadMap",
                         "   AA-SI_KMeans : https://github.com/nmfs-ost/AA-SI_KMeans",
-                        "   AA-SI_DBScan : https://github.com/nmfs-ost/AA-SI_DBScan"
-                    ])
-                    )
-            
+                        "   AA-SI_DBScan : https://github.com/nmfs-ost/AA-SI_DBScan",
+                    ]
+                )
+            )
 
-        
         if mode == "Exit Application":
             os.system("cls" if os.name == "nt" else "clear")
             break

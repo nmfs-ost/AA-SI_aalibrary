@@ -4,47 +4,86 @@ import sys
 
 def print_console_tools_reference():
     reference = """
-    Console Tools Reference:
 
-    aa-test : Test aalibrary library
-    aa-plot : Plot an .nc or .raw file
-    aa-raw : Download or upload raw file
-    aa-nc : Download or upload .nc file
-    aa-kmap : Run a kmeans cluster map operation
-    aa-help : Print this example reference or help
-    aa-find : Find a ship name from the ICES database
+    
+    Active Acoustics Console Tooling Reference
+    ------------------------------------------
 
-    Example use cases:
+    (For specific details of an individual tool, use the --help flag)
 
-    Plot an .nc file:
-    aa-nc --file_name "2107RL_CW-D20210813-T220732.raw" --file_type "raw" \\
-           --ship_name "Reuben_Lasker" --survey_name "RL2107" --echosounder "EK80" \\
-           --data_source "NCEI" --file_download_directory "." \\
-           --upload_to_gcp \\
-    | aa-plot --title "My Custom Plot" --xlabel "Time" \\
-           --ylabel "Distance" --color "green" --linestyle "dashed" --linewidth 3.0
+    Most tools are designed to work with NetCDF (.nc) files and support
+    piping workflows, where the output of one tool is passed as input
+    to the next.
 
-    Plot a .raw file by piping output of aa-raw to aa-plot:
-    aa-raw --file_name "2107RL_CW-D20210813-T220732.raw" --file_type "raw" \\
-           --ship_name "Reuben_Lasker" --survey_name "RL2107" --echosounder "EK80" \\
-           --data_source "NCEI" --file_download_directory "." \\
-           --upload_to_gcp \\
-    | aa-plot --title "My Custom Plot" --xlabel "Time" \\
-           --ylabel "Power" --color "blue" --linestyle "dashed" --linewidth 1.0
+    Basic Tools
+    -----------
+    aa-raw     : Download or upload raw acoustic files.
+    aa-nc      : Convert raw input files into NetCDF format.
+    aa-sv      : Compute and save volume backscattering strength (Sv).
+    aa-ts      : Generate target strength (TS) datasets.
+    aa-clean   : Denoise and clean input datasets.
 
-    Run a default K Means Cluster Map operation on the .raw or .nc data by piping output of aa-nc to aa-kmap:
-    aa-nc --file_name "2107RL_CW-D20210813-T220732.raw" --file_type "raw" \\
-           --ship_name "Reuben_Lasker" --survey_name "RL2107" --echosounder "EK80" \\
-           --data_source "NCEI" --file_download_directory "." \\
-           --upload_to_gcp \\ 
-    | aa-kmap --config "path/to/config" --model "ABSOLUTE_DIFFERENCES" --colormap "jet" \\
-           --cluster_count 5 --random_state 42 --ping_time_begin 0 \\
-           --ping_time_end null --range_sample_begin 250 --range_sample_end 750 \\
-           
-    Run jupyter notebook on a python file (browserless) and Port forward to localhost:
-    jupyter lab --no-browser --ip=8888 <python_file> && ssh -L 8888:localhost:8888 -N -f -l <username> <remote_host>
+    Processing Tools
+    ----------------
+    aa-mvbs    : Compute mean volume backscattering strength (MVBS).
+    aa-nasc    : Compute Nautical Areal Scattering Coefficient (NASC)
+                 from Sv datasets.
+    aa-assign  : Assign new coordinates or metadata to datasets.
+    aa-crop    : Extract a subsection of a dataset.
+
+    Quality Control Tools
+    ---------------------
+    (designed to validate and subset datasets)
+    aa-assign  : Assign new coordinates or metadata to datasets.
+    aa-crop    : Extract a subsection of a dataset.
+
+    Advanced Tools
+    --------------
+    aa-find    : Query the ICES database to find ship names.
     
     
+    Example Usecases
+    ----------------
+
+    Description: A very useful tool for locating data.
+
+    aa-find
+
+
+    Example 1:
+    In this example, a single raw file is passed explicitly as a positional argument rather than piped. 
+    The original raw data is converted, processed, and summarized in one seamless command. 
+    The raw data is passed to aa-nc to produce a NetCDF file with the specified EK60 sonar model. 
+    Sv values are computed immediately with aa-sv, cleaned of noise with aa-clean, and then summarized 
+    into Multi-Volume Backscatter using aa-mvbs. This one-liner demonstrates how modular console tools 
+    can be chained together to perform a complete processing workflow efficiently, without creating intermediate 
+    files. Defaults are supplied with argparse library.
+
+    Command:
+    aa-nc /home/mryan/Desktop/HB1603_L1-D20160707-T190150.raw --sonar_model EK60 | aa-sv | aa-clean | aa-mvbs
+
+
+    Example 2:
+    A raw acoustic file is first prepared with aa-raw, which automatically incorporates metadata such as 
+    ship, survey, and echosounder information. Its output is then converted to a NetCDF file with aa-nc, 
+    Sv values are computed on the fly with aa-sv, cleaned by aa-clean, and summarized for Multi-Volume 
+    Backscatter using aa-mvbs. Each tool focuses on a specific task, and chaining them together allows the 
+    entire processing workflow to be executed in a single, streamlined command. Defaults are supplied with 
+    argparse library.
+
+    Command:
+    aa-raw --file_name "2107RL_CW-D20210813-T220732.raw" --file_type "raw" --ship_name "Reuben_Lasker" --survey_name "RL2107" --echosounder "EK80" --data_source "NCEI" --file_download_directory "."
+    aa-nc <path-to-raw> --sonar_model <sonar_model> | aa-sv --plot Sv --x ping_time --y range_sample | aa-clean --plot Sv --x ping_time --y range_sample | aa-mvbs
+
+
+    Example 3:
+    Another raw file workflow using aa-raw to prepare the data, aa-nc to convert to NetCDF, and then 
+    aa-sv, aa-clean, and aa-mvbs for processing and summarization. This example shows a fully automated 
+    workflow for the EK60 echosounder. Defaults are supplied with argparse library.
+
+    Command:
+    aa-raw --file_name D20190804-T113723.raw --ship_name Henry_B._Bigelow --survey_name HB1907 --echosounder EK60 --file_download_directory Henry_B._Bigelow_HB1907_EK60_NCEI | aa-nc --sonar_model EK60 | aa-sv | aa-clean | aa-mvbs
+
     """
     print(reference)
 
