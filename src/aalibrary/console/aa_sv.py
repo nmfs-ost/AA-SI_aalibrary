@@ -116,21 +116,38 @@ def print_help():
     Usage: aa-sv [OPTIONS] [INPUT_PATH]
 
     Arguments:
-    INPUT_PATH                 Path to the .raw or .netcdf4 file. (Optional, defaults to stdin)
+    INPUT_PATH                 Path to the .raw or .netcdf4 file.
+                                Optional. Defaults to stdin if not provided.
 
     Options:
     -o, --output_path           Path to save processed output.
                                 Default: overwrites .nc files or creates a new .nc for RAW.
 
+    --plot [VALUE]              Generate plots of the processed data.
+                                Optional argument with optional value.
+                                If provided without a value, defaults to 'Sv'.
+                                Example: --plot or --plot TS
+                                Default: None
+
+    --waveform_mode             For EK80 echosounders: specify waveform mode.
+                                Choices: CW, BB, FM
+                                Default: CW
+
+    --encode_mode               For EK80 echosounders: specify encoding mode.
+                                Choices: complex, power
+                                Default: complex
+
     Description:
-    This tool processes .raw or .netcdf4 files with Echopype and removes
-    background noise using ping-based and range-based thresholds.
+    This tool computes Sv (volume backscattering strength) from .raw or
+    .netcdf4 files with Echopype. It includes optional plotting and
+    EK80-specific waveform/encoding configuration.
 
     Example:
-    aa-clean /path/to/input.raw --ping_num 50 --range_sample_num 200 \\
-            --snr_threshold 5.0 -o /path/to/output.nc
+    aa-sv /path/to/input.raw --waveform_mode FM --encode_mode power \\
+          --plot Sv -o /path/to/output.nc
     """
     print(help_text)
+
 
 
 def main():
@@ -179,7 +196,7 @@ def main():
 
         "--waveform_mode",
         type=str,
-        help="Optional argument to specify the waveform mode",
+        help="For EK80 Echosounders: Optional argument to specify the waveform mode",
         default="CW",     # value if the option is not provided at all
         choices=["CW", "BB", "FM"]
     )
@@ -190,7 +207,7 @@ def main():
         default="complex",     # value if the option is not provided at all
         type=str,
         choices=["complex", "power"],
-        help="Optional argument with an optional value"
+        help="For EK80 Echosounders: Optional argument with an optional value"
     )
 
     # ---------------------------
@@ -206,7 +223,6 @@ def main():
 
     if args.input_path is None:
         # Read from stdin
-        logger.debug(args)
         args.input_path = Path(sys.stdin.readline().strip())
         logger.info(f"Read input path from stdin: {args.input_path}")
 

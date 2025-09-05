@@ -11,23 +11,32 @@ from loguru import logger
 import echopype as ep  # make sure echopype is installed
 import termios
 
+    
 def print_help():
     help_text = """
     Usage: aa-nc [OPTIONS] INPUT_PATH
 
+    Arguments:
+    INPUT_PATH                 Path to the input .raw file. (Required)
+
     Options:
-    INPUT_PATH                  Path to the .raw or .netcdf4 file. (Required)
-    -o, --output_path           Path to save processed output.
-                                Default: overwrites .nc files or creates a new .nc for RAW.
-    --sonar_model               Sonar model number (e.g., EK60, EK80). (Required)
+    -o, --output_path           Path to save processed Sv output (.nc file).
+                                Default: creates a new .nc from the input .raw.
+
+    --sonar_model               Sonar model number (required).
+                                Example: EK60, EK80, etc.
 
     Description:
-    This script processes .raw and produces a NetCDF file using echopype.
+    This tool calculates Sv (volume backscattering strength) from a
+    .raw file using Echopype. The output is always a NetCDF (.nc) file
+    containing the computed Sv values. A new .nc file is created for the
+    output; the input .raw file is never overwritten.
 
     Example:
-    aa-nc /path/to/input.raw --sonar_model EK80 -o /path/to/output.nc
+    aa-nc /path/to/input.raw --sonar_model EK60 -o /path/to/output.nc
     """
     print(help_text)
+
 
 
 def main():

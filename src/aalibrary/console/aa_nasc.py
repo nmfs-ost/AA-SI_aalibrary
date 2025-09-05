@@ -15,8 +15,45 @@ import sys
 import signal
 
 def print_help():
-    help_text = "HHHHHHHHHHHHHHHHEEEEEEEEEEEEEEEEELLLLLLLLLLLLLLLLLLPPPPPPPPPPPPPPPPPPP"
+    help_text = """
+    Usage: aa-nasc [OPTIONS] [INPUT_PATH]
+
+    Arguments:
+    INPUT_PATH                 Path to the .raw or .netcdf4 file.
+                                Optional. Defaults to stdin if not provided.
+
+    Options:
+    -o, --output_path           Path to save processed NASC output.
+                                Default: overwrites input .nc with NASC group
+                                or creates a new .nc.
+
+    --range-bin                 Depth bin size in meters.
+                                Default: 10m
+    --dist-bin                  Horizontal distance bin size in nautical miles.
+                                Default: 0.5nmi
+    --method                    Flox reduction strategy for binning.
+                                Default: map-reduce
+    --skipna                    Skip NaN values when averaging.
+                                Default: enabled
+    --no-skipna                 Include NaN values in mean calculations.
+    --closed                    Which side of the bin interval is closed.
+                                Choices: left, right
+                                Default: left
+    --flox-kwargs               Additional flox arguments as key=value pairs.
+                                Example: --flox-kwargs min_count=5
+
+    Description:
+    This tool computes NASC (Nautical Area Scattering Coefficient) from
+    .raw or .netcdf4 files with Echopype. NASC integrates Sv (volume
+    backscattering strength) across range and distance bins, producing
+    standardized measures for biomass estimation and comparison.
+
+    Example:
+    aa-nasc /path/to/input.raw --range-bin 20m --dist-bin 1nmi \\
+            --method map-reduce -o /path/to/output.nc
+    """
     print(help_text)
+
 
 def parse_flox_kwargs(pair_list):
     """Parse flox keyword arguments from key=value strings."""

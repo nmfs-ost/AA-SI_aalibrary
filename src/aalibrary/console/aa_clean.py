@@ -20,15 +20,20 @@ def print_help():
     Usage: aa-clean [OPTIONS] [INPUT_PATH]
 
     Arguments:
-    INPUT_PATH                 Path to the .raw or .netcdf4 file. (Optional, defaults to stdin)
+    INPUT_PATH                 Path to the .raw or .netcdf4 file.
+                                Optional. Defaults to stdin if not provided.
 
     Options:
     -o, --output_path           Path to save processed output.
                                 Default: overwrites .nc files or creates a new .nc for RAW.
-    --ping_num                  Number of pings to use for background noise removal. (Required)
-    --range_sample_num          Number of range samples to use for background noise removal. (Required)
+    --ping_num                  Number of pings to use for background noise removal.
+                                Default: 20
+    --range_sample_num          Number of range samples to use for background noise removal.
+                                Default: 20
     --background_noise_max      Optional maximum background noise value.
-    --snr_threshold             SNR threshold in dB. Default: 3.0
+                                Default: None
+    --snr_threshold             SNR threshold in dB.
+                                Default: 3.0
 
     Description:
     This tool processes .raw or .netcdf4 files with Echopype and removes
@@ -39,6 +44,7 @@ def print_help():
             --snr_threshold 5.0 -o /path/to/output.nc
     """
     print(help_text)
+
 
 
 def main():
