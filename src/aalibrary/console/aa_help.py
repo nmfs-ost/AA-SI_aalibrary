@@ -40,15 +40,27 @@ def print_console_tools_reference():
     
     Example Usecases
     ----------------
+
+    Description : A very useful tool for locating data.
+
+    aa-find
     
-    aa-find 
+     
+    Description : In this example, a single raw file is not piped but explicitlly written as a positional argument. The original raw data is converted, processed, and summarized in one seamless command. The raw data is passed to aa-nc to produce a NetCDF file with the specified EK60 sonar model. Sv values are computed immediately with aa-sv, cleaned of noise with aa-clean, and then summarized into Multi-Volume Backscatter using aa-mvbs. This one-liner showcases how modular console tools can be chained together to perform a full processing workflow efficiently, without creating intermediate files.
+    
+    aa-nc /home/mryan/Desktop/HB1603_L1-D20160707-T190150.raw --sonar_model EK60 | aa-sv | aa-clean | aa-mvbs
+    
     
     aa-raw --file_name "2107RL_CW-D20210813-T220732.raw" --file_type "raw" --ship_name "Reuben_Lasker" --survey_name "RL2107" --echosounder "EK80" --data_source "NCEI" --file_download_directory "."
     
-    aa-nc <path-to-raw> --sonar_model <sonar_model> | aa-sv --plot Sv --x ping_time --y range_sample | aa-clean --plot Sv --x ping_time --y range_sample | aa-mvbs 
     
+    aa-nc <path-to-raw> --sonar_model <sonar_model> | aa-sv --plot Sv --x ping_time --y range_sample | aa-clean --plot Sv --x ping_time --y range_sample | aa-mvbs
+
+
+    Description : A raw acoustic file is first prepared with aa-raw, automatically incorporating metadata like ship, survey, and echosounder information. Its output is immediately converted to a NetCDF file with aa-nc, and Sv values are computed on the fly with aa-sv. The resulting data is then cleaned by aa-clean and summarized for Multi-Volume Backscatter using aa-mvbs. Each tool handles a focused task, and by chaining them together, a complete processing workflow is executed in a single, streamlined command.
     
-    
+    aa-raw --file_name D20190804-T113723.raw --ship_name Henry_B._Bigelow --survey_name HB1907 --echosounder EK60 --file_download_directory Henry_B._Bigelow_HB1907_EK60_NCEI | aa-nc --sonar_model EK60 | aa-sv | aa-clean | aa-mvbs
+
     """
     print(reference)
 
