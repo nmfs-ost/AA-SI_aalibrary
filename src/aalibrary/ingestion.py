@@ -2,6 +2,7 @@
 from various sources such as AWS buckets and Azure Data Lake."""
 
 import glob
+from pprint import pprint
 import sys
 import os
 import logging
@@ -13,6 +14,7 @@ from azure.storage.filedatalake import (
     DataLakeFileClient,
 )
 import boto3
+from tqdm import tqdm
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -484,7 +486,7 @@ def download_raw_file_from_ncei(
         return
 
 
-def download_survey_from_ncei(
+def _download_survey_from_ncei(
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
@@ -921,6 +923,30 @@ def download_netcdf_file(
             " `download_raw_file`."
         )
         raise FileNotFoundError
+
+
+# def upload_entire_cruise_directory_to_gcp_storage_bucket(
+#     directory_path: str = "",
+#     gcp_bucket: storage.Client.bucket = None,
+#     debug: bool = False,
+# ):
+#     """Uploads an entire folder to the GCP storage bucket AS-IS. The folder is
+#     assumed to be the cruise/survey folder.
+#     NOTE: Does not check for metadata, file or folder naming conventions, etc.
+
+#     Args:
+#         directory_path (str, optional): The directory you would like to copy to
+#             the storage bucket. Defaults to "".
+#         gcp_bucket (storage.Client.bucket, optional): The storage bucket object
+#             used for uploading. Defaults to None.
+#         debug (bool, optional): Whether or not to print debug statements.
+#             Defaults to False.
+#     """
+#     # Get all files in the directory_path
+#     all_files_paths = []
+#     for root, _, files in os.walk(directory_path):
+#         for file in files:
+#             all_files_paths.append(os.path.join(root, file))
 
 
 def upload_file_to_gcp_storage_bucket(
@@ -1374,6 +1400,84 @@ def find_data_source_for_file():
     # TODO: Check OMAO Data Lake
 
 
+def download_survey_from_ncei(
+    ship_name: str = "",
+    survey_name: str = "",
+    download_directory: str = "",
+    debug: bool = False,
+):
+    """Downloads an entire survey from NCEI to a local directory while
+    maintaining folder structure.
+
+    Args:
+        ship_name (str, optional): The ship name. Defaults to "".
+        survey_name (str, optional): The name of the survey you would like to
+            download. Defaults to "".
+        download_directory (str, optional): The directory to which the files
+            will be downloaded. Creates a directory in the cwd if not
+            specified. Defaults to "".
+            NOTE: The directory specified will have the `ship_name/survey_name`
+            folders created within it.
+        debug (bool, optional): Whether or not you want to print debug
+            statements. Defaults to False.
+    """
+
+    if download_directory == "":
+        # Create a directory in the cwd
+        download_directory = os.sep.join(
+            [os.path.normpath("./"), f"{ship_name}", f"{survey_name}"]
+        )
+
+    if debug:
+        logging.debug("FORMATTED DOWNLOAD DIRECTORY: %s", download_directory)
+
+    # Get all s3 objects for the survey
+    print(f"GETTING ALL S3 OBJECTS FOR SURVEY {survey_name}...")
+    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
+    s3_objects = cloud_utils.list_all_objects_in_s3_bucket_location(
+        prefix=f"data/raw/{ship_name}/{survey_name}/",
+        s3_resource=s3_resource,
+        return_full_paths=True,
+    )
+    print(f"FOUND {len(s3_objects)} FILES.")
+
+    subdirs = set()
+    # Get the subfolders from object keys
+    for s3_object in s3_objects:
+        # Skip folders
+        if s3_object.endswith("/"):
+            continue
+        # Get the subfolder structure from the object key
+        subfolder_key = os.sep.join(
+            s3_object.replace("data/raw/", "").split("/")[:-1]
+        )
+        subdirs.add(subfolder_key)
+    for subdir in subdirs:
+        os.makedirs(os.sep.join([download_directory, subdir]), exist_ok=True)
+
+    # Create the directory if it doesn't exist.
+    if not os.path.isdir(download_directory):
+        print(f"CREATING download_directory `{download_directory}`")
+        os.makedirs(download_directory, exist_ok=True)
+    # normalize the path
+    download_directory = os.path.normpath(download_directory)
+    print("CREATED DOWNLOAD DIRECTORIES.")
+
+    for idx, object_key in enumerate(tqdm(s3_objects[:5], desc="Downloading")):
+        file_name = object_key.split("/")[-1]
+        local_object_path = object_key.replace("data/raw/", "")
+        download_location = os.path.normpath(
+            os.sep.join([download_directory, local_object_path])
+        )
+        download_single_file_from_aws(
+            file_url=object_key, download_location=download_location
+        )
+    print(f"DOWNLOAD COMPLETE {os.path.abspath(download_directory)}.")
+
+
+def download_specific_folder_from_ncei(): ...
+
+
 if __name__ == "__main__":
     # set logging config
     for handler in logging.root.handlers[:]:
@@ -1383,6 +1487,11 @@ if __name__ == "__main__":
         level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
+    )
+    download_survey_from_ncei(
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        download_directory="./test_data_dir",
     )
 
     # azure_datalake_directory_client = get_data_lake_directory_client(
