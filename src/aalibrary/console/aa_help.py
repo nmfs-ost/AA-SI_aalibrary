@@ -15,6 +15,8 @@ def print_console_tools_reference():
     piping workflows, where the output of one tool is passed as input
     to the next.
 
+
+
     Basic Tools
     -----------
     aa-raw     : Download or upload raw acoustic files.
@@ -30,6 +32,7 @@ def print_console_tools_reference():
                  from Sv datasets.
     aa-assign  : Assign new coordinates or metadata to datasets.
     aa-crop    : Extract a subsection of a dataset.
+    aa-mask    : Mask out regions of a dataset based on criteria.
 
     Quality Control Tools
     ---------------------
@@ -37,9 +40,11 @@ def print_console_tools_reference():
     aa-assign  : Assign new coordinates or metadata to datasets.
     aa-crop    : Extract a subsection of a dataset.
 
-    Advanced Tools
+    Applications
     --------------
-    aa-find    : Query the ICES database to find ship names.
+    aa-tools   : Query the ICES database to find ship names.
+    aa-setup   : Install or reinstall the AA-SI GPCSetup environment on a Google Cloud VM.
+    
     
     
     Example Usecases

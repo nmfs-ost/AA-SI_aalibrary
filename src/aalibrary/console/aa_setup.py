@@ -1,7 +1,22 @@
 import subprocess
+import sys
 
+def print_help():
+    help_text = """
+    Usage: aa-setup
+
+    Description:
+    Reinstalls the startup script for the AA-SI GPCSetup environment on a Google Cloud VM. 
+
+    """
+    print(help_text)
+    
 
 def main():
+    
+    if '--help' in sys.argv or '-h' in sys.argv:
+        print_help()
+        return
 
     cmd = f"""
     cd ~ && \
