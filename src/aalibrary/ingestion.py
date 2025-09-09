@@ -22,6 +22,7 @@ if __package__ is None or __package__ == "":
     import utils
     from utils import cloud_utils, helpers
     from utils.cloud_utils import get_data_lake_directory_client
+    from utils.ncei_utils import download_single_file_from_aws
     import config
     import metadata
     from raw_file import RawFile
@@ -33,6 +34,7 @@ else:
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
     from aalibrary.utils.cloud_utils import get_data_lake_directory_client
+    from aalibrary.utils.ncei_utils import download_single_file_from_aws
 
 
 def download_file_from_azure_directory(
@@ -280,55 +282,6 @@ def download_raw_file_from_azure(
             )
 
         return
-
-
-def download_single_file_from_aws(
-    file_url: str = "",
-    download_location: str = "",
-):
-    """Safely downloads a file from AWS storage bucket, aka the NCEI
-    repository.
-
-    Args:
-        file_url (str, optional): The file url. Defaults to "".
-        download_location (str, optional): The local download location for the
-            file. Defaults to "".
-    """
-
-    try:
-        _, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
-    except Exception as e:
-        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{%s}", e)
-        raise
-
-    # We replace the beginning of common file paths
-    file_url = utils.cloud_utils.get_object_key_for_s3(file_url=file_url)
-    file_name = helpers.get_file_name_from_url(file_url)
-
-    # Check if the file exists in s3
-    file_exists = utils.cloud_utils.check_if_file_exists_in_s3(
-        object_key=file_url,
-        s3_resource=s3_resource,
-        s3_bucket_name=s3_bucket.name,
-    )
-
-    if file_exists:
-        # Finally download the file.
-        try:
-            logging.info("DOWNLOADING `%s`...", file_name)
-            s3_bucket.download_file(file_url, download_location)
-            logging.info(
-                "DOWNLOADED `%s` TO `%s`", file_name, download_location
-            )
-        except Exception as e:
-            logging.error(
-                "ERROR DOWNLOADING FILE `%s` DUE TO\n%s", file_name, e
-            )
-            raise
-    else:
-        logging.error(
-            "FILE %s DOES NOT EXIST IN NCEI S3 BUCKET. SKIPPING...", file_name
-        )
 
 
 def download_raw_file_from_ncei(
@@ -1473,9 +1426,6 @@ def download_survey_from_ncei(
             file_url=object_key, download_location=download_location
         )
     print(f"DOWNLOAD COMPLETE {os.path.abspath(download_directory)}.")
-
-
-def download_specific_folder_from_ncei(): ...
 
 
 if __name__ == "__main__":
