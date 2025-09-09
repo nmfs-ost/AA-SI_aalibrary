@@ -1,9 +1,11 @@
 """This file contains code pertaining to auxiliary functions related to parsing
 through NCEI's s3 bucket."""
 
+import os
 from typing import List, Union
 from difflib import get_close_matches
 from random import randint
+import logging
 
 import boto3
 from tqdm import tqdm
@@ -16,16 +18,21 @@ if __package__ is None or __package__ == "":
         create_s3_objs,
         list_all_objects_in_s3_bucket_location,
         check_if_file_exists_in_s3,
+        get_object_key_for_s3,
     )
-    from helpers import normalize_ship_name
+    from helpers import normalize_ship_name, get_file_name_from_url
 else:
     from aalibrary.utils.cloud_utils import (
         get_subdirectories_in_s3_bucket_location,
         create_s3_objs,
         list_all_objects_in_s3_bucket_location,
         check_if_file_exists_in_s3,
+        get_object_key_for_s3,
     )
-    from aalibrary.utils.helpers import normalize_ship_name
+    from aalibrary.utils.helpers import (
+        normalize_ship_name,
+        get_file_name_from_url,
+    )
 
 
 def get_all_ship_names_in_ncei(
@@ -778,8 +785,131 @@ def get_checksum_sha256_from_s3(object_key, s3_resource):
     return checksum
 
 
+def download_specific_folder_from_ncei(
+    folder_prefix: str = "", download_directory: str = "", debug: bool = False
+):
+    """Downloads a specific folder and all of its contents from NCEI to a local
+    directory.
+
+    Args:
+        folder_prefix (str, optional): The folder's path in the s3 bucket.
+            Ex. 'data/raw/Reuben_Lasker/'
+            Defaults to "".
+        download_directory (str, optional): The directory you want to download
+            the folder and all of its contents to. Defaults to "".
+        debug (bool, optional): Whether or not to print debug information.
+            Defaults to False.
+    """
+
+    if not folder_prefix.endswith("/"):
+        folder_prefix += "/"
+
+    assert (download_directory is not None) and (
+        download_directory != ""
+    ), "You must provide a download_directory to download the folder to."
+
+    if debug:
+        logging.debug("FORMATTED DOWNLOAD DIRECTORY: %s", download_directory)
+
+    # Get all s3 objects for the survey
+    print(f"GETTING ALL S3 OBJECTS FOR FOLDER `{folder_prefix}`...")
+    _, s3_resource, _ = create_s3_objs()
+    s3_objects = list_all_objects_in_s3_bucket_location(
+        prefix=folder_prefix,
+        s3_resource=s3_resource,
+        return_full_paths=True,
+    )
+    print(f"FOUND {len(s3_objects)} FILES.")
+
+    subdirs = set()
+    # Get the subfolders from object keys
+    for s3_object in s3_objects:
+        # Skip folders
+        if s3_object.endswith("/"):
+            continue
+        # Get the subfolder structure from the object key
+        subfolder_key = os.sep.join(
+            s3_object.replace("data/raw/", "").split("/")[:-1]
+        )
+        subdirs.add(subfolder_key)
+    for subdir in subdirs:
+        os.makedirs(os.sep.join([download_directory, subdir]), exist_ok=True)
+
+    # Create the directory if it doesn't exist.
+    if not os.path.isdir(download_directory):
+        print(f"CREATING download_directory `{download_directory}`")
+        os.makedirs(download_directory, exist_ok=True)
+    # normalize the path
+    download_directory = os.path.normpath(download_directory)
+    print("CREATED DOWNLOAD SUBDIRECTORIES.")
+
+    for idx, object_key in enumerate(tqdm(s3_objects, desc="Downloading")):
+        file_name = object_key.split("/")[-1]
+        local_object_path = object_key.replace("data/raw/", "")
+        download_location = os.path.normpath(
+            os.sep.join([download_directory, local_object_path])
+        )
+        download_single_file_from_aws(
+            file_url=object_key, download_location=download_location
+        )
+    print(f"DOWNLOAD COMPLETE {os.path.abspath(download_directory)}.")
+
+
+def download_single_file_from_aws(
+    file_url: str = "",
+    download_location: str = "",
+):
+    """Safely downloads a file from AWS storage bucket, aka the NCEI
+    repository.
+
+    Args:
+        file_url (str, optional): The file url. Defaults to "".
+        download_location (str, optional): The local download location for the
+            file. Defaults to "".
+    """
+
+    try:
+        _, s3_resource, s3_bucket = create_s3_objs()
+    except Exception as e:
+        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{%s}", e)
+        raise
+
+    # We replace the beginning of common file paths
+    file_url = get_object_key_for_s3(file_url=file_url)
+    file_name = get_file_name_from_url(file_url)
+
+    # Check if the file exists in s3
+    file_exists = check_if_file_exists_in_s3(
+        object_key=file_url,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket.name,
+    )
+
+    if file_exists:
+        # Finally download the file.
+        try:
+            logging.info("DOWNLOADING `%s`...", file_name)
+            s3_bucket.download_file(file_url, download_location)
+            logging.info(
+                "DOWNLOADED `%s` TO `%s`", file_name, download_location
+            )
+        except Exception as e:
+            logging.error(
+                "ERROR DOWNLOADING FILE `%s` DUE TO\n%s", file_name, e
+            )
+            raise
+    else:
+        logging.error(
+            "FILE %s DOES NOT EXIST IN NCEI S3 BUCKET. SKIPPING...", file_name
+        )
+
+
 if __name__ == "__main__":
     s3_client, s3_resource, _ = create_s3_objs()
+    download_specific_folder_from_ncei(
+        folder_prefix="data/raw/Reuben_Lasker/RL2107/metadata/",
+        download_directory="./RL2107_metadata_test/",
+        debug=True)
     # x = get_folder_size_from_s3(
     #     folder_prefix="data/raw/Reuben_Lasker/RL2107/metadata/",
     #     s3_resource=s3_resource,
@@ -817,4 +947,4 @@ if __name__ == "__main__":
     # print(all_files)
 
     # print(get_random_raw_file_from_ncei())
-    print(search_ncei_objects_for_string(search_param="EK500"))
+    # print(search_ncei_objects_for_string(search_param="EK500"))
