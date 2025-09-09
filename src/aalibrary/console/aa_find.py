@@ -62,13 +62,13 @@ def main():
                         survey = None
                         break
 
-                    echosounder = inquirer.select(
-                        message="Select echosounder from survey : " + survey,
+                    sonar_model = inquirer.select(
+                        message="Select sonar_model from survey : " + survey,
                         choices=["Back"]
                         + get_all_echosounders_in_a_survey(ship_name, survey),
                     ).execute()
 
-                    if echosounder == "Back":
+                    if sonar_model == "Back":
                         continue
 
                     # Get all file names for the selected survey
@@ -78,7 +78,7 @@ def main():
                         choices=["Back"]
                         + ["Survey Disk Usage"]
                         + get_all_raw_file_names_from_survey(
-                            ship_name, survey, echosounder
+                            ship_name, survey, sonar_model
                         ),
                     ).execute()
 
@@ -88,7 +88,7 @@ def main():
                     if file_name == "Survey Disk Usage":
                         s3_client, s3_resource, _ = create_s3_objs()
                         x = get_folder_size_from_s3(
-                            folder_prefix=f"data/raw/{ship_name}/{survey}/{echosounder}/",
+                            folder_prefix=f"data/raw/{ship_name}/{survey}/{sonar_model}/",
                             s3_resource=s3_resource,
                         )
                         print(f"Folder size: {x} bytes")
@@ -115,7 +115,7 @@ def main():
                     if operation == "Download .raw":
                         # Define the folder name
                         folder_name = (
-                            ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+                            ship_name + "_" + survey + "_" + sonar_model + "_" + "NCEI"
                         )
 
                         # Create the full path using '.'
@@ -124,10 +124,10 @@ def main():
                         # Make the directory (does nothing if it already exists)
                         os.makedirs(path, exist_ok=True)
                         logger.info(
-                            f"Downloading {echosounder} data for {ship_name} in {survey} to {folder_name}"
+                            f"Downloading {sonar_model} data for {ship_name} in {survey} to {folder_name}"
                         )
                         logger.debug(
-                            f"Running command: aa-raw --file_name {file_name} --ship_name {ship_name} --survey_name {survey} --echosounder {echosounder} --file_download_directory {folder_name} from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
+                            f"Running command: aa-raw --file_name {file_name} --ship_name {ship_name} --survey_name {survey} --sonar_model {sonar_model} --file_download_directory {folder_name} from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
                         )
                         subprocess.run(
                             [
@@ -140,8 +140,8 @@ def main():
                                 ship_name,
                                 "--survey_name",
                                 survey,
-                                "--echosounder",
-                                echosounder,
+                                "--sonar_model",
+                                sonar_model,
                                 "--data_source",
                                 "NCEI",
                                 "--file_download_directory",
@@ -152,7 +152,7 @@ def main():
                     if operation == "Plot Echograms":
                         # Define the folder name
                         folder_name = (
-                            ship_name + "_" + survey + "_" + echosounder + "_" + "NCEI"
+                            ship_name + "_" + survey + "_" + sonar_model + "_" + "NCEI"
                         )
 
                         # Create the full path using '.'
@@ -161,17 +161,17 @@ def main():
                         # Make the directory (does nothing if it already exists)
                         os.makedirs(path, exist_ok=True)
                         logger.info(
-                            f"Plotting {echosounder} data for {ship_name} in {survey} to {folder_name}"
+                            f"Plotting {sonar_model} data for {ship_name} in {survey} to {folder_name}"
                         )
                         logger.debug(
-                            f"Running command: aa-plot {file_name} --sonar_model {echosounder} --output-file {folder_name}/echogram.png from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
+                            f"Running command: aa-plot {file_name} --sonar_model {sonar_model} --output-file {folder_name}/echogram.png from directory: {os.getcwd()} from the environment: {subprocess.run(['which', 'python'], capture_output=True, text=True).stdout.strip()}"
                         )
                         subprocess.run(
                             [
                                 "aa-plot",
                                 file_name,
                                 "--sonar_model",
-                                echosounder,
+                                sonar_model,
                                 "--output-file",
                                 f"{folder_name}/echogram.png",
                             ]
@@ -179,13 +179,13 @@ def main():
 
                     if operation == "Run KMeans":
                         logger.info(
-                            f"Running KMeans on {echosounder} data for {ship_name} in {survey}"
+                            f"Running KMeans on {sonar_model} data for {ship_name} in {survey}"
                         )
                         logger.info(f"This functionality is not yet available")
 
                     if operation == "Run DBScan":
                         logger.info(
-                            f"Running DBScan on {echosounder} data for {ship_name} in {survey}"
+                            f"Running DBScan on {sonar_model} data for {ship_name} in {survey}"
                         )
                         logger.info(f"This functionality is not yet available")
 

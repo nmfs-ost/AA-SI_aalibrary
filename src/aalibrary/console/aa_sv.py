@@ -285,13 +285,13 @@ def clean_attrs(Sv):
     
     for k, v in Sv.attrs.items():
         if v is None:
-            Sv.attrs[k] = "NA"  # or float('nan') if numeric
+            Sv.attrs[k] = "NaN"  # or float('nan') if numeric
 
     # Variable-level attrs
     for var in Sv.data_vars:
         for k, v in Sv[var].attrs.items():
             if v is None:
-                Sv[var].attrs[k] = "NA"  # or float('nan') if numeric
+                Sv[var].attrs[k] = "NaN"  # or float('nan') if numeric
     return Sv
 
     # Function to update plot based on channel
@@ -333,9 +333,9 @@ def process_file(
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
     ds_Sv = clean_attrs(ds_Sv)
-    ed.Sv = ds_Sv.Sv  # Update EchoData with cleaned Sv
+    ed.Sv = ds_Sv.Sv  
     output_path = output_path.with_suffix(".nc")
-    ed.to_netcdf(output_path)
+    ds_Sv.to_netcdf(output_path)
     
     
     logger.info("Sv computation complete.")

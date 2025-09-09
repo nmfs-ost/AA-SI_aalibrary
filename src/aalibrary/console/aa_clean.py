@@ -179,13 +179,13 @@ def clean_attrs(Sv):
     # Dataset-level attrs
     for k, v in Sv.attrs.items():
         if v is None:
-            Sv.attrs[k] = "NA"  # or float('nan') if numeric
+            Sv.attrs[k] = "NaN"  # or float('nan') if numeric
 
     # Variable-level attrs
     for var in Sv.data_vars:
         for k, v in Sv[var].attrs.items():
             if v is None:
-                Sv[var].attrs[k] = "NA"  # or float('nan') if numeric
+                Sv[var].attrs[k] = "NaN"  # or float('nan') if numeric
     return Sv
 
 
@@ -208,7 +208,7 @@ def process_file(
 
     f = io.StringIO()
     with redirect_stdout(f):
-        ed = xr.open_dataset(input_path)
+        ed = xr.open_dataset(input_path) # Unwanted output affects the piping.
 
     # Step 3: Apply any additional transformation
     logger.info("Applying transformations to EchoData...")
