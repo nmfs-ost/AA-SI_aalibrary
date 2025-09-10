@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from loguru import logger
 import warnings
+import pprint
 
 warnings.filterwarnings("ignore")
 def print_help():
@@ -75,6 +76,11 @@ def main():
 
     args = parser.parse_args()
 
+    # Pretty-print args to logger
+    args_dict = vars(args)
+    pretty_args = pprint.pformat(args_dict)
+    logger.info(f"\naa-raw args:\n{pretty_args}")
+
     download_raw_file_from_ncei(
         file_name=args.file_name,
         file_type=args.file_type,
@@ -89,7 +95,7 @@ def main():
 
     # This is the output that may be piped elsewhere.
     downloaded_raw_file_path = Path(args.file_download_directory) / args.file_name
-    logger.debug(f"aa-raw is generating : {downloaded_raw_file_path.resolve()}")
+    logger.info(f"Generating {downloaded_raw_file_path.resolve()} with aa-raw. Passing raw path to stdin...")
     print(f"{downloaded_raw_file_path.resolve()}")
     sys.exit(0)
 

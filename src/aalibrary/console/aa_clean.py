@@ -13,7 +13,7 @@ import xarray as xr
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
 from echopype.clean import remove_background_noise
-
+import pprint
 
 def print_help():
     help_text = """
@@ -167,6 +167,12 @@ def main():
             snr_threshold=args.snr_threshold,
         )
 
+        # Pretty-print args to logger
+        args_dict = vars(args)
+        pretty_args = pprint.pformat(args_dict)
+        logger.info(f"\naa-clean args:\n{pretty_args}")
+
+        logger.info(f"Generating {args.output_path.resolve()} with aa-clean. Passing nc path to stdin...")
         # Print output path to stdout for piping
         print(args.output_path.resolve())
 

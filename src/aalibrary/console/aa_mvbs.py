@@ -12,7 +12,7 @@ from loguru import logger
 import echopype as ep  # make sure echopype is installed
 from echopype.clean import remove_background_noise
 import sys
-import signal
+import pprint
 import xarray as xr
 
 def print_help():
@@ -247,6 +247,10 @@ def main():
                 if args.flox_kwargs else {}
             ),
         )
+        # Pretty-print args to logger
+        args_dict = vars(args)
+        pretty_args = pprint.pformat(args_dict)
+        logger.info(f"\naa-mvbs args:\n{pretty_args}")
         
         print(args.output_path.resolve())
     
