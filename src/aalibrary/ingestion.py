@@ -1000,7 +1000,7 @@ def upload_file_to_gcp_storage_bucket(
 
 
 def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
-    directory: str = "",
+    local_directory_to_upload: str = "",
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
@@ -1014,8 +1014,8 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     NOTE: Assumes that all files share the same metadata.
 
     Args:
-        directory (str, optional): The directory which contains all of the
-            files you want to upload. Defaults to "".
+        local_directory_to_upload (str, optional): The directory which contains
+            all of the files you want to upload. Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
         survey_name (str, optional): The survey name/identifier. Defaults
@@ -1041,19 +1041,34 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             "DIRECTORY ARE FROM THE SAME SHIP, SURVEY, AND ECHOSOUNDER."
         )
     )
-    directory = os.path.normpath(directory)
+    local_directory_to_upload = os.path.normpath(local_directory_to_upload)
     # Check that the directory exists
     check_for_assertion_errors(
-        directory=directory,
+        directory=local_directory_to_upload,
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
     )
+    # normalize ship name
+    ship_name_normalized = helpers.normalize_ship_name(ship_name)
+    if debug:
+        print(f"NORMALIZED SHIP NAME: {ship_name_normalized}")
+        print(f"LOCAL DIRECTORY TO UPLOAD: {local_directory_to_upload}")
+    assert gcp_bucket is not None, "Please provide a gcp_bucket object."
     # Check (glob) for raw and idx files.
-    raw_files = [x for x in glob.glob(os.sep.join([directory, "*.raw"]))]
-    idx_files = [x for x in glob.glob(os.sep.join([directory, "*.idx"]))]
-    bot_files = [x for x in glob.glob(os.sep.join([directory, "*.bot"]))]
-    netcdf_files = [x for x in glob.glob(os.sep.join([directory, "*.nc"]))]
+    print("CHECKING DIRECTORY FOR RAW, IDX, BOT, AND NETCDF FILES...")
+    raw_files = [
+        x for x in glob.glob(os.sep.join([local_directory_to_upload, "*.raw"]))
+    ]
+    idx_files = [
+        x for x in glob.glob(os.sep.join([local_directory_to_upload, "*.idx"]))
+    ]
+    bot_files = [
+        x for x in glob.glob(os.sep.join([local_directory_to_upload, "*.bot"]))
+    ]
+    netcdf_files = [
+        x for x in glob.glob(os.sep.join([local_directory_to_upload, "*.nc"]))
+    ]
     # Create vars for use later.
     raw_upload_count = 0
     idx_upload_count = 0
@@ -1069,38 +1084,15 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     )
 
     # Upload each raw file to gcp
-    print("UPLOADING RAW FILES...")
-    for raw_file in raw_files:
-        file_name = raw_file.split(os.sep)[-1]
-        print(f"\tUPLOADING RAW FILE {file_name}")
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="raw",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-        raw_file_exists = cloud_utils.check_if_file_exists_in_gcp(
-            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-        )
-        if raw_file_exists:
-            print(
-                (
-                    f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT"
-                    f" `{gcp_storage_bucket_location}`"
-                )
-            )
-        else:
+    if len(raw_files) > 0:
+        for raw_file in tqdm(raw_files, desc="Uploading raw files"):
+            file_name = raw_file.split(os.sep)[-1]
             # Upload raw to GCP at the correct storage bucket location.
+            # The function already checks if the file exists.
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name,
                 file_type="raw",
-                ship_name=ship_name,
+                ship_name=ship_name_normalized,
                 survey_name=survey_name,
                 echosounder=echosounder,
                 file_location=raw_file,
@@ -1109,7 +1101,6 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            # TODO: create custom object for raw files that are local.
             # metadata.create_and_upload_metadata_df(
             #     file_name=file_name,
             #     file_type="raw",
@@ -1121,41 +1112,18 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             #     debug=debug,
             # )
             raw_upload_count += 1
-    print(f"{raw_upload_count} RAW FILES UPLOADED.")
+        print(f"{raw_upload_count} RAW FILES UPLOADED.")
 
     # Upload each idx file to gcp
-    print("UPLOADING IDX FILES...")
-    for idx_file in idx_files:
-        file_name = idx_file.split(os.sep)[-1]
-        print(f"\tUPLOADING IDX FILE {file_name}")
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="idx",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-        idx_file_exists = cloud_utils.check_if_file_exists_in_gcp(
-            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-        )
-        if idx_file_exists:
-            print(
-                (
-                    f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT"
-                    f" `{gcp_storage_bucket_location}`"
-                )
-            )
-        else:
+    if len(idx_files) > 0:
+        for idx_file in tqdm(idx_files, desc="Uploading idx files"):
+            file_name = idx_file.split(os.sep)[-1]
             # Upload idx to GCP at the correct storage bucket location.
+            # The function already checks if the file exists.
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name,
                 file_type="idx",
-                ship_name=ship_name,
+                ship_name=ship_name_normalized,
                 survey_name=survey_name,
                 echosounder=echosounder,
                 file_location=idx_file,
@@ -1165,41 +1133,18 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 debug=debug,
             )
             idx_upload_count += 1
-    print(f"{idx_upload_count} IDX FILES UPLOADED.")
+        print(f"{idx_upload_count} IDX FILES UPLOADED.")
 
     # Upload each bot file to gcp
-    print("UPLOADING BOT FILES...")
-    for bot_file in bot_files:
-        file_name = bot_file.split(os.sep)[-1]
-        print(f"\tUPLOADING BOT FILE {file_name}")
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="bot",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-        bot_file_exists = cloud_utils.check_if_file_exists_in_gcp(
-            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-        )
-        if bot_file_exists:
-            print(
-                (
-                    f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT "
-                    f"`{gcp_storage_bucket_location}`"
-                )
-            )
-        else:
+    if len(bot_files) > 0:
+        for bot_file in tqdm(bot_files, desc="Uploading bot files"):
+            file_name = bot_file.split(os.sep)[-1]
             # Upload idx to GCP at the correct storage bucket location.
+            # The function already checks if the file exists.
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name,
                 file_type="bot",
-                ship_name=ship_name,
+                ship_name=ship_name_normalized,
                 survey_name=survey_name,
                 echosounder=echosounder,
                 file_location=bot_file,
@@ -1209,41 +1154,18 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 debug=debug,
             )
             bot_upload_count += 1
-    print(f"{bot_upload_count} BOT FILES UPLOADED.")
+        print(f"{bot_upload_count} BOT FILES UPLOADED.")
 
     # Upload each netcdf file to gcp
-    print("UPLOADING NETCDF FILES...")
-    for netcdf_file in netcdf_files:
-        file_name = netcdf_file.split(os.sep)[-1]
-        print(f"\tUPLOADING NETCDF FILE {file_name}")
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="netcdf",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-        netcdf_file_exists = cloud_utils.check_if_file_exists_in_gcp(
-            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-        )
-        if netcdf_file_exists:
-            print(
-                (
-                    f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT "
-                    f"`{gcp_storage_bucket_location}`"
-                )
-            )
-        else:
+    if len(netcdf_files) > 0:
+        for netcdf_file in tqdm(netcdf_files, desc="Uploading netcdf files"):
+            file_name = netcdf_file.split(os.sep)[-1]
             # Upload idx to GCP at the correct storage bucket location.
+            # The function already checks if the file exists.
             upload_file_to_gcp_storage_bucket(
                 file_name=file_name,
                 file_type="netcdf",
-                ship_name=ship_name,
+                ship_name=ship_name_normalized,
                 survey_name=survey_name,
                 echosounder=echosounder,
                 file_location=netcdf_file,
@@ -1252,23 +1174,24 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            metadata.create_and_upload_metadata_df_for_netcdf(
-                file_name=file_name,
-                file_type="netcdf",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
-                debug=debug,
-            )
+            # metadata.create_and_upload_metadata_df_for_netcdf(
+            #     file_name=file_name,
+            #     file_type="netcdf",
+            #     ship_name=ship_name_normalized,
+            #     survey_name=survey_name,
+            #     echosounder=echosounder,
+            #     data_source=data_source,
+            #     gcp_bucket=gcp_bucket,
+            #     debug=debug,
+            # )
             netcdf_upload_count += 1
-    print(f"{netcdf_upload_count} NETCDF FILES UPLOADED.")
+        print(f"{netcdf_upload_count} NETCDF FILES UPLOADED.")
 
     print(
         (
-            f"UPLOADS COMPLETE. RAW ({raw_upload_count}) | IDX "
-            f"({idx_upload_count}) | NETCDF ({netcdf_upload_count})"
+            f"UPLOADS COMPLETE\nRAW ({raw_upload_count}) | IDX "
+            f"({idx_upload_count}) | BOT {bot_upload_count} | "
+            f"NETCDF ({netcdf_upload_count})"
         )
     )
 
@@ -1357,6 +1280,7 @@ def download_survey_from_ncei(
     ship_name: str = "",
     survey_name: str = "",
     download_directory: str = "",
+    max_limit: int = None,
     debug: bool = False,
 ):
     """Downloads an entire survey from NCEI to a local directory while
@@ -1371,6 +1295,9 @@ def download_survey_from_ncei(
             specified. Defaults to "".
             NOTE: The directory specified will have the `ship_name/survey_name`
             folders created within it.
+        max_limit (int, optional): The maximum number of random files to
+            download.
+            Defaults to include all files.
         debug (bool, optional): Whether or not you want to print debug
             statements. Defaults to False.
     """
@@ -1394,6 +1321,9 @@ def download_survey_from_ncei(
     )
     print(f"FOUND {len(s3_objects)} FILES.")
 
+    if max_limit is None:
+        max_limit = len(s3_objects)
+
     subdirs = set()
     # Get the subfolders from object keys
     for s3_object in s3_objects:
@@ -1416,8 +1346,8 @@ def download_survey_from_ncei(
     download_directory = os.path.normpath(download_directory)
     print("CREATED DOWNLOAD DIRECTORIES.")
 
-    for idx, object_key in enumerate(tqdm(s3_objects[:5], desc="Downloading")):
-        file_name = object_key.split("/")[-1]
+    for _, object_key in enumerate(tqdm(s3_objects[:max_limit], desc="Downloading")):
+        # file_name = object_key.split("/")[-1]
         local_object_path = object_key.replace("data/raw/", "")
         download_location = os.path.normpath(
             os.sep.join([download_directory, local_object_path])
@@ -1442,6 +1372,24 @@ if __name__ == "__main__":
         ship_name="Reuben_Lasker",
         survey_name="RL2107",
         download_directory="./test_data_dir",
+        max_limit=5,
+        debug=True,
+    )
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+        cloud_utils.setup_gcp_storage_objs(
+            project_id="ggn-nmfs-aa-dev-1",
+            gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
+        )
+    )
+
+    upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
+        local_directory_to_upload="./test_data_dir/Reuben_Lasker/RL2107/EK80/",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="HDD",
+        gcp_bucket=gcp_bucket,
+        debug=True,
     )
 
     # azure_datalake_directory_client = get_data_lake_directory_client(
