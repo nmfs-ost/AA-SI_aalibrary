@@ -28,7 +28,10 @@ nav:
     - "Installation": getting-started/installation.md
     - "Permissions": getting-started/permissions.md
     - "Testing": getting-started/testing.md
-    - "Usage": getting-started/usage.md
+  - "Usage":
+    - "Downloads": usage/downloads.md
+    - "Conversions": usage/conversions.md
+    - "Uploads": usage/uploads.md
   - "Documentation":
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md

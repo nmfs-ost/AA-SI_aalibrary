@@ -13,23 +13,23 @@ if __package__ is None or __package__ == "":
     from ingestion import (
         download_netcdf_file,
         download_raw_file,
-        upload_file_to_gcp_storage_bucket,
     )
     import utils
     import metadata
     from raw_file import RawFile
     from utils.sonar_checker import sonar_checker
+    from egress import upload_file_to_gcp_storage_bucket
 else:
     # uses current package visibility
     from aalibrary.ingestion import (
         download_netcdf_file,
         download_raw_file,
-        upload_file_to_gcp_storage_bucket,
     )
     from aalibrary import utils
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
     from aalibrary.utils.sonar_checker import sonar_checker
+    from aalibrary.egress import upload_file_to_gcp_storage_bucket
 
 
 def convert_local_raw_to_netcdf(

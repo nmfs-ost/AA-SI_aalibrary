@@ -6,6 +6,7 @@ import os
 
 from aalibrary.utils import cloud_utils
 from aalibrary import ingestion, metadata
+import aalibrary.utils.ncei_utils
 
 
 def start():
@@ -149,7 +150,7 @@ def init_test_folder(folder_name: str = "test_data_dir"):
         is_metadata=False,
         debug=False,
     )
-    ingestion.download_single_file_from_aws(
+    aalibrary.utils.ncei_utils.download_single_file_from_aws(
         file_url=(
             "data/raw/Reuben_L"
             "asker/RL2107/metadata/RL2107_EK80_WCSD_EK80-metadata.json"
