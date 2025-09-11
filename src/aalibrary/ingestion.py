@@ -1380,6 +1380,74 @@ def download_survey_from_ncei(
     print(f"DOWNLOAD COMPLETE {os.path.abspath(download_directory)}.")
 
 
+def upload_folder_as_is_to_gcp(
+    local_folder_path: str = "",
+    gcp_bucket: storage.Client.bucket = None,
+    destination_prefix: str = "",
+    debug: bool = False,
+):
+    """Uploads a local folder and its contents to a GCP storage bucket. Copies
+    the folder AS-IS, maintaining the folder structure.
+    NOTE: USE WITH CAUTION. THIS WILL UPLOAD EVERYTHING IN THE FOLDER IN THE
+    SAME MANNER AS THE FOLDER ITSELF. THIS MEANS THAT RETRIEVAL OF THE FILES
+    MIGHT NOT BE POSSIBLE IF THE FOLDER STRUCTURE DOES NOT ADHERE TO AALIBRARY
+    NAMING CONVENTIONS.
+
+    Args:
+        local_folder_path (str): The path to the local folder to upload.
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
+            used to download the file. Defaults to None.
+        destination_prefix (str, optional): Where to place the folder in the
+            storage bucket. Defaults to "".
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+    """
+
+    # normalize the path
+    local_folder_path = os.path.normpath(local_folder_path)
+    # Make sure GCP bucket is setup
+    assert gcp_bucket is not None, "Please provide a gcp_bucket object."
+
+    file_info = {}
+    for root, _, files in os.walk(local_folder_path):
+        for file_name in files:
+            local_file_path = os.path.join(root, file_name)
+            if os.path.isfile(local_file_path):
+                file_size = os.path.getsize(local_file_path)
+                file_info[local_file_path] = (file_size, file_name)
+    file_info = sorted(file_info.items(), key=lambda item: item[1])
+    if debug:
+        pprint(file_info)
+
+    for local_file_path, (file_size, file_name) in file_info:
+        # Calculate the relative path from the local_folder_path
+        relative_path = os.path.relpath(local_file_path, local_folder_path)
+
+        # Construct the GCS blob name
+        if destination_prefix:
+            gcs_blob_name = os.path.join(
+                destination_prefix, relative_path
+            ).replace("\\", "/")
+        else:
+            gcs_blob_name = relative_path.replace("\\", "/")
+
+        # Check if file already exists in GCP
+        file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+            bucket=gcp_bucket, file_path=gcs_blob_name
+        )
+        if file_exists_in_gcp:
+            print(
+                (
+                    f"FILE `{file_name}` ALREADY EXISTS IN GCP AT"
+                    f" `{gcs_blob_name}`. SKIPPING UPLOAD."
+                )
+            )
+        else:
+            blob = gcp_bucket.blob(gcs_blob_name)
+            blob.upload_from_filename(local_file_path)
+            print(f"Uploaded {local_file_path} to {gcs_blob_name}")
+
+
 if __name__ == "__main__":
     # set logging config
     for handler in logging.root.handlers[:]:
@@ -1390,13 +1458,13 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
-    download_survey_from_ncei(
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        download_directory="./test_data_dir",
-        max_limit=5,
-        debug=True,
-    )
+    # download_survey_from_ncei(
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     download_directory="./test_data_dir",
+    #     max_limit=5,
+    #     debug=True,
+    # )
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         cloud_utils.setup_gcp_storage_objs(
             project_id="ggn-nmfs-aa-dev-1",
@@ -1404,14 +1472,20 @@ if __name__ == "__main__":
         )
     )
 
-    upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
-        local_echosounder_directory_to_upload="./test_data_dir/Reuben_Lasker/RL2107/EK80/",
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        echosounder="EK80",
-        data_source="HDD",
+    # upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
+    #     local_echosounder_directory_to_upload="./test_data_dir/Reuben_Lasker/RL2107/EK80/",
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     echosounder="EK80",
+    #     data_source="HDD",
+    #     gcp_bucket=gcp_bucket,
+    #     debug=True,
+    # )
+
+    upload_folder_as_is_to_gcp(
+        local_folder_path="./test_data_dir/Reuben_Lasker/",
         gcp_bucket=gcp_bucket,
-        debug=True,
+        destination_prefix="other/deletable/",
     )
 
     # azure_datalake_directory_client = get_data_lake_directory_client(
