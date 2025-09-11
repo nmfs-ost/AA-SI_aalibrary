@@ -10,7 +10,9 @@ from pathlib import Path
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
 import pprint
+import warnings
     
+warnings.filterwarnings("ignore")
 def print_help():
     help_text = """
     Usage: aa-nc [OPTIONS] INPUT_PATH
