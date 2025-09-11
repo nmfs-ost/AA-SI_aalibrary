@@ -4,7 +4,7 @@ You can use AALibrary to upload your active acoustics data to our GCP environmen
 
 ## Uploading Echosounder Files To GCP
 
-In order to upload relevant Echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet.
+In order to upload selective Echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet. This function maintains the formatting and folder structure that AALibrary uses. This makes retrieval of the files using the AALibrary possible.
 
 ```python
 from aalibrary.egress import (
@@ -29,5 +29,27 @@ upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
 )
 ```
 
-## Uploading A Survey `As-Is` To GCP
+## Uploading A Survey/Folder `As-Is` To GCP
 
+If you would like to upload a folder to the GCP storage bucket as-is, you can use this function.
+
+```python
+from aalibrary.egress import upload_folder_as_is_to_gcp
+from aalibrary.utils.cloud_utils import setup_gcp_storage_objects
+
+# Here we specify the project and bucket we would like to upload to
+gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+    setup_gcp_storage_objs(
+        project_id="ggn-nmfs-aa-dev-1",
+        gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
+    )
+)
+
+# You can also specify a 'destination prefix'; used for putting the folder
+# in a certain place within the bucket.
+upload_folder_as_is_to_gcp(
+    local_folder_path="./test_data_dir/Reuben_Lasker/",
+    gcp_bucket=gcp_bucket,
+    destination_prefix="other/deletable/",
+)
+```
