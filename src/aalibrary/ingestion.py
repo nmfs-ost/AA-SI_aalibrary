@@ -1009,13 +1009,15 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
-    Uploads all of the .raw (and their corresponding .idx) files from a
-    directory into the appropriate location in the GCP storage bucket.
+    Uploads all of the .raw (and their corresponding .idx/.bot/.nc) files from
+    a echosounder directory into the appropriate location in the GCP storage
+    bucket.
     NOTE: Assumes that all files share the same metadata.
 
     Args:
-        local_echosounder_directory_to_upload (str, optional): The directory
-            which contains all of the files you want to upload. Defaults to "".
+        local_echosounder_directory_to_upload (str, optional): The echosounder
+            directory which contains all of the files you want to upload.
+            Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
         survey_name (str, optional): The survey name/identifier. Defaults
