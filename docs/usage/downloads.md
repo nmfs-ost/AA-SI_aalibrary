@@ -1,6 +1,6 @@
-# Usage
+# Downloads
 
-Here are some examples of functions that you can use in this library.
+Here are some examples of download/ingestion functions that you can use in this library.
 
 ## Downloading A Raw File From NCEI
 
@@ -34,6 +34,22 @@ download_raw_file(file_name="2107RL_CW-D20210813-T220732.raw",
                   data_source="NCEI",
                   file_download_directory=".",
                   debug=False)
+```
+
+## Downloading An Entire Survey From NCEI
+
+Sometimes, you will need to download an entire survey from NCEI for analysis. This is possible using the AALibrary. Follow the code snippet below.
+
+!!! note "NOTE"
+    This function will automatically create the appropriate subdirectories within the `download_directory` param that you have specified. For example: within the snippet below, the data will exist in `./test_data_dir/Reuben_Lasker/RL2107/...`
+
+```python
+from aalibrary.ingestion import download_survey_from_ncei
+
+download_survey_from_ncei(ship_name="Reuben_Lasker",
+                          survey_name="RL2107",
+                          download_directory="./test_data_dir",
+                          debug: bool = False)
 ```
 
 ## Downloading A Raw File From Azure Data Lake (OMAO)
@@ -73,30 +89,6 @@ download_specific_file_from_azure(
 
 **NOTE:** Please keep in mind that this method creates a connection every single time you call it.
 
-## Converting A Raw Into Netcdf
-
-In order to convert a raw file into a netcdf, use the following example as a guide:
-
-```python
-from aalibrary import utils
-from aalibrary.ingestion import convert_raw_to_netcdf
-
-# Create a GCP bucket object
-gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
-
-# This function takes care of downloading, converting, and uploading (caching) the netcdf file in gcp.
-convert_raw_to_netcdf(file_name="2107RL_CW-D20210813-T220732.raw",
-                      file_type="raw",
-                      ship_name="Reuben_Lasker",
-                      survey_name="RL2107",
-                      echosounder="EK80",
-                      data_source="NCEI",
-                      file_download_directory="./",
-                      overwrite=False,
-                      gcp_bucket=gcp_bucket,
-                      debug=False)
-```
-
 ## Downloading A Netcdf
 
 Netcdf files (converted over from raw) only exist in the GCP cache as of now. The following example takes care of downloading a particular raw file as netcdf4 (if it had already been converted and cached in GCP, otherwise an error message is thrown):
@@ -120,10 +112,6 @@ download_netcdf_file(
                 gcp_bucket=gcp_bucket,
                 debug=False)
 ```
-
-# Recipes
-
-The following contains common recipes that an end-user might encounter.
 
 ## Downloading Multiple Files From A Survey
 
