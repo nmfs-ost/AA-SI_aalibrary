@@ -7,7 +7,7 @@ You can use AALibrary to upload your active acoustics data to our GCP environmen
 In order to upload relevant Echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet.
 
 ```python
-from aalibrary.ingestion import (
+from aalibrary.egress import (
     upload_local_echosounder_files_from_directory_to_gcp_storage_bucket
 )
 from aalibrary.utils.cloud_utils import setup_gcp_storage_objects
