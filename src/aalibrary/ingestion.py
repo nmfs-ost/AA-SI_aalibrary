@@ -883,9 +883,9 @@ def download_netcdf_file(
 #     gcp_bucket: storage.Client.bucket = None,
 #     debug: bool = False,
 # ):
-#     """Uploads an entire folder to the GCP storage bucket AS-IS. The folder is
+#     """Uploads an entire folder to the GCP storage bucket AS-IS. The folderis
 #     assumed to be the cruise/survey folder.
-#     NOTE: Does not check for metadata, file or folder naming conventions, etc.
+#     NOTE: Does not check for metadata, file or folder naming conventions,etc.
 
 #     Args:
 #         directory_path (str, optional): The directory you would like to copy to
@@ -999,8 +999,8 @@ def upload_file_to_gcp_storage_bucket(
     return
 
 
-def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
-    local_directory_to_upload: str = "",
+def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
+    local_echosounder_directory_to_upload: str = "",
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
@@ -1014,8 +1014,8 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
     NOTE: Assumes that all files share the same metadata.
 
     Args:
-        local_directory_to_upload (str, optional): The directory which contains
-            all of the files you want to upload. Defaults to "".
+        local_echosounder_directory_to_upload (str, optional): The directory
+            which contains all of the files you want to upload. Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
         survey_name (str, optional): The survey name/identifier. Defaults
@@ -1031,8 +1031,6 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             Defaults to False.
     """
 
-    # TODO: see if you can convert to using RawFile object.
-
     # Warn user that this function assumes the same metadata for all files
     # within directory.
     logging.warning(
@@ -1041,33 +1039,53 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             "DIRECTORY ARE FROM THE SAME SHIP, SURVEY, AND ECHOSOUNDER."
         )
     )
-    local_directory_to_upload = os.path.normpath(local_directory_to_upload)
+    local_echosounder_directory_to_upload = os.path.normpath(
+        local_echosounder_directory_to_upload
+    )
     # Check that the directory exists
     check_for_assertion_errors(
-        directory=local_directory_to_upload,
+        directory=local_echosounder_directory_to_upload,
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
     )
+
     # normalize ship name
     ship_name_normalized = helpers.normalize_ship_name(ship_name)
     if debug:
         print(f"NORMALIZED SHIP NAME: {ship_name_normalized}")
-        print(f"LOCAL DIRECTORY TO UPLOAD: {local_directory_to_upload}")
+        print(
+            "LOCAL DIRECTORY TO UPLOAD:"
+            f" {local_echosounder_directory_to_upload}"
+        )
+    # Make sure GCP bucket is setup
     assert gcp_bucket is not None, "Please provide a gcp_bucket object."
+
     # Check (glob) for raw and idx files.
     print("CHECKING DIRECTORY FOR RAW, IDX, BOT, AND NETCDF FILES...")
     raw_files = [
-        x for x in glob.glob(os.sep.join([local_directory_to_upload, "*.raw"]))
+        x
+        for x in glob.glob(
+            os.sep.join([local_echosounder_directory_to_upload, "*.raw"])
+        )
     ]
     idx_files = [
-        x for x in glob.glob(os.sep.join([local_directory_to_upload, "*.idx"]))
+        x
+        for x in glob.glob(
+            os.sep.join([local_echosounder_directory_to_upload, "*.idx"])
+        )
     ]
     bot_files = [
-        x for x in glob.glob(os.sep.join([local_directory_to_upload, "*.bot"]))
+        x
+        for x in glob.glob(
+            os.sep.join([local_echosounder_directory_to_upload, "*.bot"])
+        )
     ]
     netcdf_files = [
-        x for x in glob.glob(os.sep.join([local_directory_to_upload, "*.nc"]))
+        x
+        for x in glob.glob(
+            os.sep.join([local_echosounder_directory_to_upload, "*.nc"])
+        )
     ]
     # Create vars for use later.
     raw_upload_count = 0
@@ -1082,37 +1100,6 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             f" {len(bot_files)} BOT FILES | {len(netcdf_files)} NETCDF FILES"
         )
     )
-
-    # Upload each raw file to gcp
-    if len(raw_files) > 0:
-        for raw_file in tqdm(raw_files, desc="Uploading raw files"):
-            file_name = raw_file.split(os.sep)[-1]
-            # Upload raw to GCP at the correct storage bucket location.
-            # The function already checks if the file exists.
-            upload_file_to_gcp_storage_bucket(
-                file_name=file_name,
-                file_type="raw",
-                ship_name=ship_name_normalized,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=raw_file,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-            # metadata.create_and_upload_metadata_df(
-            #     file_name=file_name,
-            #     file_type="raw",
-            #     ship_name=ship_name,
-            #     survey_name=survey_name,
-            #     echosounder=echosounder,
-            #     data_source=data_source,
-            #     gcp_bucket=gcp_bucket,
-            #     debug=debug,
-            # )
-            raw_upload_count += 1
-        print(f"{raw_upload_count} RAW FILES UPLOADED.")
 
     # Upload each idx file to gcp
     if len(idx_files) > 0:
@@ -1155,6 +1142,37 @@ def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
             )
             bot_upload_count += 1
         print(f"{bot_upload_count} BOT FILES UPLOADED.")
+
+    # Upload each raw file to gcp
+    if len(raw_files) > 0:
+        for raw_file in tqdm(raw_files, desc="Uploading raw files"):
+            file_name = raw_file.split(os.sep)[-1]
+            # Upload raw to GCP at the correct storage bucket location.
+            # The function already checks if the file exists.
+            upload_file_to_gcp_storage_bucket(
+                file_name=file_name,
+                file_type="raw",
+                ship_name=ship_name_normalized,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                file_location=raw_file,
+                gcp_bucket=gcp_bucket,
+                data_source=data_source,
+                is_metadata=False,
+                debug=debug,
+            )
+            # metadata.create_and_upload_metadata_df(
+            #     file_name=file_name,
+            #     file_type="raw",
+            #     ship_name=ship_name,
+            #     survey_name=survey_name,
+            #     echosounder=echosounder,
+            #     data_source=data_source,
+            #     gcp_bucket=gcp_bucket,
+            #     debug=debug,
+            # )
+            raw_upload_count += 1
+        print(f"{raw_upload_count} RAW FILES UPLOADED.")
 
     # Upload each netcdf file to gcp
     if len(netcdf_files) > 0:
@@ -1346,7 +1364,9 @@ def download_survey_from_ncei(
     download_directory = os.path.normpath(download_directory)
     print("CREATED DOWNLOAD DIRECTORIES.")
 
-    for _, object_key in enumerate(tqdm(s3_objects[:max_limit], desc="Downloading")):
+    for _, object_key in enumerate(
+        tqdm(s3_objects[:max_limit], desc="Downloading")
+    ):
         # file_name = object_key.split("/")[-1]
         local_object_path = object_key.replace("data/raw/", "")
         download_location = os.path.normpath(
@@ -1382,8 +1402,8 @@ if __name__ == "__main__":
         )
     )
 
-    upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
-        local_directory_to_upload="./test_data_dir/Reuben_Lasker/RL2107/EK80/",
+    upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
+        local_echosounder_directory_to_upload="./test_data_dir/Reuben_Lasker/RL2107/EK80/",
         ship_name="Reuben_Lasker",
         survey_name="RL2107",
         echosounder="EK80",
