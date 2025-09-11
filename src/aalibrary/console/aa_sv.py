@@ -6,6 +6,7 @@ removing background noise, applying transformations, and saving back.
 
 import argparse
 from html import parser
+import pprint
 import sys
 from pathlib import Path
 
@@ -270,6 +271,12 @@ def main():
             encode_mode=args.encode_mode
         )
 
+
+        # Pretty-print args to logger
+        args_dict = vars(args)
+        pretty_args = pprint.pformat(args_dict)
+        logger.info(f"\naa-sv args:\n{pretty_args}")
+
         # Print output path to stdout for piping
         print(args.output_path.resolve())
 
@@ -333,12 +340,12 @@ def process_file(
     logger.info(f"Saving processed EchoData to {output_path} ...")
 
     ds_Sv = clean_attrs(ds_Sv)
-    ed.Sv = ds_Sv.Sv  
     output_path = output_path.with_suffix(".nc")
     ds_Sv.to_netcdf(output_path)
     
     
     logger.info("Sv computation complete.")
+    logger.info(f"Generating {output_path.resolve()} with aa-sv. Passing nc path to stdin...")
 
 
     if plot:

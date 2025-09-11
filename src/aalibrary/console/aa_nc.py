@@ -9,8 +9,7 @@ import sys
 from pathlib import Path
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
-import termios
-
+import pprint
     
 def print_help():
     help_text = """
@@ -124,7 +123,11 @@ def main():
             sonar_model=args.sonar_model,
         )
         # Print output path to stdout for piping
-
+        # Pretty-print args to logger
+        args_dict = vars(args)
+        pretty_args = pprint.pformat(args_dict)
+        logger.info(f"\naa-nc args:\n{pretty_args}")
+        logger.info(f"Generating {args.output_path.resolve()} with aa-nc. Passing raw path to stdin...")
         print(args.output_path.resolve())
     except Exception as e:
         logger.exception(f"Error during processing: {e}")
