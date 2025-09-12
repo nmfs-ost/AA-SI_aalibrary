@@ -275,7 +275,7 @@ def main():
         # Pretty-print args to logger
         args_dict = vars(args)
         pretty_args = pprint.pformat(args_dict)
-        logger.info(f"\naa-sv args:\n{pretty_args}")
+        logger.debug(f"\naa-sv args:\n{pretty_args}")
 
         # Print output path to stdout for piping
         print(args.output_path.resolve())
@@ -330,22 +330,18 @@ def process_file(
     """
 
 
-    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    logger.info(f"Generating EchoData from NetCDF file :\n {input_path}")
     ed = ep.open_converted(input_path)
 
-    logger.info(f"Computing Sv from EchoData...")
+    logger.info(f"Computing Sv from EchoData")
     ds_Sv = ep.calibrate.compute_Sv(ed, waveform_mode=waveform_mode, encode_mode=encode_mode)
-
-    # Step 4: Save back to NetCDF
-    logger.info(f"Saving processed EchoData to {output_path} ...")
 
     ds_Sv = clean_attrs(ds_Sv)
     output_path = output_path.with_suffix(".nc")
     ds_Sv.to_netcdf(output_path)
     
-    
-    logger.info("Sv computation complete.")
-    logger.info(f"Generating {output_path.resolve()} with aa-sv. Passing nc path to stdin...")
+
+    logger.success(f"Generating {output_path.resolve()} with aa-sv. Passing nc path to stdin...")
 
 
     if plot:

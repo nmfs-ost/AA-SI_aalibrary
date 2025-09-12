@@ -250,7 +250,7 @@ def main():
         # Pretty-print args to logger
         args_dict = vars(args)
         pretty_args = pprint.pformat(args_dict)
-        logger.info(f"\naa-mvbs args:\n{pretty_args}")
+        logger.debug(f"\naa-mvbs args:\n{pretty_args}")
         
         print(args.output_path.resolve())
     
@@ -327,14 +327,14 @@ def process_file(
     """
     # Step 1: Load file into EchoData object
     logger.info(f"Loading NetCDF file {input_path} into EchoData...")
-    ed = xr.open_dataset(input_path)
+    ds = xr.open_dataset(input_path)
 
 
     # Step 3: Apply any additional transformation
     logger.info("Applying mean volume backscattering strength (MVBS) transformations to EchoData...")
     #Sv = ep.calibrate.compute_Sv(ed)
     ds_Sv_mvbs = transform_to_mvbs(
-        ed=ed,
+        ed=ds,
         range_var=range_var,
         range_bin=range_bin,
         ping_time_bin=ping_time_bin,

@@ -170,7 +170,7 @@ def main():
         # Pretty-print args to logger
         args_dict = vars(args)
         pretty_args = pprint.pformat(args_dict)
-        logger.info(f"\naa-clean args:\n{pretty_args}")
+        logger.debug(f"\naa-clean args:\n{pretty_args}")
 
         logger.info(f"Generating {args.output_path.resolve()} with aa-clean. Passing nc path to stdin...")
         # Print output path to stdout for piping

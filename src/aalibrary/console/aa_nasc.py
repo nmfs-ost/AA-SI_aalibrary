@@ -13,6 +13,7 @@ import echopype as ep  # make sure echopype is installed
 from echopype.clean import remove_background_noise
 import sys
 import signal
+import pprint
 
 def print_help():
     help_text = """
@@ -182,7 +183,9 @@ def main():
             closed=args.closed,
             flox_kwargs=parse_flox_kwargs(args.flox_kwargs)
         )
-
+        # Pretty-print args
+        pretty_args = pprint.pformat(vars(args))
+        logger.debug(f"\naa-nasc args:\n{pretty_args}")
         print(args.output_path.resolve())
     
     except Exception as e:
