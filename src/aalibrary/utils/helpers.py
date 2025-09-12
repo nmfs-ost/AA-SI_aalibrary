@@ -298,7 +298,7 @@ def parse_correct_gcp_storage_bucket_location(
     if debug:
         logging.debug(
             "PARSED GCP_STORAGE_BUCKET_LOCATION: %s",
-            gcp_storage_bucket_location
+            gcp_storage_bucket_location,
         )
 
     return gcp_storage_bucket_location
@@ -418,6 +418,45 @@ def check_for_assertion_errors(**kwargs):
         )
 
 
+def create_azure_config_file(download_directory: str = ""):
+    """Creates a config file for azure storage keys.
+
+    Args:
+        download_directory (str, optional): The directory to store the
+            azure config file. Defaults to "".
+    """
+
+    assert (
+        download_directory != ""
+    ), "Please provide a valid download directory."
+    download_directory = os.path.normpath(download_directory)
+    assert os.path.isdir(download_directory), (
+        f"Directory location `{download_directory}` is not found to be a"
+        " valid dir, please reformat it."
+    )
+
+    azure_config_file_path = os.path.join(
+        download_directory, "azure_config.ini"
+    )
+
+    empty_config_str = """[DEFAULT]
+azure_storage_account_name = 
+azure_storage_account_key = 
+azure_account_url = 
+azure_connection_string = """
+
+    with open(
+        azure_config_file_path, "w", encoding="utf-8"
+    ) as azure_config_file:
+        azure_config_file.write(empty_config_str)
+
+    print(
+        f"Please fill out the azure config file at: {azure_config_file_path}"
+    )
+    return azure_config_file_path
+
+
 if __name__ == "__main__":
-    print(string.punctuation)
-    print(normalize_ship_name("Reuben Lasker"))
+    # print(string.punctuation)
+    # print(normalize_ship_name("Reuben Lasker"))
+    create_azure_config_file(download_directory="./test_data_dir/")
