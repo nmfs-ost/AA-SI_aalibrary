@@ -262,7 +262,11 @@ def main():
         
         args.output_path = args.output_path.with_stem(args.output_path.stem + "_Sv")
         args.output_path = args.output_path.with_suffix(".nc")
-        
+        # Pretty-print args to logger
+        args_dict = vars(args)
+        pretty_args = pprint.pformat(args_dict)
+        logger.debug(f"Executing aa-sv configured with [OPTIONS]:\n{pretty_args}\n* ( Each aa-sv associated option_name may be overridden using --option_name value )" )
+
         process_file(
             input_path=args.input_path,
             output_path=args.output_path,
@@ -272,10 +276,6 @@ def main():
         )
 
 
-        # Pretty-print args to logger
-        args_dict = vars(args)
-        pretty_args = pprint.pformat(args_dict)
-        logger.debug(f"\naa-sv args:\n{pretty_args}")
 
         # Print output path to stdout for piping
         print(args.output_path.resolve())
