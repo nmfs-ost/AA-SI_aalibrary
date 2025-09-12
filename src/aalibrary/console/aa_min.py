@@ -99,10 +99,12 @@ def main():
     # Default output: append _mask to stem (mirrors aa-mvbs pattern)
     if args.output_path is None:
         args.output_path = args.input_path
-    args.output_path = args.output_path.with_stem(args.output_path.stem + "_maskimpulsenoise")
+    args.output_path = args.output_path.with_stem(args.output_path.stem + "_mask-impulse-noise")
     args.output_path = args.output_path.with_suffix(".nc")
     logger.info(f"Output path set to: {args.output_path}")
-
+    # Pretty-print args
+    pretty_args = pprint.pformat(vars(args))
+    logger.debug(f"Executing aa-min configured with [OPTIONS]:\n{pretty_args}\n* ( Each aa-min associated option_name may be overridden using --option_name value )" )
     # Call processor
     try:
         process_file(
@@ -114,9 +116,7 @@ def main():
             range_var=args.range_var,
             use_index_binning=args.use_index_binning,
         )
-        # Pretty-print args
-        pretty_args = pprint.pformat(vars(args))
-        logger.debug(f"\naa-min args:\n{pretty_args}")
+        logger.success(f"Generated {args.output_path.resolve()} with aa-min.")
         # Emit the output path to stdout for piping
         print(args.output_path.resolve())
 
@@ -139,7 +139,7 @@ def process_file(
     attach the mask back to the original dataset, and save to NetCDF.
     """
    # Step 1: Load file into EchoData object
-    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
+    logger.info(f"Loading NetCDF file {input_path} into xarray dataset")
     ds_Sv = xr.open_dataset(input_path)
 
 
@@ -152,13 +152,9 @@ def process_file(
         use_index_binning=use_index_binning,
     )
 
-
-
-
     # Save to NetCDF
     logger.info("Saving dataset (with the attached impulse noise mask) to %s ...", output_path)
     da_mask.to_netcdf(output_path, mode="w", format="NETCDF4")
-    logger.info("Save complete.")
 
 
 if __name__ == "__main__":
