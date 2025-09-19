@@ -25,3 +25,8 @@ The data stored in the NCEI s3 bucket is an archive, and open-data. This means t
 ## Ocean Data Lake (OMAO) Access
 
 !!! info "Not Available"
+
+## GCP BigQuery Metadata Database
+
+This is the metadata database that was created for use in conjunction with AALibrary.
+Please reach out to <a href="mailto:hannan.khan@noaa.gov" target="_blank">Hannan Khan</a> for access and usage.
