@@ -75,12 +75,8 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Enable debug mode.")
 
     args = parser.parse_args()
-
-    # Pretty-print args to logger
-    args_dict = vars(args)
-    pretty_args = pprint.pformat(args_dict)
-    logger.info(f"\naa-raw args:\n{pretty_args}")
-
+    pretty_args = pprint.pformat(vars(args))
+    logger.debug(f"Executing aa-raw configured with [OPTIONS]:\n{pretty_args}\n* ( Each aa-raw associated option_name may be overridden using --option_name value )" )
     download_raw_file_from_ncei(
         file_name=args.file_name,
         file_type=args.file_type,
@@ -95,7 +91,10 @@ def main():
 
     # This is the output that may be piped elsewhere.
     downloaded_raw_file_path = Path(args.file_download_directory) / args.file_name
-    logger.info(f"Generating {downloaded_raw_file_path.resolve()} with aa-raw. Passing raw path to stdin...")
+    logger.success(f"Desired data fetched and saved to\n\t{downloaded_raw_file_path.resolve()}")
+    logger.success(f"Piping saved .raw path to stdout ⟶")
+
+    # Emit the output path to stdout for piping
     print(f"{downloaded_raw_file_path.resolve()}")
     sys.exit(0)
 

@@ -10,7 +10,9 @@ from pathlib import Path
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
 import pprint
+import warnings
     
+warnings.filterwarnings("ignore")
 def print_help():
     help_text = """
     Usage: aa-nc [OPTIONS] INPUT_PATH
@@ -87,7 +89,7 @@ def main():
         # Read from stdin
 
         args.input_path = Path(sys.stdin.readline().strip())
-        logger.debug(f"aa-nc recieving input path: {args.input_path}")
+        logger.success(f"⟶ Recieving .raw path from stdin :\n\t{args.input_path}")
 
     if not args.input_path.exists():
         logger.error(f"File '{args.input_path}' does not exist.")
@@ -116,7 +118,11 @@ def main():
     # ---------------------------
     # Process file
     # ---------------------------
+    
     try:
+        args_dict = vars(args)
+        pretty_args = pprint.pformat(args_dict)
+        logger.debug(f"Executing aa-nc configured with [OPTIONS]:\n{pretty_args}\n* ( Each aa-nc associated option_name may be overridden using --option_name value )" )
         process_file(
             input_path=args.input_path,
             output_path=args.output_path,
@@ -124,10 +130,8 @@ def main():
         )
         # Print output path to stdout for piping
         # Pretty-print args to logger
-        args_dict = vars(args)
-        pretty_args = pprint.pformat(args_dict)
-        logger.info(f"\naa-nc args:\n{pretty_args}")
-        logger.info(f"Generating {args.output_path.resolve()} with aa-nc. Passing raw path to stdin...")
+       
+        logger.success(f"Generated {args.output_path.resolve()} with aa-nc.")
         print(args.output_path.resolve())
     except Exception as e:
         logger.exception(f"Error during processing: {e}")
@@ -153,17 +157,13 @@ def process_file(input_path: Path, output_path: Path, sonar_model: str):
     Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
     """
 
-    logger.info(f"Loading RAW file {input_path} into EchoData...")
+    logger.info(f"Loading {input_path} into EchoData...")
     ed = ep.open_raw(
         raw_file=input_path, sonar_model=sonar_model
     )  # add sonar_type if needed
 
     ed.to_netcdf(save_path=output_path.with_suffix(".nc"))
 
-    # Step 4: Save back to NetCDF
-    logger.info(f"Saving processed EchoData to {output_path} ...")
-
-    logger.info("Processing complete.")
 
 
 if __name__ == "__main__":
