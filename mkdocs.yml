@@ -8,6 +8,7 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+    - content.tabs.link
   icon:
     repo: fontawesome/brands/git-alt
 
