@@ -2,6 +2,9 @@
 
 You can use AALibrary to upload your active acoustics data to our GCP environments. Make sure you have the necessary permissions for the correct GCP environment before you start.
 
+!!! info "INFO: More Info On GCP"
+    For more information on GCP implementation, please take a look at the [GCP Overview Page](../documentation/gcp_overview.md).
+
 ## Uploading Echosounder Files To GCP
 
 In order to upload selective Echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet. This function maintains the formatting and folder structure that AALibrary uses. This makes retrieval of the files using the AALibrary possible.
