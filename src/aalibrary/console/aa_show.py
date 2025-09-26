@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""
+Console tool for converting RAW files to NetCDF using Echopype,
+removing background noise, applying transformations, and saving back.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+from loguru import logger
+import echopype as ep  # make sure echopype is installed
+import pprint
+import xarray as xr
+from echopype.consolidate import add_depth
+
+def print_help():
+    help_text = """
+
+
+    Options:
+    INPUT_PATH                  Path to the .raw or .netcdf4 file. (Required)
+    -o, --output_path           Path to save processed output.
+                                Default: overwrites .nc files or creates a new .nc for RAW.
+
+    Description:
+
+
+    Example:
+
+    """
+    print(help_text)
+
+
+def main():
+
+    if len(sys.argv) == 1:
+        if not sys.stdin.isatty():
+            stdin_data = sys.stdin.readline().strip()
+            if stdin_data:
+                sys.argv.append(stdin_data)
+        else:
+            print_help()
+            sys.exit(0)
+
+    parser = argparse.ArgumentParser(
+        description="Reveals data within nc files."
+    )
+
+    # ---------------------------
+    # Required file arguments
+    # ---------------------------
+    parser.add_argument(
+        "input_path", type=Path, help="Path to the .raw or .netcdf4 file."
+    )
+    
+    args = parser.parse_args()
+
+       # ---------------------------
+    # Validate input
+    # ---------------------------
+
+    if args.input_path is None:
+        # Read from stdin
+        args.input_path = Path(sys.stdin.readline().strip())
+        logger.info(f"Read input path from stdin: {args.input_path}")
+
+    if not args.input_path.exists():
+        logger.error(f"File '{args.input_path}' does not exist.")
+        sys.exit(1)
+
+    allowed_extensions = {".netcdf4": "netcdf", ".nc": "netcdf"}
+
+    ext = args.input_path.suffix.lower()
+    if ext not in allowed_extensions:
+        logger.error(
+            f"'{args.input_path.name}' is not a supported file type. "
+            f"Allowed: {', '.join(allowed_extensions.keys())}"
+        )
+        sys.exit(1)
+
+
+    # ---------------------------
+    # Process file
+    # ---------------------------
+    try:
+        
+
+        # Pretty-print args to logger
+        args_dict = vars(args)
+        pretty_args = pprint.pformat(args_dict)
+        logger.debug(f"\naa-show args:\n{pretty_args}")
+        
+        process_file(input_path=args.input_path)
+
+    except Exception as e:
+        logger.exception(f"Error during processing: {e}")
+        sys.exit(1)
+
+
+
+def process_file(input_path: Path):
+    """
+    Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
+    """
+
+    logger.info(f"Loading NetCDF file {input_path} into xarray dataset")
+    ds = xr.open_dataset(input_path)
+
+
+        
+    # Print a summary (variables, coordinates, attributes)
+    print(ds)
+
+if __name__ == "__main__":
+    main()

@@ -14,24 +14,24 @@ if __package__ is None or __package__ == "":
     from ingestion import (
         download_netcdf_file,
         download_raw_file,
-        upload_file_to_gcp_storage_bucket,
     )
     import utils
     import metadata
     from raw_file import RawFile
     from utils.sonar_checker import sonar_checker
     from utils.ices import echopype_ek80_raw_to_ices_netcdf, echopype_ek60_raw_to_ices_netcdf
+    from egress import upload_file_to_gcp_storage_bucket
 else:
     # uses current package visibility
     from aalibrary.ingestion import (
         download_netcdf_file,
         download_raw_file,
-        upload_file_to_gcp_storage_bucket,
     )
     from aalibrary import utils
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
     from aalibrary.utils.sonar_checker import sonar_checker
+    from aalibrary.egress import upload_file_to_gcp_storage_bucket
     from aalibrary.utils.ices import echopype_ek80_raw_to_ices_netcdf, echopype_ek60_raw_to_ices_netcdf
 
 
@@ -70,31 +70,46 @@ def convert_local_raw_to_netcdf(
 
     # Make sure the echosounder specified matches the raw file data.
     if echosounder.lower() == "ek80":
+        assert sonar_checker.is_EK80(
+            raw_file=raw_file_location, storage_options={}
+        ), (
         assert sonar_checker.is_EK80(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "ek60":
+        assert sonar_checker.is_EK60(
+            raw_file=raw_file_location, storage_options={}
+        ), (
         assert sonar_checker.is_EK60(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "azfp6":
-        assert sonar_checker.is_AZFP6(raw_file=raw_file_location), (
+        assert sonar_checker.is_AZFP6(
+            raw_file=raw_file_location, storage_options={}
+        ), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "azfp":
-        assert sonar_checker.is_AZFP(raw_file=raw_file_location), (
+        assert sonar_checker.is_AZFP(
+            raw_file=raw_file_location, storage_options={}
+        ), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "ad2cp":
-        assert sonar_checker.is_AD2CP(raw_file=raw_file_location), (
+        assert sonar_checker.is_AD2CP(
+            raw_file=raw_file_location, storage_options={}
+        ), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "er60":
+        assert sonar_checker.is_ER60(
+            raw_file=raw_file_location, storage_options={}
+        ), (
         assert sonar_checker.is_ER60(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
@@ -250,9 +265,7 @@ def convert_raw_to_netcdf(
     """
     # TODO: Implement an 'upload' param default to True.
 
-    _, _, gcp_bucket = (
-        utils.cloud_utils.setup_gcp_storage_objs()
-    )
+    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
     _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
@@ -290,7 +303,7 @@ def convert_raw_to_netcdf(
         logging.info(
             "FILE `%s` DOES NOT EXIST AS NETCDF. DOWNLOADING/CONVERTING/"
             "UPLOADING RAW...",
-            rf.raw_file_name
+            rf.raw_file_name,
         )
 
         # Download the raw file.
@@ -304,7 +317,6 @@ def convert_raw_to_netcdf(
             echosounder=rf.echosounder,
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
-            is_metadata=rf.is_metadata,
             debug=rf.debug,
         )
 

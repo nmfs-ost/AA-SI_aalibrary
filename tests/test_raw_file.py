@@ -245,20 +245,17 @@ class TestRawFileVarsHandling:
         """Tests the variable-handling for RawFile class when there is a null
         `file_download_directory` param."""
 
-        assert (
-            RawFile(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=".",
-                is_metadata=self.is_metadata,
-                debug=self.debug,
-            ).file_download_directory
-            == (os.path.normpath(self.file_download_directory) + os.sep)
-        ), (
+        assert RawFile(
+            file_name=self.file_name,
+            file_type=self.file_type,
+            ship_name=self.ship_name,
+            survey_name=self.survey_name,
+            echosounder=self.echosounder,
+            data_source=self.data_source,
+            file_download_directory=".",
+            is_metadata=self.is_metadata,
+            debug=self.debug,
+        ).file_download_directory == os.getcwd(), (
             "RawFile is not handling an empty `file_download_directory` "
             "correctly."
         )
@@ -281,7 +278,7 @@ class TestRawFileVarsHandling:
                 is_metadata=self.is_metadata,
                 debug=self.debug,
             ).file_download_directory
-            == (os.path.normpath(self.file_download_directory) + os.sep)
+            == os.getcwd()
         ), (
             "RawFile is not normalizing the `file_download_directory` "
             "param correctly."
@@ -340,15 +337,18 @@ class TestRawFileVarsHandling:
 
     def test_file_download_paths(self):
         assert (
-            self.rf.raw_file_download_path == "2107RL_CW-D20210919-T172430.raw"
+            self.rf.raw_file_download_path
+            == os.getcwd() + os.sep + "2107RL_CW-D20210919-T172430.raw"
         ), "RawFile object has created an incorrect raw file download path."
         assert (
-            self.rf.idx_file_download_path == "2107RL_CW-D20210919-T172430.idx"
+            self.rf.idx_file_download_path
+            == os.getcwd() + os.sep + "2107RL_CW-D20210919-T172430.idx"
         ), "RawFile object has created an incorrect idx file download path."
         assert (
-            self.rf.bot_file_download_path == "2107RL_CW-D20210919-T172430.bot"
+            self.rf.bot_file_download_path
+            == os.getcwd() + os.sep + "2107RL_CW-D20210919-T172430.bot"
         ), "RawFile object has created an incorrect bot file download path."
         assert (
             self.rf.netcdf_file_download_path
-            == "2107RL_CW-D20210919-T172430.nc"
+            == os.getcwd() + os.sep + "2107RL_CW-D20210919-T172430.nc"
         ), "RawFile object has created an incorrect netcdf file download path."

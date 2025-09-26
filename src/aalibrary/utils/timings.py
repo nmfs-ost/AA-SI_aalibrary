@@ -11,7 +11,7 @@ import time
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
-    from .. import ingestion
+    from . import ncei_utils
     from ..utils import cloud_utils, helpers
 else:
     # uses current package visibility
@@ -37,7 +37,7 @@ def time_ingestion_and_upload_from_ncei(
 
     for i in range(n):
         start_time = time.time()
-        ingestion.download_single_file_from_aws(
+        ncei_utils.download_single_file_from_aws(
             file_url=ncei_file_url,
             download_location=download_location,
         )

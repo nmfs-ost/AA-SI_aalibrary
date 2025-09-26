@@ -2,6 +2,8 @@
 echopype
 boto3
 gcsfs
+hvplot
+panel
 google-api-python-client
 google-cloud
 google-cloud-bigquery
@@ -17,8 +19,10 @@ tqdm
 azure-storage-file-datalake>=12.7.0
 zarr==2.8.3
 inquirerpy
+loguru
 numcodecs==0.15.1
 mkdocs
 mkdocs-material
 mkdocstrings-python
 mkdocs-git-revision-date-localized-plugin
+nbformat

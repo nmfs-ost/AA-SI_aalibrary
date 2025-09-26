@@ -1,7 +1,6 @@
 """This script contains functions used to ingest Active Acoustics data into GCP
 from various sources such as AWS buckets and Azure Data Lake."""
 
-import glob
 import sys
 import os
 import logging
@@ -13,24 +12,29 @@ from azure.storage.filedatalake import (
     DataLakeFileClient,
 )
 import boto3
+from tqdm import tqdm
+
+from aalibrary.egress import upload_file_to_gcp_storage_bucket
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
     import utils
-    from utils import cloud_utils, helpers
-    from utils.cloud_utils import get_data_lake_directory_client
-    import config
     import metadata
     from raw_file import RawFile
+    from utils import cloud_utils, helpers
+    from utils.cloud_utils import get_data_lake_directory_client
+    from utils.ncei_utils import download_single_file_from_aws
+    from utils.helpers import check_for_assertion_errors
 else:
     # uses current package visibility
     from aalibrary import utils
-    from aalibrary import config
-    from aalibrary.utils import cloud_utils, helpers
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
+    from aalibrary.utils import cloud_utils, helpers
     from aalibrary.utils.cloud_utils import get_data_lake_directory_client
+    from aalibrary.utils.ncei_utils import download_single_file_from_aws
+    from aalibrary.utils.helpers import check_for_assertion_errors
 
 
 def download_file_from_azure_directory(
@@ -280,55 +284,6 @@ def download_raw_file_from_azure(
         return
 
 
-def download_single_file_from_aws(
-    file_url: str = "",
-    download_location: str = "",
-):
-    """Safely downloads a file from AWS storage bucket, aka the NCEI
-    repository.
-
-    Args:
-        file_url (str, optional): The file url. Defaults to "".
-        download_location (str, optional): The local download location for the
-            file. Defaults to "".
-    """
-
-    try:
-        _, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
-    except Exception as e:
-        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n{%s}", e)
-        raise
-
-    # We replace the beginning of common file paths
-    file_url = utils.cloud_utils.get_object_key_for_s3(file_url=file_url)
-    file_name = helpers.get_file_name_from_url(file_url)
-
-    # Check if the file exists in s3
-    file_exists = utils.cloud_utils.check_if_file_exists_in_s3(
-        object_key=file_url,
-        s3_resource=s3_resource,
-        s3_bucket_name=s3_bucket.name,
-    )
-
-    if file_exists:
-        # Finally download the file.
-        try:
-            logging.info("DOWNLOADING `%s`...", file_name)
-            s3_bucket.download_file(file_url, download_location)
-            logging.info(
-                "DOWNLOADED `%s` TO `%s`", file_name, download_location
-            )
-        except Exception as e:
-            logging.error(
-                "ERROR DOWNLOADING FILE `%s` DUE TO\n%s", file_name, e
-            )
-            raise
-    else:
-        logging.error(
-            "FILE %s DOES NOT EXIST IN NCEI S3 BUCKET. SKIPPING...", file_name
-        )
-
-
 def download_raw_file_from_ncei(
     file_name: str = "",
     file_type: str = "raw",
@@ -484,7 +439,7 @@ def download_raw_file_from_ncei(
         return
 
 
-def download_survey_from_ncei(
+def _download_survey_from_ncei(
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
@@ -556,73 +511,6 @@ def download_survey_from_ncei(
             file_download_directory=file_download_directory,
             upload_to_gcp=upload_to_gcp,
             debug=debug,
-        )
-
-
-def check_for_assertion_errors(**kwargs):
-    """Checks for errors in the kwargs provided."""
-
-    if "file_name" in kwargs:
-        assert kwargs["file_name"] != "", (
-            "Please provide a valid file name with the file extension"
-            " (ex. `2107RL_CW-D20210813-T220732.raw`)"
-        )
-    if "file_type" in kwargs:
-        assert kwargs["file_type"] != "", "Please provide a valid file type."
-        assert kwargs["file_type"] in config.VALID_FILETYPES, (
-            "Please provide a valid file type (extension) "
-            f"from the following: {config.VALID_FILETYPES}"
-        )
-    if "ship_name" in kwargs:
-        assert kwargs["ship_name"] != "", (
-            "Please provide a valid ship name "
-            "(Title_Case_With_Underscores_As_Spaces)."
-        )
-    if "survey_name" in kwargs:
-        assert (
-            kwargs["survey_name"] != ""
-        ), "Please provide a valid survey name."
-    if "echosounder" in kwargs:
-        assert (
-            kwargs["echosounder"] != ""
-        ), "Please provide a valid echosounder."
-        assert kwargs["echosounder"] in config.VALID_ECHOSOUNDERS, (
-            "Please provide a valid echosounder from the "
-            f"following: {config.VALID_ECHOSOUNDERS}"
-        )
-    if "data_source" in kwargs:
-        assert kwargs["data_source"] != "", (
-            "Please provide a valid data source from the "
-            f"following: {config.VALID_DATA_SOURCES}"
-        )
-        assert kwargs["data_source"] in config.VALID_DATA_SOURCES, (
-            "Please provide a valid data source from the "
-            f"following: {config.VALID_DATA_SOURCES}"
-        )
-    if "file_download_directory" in kwargs:
-        assert (
-            kwargs["file_download_directory"] != ""
-        ), "Please provide a valid file download directory."
-        assert os.path.isdir(kwargs["file_download_directory"]), (
-            f"File download location `{kwargs['file_download_directory']}` is"
-            " not found to be a valid dir, please reformat it."
-        )
-    if "gcp_bucket" in kwargs:
-        assert kwargs["gcp_bucket"] is not None, (
-            "Please provide a gcp_bucket object with"
-            " `utils.cloud_utils.setup_gcp_storage()`"
-        )
-    if "directory" in kwargs:
-        assert kwargs["directory"] != "", "Please provide a valid directory."
-        assert os.path.isdir(kwargs["directory"]), (
-            f"Directory location `{kwargs['directory']}` is not found to be a"
-            " valid dir, please reformat it."
-        )
-    if "data_lake_directory_client" in kwargs:
-        assert kwargs["data_lake_directory_client"] is not None, (
-            f"The data lake directory client cannot be a"
-            f" {type(kwargs['data_lake_directory_client'])} object. It needs "
-            "to be of the type `DataLakeDirectoryClient`."
         )
 
 
@@ -923,375 +811,28 @@ def download_netcdf_file(
         raise FileNotFoundError
 
 
-def upload_file_to_gcp_storage_bucket(
-    file_name: str = "",
-    file_type: str = "",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    file_location: str = "",
-    gcp_bucket: storage.Client.bucket = None,
-    data_source: str = "",
-    is_metadata: bool = False,
-    is_survey_metadata: bool = False,
-    debug: bool = False,
-):
-    """Safely uploads a local file to the storage bucket. Will also check to
-    see if the file already exists.
+# def upload_entire_cruise_directory_to_gcp_storage_bucket(
+#     directory_path: str = "",
+#     gcp_bucket: storage.Client.bucket = None,
+#     debug: bool = False,
+# ):
+#     """Uploads an entire folder to the GCP storage bucket AS-IS. The folderis
+#     assumed to be the cruise/survey folder.
+#     NOTE: Does not check for metadata, file or folder naming conventions,etc.
 
-    Args:
-        file_name (str, optional): The file name (includes extension).
-            Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
-            Defaults to "".
-        ship_name (str, optional): The ship name associated with this survey.
-            Defaults to "".
-        survey_name (str, optional): The survey name/identifier. Defaults
-            to "".
-        echosounder (str, optional): The echosounder used to gather the data.
-            Defaults to "".
-        file_location (str, optional): The local location of the file.
-            Defaults to "".
-        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
-            used to upload the file. Defaults to None.
-        data_source (str, optional): The source of the data. Can be one of
-            ["NCEI", "OMAO", "HDD", "TEST"]. Defaults to "".
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
-        is_survey_metadata (bool, optional): Whether or not the file is a
-            metadata file associated with a survey. The files are stored at
-            the survey level, in the `metadata/` folder. Defaults to False.
-        debug (bool, optional): Whether or not to print debug statements.
-            Defaults to False.
-    """
-
-    gcp_storage_bucket_location = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name,
-            file_type=file_type,
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_metadata=is_metadata,
-            is_survey_metadata=is_survey_metadata,
-            debug=debug,
-        )
-    )
-
-    # Check if the file exists in GCP
-    file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
-        gcp_bucket, file_path=gcp_storage_bucket_location
-    )
-    if file_exists_in_gcp:
-        print(
-            (
-                f"FILE `{file_name}` ALREADY EXISTS IN GCP AT "
-                f"`{gcp_storage_bucket_location}`."
-            )
-        )
-    else:
-        try:
-            print(
-                (
-                    f"UPLOADING FILE `{file_name}` TO GCP AT"
-                    f" `{gcp_storage_bucket_location}`..."
-                )
-            )
-            # Upload to storage bucket.
-            utils.cloud_utils.upload_file_to_gcp_bucket(
-                bucket=gcp_bucket,
-                blob_file_path=gcp_storage_bucket_location,
-                local_file_path=file_location,
-                debug=debug,
-            )
-            print("UPLOADED.")
-        except Exception as e:
-            logging.error(
-                "COULD NOT UPLOAD FILE %s TO GCP (%s) STORAGE BUCKET DUE TO "
-                "THE FOLLOWING ERROR:\n%s",
-                file_name,
-                gcp_storage_bucket_location,
-                e,
-            )
-
-    return
-
-
-def upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
-    directory: str = "",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    data_source: str = "",
-    gcp_bucket: storage.Client.bucket = None,
-    debug: bool = False,
-):
-    """ENTRYPOINT FOR END-USERS
-    Uploads all of the .raw (and their corresponding .idx) files from a
-    directory into the appropriate location in the GCP storage bucket.
-    NOTE: Assumes that all files share the same metadata.
-
-    Args:
-        directory (str, optional): The directory which contains all of the
-            files you want to upload. Defaults to "".
-        ship_name (str, optional): The ship name associated with this survey.
-            Defaults to "".
-        survey_name (str, optional): The survey name/identifier. Defaults
-            to "".
-        echosounder (str, optional): The echosounder used to gather the data.
-            Defaults to "".
-        data_source (str, optional): The source of the file. Necessary due to
-            the way the storage bucket is organized. Can be one of
-            ["NCEI", "OMAO", "HDD"]. Defaults to "".
-        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
-            used to download the file. Defaults to None.
-        debug (bool, optional): Whether or not to print debug statements.
-            Defaults to False.
-    """
-
-    # TODO: see if you can convert to using RawFile object.
-
-    # Warn user that this function assumes the same metadata for all files
-    # within directory.
-    logging.warning(
-        (
-            "WARNING: THIS FUNCTION ASSUMES THAT ALL FILES WITHIN THIS "
-            "DIRECTORY ARE FROM THE SAME SHIP, SURVEY, AND ECHOSOUNDER."
-        )
-    )
-    directory = os.path.normpath(directory)
-    # Check that the directory exists
-    check_for_assertion_errors(
-        directory=directory,
-        ship_name=ship_name,
-        survey_name=survey_name,
-        echosounder=echosounder,
-    )
-    # Check (glob) for raw and idx files.
-    raw_files = [x for x in glob.glob(os.sep.join([directory, "*.raw"]))]
-    idx_files = [x for x in glob.glob(os.sep.join([directory, "*.idx"]))]
-    bot_files = [x for x in glob.glob(os.sep.join([directory, "*.bot"]))]
-    netcdf_files = [x for x in glob.glob(os.sep.join([directory, "*.nc"]))]
-    # Create vars for use later.
-    raw_upload_count = 0
-    idx_upload_count = 0
-    bot_upload_count = 0
-    netcdf_upload_count = 0
-
-    # Let the user know how many of each file has been found to upload.
-    print(
-        (
-            f"FOUND {len(raw_files)} RAW FILES | {len(idx_files)} IDX FILES |"
-            f" {len(bot_files)} BOT FILES | {len(netcdf_files)} NETCDF FILES"
-        )
-    )
-
-    # Upload each raw file to gcp
-    print("UPLOADING RAW FILES...")
-    for raw_file in raw_files:
-        file_name = raw_file.split(os.sep)[-1]
-        print(f"\tUPLOADING RAW FILE {file_name}")
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="raw",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-        raw_file_exists = cloud_utils.check_if_file_exists_in_gcp(
-            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-        )
-        if raw_file_exists:
-            print(
-                (
-                    f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT"
-                    f" `{gcp_storage_bucket_location}`"
-                )
-            )
-        else:
-            # Upload raw to GCP at the correct storage bucket location.
-            upload_file_to_gcp_storage_bucket(
-                file_name=file_name,
-                file_type="raw",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=raw_file,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-            # TODO: create custom object for raw files that are local.
-            # metadata.create_and_upload_metadata_df(
-            #     file_name=file_name,
-            #     file_type="raw",
-            #     ship_name=ship_name,
-            #     survey_name=survey_name,
-            #     echosounder=echosounder,
-            #     data_source=data_source,
-            #     gcp_bucket=gcp_bucket,
-            #     debug=debug,
-            # )
-            raw_upload_count += 1
-    print(f"{raw_upload_count} RAW FILES UPLOADED.")
-
-    # Upload each idx file to gcp
-    print("UPLOADING IDX FILES...")
-    for idx_file in idx_files:
-        file_name = idx_file.split(os.sep)[-1]
-        print(f"\tUPLOADING IDX FILE {file_name}")
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="idx",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-        idx_file_exists = cloud_utils.check_if_file_exists_in_gcp(
-            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-        )
-        if idx_file_exists:
-            print(
-                (
-                    f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT"
-                    f" `{gcp_storage_bucket_location}`"
-                )
-            )
-        else:
-            # Upload idx to GCP at the correct storage bucket location.
-            upload_file_to_gcp_storage_bucket(
-                file_name=file_name,
-                file_type="idx",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=idx_file,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-            idx_upload_count += 1
-    print(f"{idx_upload_count} IDX FILES UPLOADED.")
-
-    # Upload each bot file to gcp
-    print("UPLOADING BOT FILES...")
-    for bot_file in bot_files:
-        file_name = bot_file.split(os.sep)[-1]
-        print(f"\tUPLOADING BOT FILE {file_name}")
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="bot",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-        bot_file_exists = cloud_utils.check_if_file_exists_in_gcp(
-            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-        )
-        if bot_file_exists:
-            print(
-                (
-                    f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT "
-                    f"`{gcp_storage_bucket_location}`"
-                )
-            )
-        else:
-            # Upload idx to GCP at the correct storage bucket location.
-            upload_file_to_gcp_storage_bucket(
-                file_name=file_name,
-                file_type="bot",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=bot_file,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-            bot_upload_count += 1
-    print(f"{bot_upload_count} BOT FILES UPLOADED.")
-
-    # Upload each netcdf file to gcp
-    print("UPLOADING NETCDF FILES...")
-    for netcdf_file in netcdf_files:
-        file_name = netcdf_file.split(os.sep)[-1]
-        print(f"\tUPLOADING NETCDF FILE {file_name}")
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type="netcdf",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-        )
-        netcdf_file_exists = cloud_utils.check_if_file_exists_in_gcp(
-            bucket=gcp_bucket, file_path=gcp_storage_bucket_location
-        )
-        if netcdf_file_exists:
-            print(
-                (
-                    f"\tFILE ALREADY EXISTS IN THE GCP STORAGE BUCKET AT "
-                    f"`{gcp_storage_bucket_location}`"
-                )
-            )
-        else:
-            # Upload idx to GCP at the correct storage bucket location.
-            upload_file_to_gcp_storage_bucket(
-                file_name=file_name,
-                file_type="netcdf",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                file_location=netcdf_file,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
-                is_metadata=False,
-                debug=debug,
-            )
-            metadata.create_and_upload_metadata_df_for_netcdf(
-                file_name=file_name,
-                file_type="netcdf",
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                gcp_bucket=gcp_bucket,
-                debug=debug,
-            )
-            netcdf_upload_count += 1
-    print(f"{netcdf_upload_count} NETCDF FILES UPLOADED.")
-
-    print(
-        (
-            f"UPLOADS COMPLETE. RAW ({raw_upload_count}) | IDX "
-            f"({idx_upload_count}) | NETCDF ({netcdf_upload_count})"
-        )
-    )
+#     Args:
+#         directory_path (str, optional): The directory you would like to copy to
+#             the storage bucket. Defaults to "".
+#         gcp_bucket (storage.Client.bucket, optional): The storage bucket object
+#             used for uploading. Defaults to None.
+#         debug (bool, optional): Whether or not to print debug statements.
+#             Defaults to False.
+#     """
+#     # Get all files in the directory_path
+#     all_files_paths = []
+#     for root, _, files in os.walk(directory_path):
+#         for file in files:
+#             all_files_paths.append(os.path.join(root, file))
 
 
 def find_and_upload_survey_metadata_from_s3(
@@ -1374,6 +915,90 @@ def find_data_source_for_file():
     # TODO: Check OMAO Data Lake
 
 
+def download_survey_from_ncei(
+    ship_name: str = "",
+    survey_name: str = "",
+    download_directory: str = "",
+    max_limit: int = None,
+    debug: bool = False,
+):
+    """Downloads an entire survey from NCEI to a local directory while
+    maintaining folder structure.
+
+    Args:
+        ship_name (str, optional): The ship name. Defaults to "".
+        survey_name (str, optional): The name of the survey you would like to
+            download. Defaults to "".
+        download_directory (str, optional): The directory to which the files
+            will be downloaded. Creates a directory in the cwd if not
+            specified. Defaults to "".
+            NOTE: The directory specified will have the `ship_name/survey_name`
+            folders created within it.
+        max_limit (int, optional): The maximum number of random files to
+            download.
+            Defaults to include all files.
+        debug (bool, optional): Whether or not you want to print debug
+            statements. Defaults to False.
+    """
+
+    if download_directory == "":
+        # Create a directory in the cwd
+        download_directory = os.sep.join(
+            [os.path.normpath("./"), f"{ship_name}", f"{survey_name}"]
+        )
+
+    if debug:
+        logging.debug("FORMATTED DOWNLOAD DIRECTORY: %s", download_directory)
+
+    # Get all s3 objects for the survey
+    print(f"GETTING ALL S3 OBJECTS FOR SURVEY {survey_name}...")
+    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
+    s3_objects = cloud_utils.list_all_objects_in_s3_bucket_location(
+        prefix=f"data/raw/{ship_name}/{survey_name}/",
+        s3_resource=s3_resource,
+        return_full_paths=True,
+    )
+    print(f"FOUND {len(s3_objects)} FILES.")
+
+    if max_limit is None:
+        max_limit = len(s3_objects)
+
+    subdirs = set()
+    # Get the subfolders from object keys
+    for s3_object in s3_objects:
+        # Skip folders
+        if s3_object.endswith("/"):
+            continue
+        # Get the subfolder structure from the object key
+        subfolder_key = os.sep.join(
+            s3_object.replace("data/raw/", "").split("/")[:-1]
+        )
+        subdirs.add(subfolder_key)
+    for subdir in subdirs:
+        os.makedirs(os.sep.join([download_directory, subdir]), exist_ok=True)
+
+    # Create the directory if it doesn't exist.
+    if not os.path.isdir(download_directory):
+        print(f"CREATING download_directory `{download_directory}`")
+        os.makedirs(download_directory, exist_ok=True)
+    # normalize the path
+    download_directory = os.path.normpath(download_directory)
+    print("CREATED DOWNLOAD DIRECTORIES.")
+
+    for _, object_key in enumerate(
+        tqdm(s3_objects[:max_limit], desc="Downloading")
+    ):
+        # file_name = object_key.split("/")[-1]
+        local_object_path = object_key.replace("data/raw/", "")
+        download_location = os.path.normpath(
+            os.sep.join([download_directory, local_object_path])
+        )
+        download_single_file_from_aws(
+            file_url=object_key, download_location=download_location
+        )
+    print(f"DOWNLOAD COMPLETE {os.path.abspath(download_directory)}.")
+
+
 if __name__ == "__main__":
     # set logging config
     for handler in logging.root.handlers[:]:
@@ -1383,6 +1008,35 @@ if __name__ == "__main__":
         level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
+    )
+    # download_survey_from_ncei(
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     download_directory="./test_data_dir",
+    #     max_limit=5,
+    #     debug=True,
+    # )
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+        cloud_utils.setup_gcp_storage_objs(
+            project_id="ggn-nmfs-aa-dev-1",
+            gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
+        )
+    )
+
+    # upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
+    #     local_echosounder_directory_to_upload="./test_data_dir/Reuben_Lasker/RL2107/EK80/",
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     echosounder="EK80",
+    #     data_source="HDD",
+    #     gcp_bucket=gcp_bucket,
+    #     debug=True,
+    # )
+
+    upload_folder_as_is_to_gcp(
+        local_folder_path="./test_data_dir/Reuben_Lasker/",
+        gcp_bucket=gcp_bucket,
+        destination_prefix="other/deletable/",
     )
 
     # azure_datalake_directory_client = get_data_lake_directory_client(
@@ -1421,16 +1075,6 @@ if __name__ == "__main__":
 
     # find_and_upload_survey_metadata_from_s3(
     #     ship_name="Reuben_Lasker", survey_name="RL2107"
-    # )
-
-    # upload_local_raw_and_idx_files_from_directory_to_gcp_storage_bucket(
-    #     directory="./test_data_dir",
-    #     ship_name="Reuben_Lasker",
-    #     survey_name="RL2107",
-    #     echosounder="EK80",
-    #     data_source="NCEI",
-    #     gcp_bucket=gcp_bucket,
-    #     debug=False,
     # )
 
     # survey_stuff = get_all_objects_from_survey_ncei(

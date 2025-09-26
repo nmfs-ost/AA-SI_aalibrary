@@ -8,6 +8,7 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+    - content.tabs.link
   icon:
     repo: fontawesome/brands/git-alt
 
@@ -21,6 +22,8 @@ markdown_extensions:
   - pymdownx.snippets
   - pymdownx.superfences
   - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
 
 nav:
   - "Home": index.md
@@ -28,11 +31,15 @@ nav:
     - "Installation": getting-started/installation.md
     - "Permissions": getting-started/permissions.md
     - "Testing": getting-started/testing.md
-    - "Usage": getting-started/usage.md
+  - "Usage":
+    - "Downloads": usage/downloads.md
+    - "Conversions": usage/conversions.md
+    - "Uploads": usage/uploads.md
   - "Documentation":
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
     - "RawFile": documentation/raw_file.md
+    - "GCP Overview": documentation/gcp_overview.md
   - "Troubleshooting": troubleshooting/troubleshooting.md
   - "About":
     - "License": about/license.md

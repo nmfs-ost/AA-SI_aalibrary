@@ -1,5 +1,6 @@
 """For helper functions."""
 
+import os
 from typing import List
 import json
 import logging
@@ -297,7 +298,7 @@ def parse_correct_gcp_storage_bucket_location(
     if debug:
         logging.debug(
             "PARSED GCP_STORAGE_BUCKET_LOCATION: %s",
-            gcp_storage_bucket_location
+            gcp_storage_bucket_location,
         )
 
     return gcp_storage_bucket_location
@@ -350,6 +351,112 @@ def normalize_ship_name(ship_name: str = "") -> str:
     return ship_name
 
 
+def check_for_assertion_errors(**kwargs):
+    """Checks for errors in the kwargs provided."""
+
+    if "file_name" in kwargs:
+        assert kwargs["file_name"] != "", (
+            "Please provide a valid file name with the file extension"
+            " (ex. `2107RL_CW-D20210813-T220732.raw`)"
+        )
+    if "file_type" in kwargs:
+        assert kwargs["file_type"] != "", "Please provide a valid file type."
+        assert kwargs["file_type"] in config.VALID_FILETYPES, (
+            "Please provide a valid file type (extension) "
+            f"from the following: {config.VALID_FILETYPES}"
+        )
+    if "ship_name" in kwargs:
+        assert kwargs["ship_name"] != "", (
+            "Please provide a valid ship name "
+            "(Title_Case_With_Underscores_As_Spaces)."
+        )
+    if "survey_name" in kwargs:
+        assert (
+            kwargs["survey_name"] != ""
+        ), "Please provide a valid survey name."
+    if "echosounder" in kwargs:
+        assert (
+            kwargs["echosounder"] != ""
+        ), "Please provide a valid echosounder."
+        assert kwargs["echosounder"] in config.VALID_ECHOSOUNDERS, (
+            "Please provide a valid echosounder from the "
+            f"following: {config.VALID_ECHOSOUNDERS}"
+        )
+    if "data_source" in kwargs:
+        assert kwargs["data_source"] != "", (
+            "Please provide a valid data source from the "
+            f"following: {config.VALID_DATA_SOURCES}"
+        )
+        assert kwargs["data_source"] in config.VALID_DATA_SOURCES, (
+            "Please provide a valid data source from the "
+            f"following: {config.VALID_DATA_SOURCES}"
+        )
+    if "file_download_directory" in kwargs:
+        assert (
+            kwargs["file_download_directory"] != ""
+        ), "Please provide a valid file download directory."
+        assert os.path.isdir(kwargs["file_download_directory"]), (
+            f"File download location `{kwargs['file_download_directory']}` is"
+            " not found to be a valid dir, please reformat it."
+        )
+    if "gcp_bucket" in kwargs:
+        assert kwargs["gcp_bucket"] is not None, (
+            "Please provide a gcp_bucket object with"
+            " `utils.cloud_utils.setup_gcp_storage()`"
+        )
+    if "directory" in kwargs:
+        assert kwargs["directory"] != "", "Please provide a valid directory."
+        assert os.path.isdir(kwargs["directory"]), (
+            f"Directory location `{kwargs['directory']}` is not found to be a"
+            " valid dir, please reformat it."
+        )
+    if "data_lake_directory_client" in kwargs:
+        assert kwargs["data_lake_directory_client"] is not None, (
+            f"The data lake directory client cannot be a"
+            f" {type(kwargs['data_lake_directory_client'])} object. It needs "
+            "to be of the type `DataLakeDirectoryClient`."
+        )
+
+
+def create_azure_config_file(download_directory: str = ""):
+    """Creates a config file for azure storage keys.
+
+    Args:
+        download_directory (str, optional): The directory to store the
+            azure config file. Defaults to "".
+    """
+
+    assert (
+        download_directory != ""
+    ), "Please provide a valid download directory."
+    download_directory = os.path.normpath(download_directory)
+    assert os.path.isdir(download_directory), (
+        f"Directory location `{download_directory}` is not found to be a"
+        " valid dir, please reformat it."
+    )
+
+    azure_config_file_path = os.path.join(
+        download_directory, "azure_config.ini"
+    )
+
+    empty_config_str = """[DEFAULT]
+azure_storage_account_name = 
+azure_storage_account_key = 
+azure_account_url = 
+azure_connection_string = """
+
+    with open(
+        azure_config_file_path, "w", encoding="utf-8"
+    ) as azure_config_file:
+        azure_config_file.write(empty_config_str)
+
+    print(
+        f"Please fill out the azure config file at: {azure_config_file_path}"
+    )
+    return azure_config_file_path
+
+
 if __name__ == "__main__":
-    print(string.punctuation)
-    print(normalize_ship_name("Reuben Lasker"))
+    # print(string.punctuation)
+    # print(normalize_ship_name("Reuben Lasker"))
+    create_azure_config_file(download_directory="./test_data_dir/")
