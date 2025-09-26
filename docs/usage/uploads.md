@@ -13,7 +13,7 @@ In order to upload selective Echosounder files (.raw, .idx, .bot, .nc) to GCP, u
 from aalibrary.egress import (
     upload_local_echosounder_files_from_directory_to_gcp_storage_bucket
 )
-from aalibrary.utils.cloud_utils import setup_gcp_storage_objects
+from aalibrary.utils.cloud_utils import setup_gcp_storage_objs
 
 gcp_stor_client, gcp_bucket_name, gcp_bucket = (
     setup_gcp_storage_objs(
@@ -38,7 +38,7 @@ If you would like to upload a folder to the GCP storage bucket as-is, you can us
 
 ```python
 from aalibrary.egress import upload_folder_as_is_to_gcp
-from aalibrary.utils.cloud_utils import setup_gcp_storage_objects
+from aalibrary.utils.cloud_utils import setup_gcp_storage_objs
 
 # Here we specify the project and bucket we would like to upload to
 gcp_stor_client, gcp_bucket_name, gcp_bucket = (
