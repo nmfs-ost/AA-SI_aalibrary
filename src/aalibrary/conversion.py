@@ -4,6 +4,7 @@ import os
 import logging
 
 from google.cloud import storage
+from fsspec.implementations.local import LocalFileSystem
 
 from echopype import open_raw
 
@@ -31,6 +32,7 @@ else:
     from aalibrary import metadata
     from aalibrary.raw_file import RawFile
     from aalibrary.utils.sonar_checker import sonar_checker
+    from aalibrary.utils.ices import echopype_ek80_raw_to_ices_netcdf, echopype_ek60_raw_to_ices_netcdf
 
 
 def convert_local_raw_to_netcdf(
@@ -68,12 +70,12 @@ def convert_local_raw_to_netcdf(
 
     # Make sure the echosounder specified matches the raw file data.
     if echosounder.lower() == "ek80":
-        assert sonar_checker.is_EK80(raw_file=raw_file_location), (
+        assert sonar_checker.is_EK80(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "ek60":
-        assert sonar_checker.is_EK60(raw_file=raw_file_location), (
+        assert sonar_checker.is_EK60(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
@@ -93,7 +95,7 @@ def convert_local_raw_to_netcdf(
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "er60":
-        assert sonar_checker.is_ER60(raw_file=raw_file_location), (
+        assert sonar_checker.is_ER60(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
@@ -157,12 +159,12 @@ def convert_local_raw_to_ices_netcdf(
 
     # Make sure the echosounder specified matches the raw file data.
     if echosounder.lower() == "ek80":
-        assert sonar_checker.is_EK80(raw_file=raw_file_location), (
+        assert sonar_checker.is_EK80(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "ek60":
-        assert sonar_checker.is_EK60(raw_file=raw_file_location), (
+        assert sonar_checker.is_EK60(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
@@ -282,7 +284,6 @@ def convert_raw_to_netcdf(
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
             gcp_bucket=gcp_bucket,
-            is_metadata=rf.is_metadata,
             debug=rf.debug,
         )
     else:
@@ -424,7 +425,6 @@ def convert_raw_to_netcdf_ices(
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
             gcp_bucket=gcp_bucket,
-            is_metadata=rf.is_metadata,
             debug=rf.debug,
         )
     else:
@@ -445,7 +445,6 @@ def convert_raw_to_netcdf_ices(
             echosounder=rf.echosounder,
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
-            is_metadata=rf.is_metadata,
             debug=rf.debug,
         )
 
@@ -504,15 +503,9 @@ if __name__ == "__main__":
     #     netcdf_file_download_directory="./test_data_dir",
     #     echosounder="EK80",
     # )
-    convert_raw_to_netcdf(
-        file_name="2107RL_CW-D20210916-T165047.raw",
-        file_type="raw",
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        echosounder="EK80",
-        data_source="NCEI",
-        file_download_directory="./",
-        gcp_bucket=gcp_bucket,
-        is_metadata=False,
-        debug=True,
+    convert_local_raw_to_ices_netcdf(
+    raw_file_location = "./2107RL_CW-D20210707-T103342.raw",
+    netcdf_file_download_directory = "./",
+    echosounder = "EK80",
+    delete_raw_after= False
     )

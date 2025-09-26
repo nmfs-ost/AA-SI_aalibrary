@@ -1,4 +1,4 @@
-from echopype.utils.io import save_file
+from echopype.utils.io import save_file, validate_output_path
 from echopype.utils.coding import COMPRESSION_SETTINGS
 import netCDF4
 import xarray as xr
@@ -51,9 +51,8 @@ def ragged_data_type_ices(echodata, variable_name: str = "") -> np.ndarray:
         sample_t = []
 
         # Iterate through ping_time to populate sample_t
-        for i, ping_time_val in enumerate(test["ping_time"].values):
+        for i, _ in enumerate(test["ping_time"].values):
             if found_nan_block_mask.isel(ping_time=i):
-                # The index is the one from first_nan_range_sample_indices -1 to find the last valid range_sample before NaN
                 value_to_append = (
                     test["range_sample"].values[
                         first_nan_range_sample_indices.isel(ping_time=i).item()
@@ -67,8 +66,6 @@ def ragged_data_type_ices(echodata, variable_name: str = "") -> np.ndarray:
         sample_t = np.array(sample_t)
 
         all_ping_segments = []
-
-        # Iterate over pings in 'test' DataArray
 
         for i, ping_da in enumerate(test):
             segment = ping_da.isel(range_sample=slice(sample_t[i])).values.transpose()
@@ -186,8 +183,6 @@ def write_ek80_beamgroup_to_netcdf(echodata, export_file):
                 "backscatter_r",
                 sample_t,
                 ("ping_time", "beam", "sub_beam"),
-                zlib=True,
-                complevel=5,
             )
             backscatter_r[:] = ragged_backscatter_r_data[:, i, :]
             backscatter_r.setncattr(
@@ -1094,16 +1089,23 @@ def echopype_ek60_raw_to_ices_netcdf(echodata, export_file):
 
     engine = "netcdf4"
 
+    output_file = validate_output_path(
+        source_file=echodata.source_file,
+        engine=engine,
+        save_path=export_file,
+        output_storage_options={},
+    )
+
     save_file(
         echodata["Top-level"],
-        path=export_file,
+        path=output_file,
         mode="w",
         engine=engine,
         compression_settings=COMPRESSION_SETTINGS[engine],
     )
     save_file(
         echodata["Environment"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Environment",
@@ -1111,7 +1113,7 @@ def echopype_ek60_raw_to_ices_netcdf(echodata, export_file):
     )
     save_file(
         echodata["Platform"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Platform",
@@ -1120,7 +1122,7 @@ def echopype_ek60_raw_to_ices_netcdf(echodata, export_file):
 
     save_file(
         echodata["Platform/NMEA"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Platform/NMEA",
@@ -1129,18 +1131,18 @@ def echopype_ek60_raw_to_ices_netcdf(echodata, export_file):
 
     save_file(
         echodata["Sonar"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Sonar",
         compression_settings=COMPRESSION_SETTINGS[engine],
     )
 
-    echopype_ek60_raw_to_ices_netcdf(echodata, export_file)
+    echopype_ek60_raw_to_ices_netcdf(echodata, output_file)
 
     save_file(
         echodata["Vendor_specific"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Vendor_specific",
@@ -1156,18 +1158,25 @@ def echopype_ek80_raw_to_ices_netcdf(echodata, export_file):
     (echopype.DataArray): Echopype DataArray to be written.
     export_file (str or Path): Path to the NetCDF file.
     """
-
     engine = "netcdf4"
+
+    output_file = validate_output_path(
+        source_file=echodata.source_file,
+        engine=engine,
+        save_path=export_file,
+        output_storage_options={},
+    )
+    
     save_file(
         echodata["Top-level"],
-        path=export_file,
+        path=output_file,
         mode="w",
         engine=engine,
         compression_settings=COMPRESSION_SETTINGS[engine]
     )
     save_file(
         echodata["Environment"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Environment",
@@ -1175,7 +1184,7 @@ def echopype_ek80_raw_to_ices_netcdf(echodata, export_file):
     )
     save_file(
         echodata["Platform"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Platform",
@@ -1183,7 +1192,7 @@ def echopype_ek80_raw_to_ices_netcdf(echodata, export_file):
     )
     save_file(
         echodata["Platform/NMEA"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Platform/NMEA",
@@ -1191,16 +1200,16 @@ def echopype_ek80_raw_to_ices_netcdf(echodata, export_file):
     )
     save_file(
         echodata["Sonar"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Sonar",
         compression_settings=COMPRESSION_SETTINGS[engine]
     )
-    write_ek80_beamgroup_to_netcdf(echodata, export_file)
+    write_ek80_beamgroup_to_netcdf(echodata, output_file)
     save_file(
         echodata["Vendor_specific"],
-        path=export_file,
+        path=output_file,
         mode="a",
         engine=engine,
         group="Vendor_specific",
