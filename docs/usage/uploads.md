@@ -2,6 +2,10 @@
 
 You can use AALibrary to upload your active acoustics data to our GCP environments. Make sure you have the necessary permissions for the correct GCP environment before you start.
 
+There are numerous methods for uploads, each with its own benefits. If uploading over network, the size of the data should be limited to 5 TBs in size, and the upload must take place during a time period where network traffic is minimal. This is done to limit the amount of bandwidth used.
+
+For a detailed description (pros/cons) of all upload tools/options, take a look at the [Data Migration Options Documentation](https://docs.google.com/document/d/1O42DUPIgnoTopwLOBWcLyWYTElzvNT845bYMnpy6O4A/edit?tab=t.0#heading=h.7twvrhkxwqt).
+
 !!! info "INFO: More Info On GCP"
     For more information on GCP implementation, please take a look at the [GCP Overview Page](../documentation/gcp_overview.md).
 
