@@ -35,6 +35,8 @@ nav:
     - "Downloads": usage/downloads.md
     - "Conversions": usage/conversions.md
     - "Uploads": usage/uploads.md
+    - "Configuration": usage/configuration.md
+    - "Scripts": usage/scripts.md
   - "Documentation":
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
@@ -45,6 +47,7 @@ nav:
     - "License": about/license.md
     - "Notice": about/notice.md
     - "Disclaimer": about/disclaimer.md
+    - "External Resources": about/external_resources.md
 
 plugins:
 - search:
