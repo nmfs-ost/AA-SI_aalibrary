@@ -757,10 +757,6 @@ def download_netcdf_file(
             to store your file in. Defaults to "".
         gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
             used to download the file. Defaults to None.
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
