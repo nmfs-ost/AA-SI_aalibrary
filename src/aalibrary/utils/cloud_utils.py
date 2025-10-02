@@ -548,7 +548,7 @@ def bq_query_to_pandas(client: bigquery.Client = None, query: str = ""):
 
 def list_all_objects_in_gcp_bucket_location(
     location: str = "", gcp_bucket: storage.Client.bucket = None
-):
+) -> List[str]:
     """Gets all of the files within a GCP storage bucket location.
 
     Args:
