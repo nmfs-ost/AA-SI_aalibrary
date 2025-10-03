@@ -4,7 +4,6 @@ import os
 import logging
 
 from google.cloud import storage
-from fsspec.implementations.local import LocalFileSystem
 
 from echopype import open_raw
 
