@@ -19,7 +19,10 @@ if __package__ is None or __package__ == "":
     import metadata
     from raw_file import RawFile
     from utils.sonar_checker import sonar_checker
-    from utils.ices import echopype_ek80_raw_to_ices_netcdf, echopype_ek60_raw_to_ices_netcdf
+    from utils.ices import (
+        echopype_ek80_raw_to_ices_netcdf,
+        echopype_ek60_raw_to_ices_netcdf,
+    )
     from egress import upload_file_to_gcp_storage_bucket
 else:
     # uses current package visibility
@@ -32,7 +35,10 @@ else:
     from aalibrary.raw_file import RawFile
     from aalibrary.utils.sonar_checker import sonar_checker
     from aalibrary.egress import upload_file_to_gcp_storage_bucket
-    from aalibrary.utils.ices import echopype_ek80_raw_to_ices_netcdf, echopype_ek60_raw_to_ices_netcdf
+    from aalibrary.utils.ices import (
+        echopype_ek80_raw_to_ices_netcdf,
+        echopype_ek60_raw_to_ices_netcdf,
+    )
 
 
 def convert_local_raw_to_netcdf(
@@ -73,7 +79,6 @@ def convert_local_raw_to_netcdf(
         assert sonar_checker.is_EK80(
             raw_file=raw_file_location, storage_options={}
         ), (
-        assert sonar_checker.is_EK80(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
@@ -81,7 +86,6 @@ def convert_local_raw_to_netcdf(
         assert sonar_checker.is_EK60(
             raw_file=raw_file_location, storage_options={}
         ), (
-        assert sonar_checker.is_EK60(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
@@ -110,7 +114,6 @@ def convert_local_raw_to_netcdf(
         assert sonar_checker.is_ER60(
             raw_file=raw_file_location, storage_options={}
         ), (
-        assert sonar_checker.is_ER60(raw_file=raw_file_location, storage_options={}), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
@@ -139,7 +142,8 @@ def convert_local_raw_to_netcdf(
             "COULD NOT CONVERT `%s` DUE TO ERROR %s", raw_file_location, e
         )
         raise e
-    
+
+
 def convert_local_raw_to_ices_netcdf(
     raw_file_location: str = "",
     netcdf_file_download_directory: str = "",
@@ -174,12 +178,16 @@ def convert_local_raw_to_ices_netcdf(
 
     # Make sure the echosounder specified matches the raw file data.
     if echosounder.lower() == "ek80":
-        assert sonar_checker.is_EK80(raw_file=raw_file_location, storage_options={}), (
+        assert sonar_checker.is_EK80(
+            raw_file=raw_file_location, storage_options={}
+        ), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
     elif echosounder.lower() == "ek60":
-        assert sonar_checker.is_EK60(raw_file=raw_file_location, storage_options={}), (
+        assert sonar_checker.is_EK60(
+            raw_file=raw_file_location, storage_options={}
+        ), (
             f"THE ECHOSOUNDER SPECIFIED `{echosounder}` DOES NOT MATCH THE "
             "ECHOSOUNDER FOUND WITHIN THE RAW FILE."
         )
@@ -195,9 +203,15 @@ def convert_local_raw_to_ices_netcdf(
             raw_file=raw_file_location, sonar_model=echosounder
         )
         if echosounder.lower() == "ek80":
-            echopype_ek80_raw_to_ices_netcdf(echodata=raw_file_echopype, export_file=netcdf_file_download_directory)
+            echopype_ek80_raw_to_ices_netcdf(
+                echodata=raw_file_echopype,
+                export_file=netcdf_file_download_directory,
+            )
         elif echosounder.lower() == "ek60":
-            echopype_ek60_raw_to_ices_netcdf(echodata=raw_file_echopype, export_file=netcdf_file_download_directory)
+            echopype_ek60_raw_to_ices_netcdf(
+                echodata=raw_file_echopype,
+                export_file=netcdf_file_download_directory,
+            )
         print("CONVERTED.")
         if delete_raw_after:
             try:
@@ -355,6 +369,7 @@ def convert_raw_to_netcdf(
             debug=debug,
         )
 
+
 def convert_raw_to_netcdf_ices(
     file_name: str = "",
     file_type: str = "raw",
@@ -403,9 +418,7 @@ def convert_raw_to_netcdf_ices(
             Defaults to False.
     """
 
-    _, _, gcp_bucket = (
-        utils.cloud_utils.setup_gcp_storage_objs()
-    )
+    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
     _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
@@ -443,7 +456,7 @@ def convert_raw_to_netcdf_ices(
         logging.info(
             "FILE `%s` DOES NOT EXIST AS NETCDF. DOWNLOADING/CONVERTING/"
             "UPLOADING RAW...",
-            rf.raw_file_name
+            rf.raw_file_name,
         )
 
         # Download the raw file.
@@ -494,6 +507,7 @@ def convert_raw_to_netcdf_ices(
         #     debug=debug,
         # )
 
+
 if __name__ == "__main__":
     # set up storage objects
     s3_client, s3_resource, s3_bucket = utils.cloud_utils.create_s3_objs()
@@ -516,8 +530,8 @@ if __name__ == "__main__":
     #     echosounder="EK80",
     # )
     convert_local_raw_to_ices_netcdf(
-    raw_file_location = "./2107RL_CW-D20210707-T103342.raw",
-    netcdf_file_download_directory = "./",
-    echosounder = "EK80",
-    delete_raw_after= False
+        raw_file_location="./2107RL_CW-D20210707-T103342.raw",
+        netcdf_file_download_directory="./",
+        echosounder="EK80",
+        delete_raw_after=False,
     )
