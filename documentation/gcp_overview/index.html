@@ -9,10 +9,10 @@
       
       
       
-        <link rel="prev" href="../../documentation/gcp_overview/">
+        <link rel="prev" href="../raw_file/">
       
       
-        <link rel="next" href="../../about/license/">
+        <link rel="next" href="../../troubleshooting/troubleshooting/">
       
       
       <link rel="icon" href="../../assets/noaa_favicon.png">
@@ -20,7 +20,7 @@
     
     
       
-        <title>Troubleshooting - AALibrary</title>
+        <title>GCP Overview - AALibrary</title>
       
     
     
@@ -64,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#troubleshooting" class="md-skip">
+        <a href="#google-cloud-platform-overview" class="md-skip">
           Skip to content
         </a>
       
@@ -99,7 +99,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Troubleshooting
+              GCP Overview
             
           </span>
         </div>
@@ -489,18 +489,20 @@
       
   
   
+    
   
   
+  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
@@ -516,7 +518,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Documentation
@@ -530,7 +532,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../documentation/aalibrary/" class="md-nav__link">
+      <a href="../aalibrary/" class="md-nav__link">
         
   
   
@@ -553,7 +555,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../documentation/utils/" class="md-nav__link">
+      <a href="../utils/" class="md-nav__link">
         
   
   
@@ -576,7 +578,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../documentation/raw_file/" class="md-nav__link">
+      <a href="../raw_file/" class="md-nav__link">
         
   
   
@@ -596,36 +598,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../../documentation/gcp_overview/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    GCP Overview
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
     
   
   
@@ -643,7 +615,7 @@
   
   
   <span class="md-ellipsis">
-    Troubleshooting
+    GCP Overview
     
   </span>
   
@@ -656,7 +628,7 @@
   
   
   <span class="md-ellipsis">
-    Troubleshooting
+    GCP Overview
     
   </span>
   
@@ -679,19 +651,46 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#cloud-errors" class="md-nav__link">
+  <a href="#current-environments-aka-projects-in-gcp" class="md-nav__link">
     <span class="md-ellipsis">
-      Cloud Errors
+      Current Environments (aka ‘Projects’) in GCP
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Cloud Errors">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-bucket-layouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Storage Bucket Layouts
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Storage Bucket Layouts">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-google-cloud-sdk-warning" class="md-nav__link">
+  <a href="#dev-environment-layout" class="md-nav__link">
     <span class="md-ellipsis">
-      The Google Cloud SDK Warning
+      Dev Environment Layout
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prod-environment-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prod Environment Layout
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transfer-appliance-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Transfer Appliance Layout
     </span>
   </a>
   
@@ -702,10 +701,58 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#file-naming-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      File Naming Conventions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      Metadata Database
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -874,19 +921,46 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#cloud-errors" class="md-nav__link">
+  <a href="#current-environments-aka-projects-in-gcp" class="md-nav__link">
     <span class="md-ellipsis">
-      Cloud Errors
+      Current Environments (aka ‘Projects’) in GCP
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Cloud Errors">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-bucket-layouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Storage Bucket Layouts
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Storage Bucket Layouts">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-google-cloud-sdk-warning" class="md-nav__link">
+  <a href="#dev-environment-layout" class="md-nav__link">
     <span class="md-ellipsis">
-      The Google Cloud SDK Warning
+      Dev Environment Layout
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prod-environment-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prod Environment Layout
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transfer-appliance-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Transfer Appliance Layout
     </span>
   </a>
   
@@ -894,6 +968,24 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-naming-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      File Naming Conventions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      Metadata Database
+    </span>
+  </a>
   
 </li>
       
@@ -913,14 +1005,61 @@
 
 
 
-<h1 id="troubleshooting">Troubleshooting</h1>
-<h2 id="cloud-errors">Cloud Errors</h2>
-<h3 id="the-google-cloud-sdk-warning">The <code>Google Cloud SDK</code> Warning</h3>
-<blockquote>
-<p>UserWarning: Your application has authenticated using end user credentials from Google Cloud SDK without a quota project. You might receive a "quota exceeded" or "API not enabled" error. See the following page for troubleshooting: <a href="https://cloud.google.com/docs/authentication/adc-troubleshooting/user-creds">https://cloud.google.com/docs/authentication/adc-troubleshooting/user-creds</a>.</p>
-<p>warnings.warn(_CLOUD_SDK_CREDENTIALS_WARNING)</p>
-</blockquote>
-<p>This is a common warning. It is possible to ignore it, or to actually <a href="https://github.com/googleapis/google-auth-library-python/issues/271#issuecomment-400186626">suppress it</a> if you do not like it. Suppressing this warning is not recommended since it will also lead to other, possibly helpful, warnings being suppressed as well.</p>
+<h1 id="google-cloud-platform-overview">Google Cloud Platform Overview</h1>
+<p>AALibrary serves as a data-fetching tool with many capabilities (such as Python implementation and console-based UI implementation).
+This library provides also provides advanced methods for interacting with the GCP cloud storage buckets/metadata database, to allow users to fetch specific data, perform analyses, and more…</p>
+<h2 id="current-environments-aka-projects-in-gcp">Current Environments (aka ‘Projects’) in GCP</h2>
+<ul>
+<li>ggn-nmfs-aa-dev-1:<ul>
+<li>Used for development purposes for AALibrary.</li>
+<li>Good for testing.</li>
+<li>All data exists in one storage bucket.</li>
+<li>NOTE: NOT a stable environment. Data gets deleted often.</li>
+<li>No workstations available.</li>
+<li>Storage Bucket: ggn-nmfs-aa-dev-1-data</li>
+</ul>
+</li>
+<li>ggn-nmfs-aa-prod-1:<ul>
+<li>Production environment.</li>
+<li>Transfer Appliance files exist in separate bucket (ta_upload)</li>
+<li>No workstations available.</li>
+<li>Storage Buckets: ggn-nmfs-aa-prod-1-data, ta_upload (Files are stored until archival to NCEI)</li>
+</ul>
+</li>
+<li>ggn-nmfs-wsent-prod-1:<ul>
+<li>Used for our workstations.</li>
+</ul>
+</li>
+</ul>
+<h2 id="storage-bucket-layouts">Storage Bucket Layouts</h2>
+<h3 id="dev-environment-layout">Dev Environment Layout</h3>
+<p>Below is the hierarchical layout for the development environment's storage bucket. As you can see, data is organized based on it's metadata. For example, any file relating to a specific survey will only exist within that survey's folder.</p>
+<p>This also means that this layout has a 1:1 mapping of each file to its location in the storage bucket. This makes files easily searchable using AALibrary.</p>
+<p><img alt="dev-env-folder-layout.png" src="../../assets/dev-env-folder-layout.png" /></p>
+<h3 id="prod-environment-layout">Prod Environment Layout</h3>
+<p>The production environments storage bucket also utilizes a similar layout.</p>
+<p><img alt="prod_env_folder_layout.png" src="../../assets/prod_env_folder_layout.png" /></p>
+<h3 id="transfer-appliance-layout">Transfer Appliance Layout</h3>
+<p>This storage bucket (ta_upload) exists within the production environment. The layout is different here compared to the other two storage buckets. There is a hierarchical order present, but instead of viewing <code>/data_source/</code> as a storage entity, it is viewed as a Science Center entity.</p>
+<p>There are two layouts possible here. The first refers to a similar layout that we have in the other storage buckets. This is ideally the layout we would like to reach as a strategic initiative.</p>
+<p><img alt="ta_upload_folder_layout.png" src="../../assets/ta_upload_folder_layout.png" /></p>
+<p>The second layout is <code>dealer's choice</code>. This means that the organization of the folders within this layout is dependent on the FMC that is uploading data. Keep in mind, our goal is to upload all of the data to the cloud, so organization and file naming conventions can be corrected after the upload is done.</p>
+<p><img alt="ta_upload_dealers_choice_layout.png" src="../../assets/ta_upload_dealers_choice_layout.png" /></p>
+<h2 id="file-naming-conventions">File Naming Conventions</h2>
+<p><img alt="file-naming-conventions.png" src="../../assets/file-naming-conventions.png" /></p>
+<p>There are certain file naming conventions that we are trying to normalize here at AASI. For reference, here are the file naming conventions that our storage buckets follow:</p>
+<ul>
+<li>Files should start with with the Survey_Name</li>
+<li>Files should end with the DateTime string:<ul>
+<li>Hours should be in Military time</li>
+</ul>
+</li>
+<li>Applies to Kongsberg echosounder files, other files may use other naming conventions</li>
+</ul>
+<h2 id="metadata-database">Metadata Database</h2>
+<p>We have a metadata database that can hold the same Tugboat metadata for enhanced usage through the AALibrary. (e.g. searching/retrieving files from March 26th, 2024).
+Coriolix Metadata is planned to be added, as more of it becomes available.
+If you would like access to the metadata DB, please see the <a href="../../getting-started/permissions/#gcp-bigquery-metadata-database">permissions page</a>.</p>
 
 
 
@@ -941,7 +1080,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 18, 2025 22:50:53 UTC">August 18, 2025</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 19, 2025 23:46:07 UTC">September 19, 2025</span>
   </span>
 
     

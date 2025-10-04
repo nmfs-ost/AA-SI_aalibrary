@@ -9,10 +9,10 @@
       
       
       
-        <link rel="prev" href="../../documentation/gcp_overview/">
+        <link rel="prev" href="../configuration/">
       
       
-        <link rel="next" href="../../about/license/">
+        <link rel="next" href="../../documentation/aalibrary/">
       
       
       <link rel="icon" href="../../assets/noaa_favicon.png">
@@ -20,7 +20,7 @@
     
     
       
-        <title>Troubleshooting - AALibrary</title>
+        <title>Scripts - AALibrary</title>
       
     
     
@@ -64,7 +64,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#troubleshooting" class="md-skip">
+        <a href="#one-time-scripts" class="md-skip">
           Skip to content
         </a>
       
@@ -99,7 +99,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Troubleshooting
+              Scripts
             
           </span>
         </div>
@@ -329,18 +329,20 @@
       
   
   
+    
   
   
+  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
@@ -356,7 +358,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             Usage
@@ -370,7 +372,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../usage/downloads/" class="md-nav__link">
+      <a href="../downloads/" class="md-nav__link">
         
   
   
@@ -393,7 +395,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../usage/conversions/" class="md-nav__link">
+      <a href="../conversions/" class="md-nav__link">
         
   
   
@@ -416,7 +418,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../usage/uploads/" class="md-nav__link">
+      <a href="../uploads/" class="md-nav__link">
         
   
   
@@ -439,7 +441,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../usage/configuration/" class="md-nav__link">
+      <a href="../configuration/" class="md-nav__link">
         
   
   
@@ -459,10 +461,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../usage/scripts/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Scripts
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -473,6 +497,44 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#scripts-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      Scripts Location
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ncei-metadata-backfilling-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      NCEI Metadata Backfilling Script
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -626,32 +688,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Troubleshooting
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/troubleshooting/" class="md-nav__link">
         
   
   
@@ -662,50 +702,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#cloud-errors" class="md-nav__link">
-    <span class="md-ellipsis">
-      Cloud Errors
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Cloud Errors">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#the-google-cloud-sdk-warning" class="md-nav__link">
-    <span class="md-ellipsis">
-      The Google Cloud SDK Warning
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -874,26 +870,20 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#cloud-errors" class="md-nav__link">
+  <a href="#scripts-location" class="md-nav__link">
     <span class="md-ellipsis">
-      Cloud Errors
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Cloud Errors">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#the-google-cloud-sdk-warning" class="md-nav__link">
-    <span class="md-ellipsis">
-      The Google Cloud SDK Warning
+      Scripts Location
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#ncei-metadata-backfilling-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      NCEI Metadata Backfilling Script
+    </span>
+  </a>
   
 </li>
       
@@ -913,14 +903,16 @@
 
 
 
-<h1 id="troubleshooting">Troubleshooting</h1>
-<h2 id="cloud-errors">Cloud Errors</h2>
-<h3 id="the-google-cloud-sdk-warning">The <code>Google Cloud SDK</code> Warning</h3>
-<blockquote>
-<p>UserWarning: Your application has authenticated using end user credentials from Google Cloud SDK without a quota project. You might receive a "quota exceeded" or "API not enabled" error. See the following page for troubleshooting: <a href="https://cloud.google.com/docs/authentication/adc-troubleshooting/user-creds">https://cloud.google.com/docs/authentication/adc-troubleshooting/user-creds</a>.</p>
-<p>warnings.warn(_CLOUD_SDK_CREDENTIALS_WARNING)</p>
-</blockquote>
-<p>This is a common warning. It is possible to ignore it, or to actually <a href="https://github.com/googleapis/google-auth-library-python/issues/271#issuecomment-400186626">suppress it</a> if you do not like it. Suppressing this warning is not recommended since it will also lead to other, possibly helpful, warnings being suppressed as well.</p>
+<h1 id="one-time-scripts">One-Time Scripts</h1>
+<p>The repository for AALibrary also includes many useful, pre-made scripts that users can run. These scripts serve the purpose of being run once, and usually accomplish small but important tasks. You can take a look below:</p>
+<div class="admonition note">
+<p class="admonition-title">NOTE</p>
+<p>These scripts are self-contained. AALibrary does not have to be installed to run most of these scripts.</p>
+</div>
+<h2 id="scripts-location">Scripts Location</h2>
+<p>Most scripts are located within the repo in the <code>other</code> folder.</p>
+<h2 id="ncei-metadata-backfilling-script">NCEI Metadata Backfilling Script</h2>
+<p>This script is located <a href="">here</a>. It is used for backfilling metadata from NCEI to the Metadata DB located in our GCP environment. You will need to extract all metadata from the NCEI database into an Excel file. The script will then automatically parse through the data in the Excel file and populate the Metadata DB in GCP.</p>
 
 
 
@@ -941,7 +933,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="August 18, 2025 22:50:53 UTC">August 18, 2025</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 1, 2025 01:17:03 UTC">October 1, 2025</span>
   </span>
 
     

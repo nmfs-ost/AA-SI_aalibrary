@@ -12,7 +12,7 @@
         <link rel="prev" href="../conversions/">
       
       
-        <link rel="next" href="../../documentation/aalibrary/">
+        <link rel="next" href="../configuration/">
       
       
       <link rel="icon" href="../../assets/noaa_favicon.png">
@@ -494,6 +494,52 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Scripts
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -598,6 +644,29 @@
   
   <span class="md-ellipsis">
     RawFile
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../documentation/gcp_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    GCP Overview
     
   </span>
   
@@ -744,6 +813,29 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/external_resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    External Resources
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -813,12 +905,18 @@
 
 <h1 id="uploads">Uploads</h1>
 <p>You can use AALibrary to upload your active acoustics data to our GCP environments. Make sure you have the necessary permissions for the correct GCP environment before you start.</p>
+<p>There are numerous methods for uploads, each with its own benefits. If uploading over network, the size of the data should be limited to 5 TBs in size, and the upload must take place during a time period where network traffic is minimal. This is done to limit the amount of bandwidth used.</p>
+<p>For a detailed description (pros/cons) of all upload tools/options, take a look at the <a href="https://docs.google.com/document/d/1O42DUPIgnoTopwLOBWcLyWYTElzvNT845bYMnpy6O4A/edit?tab=t.0#heading=h.7twvrhkxwqt">Data Migration Options Documentation</a>.</p>
+<div class="admonition info">
+<p class="admonition-title">INFO: More Info On GCP</p>
+<p>For more information on GCP implementation, please take a look at the <a href="../../documentation/gcp_overview/">GCP Overview Page</a>.</p>
+</div>
 <h2 id="uploading-echosounder-files-to-gcp">Uploading Echosounder Files To GCP</h2>
 <p>In order to upload selective Echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet. This function maintains the formatting and folder structure that AALibrary uses. This makes retrieval of the files using the AALibrary possible.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.egress</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">upload_local_echosounder_files_from_directory_to_gcp_storage_bucket</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.cloud_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">setup_gcp_storage_objects</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.cloud_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">setup_gcp_storage_objs</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">gcp_stor_client</span><span class="p">,</span> <span class="n">gcp_bucket_name</span><span class="p">,</span> <span class="n">gcp_bucket</span> <span class="o">=</span> <span class="p">(</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">setup_gcp_storage_objs</span><span class="p">(</span>
@@ -839,7 +937,7 @@
 <h2 id="uploading-a-surveyfolder-as-is-to-gcp">Uploading A Survey/Folder <code>As-Is</code> To GCP</h2>
 <p>If you would like to upload a folder to the GCP storage bucket as-is, you can use this function.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.egress</span><span class="w"> </span><span class="kn">import</span> <span class="n">upload_folder_as_is_to_gcp</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.cloud_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">setup_gcp_storage_objects</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.cloud_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">setup_gcp_storage_objs</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Here we specify the project and bucket we would like to upload to</span>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">gcp_stor_client</span><span class="p">,</span> <span class="n">gcp_bucket_name</span><span class="p">,</span> <span class="n">gcp_bucket</span> <span class="o">=</span> <span class="p">(</span>
@@ -877,7 +975,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 11, 2025 18:13:59 UTC">September 11, 2025</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 29, 2025 23:53:09 UTC">September 29, 2025</span>
   </span>
 
     
@@ -895,6 +993,8 @@
             </div>
           
           
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
 <script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
         
@@ -926,7 +1026,7 @@
     
     
       
-      <script id="__config" type="application/json">{"base": "../..", "features": ["search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"base": "../..", "features": ["search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.92b07e13.min.js"></script>
