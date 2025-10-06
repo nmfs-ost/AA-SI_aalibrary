@@ -34,21 +34,11 @@ else:
     )
 
 
-def create_metadata_json_for_raw_files(
-    rf: RawFile = None,
-    debug: bool = False,
-) -> pd.DataFrame:
-    """Creates a JSON object containing metadata for the current user.
-
-    Args:
-        rf (RawFile, optional): The RawFile object associated with this file.
-            Defaults to None.
-        debug (bool, optional): Whether or not to print out the metadata json.
-            Defaults to False.
+def get_current_gcp_user_email() -> str:
+    """Gets the current gcloud user's email.
 
     Returns:
-        pd.DataFrame: The metadata dataframe for the `aalibrary_file_metadata`
-            database table.
+        str: A string containing the current gcloud user's email.
     """
 
     # Gets the current gcloud user's email
@@ -69,6 +59,27 @@ def create_metadata_json_for_raw_files(
             check=False,
         ).stdout
     email = email.replace("\n", "")
+    return email
+
+
+def create_metadata_json_for_raw_files(
+    rf: RawFile = None,
+    debug: bool = False,
+) -> pd.DataFrame:
+    """Creates a JSON object containing metadata for the current user.
+
+    Args:
+        rf (RawFile, optional): The RawFile object associated with this file.
+            Defaults to None.
+        debug (bool, optional): Whether or not to print out the metadata json.
+            Defaults to False.
+
+    Returns:
+        pd.DataFrame: The metadata dataframe for the `aalibrary_file_metadata`
+            database table.
+    """
+    # Get the current user's email
+    email = get_current_gcp_user_email()
 
     # get the survey datetime.
     file_datetime = datetime.strptime(
