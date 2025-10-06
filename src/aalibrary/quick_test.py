@@ -65,6 +65,8 @@ def start():
     echosounder = "EK80"
     data_source = "TEST"
     file_download_directory = "."
+    file_download_location = "./" + file_name
+    idx_file_download_location = file_download_location.replace(".raw", ".idx")
 
     try:
         print("NCEI DOWNLOAD TEST...", end="")
@@ -79,6 +81,8 @@ def start():
             debug=False,
         )
         print("PASSED")
+        os.remove(file_download_location)
+        os.remove(idx_file_download_location)
     except Exception as e:
         print(
             f"NCEI DOWNLOAD TEST FAILED DUE TO THE FOLLOWING ERROR:\n{e}",
