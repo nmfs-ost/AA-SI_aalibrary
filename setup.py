@@ -16,7 +16,7 @@ setup_info = dict(
     url="https://github.com/nmfs-ost/AA-SI_aalibrary",
     download_url="https://github.com/nmfs-ost/AA-SI_aalibrary",
     project_urls={
-        # 'Documentation': 'https://pyglet.readthedocs.io/en/latest',
+        'Documentation': 'https://nmfs-ost.github.io/AA-SI_aalibrary/',
         "Source": "https://github.com/nmfs-ost/AA-SI_aalibrary",
         # 'Tracker': 'https://github.com/pyglet/pyglet/issues',
     },
