@@ -4,6 +4,8 @@ as intended. Also checks to see if a raw file can be downloaded."""
 import sys
 import os
 
+import echopype
+
 from aalibrary.utils import cloud_utils
 from aalibrary import ingestion, metadata
 import aalibrary.utils.ncei_utils
@@ -13,16 +15,16 @@ def start():
     # `gcloud` setup test
     try:
         print("`gcloud` SETUP TEST...", end="")
-        metadata_json = metadata.create_metadata_json_for_raw_files()
+        curr_user_email = metadata.get_current_gcp_user_email()
         assert (
-            metadata_json["UPLOADED_BY"] != ""
+            curr_user_email != ""
         ), "Please login to `gcloud` using `gcloud auth login --no-browser`"
-        assert metadata_json["ECHOPYPE_VERSION"] != "", (
+        assert echopype.__version__ != "", (
             "Please install requirements using `pip install -r src/aalibrary/"
             "requirements.txt`, or you can try reinstalling `aalibrary` to "
             "automatically take care of dependencies."
         )
-        print(f"PASSED\n{metadata_json}")
+        print("PASSED")
     except Exception as e:
         print(
             f"`gcloud` SETUP TEST FAILED DUE TO THE FOLLOWING ERROR:\n{e}",
@@ -32,7 +34,7 @@ def start():
     # CONNECTION TEST: set up storage objects
     try:
         print("GCP CONNECTION TEST...", end="")
-        _, _, gcp_bucket = cloud_utils.setup_gcp_storage_objs()
+        _, _, _ = cloud_utils.setup_gcp_storage_objs()
         print("PASSED")
     except Exception as e:
         print(
@@ -42,7 +44,7 @@ def start():
 
     try:
         print("S3 CONNECTION TEST...", end="")
-        s3_client, s3_resource, s3_bucket = cloud_utils.create_s3_objs()
+        _, _, _ = cloud_utils.create_s3_objs()
         print("PASSED")
     except Exception as e:
         print(
@@ -69,7 +71,6 @@ def start():
             echosounder=echosounder,
             data_source=data_source,
             file_download_directory=file_download_directory,
-            is_metadata=False,
             debug=False,
         )
         print("PASSED")
@@ -80,12 +81,12 @@ def start():
         )
 
 
-def init_test_folder(folder_name: str = "test_data_dir"):
+def init_test_folder(test_folder_name: str = "test_data_dir"):
     """Creates a test folder in the current directory for quick tests and
     downloads test files.
 
     Args:
-        folder_name (str, optional): The name of the folder you want to
+        test_folder_name (str, optional): The name of the folder you want to
             download test files into. Defaults to "test_data_dir".
     """
 
@@ -114,7 +115,6 @@ def init_test_folder(folder_name: str = "test_data_dir"):
         echosounder="EK80",
         data_source="TEST",
         file_download_directory=test_folder_directory,
-        is_metadata=False,
         debug=False,
     )
     ingestion.download_raw_file_from_ncei(
@@ -125,7 +125,6 @@ def init_test_folder(folder_name: str = "test_data_dir"):
         echosounder="EK80",
         data_source="TEST",
         file_download_directory=test_folder_directory,
-        is_metadata=False,
         debug=False,
     )
     ingestion.download_raw_file_from_ncei(
@@ -136,7 +135,6 @@ def init_test_folder(folder_name: str = "test_data_dir"):
         echosounder="EK80",
         data_source="TEST",
         file_download_directory=test_folder_directory,
-        is_metadata=False,
         debug=False,
     )
     ingestion.download_raw_file_from_ncei(
@@ -147,7 +145,6 @@ def init_test_folder(folder_name: str = "test_data_dir"):
         echosounder="EK80",
         data_source="TEST",
         file_download_directory=test_folder_directory,
-        is_metadata=False,
         debug=False,
     )
     aalibrary.utils.ncei_utils.download_single_file_from_aws(
