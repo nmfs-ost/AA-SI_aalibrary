@@ -12,6 +12,11 @@ import aalibrary.utils.ncei_utils
 
 
 def start():
+    """Runs quick tests to verify that the connections are working as intended
+    and checks to see if a raw file can be downloaded.
+    Can also be used to set up the test folder by calling `init_test_folder()`.
+    """
+
     # `gcloud` setup test
     try:
         print("`gcloud` SETUP TEST...", end="")
