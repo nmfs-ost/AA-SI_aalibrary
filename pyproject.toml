@@ -34,11 +34,11 @@ requires-python = ">=3.8"
 
 
 [project.urls]
-Homepage = ""
-Documentation = ""
-Issues = ""
-Repository = ""
-Changelog = ""
+Homepage = "https://github.com/nmfs-ost/AA-SI_aalibrary"
+Documentation = "https://nmfs-ost.github.io/AA-SI_aalibrary/"
+Issues = "https://github.com/nmfs-ost/AA-SI_aalibrary/issues"
+Repository = "https://github.com/nmfs-ost/AA-SI_aalibrary"
+Changelog = "https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/CHANGELOG.md"
 
 [project.scripts]
 aa-raw = "aalibrary.console.aa_raw:main"
