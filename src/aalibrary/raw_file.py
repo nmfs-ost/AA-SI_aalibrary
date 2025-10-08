@@ -7,6 +7,7 @@ import logging
 import os
 import pprint
 from difflib import get_close_matches
+from typing import Union
 
 from google.cloud import storage
 import boto3
@@ -45,18 +46,6 @@ class RawFile:
     valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
         normalize_ship_names=True
     )
-    year_str: str = ""
-    month_str: str = ""
-    date_str: str = ""
-    year: int = None
-    month: int = None
-    date: int = None
-    hour_str: str = ""
-    minute_str: str = ""
-    second_str: str = ""
-    hour: int = None
-    minute: int = None
-    second: int = None
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -445,25 +434,29 @@ class RawFile:
     def _bot_file_exists_in_azure_data_lake(self): ...
     def _netcdf_file_exists_in_azure_data_lake(self): ...
 
-    def get_str_times(self) -> dict:
+    def get_str_times(self) -> Union[dict, None]:
         """Gets the parsed times of the current file in dict format
 
         Returns:
             dict: An OrderedDict containing all of the data collection times
-                (based on name), for this file.
+                (based on name), for this file. If no times are found, returns
+                None.
         """
 
-        temp_dict = OrderedDict(
-            [
-                ("year", self.year_str),
-                ("month", self.month_str),
-                ("date", self.date_str),
-                ("hour", self.hour_str),
-                ("minute", self.minute_str),
-                ("second", self.second_str),
-            ]
-        )
-        return temp_dict
+        try:
+            temp_dict = OrderedDict(
+                [
+                    ("year", self.year_str),
+                    ("month", self.month_str),
+                    ("date", self.date_str),
+                    ("hour", self.hour_str),
+                    ("minute", self.minute_str),
+                    ("second", self.second_str),
+                ]
+            )
+            return temp_dict
+        except AttributeError:
+            return None
 
     def print_times(self) -> str:
         """Prints the parsed times of the current file in dict format.
@@ -472,33 +465,37 @@ class RawFile:
             str: The pretty print version of a string of the current file's
                 data collection datetime (based on file name).
         """
+        try:
+            temp_dict = OrderedDict(
+                [
+                    ("year", self.year),
+                    ("month", self.month),
+                    ("date", self.date),
+                    ("hour", self.hour),
+                    ("minute", self.minute),
+                    ("second", self.second),
+                ]
+            )
 
-        temp_dict = OrderedDict(
-            [
-                ("year", self.year),
-                ("month", self.month),
-                ("date", self.date),
-                ("hour", self.hour),
-                ("minute", self.minute),
-                ("second", self.second),
-            ]
-        )
-
-        return pprint.pformat(temp_dict, indent=4)
+            return pprint.pformat(temp_dict, indent=4)
+        except AttributeError:
+            return f"No datetime string found in file name {self.file_name}."
 
     def get_file_datetime_str(self) -> str:
         """Gets the datetime as a datetime formatted string.
         Format: "%Y-%m-%d %H:%M:%S"
 
         Returns:
-            str: The datetime formatted string.
+            str: The datetime formatted string or empty string if not found.
         """
-
-        datetime_str = (
-            f"{self.year_str}-{self.month_str}-{self.date_str} "
-            f"{self.hour_str}:{self.minute_str}:{self.second_str}"
-        )
-        return datetime_str
+        try:
+            datetime_str = (
+                f"{self.year_str}-{self.month_str}-{self.date_str} "
+                f"{self.hour_str}:{self.minute_str}:{self.second_str}"
+            )
+            return datetime_str
+        except AttributeError:
+            return ""
 
 
 if __name__ == "__main__":
@@ -531,7 +528,24 @@ if __name__ == "__main__":
     )
     print(rf.file_download_directory)
     print(rf.raw_file_download_path)
-
+    rfa = RawFile(
+        file_name="2107RL_CW-D19s970916-T165947.raw",
+        file_type="raw",
+        ship_name="henry b bigelow",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="NCEI",
+        file_download_directory="./test_data_dir",
+        is_metadata=False,
+        debug=True,
+        s3_bucket=s3_bucket,
+        s3_resource=s3_resource,
+        s3_bucket_name=s3_bucket_name,
+        gcp_bucket=gcp_bucket,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_stor_client=gcp_stor_client,
+    )
+    print(rfa.get_file_datetime_str())
     # print(rf)
     # print(rf.bot_file_download_path)
     # print(rf.print_times())
