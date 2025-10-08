@@ -669,6 +669,7 @@ def check_if_tugboat_metadata_json_exists_in_survey(
 
 def get_closest_ncei_formatted_ship_name(
     ship_name: str = "",
+    s3_client: boto3.client = None,
 ) -> Union[str, None]:
     """Gets the closest NCEI formatted ship name to the given ship name.
     NOTE: Only use if the `data_source`=="NCEI".
@@ -677,14 +678,20 @@ def get_closest_ncei_formatted_ship_name(
         ship_name (str, optional): The ship name to search the closest match
             for.
             Defaults to "".
+        s3_client (boto3.client, optional): The client used to perform this
+            operation. Defaults to None, but creates a client for you instead.
 
     Returns:
         Union[str, None]: The NCEI formatted ship name or None, if none
             matched.
     """
 
+    # Create client objects if they dont exist.
+    if s3_client is None:
+        s3_client, _, _ = create_s3_objs()
+
     all_ship_names = get_all_ship_names_in_ncei(
-        normalize=False, return_full_paths=False
+        normalize=False, s3_client=s3_client, return_full_paths=False
     )
     close_matches = get_close_matches(
         ship_name, all_ship_names, n=3, cutoff=0.85
@@ -909,7 +916,8 @@ if __name__ == "__main__":
     download_specific_folder_from_ncei(
         folder_prefix="data/raw/Reuben_Lasker/RL2107/metadata/",
         download_directory="./RL2107_metadata_test/",
-        debug=True)
+        debug=True,
+    )
     # x = get_folder_size_from_s3(
     #     folder_prefix="data/raw/Reuben_Lasker/RL2107/metadata/",
     #     s3_resource=s3_resource,
