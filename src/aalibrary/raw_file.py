@@ -2,6 +2,7 @@
 all of the attributes of a file."""
 
 from collections import OrderedDict
+import re
 import logging
 import os
 import pprint
@@ -44,6 +45,18 @@ class RawFile:
     valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
         normalize_ship_names=True
     )
+    year_str: str = ""
+    month_str: str = ""
+    date_str: str = ""
+    year: int = None
+    month: int = None
+    date: int = None
+    hour_str: str = ""
+    minute_str: str = ""
+    second_str: str = ""
+    hour: int = None
+    minute: int = None
+    second: int = None
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -79,22 +92,23 @@ class RawFile:
         """Creates vars that will add value and can be utilized later."""
 
         # Get the parsed datetime of the file.
-        # For NCEI - according to their format for naming files.
-        if (self.data_source == "NCEI") or (self.data_source == "OMAO"):
+        datetime_regex = r"D\d{8}-T\d{6}"
+        datetime_regex_match = re.search(
+            datetime_regex, self.file_name
+        )
+        if datetime_regex_match:
             # ex. 2107RL_CW-D20211001-T132449.raw
             # TODO: `telegram` within raw file has a time stamp, maybe extract
-
-            temp = self.file_name.lower().split("d")[-1].split(".")[0]
-            self.year_str = temp[:4]
-            self.month_str = temp[4:6]
-            self.date_str = temp[6:8]
+            temp = datetime_regex_match.group()
+            self.year_str = temp[1:5]
+            self.month_str = temp[5:7]
+            self.date_str = temp[7:9]
             self.year = int(self.year_str)
             self.month = int(self.month_str)
             self.date = int(self.date_str)
-            temp = temp.split("t")[-1]
-            self.hour_str = temp[:2]
-            self.minute_str = temp[2:4]
-            self.second_str = temp[4:]
+            self.hour_str = temp[11:13]
+            self.minute_str = temp[13:15]
+            self.second_str = temp[15:]
             self.hour = int(self.hour_str)
             self.minute = int(self.minute_str)
             self.second = int(self.second_str)
