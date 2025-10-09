@@ -937,17 +937,39 @@ def download_survey_from_ncei(
             statements. Defaults to False.
     """
 
+    # User-error-checking
+    # Normalize ship name to NCEI format
+    if ship_name:
+        ship_name = utils.ncei_utils.get_closest_ncei_formatted_ship_name(
+            ship_name
+        )
+
     if download_directory == "":
         # Create a directory in the cwd
         download_directory = os.sep.join(
             [os.path.normpath("./"), f"{ship_name}", f"{survey_name}"]
         )
+    else:
+        download_directory = os.sep.join(
+            [
+                os.path.normpath(download_directory),
+                f"{ship_name}",
+                f"{survey_name}",
+            ]
+        )
+    # normalize the path
+    download_directory = os.path.normpath(download_directory)
+
+    # Create the directory if it doesn't exist.
+    if not os.path.isdir(download_directory):
+        os.makedirs(download_directory, exist_ok=True)
+    print("CREATED DOWNLOAD DIRECTORY.")
 
     if debug:
-        logging.debug("FORMATTED DOWNLOAD DIRECTORY: %s", download_directory)
+        print(f"FORMATTED DOWNLOAD DIRECTORY: {download_directory}")
 
     # Get all s3 objects for the survey
-    print(f"GETTING ALL S3 OBJECTS FOR SURVEY {survey_name}...")
+    print(f"GETTING ALL S3 OBJECTS FOR SURVEY {survey_name}...", end="")
     _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
     s3_objects = cloud_utils.list_all_objects_in_s3_bucket_location(
         prefix=f"data/raw/{ship_name}/{survey_name}/",
@@ -956,9 +978,13 @@ def download_survey_from_ncei(
     )
     print(f"FOUND {len(s3_objects)} FILES.")
 
-    if max_limit is None:
+    # Set the max limit if not specified or if greater than the number of
+    # files.
+    if max_limit is None or max_limit > len(s3_objects):
         max_limit = len(s3_objects)
 
+    # Create all the subdirectories first
+    print("CREATING SUBDIRECTORIES...", end="")
     subdirs = set()
     # Get the subfolders from object keys
     for s3_object in s3_objects:
@@ -967,25 +993,22 @@ def download_survey_from_ncei(
             continue
         # Get the subfolder structure from the object key
         subfolder_key = os.sep.join(
-            s3_object.replace("data/raw/", "").split("/")[:-1]
+            s3_object.replace(
+                f"data/raw/{ship_name}/{survey_name}/", ""
+            ).split("/")[:-1]
         )
         subdirs.add(subfolder_key)
     for subdir in subdirs:
         os.makedirs(os.sep.join([download_directory, subdir]), exist_ok=True)
-
-    # Create the directory if it doesn't exist.
-    if not os.path.isdir(download_directory):
-        print(f"CREATING download_directory `{download_directory}`")
-        os.makedirs(download_directory, exist_ok=True)
-    # normalize the path
-    download_directory = os.path.normpath(download_directory)
-    print("CREATED DOWNLOAD DIRECTORIES.")
+    print("SUBDIRECTORIES CREATED.")
 
     for _, object_key in enumerate(
         tqdm(s3_objects[:max_limit], desc="Downloading")
     ):
         # file_name = object_key.split("/")[-1]
-        local_object_path = object_key.replace("data/raw/", "")
+        local_object_path = object_key.replace(
+            f"data/raw/{ship_name}/{survey_name}/", ""
+        )
         download_location = os.path.normpath(
             os.sep.join([download_directory, local_object_path])
         )
