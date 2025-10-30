@@ -129,12 +129,79 @@ def create_metadata_json_for_raw_files(
     return aalibrary_metadata_df
 
 
-def create_and_upload_metadata_df(
+def create_metadata_json_for_netcdf_files(
+    rf: RawFile = None,
+    debug: bool = False,
+) -> pd.DataFrame:
+    """Creates a JSON object containing metadata for the current user.
+
+    Args:
+        rf (RawFile, optional): The RawFile object associated with this file.
+            Defaults to None.
+        debug (bool, optional): Whether or not to print out the metadata json.
+            Defaults to False.
+
+    Returns:
+        pd.DataFrame: The metadata dataframe for the `aalibrary_file_metadata`
+            database table.
+    """
+
+    # Get the current user's email
+    email = get_current_gcp_user_email()
+
+    # get the survey datetime.
+    file_datetime = datetime.strptime(
+        rf.get_file_datetime_str(), "%Y-%m-%d %H:%M:%S"
+    )
+
+    # calculate the deletion datetime
+    curr_datetime = datetime.now()
+    deletion_datetime = curr_datetime + timedelta(days=90)
+    deletion_datetime = deletion_datetime.strftime("%Y-%m-%d %H:%M:%S")
+
+    metadata_json = {
+        "FILE_NAME": rf.netcdf_file_name,
+        "DATE_CREATED": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
+        "UPLOADED_BY": email,
+        "ECHOPYPE_VERSION": echopype.__version__,
+        "PYTHON_VERSION": sys.version.split(" ")[0],
+        "NUMPY_VERSION": np.version.version,
+        # maybe just add in echopype's reqs.
+        # pip lock file - for current environment
+        "NCEI_CRUISE_ID": rf.survey_name,
+        "GCP_URI": rf.netcdf_gcp_storage_bucket_location,
+        "FILE_DATETIME": file_datetime,
+        "DELETION_DATETIME": deletion_datetime,
+        "ICES_CODE": rf.ices_code,
+    }
+
+    aalibrary_metadata_df = pd.json_normalize(metadata_json)
+    # make sure data types are conserved before upload to BigQuery.
+    aalibrary_metadata_df["DATE_CREATED"] = pd.to_datetime(
+        aalibrary_metadata_df["DATE_CREATED"], format="%Y-%m-%d %H:%M:%S"
+    )
+    aalibrary_metadata_df["FILE_DATETIME"] = pd.to_datetime(
+        aalibrary_metadata_df["FILE_DATETIME"], format="%Y-%m-%d %H:%M:%S"
+    )
+    aalibrary_metadata_df["DELETION_DATETIME"] = pd.to_datetime(
+        aalibrary_metadata_df["DELETION_DATETIME"], format="%Y-%m-%d %H:%M:%S"
+    )
+
+    if debug:
+        print(aalibrary_metadata_df)
+        logging.debug(aalibrary_metadata_df)
+
+    return aalibrary_metadata_df
+
+
+def create_and_upload_metadata_df_for_raw(
     rf: RawFile = None,
     debug: bool = False,
 ):
     """Creates a metadata file with appropriate information. Then uploads it
-    to the correct table in GCP.
+    to the correct table in GCP. Used for .raw files.
 
     Args:
         rf (RawFile, optional): The RawFile object associated with this file.
@@ -148,20 +215,6 @@ def create_and_upload_metadata_df(
         rf=rf,
         debug=debug,
     )
-    # TODO: take care of netcdf files, possibly upload to another table with\
-    # their metadata.
-    # If the file is a netcdf, we extract even more data from its headers.
-    # if netcdf_local_file_location:
-    #     # Extract the metadata
-    #     netcdf_metadata = nc_reader.get_netcdf_header(
-    #         file_path=netcdf_local_file_location
-    #     )
-    #     # Merge the netcdf metadata with the metadata we have created.
-    #     metadata_df.update(netcdf_metadata)
-    # # Extract the metadata string
-    # metadata_json_str = json.dumps(metadata_df)
-    # with open(f"./{file_name}.json", "w") as jf:
-    #     jf.write(metadata_json_str)
 
     # Upload to GCP BigQuery
     metadata_df.to_gbq(
@@ -173,10 +226,33 @@ def create_and_upload_metadata_df(
     return
 
 
-def create_and_upload_metadata_df_for_netcdf():
+def create_and_upload_metadata_df_for_netcdf(
+    rf: RawFile = None,
+    debug: bool = False,
+):
     """Creates a metadata file with appropriate information for netcdf files.
-    Then uploads it to the correct table in GCP."""
-    # TODO: implement
+    Then uploads it to the correct table in GCP.
+
+    Args:
+        rf (RawFile, optional): The RawFile object associated with this file.
+            Defaults to None.
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+    """
+
+    metadata_df = create_metadata_json_for_netcdf_files(
+        rf=rf,
+        debug=debug,
+    )
+
+    # Upload to GCP BigQuery
+    metadata_df.to_gbq(
+        destination_table="metadata.aalibrary_netcdf_metadata",
+        project_id="ggn-nmfs-aa-dev-1",
+        if_exists="append",
+    )
+
+    return
 
 
 # TODO: implement this func at an appropriate place.
@@ -376,7 +452,7 @@ if __name__ == "__main__":
     #     rf=rf,
     #     debug=True,
     # )
-    create_and_upload_metadata_df(
+    create_and_upload_metadata_df_for_raw(
         rf=rf,
         debug=True,
     )
