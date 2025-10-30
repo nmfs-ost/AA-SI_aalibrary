@@ -419,7 +419,7 @@ def check_for_assertion_errors(**kwargs):
 
 
 def create_azure_config_file(download_directory: str = ""):
-    """Creates a config file for azure storage keys.
+    """Creates an empty config file for azure storage keys.
 
     Args:
         download_directory (str, optional): The directory to store the
