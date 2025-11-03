@@ -1,5 +1,4 @@
 {
-  "packageId": "string",
   "details": {
     "additionalProp1": {},
     "additionalProp2": {},
@@ -7,10 +6,8 @@
   },
   "type": "string",
   "cruiseId": "string",
-  "segmentId": "string",
   "masterReleaseDate": "string",
   "ship": "string",
-  "shipUUID": "string",
   "departurePort": "string",
   "departureDate": "string",
   "arrivalPort": "string",
@@ -31,18 +28,6 @@
   "projects": [
     "string"
   ],
-  "omics": {
-    "ncbiAccession": "string",
-    "samplingTypes": [
-      "string"
-    ],
-    "analysesTypes": [
-      "string"
-    ],
-    "omicsComment": "string",
-    "omicsPoc": "string",
-    "trackingURI": "gs://example-bucket/example-cruise/omics"
-  },
   "metadataAuthor": "string",
   "instruments": [
     {
