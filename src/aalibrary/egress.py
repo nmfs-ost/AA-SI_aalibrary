@@ -296,7 +296,7 @@ def upload_folder_as_is_to_gcp(
         if file_exists_in_gcp:
             print(
                 (
-                    f"FILE `{file_name}` ALREADY EXISTS IN GCP AT"
+                    f"INFO: FILE `{file_name}` ALREADY EXISTS IN GCP AT"
                     f" `{gcs_blob_name}`. SKIPPING UPLOAD."
                 )
             )
@@ -371,7 +371,7 @@ def upload_file_to_gcp_storage_bucket(
     if file_exists_in_gcp:
         print(
             (
-                f"FILE `{file_name}` ALREADY EXISTS IN GCP AT "
+                f"INFO: FILE `{file_name}` ALREADY EXISTS IN GCP AT "
                 f"`{gcp_storage_bucket_location}`."
             )
         )

@@ -213,7 +213,7 @@ def download_raw_file_from_azure(
         if rf.raw_file_exists_in_gcp:
             print(
                 (
-                    "RAW FILE ALREADY EXISTS IN GCP AT "
+                    "INFO: RAW FILE ALREADY EXISTS IN GCP AT "
                     f"`{rf.raw_gcp_storage_bucket_location}`"
                 )
             )
@@ -234,7 +234,7 @@ def download_raw_file_from_azure(
                 debug=debug,
             )
             # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_df(
+            metadata.create_and_upload_metadata_df_for_raw(
                 rf=rf,
                 debug=debug,
             )
@@ -242,7 +242,7 @@ def download_raw_file_from_azure(
         if rf.idx_file_exists_in_gcp:
             print(
                 (
-                    "IDX FILE ALREADY EXISTS IN GCP AT "
+                    "INFO: IDX FILE ALREADY EXISTS IN GCP AT "
                     f"`{rf.idx_gcp_storage_bucket_location}`"
                 )
             )
@@ -263,7 +263,7 @@ def download_raw_file_from_azure(
         if rf.bot_file_exists_in_gcp:
             print(
                 (
-                    "BOT FILE ALREADY EXISTS IN GCP AT"
+                    "INFO: BOT FILE ALREADY EXISTS IN GCP AT"
                     f" `{rf.bot_gcp_storage_bucket_location}`"
                 )
             )
@@ -365,7 +365,7 @@ def download_raw_file_from_ncei(
         if rf.raw_file_exists_in_gcp:
             print(
                 (
-                    "RAW FILE ALREADY EXISTS IN GCP AT "
+                    "INFO: RAW FILE ALREADY EXISTS IN GCP AT "
                     f"`{rf.raw_gcp_storage_bucket_location}`"
                 )
             )
@@ -387,7 +387,7 @@ def download_raw_file_from_ncei(
                 debug=rf.debug,
             )
             # Upload the metadata file as well.
-            metadata.create_and_upload_metadata_df(
+            metadata.create_and_upload_metadata_df_for_raw(
                 rf=rf,
                 debug=rf.debug,
             )
@@ -395,7 +395,7 @@ def download_raw_file_from_ncei(
         if rf.idx_file_exists_in_gcp:
             print(
                 (
-                    "IDX FILE ALREADY EXISTS IN GCP AT "
+                    "INFO: IDX FILE ALREADY EXISTS IN GCP AT "
                     f"`{rf.idx_gcp_storage_bucket_location}`"
                 )
             )
@@ -417,7 +417,7 @@ def download_raw_file_from_ncei(
         if rf.bot_file_exists_in_gcp:
             print(
                 (
-                    "BOT FILE ALREADY EXISTS IN GCP AT "
+                    "INFO: BOT FILE ALREADY EXISTS IN GCP AT "
                     f"`{rf.bot_gcp_storage_bucket_location}`"
                 )
             )
@@ -581,7 +581,7 @@ def download_raw_file(
     if rf.raw_file_exists_in_gcp:
         # Inform user if file exists in GCP.
         print(
-            f"FILE `{rf.raw_file_name}` ALREADY EXISTS IN"
+            f"INFO: FILE `{rf.raw_file_name}` ALREADY EXISTS IN"
             " GOOGLE STORAGE BUCKET."
         )
         # Here we download the raw file from GCP. We also check for a netcdf
