@@ -72,3 +72,9 @@ aa-absorption = "aalibrary.console.aa_absorption:main"
 aa-evenness = "aalibrary.console.aa_evenness:main"
 aa-dispersion = "aalibrary.console.aa_dispersion:main"
 aa-center-of-mass = "aalibrary.console.aa_center_of_mass:main"
+aa-aggregation = "aalibrary.console.aa_aggregation:main"
+aa-abundance = "aalibrary.console.aa_abundance:main"
+aa-detect-shoal = "aalibrary.console.aa_detect_shoal:main"
+aa-detect-seafloor = "aalibrary.console.aa_detect_seafloor:main"
+
+
