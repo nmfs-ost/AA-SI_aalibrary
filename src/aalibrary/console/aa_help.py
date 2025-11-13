@@ -3,94 +3,155 @@ import sys
 
 
 def print_console_tools_reference():
-    reference = """
+    reference = r"""
+================================================================================
+ Active Acoustics Console Suite — Field Guide & Piping Playbook
+================================================================================
 
-    
-    Active Acoustics Console Tooling Reference
-    ------------------------------------------
+(For details on any one tool:  <tool> --help)
 
-    (For specific details of an individual tool, use the --help flag)
+This suite is designed for **pipeline-style** work. Each tool:
+  • **Reads** a single NetCDF path (".nc") either as a positional arg or from **stdin**.
+  • **Writes** a new NetCDF file to disk (never just to stdout).
+  • **Prints** the absolute path of its primary output to **stdout** so the next tool
+    can pick it up. This means our “pipes” pass **filenames**, not raw data.
 
-    Most tools are designed to work with NetCDF (.nc) files and support
-    piping workflows, where the output of one tool is passed as input
-    to the next.
+PIPING MODEL (IMPORTANT)
+------------------------
+1) Chain tools with pipes; each tool emits one path, which becomes the next tool’s input:
+     aa-nc RAW.raw --sonar_model EK60 \
+       | aa-sv \
+       | aa-clean \
+       | aa-mvbs
 
+2) You can capture intermediate outputs explicitly:
+     CLEAN=$( aa-nc RAW.raw --sonar_model EK60 | aa-sv | aa-clean )
+     aa-mvbs "$CLEAN"
 
+3) If you need to fan out to multiple tools, use `tee` and subshells:
+     NC=$( aa-nc RAW.raw --sonar_model EK60 )
+     ( aa-sv   "$NC" | aa-clean | aa-nasc   ) &
+     ( aa-sv   "$NC" | aa-clean | aa-mvbs   ) &
+     wait
 
-    Basic Tools
-    -----------
-    aa-raw     : Download or upload raw acoustic files.
-    aa-nc      : Convert raw input files into NetCDF format.
-    aa-sv      : Compute and save volume backscattering strength (Sv).
-    aa-ts      : Generate target strength (TS) datasets.
-    aa-clean   : Denoise and clean input datasets.
+OUTPUT NAMING & ON-DISK BEHAVIOR
+--------------------------------
+• If you don’t pass -o/--output_path, tools create sensible defaults by **suffixing**
+  the input stem (e.g., “input.nc” → “input_clean.nc”, “input_mvbs.nc”, etc.).
+• Tools **always write NetCDF to disk**, then emit the resulting path to stdout.
+• Most tools accept stdin. If you run a tool with no args and no stdin, it prints
+  a friendly help page and exits.
 
-    Processing Tools
-    ----------------
-    aa-mvbs    : Compute mean volume backscattering strength (MVBS).
-    aa-nasc    : Compute Nautical Areal Scattering Coefficient (NASC)
-                 from Sv datasets.
-    aa-assign  : Assign new coordinates or metadata to datasets.
-    aa-crop    : Extract a subsection of a dataset.
-    aa-mask    : Mask out regions of a dataset based on criteria.
+-------------------------------------------------------------------------------
+ TOOL INDEX (A–Z by category)
+-------------------------------------------------------------------------------
 
-    Quality Control Tools
-    ---------------------
-    (designed to validate and subset datasets)
-    aa-assign  : Assign new coordinates or metadata to datasets.
-    aa-crop    : Extract a subsection of a dataset.
+INGEST & CONVERSION
+  aa-raw             : Manage raw-file logistics (download/upload/metadata helpers).
+  aa-nc              : Convert RAW → NetCDF (choose sonar model, etc.).
+  aa-swap-freq       : Swap 'channel' dimension with 'frequency_nominal'.
 
-    Applications
-    --------------
-    aa-tools   : Query the ICES database to find ship names.
-    aa-setup   : Install or reinstall the AA-SI GPCSetup environment on a Google Cloud VM.
-    
-    
-    
-    Example Usecases
-    ----------------
+CALIBRATION & CORE DERIVATIVES
+  aa-sv              : Compute calibrated Sv and write Sv dataset.
+  aa-ts              : Compute target strength (TS) dataset.
+  aa-depth           : Add depth coordinate(s) (if applicable to your stack).
+  aa-location        : Add geographic location (lat/lon) from EchoData into Sv.
+  aa-splitbeam-angle : Add alongship/athwartship split-beam angles to Sv.
 
-    Description: A very useful tool for locating data.
+CLEANING & MASKING
+  aa-clean           : Remove background noise (ping/range windows, SNR threshold).
+  aa-impulse         : Mask impulse noise.
+  aa-transient       : Mask transient noise.
+  aa-attenuated      : Mask attenuated signal.
+  aa-detect-transient: Detect transient noise (dispatcher; emits mask; optional apply).
+  aa-detect-shoal    : Detect shoals (dispatcher; emits mask; optional apply).
+  aa-detect-seafloor : Detect seafloor bottom line; optional bottom mask & apply.
+  aa-freqdiff        : Frequency differencing mask (e.g., “38kHz − 120kHz ≥ 12 dB”).
+  aa-min             : (Your existing minimal/masking helper, if present.)
+  aa-mask            : (If present in your stack; generic masking helper.)
 
-    aa-find
+GRIDDING & SUMMARIES
+  aa-mvbs            : Compute MVBS (physical bins).
+  aa-mvbs-index      : Compute MVBS using index binning (range_sample / ping).
+  aa-nasc            : Compute NASC (integral of Sv over range & distance).
 
+QC (TIME CONSISTENCY & REPORTS)
+  aa-exist-reversed  : Check if a time coord (e.g., ping_time) has reversals.
+  aa-coerce-time     : Force time to be strictly increasing (repairs reversals).
+  aa-show            : Quick inspect / summarize (if present in your stack).
+  aa-plot            : Plot/visual QC (if present).
 
-    Example 1:
-    In this example, a single raw file is passed explicitly as a positional argument rather than piped. 
-    The original raw data is converted, processed, and summarized in one seamless command. 
-    The raw data is passed to aa-nc to produce a NetCDF file with the specified EK60 sonar model. 
-    Sv values are computed immediately with aa-sv, cleaned of noise with aa-clean, and then summarized 
-    into Multi-Volume Backscatter using aa-mvbs. This one-liner demonstrates how modular console tools 
-    can be chained together to perform a complete processing workflow efficiently, without creating intermediate 
-    files. Defaults are supplied with argparse library.
+METRICS (Echopype metrics.* over echo_range)
+  aa-abundance       : Abundance metric.
+  aa-aggregation     : Aggregation metric.
+  aa-center-of-mass  : Center of mass (COM).
+  aa-dispersion      : Dispersion (inertia).
+  aa-evenness        : Evenness (Equivalent Area, EA).
 
-    Command:
-    aa-nc /home/mryan/Desktop/HB1603_L1-D20160707-T190150.raw --sonar_model EK60 | aa-sv | aa-clean | aa-mvbs
+UTILITIES (Seawater & acoustics)
+  aa-sound-speed     : Seawater sound speed (m/s) via Echopype UWA utils.
+  aa-absorption      : Seawater absorption (dB/m) vs frequency & conditions.
 
+DISCOVERY, HELPERS & SETUP
+  aa-find            : Find datasets / convenience discovery.
+  aa-help            : Print this reference and tool tips.
+  aa-setup           : Prepare AA-SI environments (e.g., GCP Workstations).
+  aa-test            : Self-tests / sanity checks for the suite.
 
-    Example 2:
-    A raw acoustic file is first prepared with aa-raw, which automatically incorporates metadata such as 
-    ship, survey, and echosounder information. Its output is then converted to a NetCDF file with aa-nc, 
-    Sv values are computed on the fly with aa-sv, cleaned by aa-clean, and summarized for Multi-Volume 
-    Backscatter using aa-mvbs. Each tool focuses on a specific task, and chaining them together allows the 
-    entire processing workflow to be executed in a single, streamlined command. Defaults are supplied with 
-    argparse library.
+-------------------------------------------------------------------------------
+ EXAMPLES — PRACTICAL PIPELINES
+-------------------------------------------------------------------------------
 
-    Command:
-    aa-raw --file_name "2107RL_CW-D20210813-T220732.raw" --file_type "raw" --ship_name "Reuben_Lasker" --survey_name "RL2107" --echosounder "EK80" --data_source "NCEI" --file_download_directory "."
-    aa-nc <path-to-raw> --sonar_model <sonar_model> | aa-sv --plot Sv --x ping_time --y range_sample | aa-clean --plot Sv --x ping_time --y range_sample | aa-mvbs
+1) RAW → NC → Sv → Clean → MVBS
+   (One-liner with sensible defaults; no intermediate filenames required.)
+     aa-nc cruise.raw --sonar_model EK60 \
+       | aa-sv \
+       | aa-clean \
+       | aa-mvbs
 
+   Resulting files (typical):
+     cruise.nc               # from aa-nc
+     cruise_sv.nc            # from aa-sv
+     cruise_sv_clean.nc      # from aa-clean
+     cruise_sv_clean_mvbs.nc # from aa-mvbs
+   The **last line printed** to your terminal is the path to the MVBS file.
 
-    Example 3:
-    Another raw file workflow using aa-raw to prepare the data, aa-nc to convert to NetCDF, and then 
-    aa-sv, aa-clean, and aa-mvbs for processing and summarization. This example shows a fully automated 
-    workflow for the EK60 echosounder. Defaults are supplied with argparse library.
+2) Add geolocation, angles, and NASC
+     SV=$( aa-nc raw.raw --sonar_model EK80 | aa-sv )
+     LOC=$( aa-location "$SV" )
+     ANG=$( aa-splitbeam-angle "$LOC" --waveform-mode BB --encode-mode complex )
+     aa-nasc "$ANG" --range-bin 20m --dist-bin 0.5nmi
 
-    Command:
-    aa-raw --file_name D20190804-T113723.raw --ship_name Henry_B._Bigelow --survey_name HB1907 --echosounder EK60 --file_download_directory Henry_B._Bigelow_HB1907_EK60_NCEI | aa-nc --sonar_model EK60 | aa-sv | aa-clean | aa-mvbs
+3) Frequency differencing followed by shoal detection and masked Sv export
+     SV=$( aa-nc file.raw --sonar_model EK80 | aa-sv | aa-clean )
+     MASK=$( aa-freqdiff "$SV" --freqABEq '"38.0kHz" - "120.0kHz">=12.0dB' )
+     aa-detect-shoal "$SV" --method echoview --param threshold= -60dB min_len=5 \
+       --apply  # writes *_detect_shoal_cleaned.nc
 
-    """
+4) Time QC & repair, then MVBS
+     NC=$( aa-nc raw.raw --sonar_model EK60 )
+     REV=$( aa-exist-reversed "$NC" --time-name ping_time )
+     [ "$REV" = "True" ] && NC=$( aa-coerce-time "$NC" --time-name ping_time )
+     aa-mvbs "$NC" --range-bin 10m --dist-bin 1nmi
+
+-------------------------------------------------------------------------------
+ TIPS & GOTCHAS
+-------------------------------------------------------------------------------
+• Our “pipes” pass **filenames** (paths), not bytes. Every tool writes a file, then
+  prints the new path. That keeps memory usage tiny and makes workflows restartable.
+• If your path contains spaces, **quote it**:  aa-mvbs "My Cruise 2024.nc"
+• Need the final path in a shell variable?  OUT=$( aa-clean input.nc )
+• Want absolute paths for downstream tools? That’s what we print by default.
+• Overwrite behavior:
+    – With no -o: new files are created with suffixed stems.
+    – With -o path: the tool will write to that exact path (and still print it).
+• Most cleaning/detection tools support **--apply** to emit a cleaned Sv file in
+  addition to their mask/line product.
+
+================================================================================
+"""
     print(reference)
+
 
 
 def main():
