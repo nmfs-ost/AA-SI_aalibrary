@@ -56,7 +56,7 @@ download_survey_from_ncei(ship_name="Reuben_Lasker",
 
 Use the following code if you would like to download a file from the Azure Data Lake. The code requires a `config.ini` file.
 
-**NOTE:** This file needs to have a `[DEFAULT]` section with a `azure_connection_string` variable set.
+**NOTE:** This file needs to have a `[DEFAULT]` section with a `azure_connection_string` variable set. See [Azure Configuration](./configuration.md#azure-configuration) for more information.
 
 ```python
 from aalibrary.ingestion import download_raw_file_from_azure
