@@ -466,6 +466,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#downloading-a-file-directly-from-gcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      Downloading A File Directly From GCP
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -941,6 +950,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#downloading-a-file-directly-from-gcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      Downloading A File Directly From GCP
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1001,7 +1019,10 @@
 </span></code></pre></div>
 <h2 id="downloading-a-raw-file-from-azure-data-lake-omao">Downloading A Raw File From Azure Data Lake (OMAO)</h2>
 <p>Use the following code if you would like to download a file from the Azure Data Lake. The code requires a <code>config.ini</code> file.</p>
-<p><strong>NOTE:</strong> This file needs to have a <code>[DEFAULT]</code> section with a <code>azure_connection_string</code> variable set.</p>
+<div class="admonition note">
+<p class="admonition-title">NOTE</p>
+<p>This file needs to have a <code>[DEFAULT]</code> section with a <code>azure_connection_string</code> variable set. See <a href="../configuration/#azure-configuration">Azure Configuration</a> for more information.</p>
+</div>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.ingestion</span><span class="w"> </span><span class="kn">import</span> <span class="n">download_raw_file_from_azure</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">download_raw_file_from_azure</span><span class="p">(</span>
@@ -1026,7 +1047,10 @@
 </span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">file_path_in_container</span><span class="o">=</span><span class="s2">&quot;RL2107_EK80_WCSD_EK80-metadata.json&quot;</span><span class="p">,</span>
 </span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">)</span>
 </span></code></pre></div>
-<p><strong>NOTE:</strong> Please keep in mind that this method creates a connection every single time you call it.</p>
+<div class="admonition note">
+<p class="admonition-title">NOTE</p>
+<p>Please keep in mind that this method creates a connection every single time you call it. This might lead to long run-times.</p>
+</div>
 <h2 id="downloading-a-netcdf">Downloading A Netcdf</h2>
 <p>Netcdf files (converted over from raw) only exist in the GCP cache as of now. The following example takes care of downloading a particular raw file as netcdf4 (if it had already been converted and cached in GCP, otherwise an error message is thrown):</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary</span><span class="w"> </span><span class="kn">import</span> <span class="n">utils</span>
@@ -1043,7 +1067,7 @@
 </span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>                <span class="n">survey_name</span><span class="o">=</span><span class="s2">&quot;RL2107&quot;</span><span class="p">,</span>
 </span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>                <span class="n">echosounder</span><span class="o">=</span><span class="s2">&quot;EK80&quot;</span><span class="p">,</span>
 </span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>                <span class="n">data_source</span><span class="o">=</span><span class="s2">&quot;NCEI&quot;</span><span class="p">,</span>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>                <span class="n">file_download_location</span><span class="o">=</span><span class="s2">&quot;.&quot;</span><span class="p">,</span>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>                <span class="n">file_download_directory</span><span class="o">=</span><span class="s2">&quot;.&quot;</span><span class="p">,</span>
 </span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>                <span class="n">gcp_bucket</span><span class="o">=</span><span class="n">gcp_bucket</span><span class="p">,</span>
 </span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>                <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 </span></code></pre></div>
@@ -1063,6 +1087,39 @@
 </span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>    <span class="n">file_download_directory</span><span class="o">=</span><span class="s2">&quot;.&quot;</span><span class="p">,</span>
 </span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>    <span class="n">upload_to_gcp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>   <span class="c1"># Set to True if you want to upload the raw file to gcp</span>
 </span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span></code></pre></div>
+<h2 id="downloading-a-file-directly-from-gcp">Downloading A File Directly From GCP</h2>
+<p>While this is a much more detailed function, AALibrary provides users the functionality to directly download a file from GCP if they wish. This can include any file within the GCP bucket. See example below.</p>
+<div class="admonition note">
+<p class="admonition-title">NOTE</p>
+<p>This procedure bypasses all of the parameter verification &amp; validations provided by AALibrary. Use with caution.</p>
+</div>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.cloud_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">download_file_from_gcp</span><span class="p">,</span> <span class="n">setup_gcp_storage_objs</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_correct_gcp_storage_bucket_location</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary</span><span class="w"> </span><span class="kn">import</span> <span class="n">utils</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Create a GCP bucket object</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">gcp_stor_client</span><span class="p">,</span> <span class="n">gcp_bucket_name</span><span class="p">,</span> <span class="n">gcp_bucket</span> <span class="o">=</span> <span class="n">setup_gcp_storage_objs</span><span class="p">()</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="c1"># Get the GCP Storage bucket location for the file.</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">gcp_storage_bucket_location</span> <span class="o">=</span> <span class="n">parse_correct_gcp_storage_bucket_location</span><span class="p">(</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    <span class="n">file_name</span><span class="o">=</span><span class="s2">&quot;2107RL_CW-D20210707-T103342.raw&quot;</span><span class="p">,</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>    <span class="n">file_type</span><span class="o">=</span><span class="s2">&quot;raw&quot;</span><span class="p">,</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="n">ship_name</span><span class="o">=</span><span class="s2">&quot;Reuben_Lasker&quot;</span><span class="p">,</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>    <span class="n">survey_name</span><span class="o">=</span><span class="s2">&quot;RL2107&quot;</span><span class="p">,</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="n">echosounder</span><span class="o">=</span><span class="s2">&quot;EK80&quot;</span><span class="p">,</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">data_source</span><span class="o">=</span><span class="s2">&quot;NCEI&quot;</span><span class="p">,</span>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">is_metadata</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="p">)</span>
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="c1"># This function takes care of downloading the file.</span>
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="n">download_file_from_gcp</span><span class="p">(</span>
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>            <span class="n">gcp_bucket</span><span class="o">=</span><span class="n">gcp_bucket</span><span class="p">,</span>
+</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>            <span class="n">blob_file_path</span><span class="o">=</span><span class="n">gcp_storage_bucket_location</span><span class="p">,</span>
+</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>            <span class="n">local_file_path</span><span class="o">=</span><span class="s2">&quot;./&quot;</span><span class="p">,</span>
+</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>            <span class="n">debug</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>        <span class="p">)</span>
 </span></code></pre></div>
 
 
@@ -1084,7 +1141,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 11, 2025 03:56:45 UTC">September 11, 2025</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="November 26, 2025 00:00:49 UTC">November 26, 2025</span>
   </span>
 
     
