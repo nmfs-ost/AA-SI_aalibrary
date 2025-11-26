@@ -160,8 +160,6 @@ def convert_local_raw_to_ices_netcdf(
             to download your netcdf file to. Defaults to "".
         echosounder (str, optional): The echosounder used. Can be one of
             ["EK80", "EK70"]. Defaults to "".
-        overwrite (bool, optional): Whether or not to overwrite the netcdf
-            file. Defaults to False.
         delete_raw_after (bool, optional): Whether or not to delete the raw
             file after conversion is complete. Defaults to False.
     """
