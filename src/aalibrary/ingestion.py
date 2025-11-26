@@ -14,8 +14,6 @@ from azure.storage.filedatalake import (
 import boto3
 from tqdm import tqdm
 
-from aalibrary.egress import upload_file_to_gcp_storage_bucket
-
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
@@ -26,6 +24,7 @@ if __package__ is None or __package__ == "":
     from utils.cloud_utils import get_data_lake_directory_client
     from utils.ncei_utils import download_single_file_from_aws
     from utils.helpers import check_for_assertion_errors
+    from egress import upload_file_to_gcp_storage_bucket
 else:
     # uses current package visibility
     from aalibrary import metadata
@@ -35,6 +34,7 @@ else:
     from aalibrary.utils.cloud_utils import get_data_lake_directory_client
     from aalibrary.utils.ncei_utils import download_single_file_from_aws
     from aalibrary.utils.helpers import check_for_assertion_errors
+    from aalibrary.egress import upload_file_to_gcp_storage_bucket
 
 
 def download_file_from_azure_directory(
