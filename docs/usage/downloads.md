@@ -56,7 +56,8 @@ download_survey_from_ncei(ship_name="Reuben_Lasker",
 
 Use the following code if you would like to download a file from the Azure Data Lake. The code requires a `config.ini` file.
 
-**NOTE:** This file needs to have a `[DEFAULT]` section with a `azure_connection_string` variable set. See [Azure Configuration](./configuration.md#azure-configuration) for more information.
+!!! note "NOTE"
+    This file needs to have a `[DEFAULT]` section with a `azure_connection_string` variable set. See [Azure Configuration](./configuration.md#azure-configuration) for more information.
 
 ```python
 from aalibrary.ingestion import download_raw_file_from_azure
@@ -87,7 +88,8 @@ download_specific_file_from_azure(
 )
 ```
 
-**NOTE:** Please keep in mind that this method creates a connection every single time you call it. This might lead to long run-times.
+!!! note "NOTE"
+    Please keep in mind that this method creates a connection every single time you call it. This might lead to long run-times.
 
 ## Downloading A Netcdf
 
@@ -137,15 +139,16 @@ for file_name in file_names:
 
 While this is a much more detailed function, AALibrary provides users the functionality to directly download a file from GCP if they wish. This can include any file within the GCP bucket. See example below.
 
-**NOTE:** This procedure bypasses all of the parameter verification & validations provided by AALibrary. Use with caution.
+!!! note "NOTE"
+    This procedure bypasses all of the parameter verification & validations provided by AALibrary. Use with caution.
 
 ```python
-from aalibrary.utils.cloud_utils import download_file_from_gcp
+from aalibrary.utils.cloud_utils import download_file_from_gcp, setup_gcp_storage_objs
 from aalibrary.utils.helpers import parse_correct_gcp_storage_bucket_location
 from aalibrary import utils
 
 # Create a GCP bucket object
-gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
+gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
 
 # Get the GCP Storage bucket location for the file.
 gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
