@@ -1,4 +1,4 @@
-"""This script contains functions used to ingest Active Acoustics data into GCP
+"""This file contains functions used to ingest Active Acoustics data into GCP
 from various sources such as AWS buckets and Azure Data Lake."""
 
 import sys
@@ -19,19 +19,19 @@ from aalibrary.egress import upload_file_to_gcp_storage_bucket
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
-    import utils
     import metadata
+    import utils
     from raw_file import RawFile
-    from utils import cloud_utils, helpers
+    from utils import cloud_utils
     from utils.cloud_utils import get_data_lake_directory_client
     from utils.ncei_utils import download_single_file_from_aws
     from utils.helpers import check_for_assertion_errors
 else:
     # uses current package visibility
-    from aalibrary import utils
     from aalibrary import metadata
+    from aalibrary import utils
     from aalibrary.raw_file import RawFile
-    from aalibrary.utils import cloud_utils, helpers
+    from aalibrary.utils import cloud_utils
     from aalibrary.utils.cloud_utils import get_data_lake_directory_client
     from aalibrary.utils.ncei_utils import download_single_file_from_aws
     from aalibrary.utils.helpers import check_for_assertion_errors
@@ -812,15 +812,15 @@ def download_netcdf_file(
 #     gcp_bucket: storage.Client.bucket = None,
 #     debug: bool = False,
 # ):
-#     """Uploads an entire folder to the GCP storage bucket AS-IS. The folderis
-#     assumed to be the cruise/survey folder.
+#     """Uploads an entire folder to the GCP storage bucket AS-IS. The folder
+#     is assumed to be the cruise/survey folder.
 #     NOTE: Does not check for metadata, file or folder naming conventions,etc.
 
 #     Args:
-#         directory_path (str, optional): The directory you would like to copy to
-#             the storage bucket. Defaults to "".
-#         gcp_bucket (storage.Client.bucket, optional): The storage bucket object
-#             used for uploading. Defaults to None.
+#         directory_path (str, optional): The directory you would like to copy
+#             to the storage bucket. Defaults to "".
+#         gcp_bucket (storage.Client.bucket, optional): The storage bucket
+#             object used for uploading. Defaults to None.
 #         debug (bool, optional): Whether or not to print debug statements.
 #             Defaults to False.
 #     """
@@ -1051,12 +1051,6 @@ if __name__ == "__main__":
     #     gcp_bucket=gcp_bucket,
     #     debug=True,
     # )
-
-    upload_folder_as_is_to_gcp(
-        local_folder_path="./test_data_dir/Reuben_Lasker/",
-        gcp_bucket=gcp_bucket,
-        destination_prefix="other/deletable/",
-    )
 
     # azure_datalake_directory_client = get_data_lake_directory_client(
     #     config_file_path="./azure_config.ini"
