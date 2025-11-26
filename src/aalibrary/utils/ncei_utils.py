@@ -554,7 +554,6 @@ def search_ncei_objects_for_string(search_param: str = "") -> List[str]:
     )
     # objects = page_iterator.search("Contents[?ends_with(Key, `.csv`)][]")
     for item in objects:
-        print(item["Key"])
         matching_object_keys.append(item["Key"])
     return matching_object_keys
 
@@ -850,8 +849,8 @@ def download_specific_folder_from_ncei(
     download_directory = os.path.normpath(download_directory)
     print("CREATED DOWNLOAD SUBDIRECTORIES.")
 
-    for idx, object_key in enumerate(tqdm(s3_objects, desc="Downloading")):
-        file_name = object_key.split("/")[-1]
+    for _, object_key in enumerate(tqdm(s3_objects, desc="Downloading")):
+        # file_name = object_key.split("/")[-1]
         local_object_path = object_key.replace("data/raw/", "")
         download_location = os.path.normpath(
             os.sep.join([download_directory, local_object_path])
@@ -913,11 +912,11 @@ def download_single_file_from_aws(
 
 if __name__ == "__main__":
     s3_client, s3_resource, _ = create_s3_objs()
-    download_specific_folder_from_ncei(
-        folder_prefix="data/raw/Reuben_Lasker/RL2107/metadata/",
-        download_directory="./RL2107_metadata_test/",
-        debug=True,
-    )
+    # download_specific_folder_from_ncei(
+    #     folder_prefix="data/raw/Reuben_Lasker/RL2107/metadata/",
+    #     download_directory="./RL2107_metadata_test/",
+    #     debug=True,
+    # )
     # x = get_folder_size_from_s3(
     #     folder_prefix="data/raw/Reuben_Lasker/RL2107/metadata/",
     #     s3_resource=s3_resource,
@@ -956,3 +955,12 @@ if __name__ == "__main__":
 
     # print(get_random_raw_file_from_ncei())
     # print(search_ncei_objects_for_string(search_param="EK500"))
+
+    import timeit
+
+    print("Starting timeit...")
+    time = timeit.timeit(
+        lambda: search_ncei_objects_for_string(search_param="EK500"), number=5
+    )
+    print(f"Time taken: {time/5} seconds per run")
+    print(f"{time:.6f} seconds (over 5 runs)")
