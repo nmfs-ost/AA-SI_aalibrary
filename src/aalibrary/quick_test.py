@@ -16,6 +16,7 @@ warnings.filterwarnings(
     "ignore", "Your application has authenticated using end user credentials"
 )
 
+
 def start():
     """Runs quick tests to verify that the connections are working as intended
     and checks to see if a raw file can be downloaded.
