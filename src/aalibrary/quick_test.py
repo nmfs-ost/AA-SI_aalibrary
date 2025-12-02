@@ -3,6 +3,7 @@ as intended. Also checks to see if a raw file can be downloaded."""
 
 import sys
 import os
+import warnings
 
 import echopype
 
@@ -10,6 +11,10 @@ from aalibrary.utils import cloud_utils
 from aalibrary import ingestion, metadata
 import aalibrary.utils.ncei_utils
 
+
+warnings.filterwarnings(
+    "ignore", "Your application has authenticated using end user credentials"
+)
 
 def start():
     """Runs quick tests to verify that the connections are working as intended
