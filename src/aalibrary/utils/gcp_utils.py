@@ -277,6 +277,122 @@ def check_if_cruise_exists_fully_in_storage_bucket(): ...
 def get_netcdf_files_from_survey(): ...
 
 
+def rename_gcs_folder(
+    gcp_bucket_name: str = "",
+    old_folder_prefix: str = "",
+    new_folder_prefix: str = "",
+) -> None:
+    """Renames a 'folder' in a GCS bucket by renaming its contained objects.
+
+    Args:
+        gcp_bucket_name (str, optional): The GCP bucket where the folder
+            resides. Defaults to "".
+        old_folder_prefix (str, optional): The old folder prefix.
+            Ex. ""other/HBigelow/"
+            Defaults to "".
+        new_folder_prefix (str, optional): The new folder prefix.
+            Ex. "other/Henry_B_Bigelow/"
+            NOTE: Make sure to include the other folders too.
+            Defaults to "".
+    """
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(gcp_bucket_name)
+
+    # Ensure prefixes end with a slash for proper "folder" handling
+    if not old_folder_prefix.endswith("/"):
+        old_folder_prefix += "/"
+    if not new_folder_prefix.endswith("/"):
+        new_folder_prefix += "/"
+
+    blobs = bucket.list_blobs(prefix=old_folder_prefix)
+
+    for blob in blobs:
+        # Construct the new blob name
+        new_blob_name = new_folder_prefix + blob.name[len(old_folder_prefix):]
+
+        # Rename the blob
+        new_blob = bucket.rename_blob(blob, new_blob_name)
+        print(f"Renamed {blob.name} to {new_blob.name}")
+
+
+def move_folder_in_gcs(
+    gcp_bucket_name: str = "",
+    source_prefix: str = "",
+    destination_prefix: str = "",
+) -> None:
+    """Moves all objects under a given source_prefix to a new
+    destination_prefix within the same bucket.
+
+    Args:
+        gcp_bucket_name (str, optional): The GCP bucket where the folder
+            resides. Defaults to "".
+        source_prefix (str, optional): The folder or object prefix to move.
+            NOTE: If moving a folder, make sure to include the trailing slash.
+            Defaults to "".
+        destination_prefix (str, optional): The destination prefix to move the
+            folder or object to.
+            NOTE: If moving a folder, make sure to include the trailing slash.
+            Defaults to "".
+    """
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(gcp_bucket_name)
+
+    # List all blobs (objects) with the source prefix
+    blobs = bucket.list_blobs(prefix=source_prefix)
+
+    for blob in blobs:
+        # Construct the new blob name
+        # This removes the source_prefix and adds the destination_prefix
+        new_blob_name = destination_prefix + blob.name[len(source_prefix):]
+
+        # Copy the blob to the new name
+        new_blob = bucket.copy_blob(blob, bucket, new_name=new_blob_name)
+
+        # Delete the original blob
+        blob.delete()
+
+        print(f"Moved '{blob.name}' to '{new_blob.name}'")
+
+
+def copy_folder_within_gcs(
+    gcp_bucket_name: str = "",
+    source_prefix: str = "",
+    destination_prefix: str = "",
+) -> None:
+    """Copies all objects under a given source_prefix to a new
+    destination_prefix within the same bucket.
+
+    Args:
+        gcp_bucket_name (str, optional): The GCP bucket where the folder
+            resides. Defaults to "".
+        source_prefix (str, optional): The folder or object prefix to copy.
+            NOTE: If copying a folder, make sure to include the trailing slash.
+            Defaults to "".
+        destination_prefix (str, optional): The destination prefix to copy the
+            folder or object to.
+            NOTE: If copying a folder, make sure to include the trailing slash.
+            Defaults to "".
+    """
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(gcp_bucket_name)
+
+    # List all blobs (objects) with the source prefix
+    blobs = bucket.list_blobs(prefix=source_prefix)
+
+    for blob in blobs:
+        # Construct the new blob name
+        # This removes the source_prefix and adds the destination_prefix
+        new_blob_name = destination_prefix + blob.name[len(source_prefix):]
+
+        # Copy the blob to the new name
+        new_blob = bucket.copy_blob(blob, bucket, new_name=new_blob_name)
+
+        print(f"Copied '{blob.name}' to '{new_blob.name}'")
+
+
 if __name__ == "__main__":
     # all_ship_names = get_all_ship_names_in_gcp_bucket()
     # print(all_ship_names)
@@ -289,7 +405,13 @@ if __name__ == "__main__":
     # )
     # print(all_rl_surveys)
 
-    all_rl2107_echos = get_all_echosounders_in_a_survey_in_storage_bucket(
-        ship_name="reuben lasker", survey_name="RL2107"
+    # all_rl2107_echos = get_all_echosounders_in_a_survey_in_storage_bucket(
+    #     ship_name="reuben lasker", survey_name="RL2107"
+    # )
+    # print(all_rl2107_echos)
+
+    rename_gcs_folder(
+        gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
+        old_folder_prefix="other/HB_Data/",
+        new_folder_prefix="other/Henry_B_Bigelow/",
     )
-    print(all_rl2107_echos)
