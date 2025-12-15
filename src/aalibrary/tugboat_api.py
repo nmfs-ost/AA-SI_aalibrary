@@ -19,11 +19,18 @@ class TugboatAPI:
     This class provides methods to interact with the Tugboat API.
     """
 
+    # TODO: Make it so that the project id and bucket name can be passed
+    # in as arguments to the class init function.
+
     project_id: str = "ggn-nmfs-aa-dev-1"
     gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data"
-    empty_submission_file_path: str = "other/tugboat_empty_submission_template.json"
+    empty_submission_file_path: str = (
+        "other/tugboat_empty_submission_template.json"
+    )
     __tugboat_cred: str = None
-    tugboat_api_url: str = "https://ccog.colorado.edu/tugboat/api/v1/"
+    tugboat_api_url: str = (
+        "https://nih-uat-tugboat.nesdis-hq.noaa.gov:5443/api/v1/"
+    )
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -57,15 +64,16 @@ class TugboatAPI:
         """Sets the tugboat credentials for AALibrary from the google storage
         bucket as an environment var."""
 
-        # Download as string so that we dont have to worry about storing it
-        # anywhere
-        os.environ["TUGBOAT_CREDENTIALS"] = (
-            cloud_utils.download_file_from_gcp_as_string(
-                gcp_bucket=self.gcp_bucket,
-                blob_file_path="other/tugboat_creds",
+        if self.__tugboat_cred is None:
+            # Download as string so that we dont have to worry about storing it
+            # anywhere
+            os.environ["TUGBOAT_CREDENTIALS"] = (
+                cloud_utils.download_file_from_gcp_as_string(
+                    gcp_bucket=self.gcp_bucket,
+                    blob_file_path="other/tugboat_creds",
+                )
             )
-        )
-        self.__tugboat_cred = os.environ.get("TUGBOAT_CREDENTIALS")
+            self.__tugboat_cred = os.environ.get("TUGBOAT_CREDENTIALS")
         self.headers["Authorization"] = f"Bearer {self.__tugboat_cred}"
 
     def _get_request_as_json(self, url: str) -> dict:
@@ -73,7 +81,9 @@ class TugboatAPI:
         JSON."""
 
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(
+                url, headers=self.headers, timeout=10, verify=False
+            )
             # Raise an HTTPError for bad responses(4xx or 5xx)
             response.raise_for_status()
             return response.json()
@@ -154,13 +164,28 @@ class TugboatAPI:
         """Fetches all submissions from the Tugboat API."""
         url = urllib.parse.urljoin(self.tugboat_api_url, "submissions")
         all_submissions = self._get_request_as_json(url)
-        return all_submissions['items']
+        return all_submissions["items"]
 
     def get_submission_by_id(self, submission_id: str):
         """Fetches a submission by its ID from the Tugboat API."""
         url = urllib.parse.urljoin(
             self.tugboat_api_url, f"submissions/{submission_id}"
         )
+        return self._get_request_as_json(url)
+
+    def get_all_jobs(self):
+        """Fetches all jobs from the Tugboat API. Useful for checking
+        the status of a submission."""
+
+        url = urllib.parse.urljoin(self.tugboat_api_url, "jobs")
+        all_jobs = self._get_request_as_json(url)
+        return all_jobs["items"]
+
+    def get_job_by_id(self, job_id: str):
+        """Fetches a job by its ID from the Tugboat API. Useful for checking
+        the status of a submission."""
+
+        url = urllib.parse.urljoin(self.tugboat_api_url, f"jobs/{job_id}")
         return self._get_request_as_json(url)
 
 
