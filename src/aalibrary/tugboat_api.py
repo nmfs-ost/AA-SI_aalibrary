@@ -160,6 +160,26 @@ class TugboatAPI:
             )
             print(response.text)
 
+    def post_new_person(self, person_json: dict):
+        """Posts a new person to the Tugboat API."""
+
+        # Create the URL for the person endpoint
+        url = urllib.parse.urljoin(self.tugboat_api_url, "persons")
+
+        response = requests.post(
+            url, headers=self.headers, json=person_json, timeout=10
+        )
+        # Checking the response status code
+        if response.status_code == 201:  # 201 Created for successful POST
+            print("POST request successful!")
+            print("Response JSON:")
+            print(response.json())
+        else:
+            print(
+                f"POST request failed with status code: {response.status_code}"
+            )
+            print(response.text)
+
     def get_all_submissions(self):
         """Fetches all submissions from the Tugboat API."""
         url = urllib.parse.urljoin(self.tugboat_api_url, "submissions")
@@ -187,6 +207,23 @@ class TugboatAPI:
 
         url = urllib.parse.urljoin(self.tugboat_api_url, f"jobs/{job_id}")
         return self._get_request_as_json(url)
+
+    def get_all_people(self) -> list:
+        """Fetches all people & their info from the Tugboat API."""
+
+        url = urllib.parse.urljoin(self.tugboat_api_url, "people?itemsPerPage=1073741824")
+        return self._get_request_as_json(url)['items']
+
+    def search_people_by_email(self, email: str) -> dict:
+        """Searches for people by email in the Tugboat API."""
+        url = urllib.parse.urljoin(
+            self.tugboat_api_url, f"people?itemsPerPage=1073741824&email={urllib.parse.quote(email)}"
+        )
+        resp = self._get_request_as_json(url)
+        if resp['totalItems'] == 0:
+            return None
+        else:
+            return resp['items']
 
 
 if __name__ == "__main__":
