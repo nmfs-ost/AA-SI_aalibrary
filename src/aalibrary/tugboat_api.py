@@ -5,6 +5,8 @@ import json
 import urllib
 import requests
 
+from dotenv import load_dotenv
+
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
@@ -65,14 +67,20 @@ class TugboatAPI:
         bucket as an environment var."""
 
         if self.__tugboat_cred is None:
-            # Download as string so that we dont have to worry about storing it
-            # anywhere
-            os.environ["TUGBOAT_CREDENTIALS"] = (
-                cloud_utils.download_file_from_gcp_as_string(
-                    gcp_bucket=self.gcp_bucket,
-                    blob_file_path="other/tugboat_creds",
+            # If there is a dot-env file in the current directory, load it.
+            if os.path.exists(".env"):
+                load_dotenv()
+            else:
+                # Load from GCP bucket
+                # Download as string so that we dont have to worry about
+                # storing it anywhere
+                os.environ["TUGBOAT_CREDENTIALS"] = (
+                    cloud_utils.download_file_from_gcp_as_string(
+                        gcp_bucket=self.gcp_bucket,
+                        blob_file_path="other/tugboat_creds",
+                    )
                 )
-            )
+            # Set the credentials
             self.__tugboat_cred = os.environ.get("TUGBOAT_CREDENTIALS")
         self.headers["Authorization"] = f"Bearer {self.__tugboat_cred}"
 
