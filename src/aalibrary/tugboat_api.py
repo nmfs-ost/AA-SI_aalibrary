@@ -167,6 +167,30 @@ class TugboatAPI:
                 f"POST request failed with status code: {response.status_code}"
             )
             print(response.text)
+    
+    def resubmit_submission(self, submission_id: str, submission_json_file_path: str = ""):
+        """Resubmits a submission to the Tugboat API."""
+        # Create the URL for the resubmission endpoint
+        url = urllib.parse.urljoin(
+            self.tugboat_api_url, f"submissions/resubmit/{submission_id}"
+        )
+        # Read the submission JSON file
+        with open(submission_json_file_path, "r", encoding="utf-8") as f:
+            submission_payload = json.load(f)
+        response = requests.post(
+            url, headers=self.headers, json=submission_payload, timeout=10,
+            verify=False
+        )
+        # Checking the response status code
+        if response.status_code == 201:  # 201 Created for successful POST
+            print("POST request successful!")
+            print("Response JSON:")
+            print(response.json())
+        else:
+            print(
+                f"POST request failed with status code: {response.status_code}"
+            )
+            print(response.text)
 
     def post_new_person(self, person_json: dict):
         """Posts a new person to the Tugboat API."""
