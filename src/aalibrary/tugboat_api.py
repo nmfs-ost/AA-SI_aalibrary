@@ -167,8 +167,9 @@ class TugboatAPI:
                 f"POST request failed with status code: {response.status_code}"
             )
             print(response.text)
-    
-    def resubmit_submission(self, submission_id: str, submission_json_file_path: str = ""):
+
+    def resubmit_submission(self, submission_id: str,
+                            submission_json_file_path: str = ""):
         """Resubmits a submission to the Tugboat API."""
         # Create the URL for the resubmission endpoint
         url = urllib.parse.urljoin(
@@ -243,13 +244,15 @@ class TugboatAPI:
     def get_all_people(self) -> list:
         """Fetches all people & their info from the Tugboat API."""
 
-        url = urllib.parse.urljoin(self.tugboat_api_url, "people?itemsPerPage=1073741824")
+        url = urllib.parse.urljoin(self.tugboat_api_url,
+                                   "people?itemsPerPage=1073741824")
         return self._get_request_as_json(url)['items']
 
     def search_people_by_email(self, email: str) -> dict:
         """Searches for people by email in the Tugboat API."""
         url = urllib.parse.urljoin(
-            self.tugboat_api_url, f"people?itemsPerPage=1073741824&email={urllib.parse.quote(email)}"
+            self.tugboat_api_url,
+            f"people?itemsPerPage=1073741824&email={urllib.parse.quote(email)}"
         )
         resp = self._get_request_as_json(url)
         if resp['totalItems'] == 0:
