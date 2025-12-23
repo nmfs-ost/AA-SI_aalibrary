@@ -1,0 +1,216 @@
+<!--  Last Update: InPort Release 6.0.4.0  -->
+<!--  Consult the InPort DMP XML Loader Help Guide https://www.fisheries.noaa.gov/inport/help/xml-loader/dmp for field definitions.  -->
+<inport-metadata version="1.13">
+<item-identification>
+<catalog-item-id>REQUIRED if updating an existing Catalog Item. Enter its Catalog Item ID here. Do not include this tag if you are creating a new item, rather than updating an existing item.</catalog-item-id>
+<catalog-item-type>Data Management Plan</catalog-item-type>
+<parent-catalog-item-id>REQUIRED if creating a new Catalog Item. Enter the Catalog Item ID of the existing Catalog Item under which this new item should be created. Do not include this tag if you are updating, and not creating an item.</parent-catalog-item-id>
+</item-identification>
+<general-information>
+<dmp-type>Use one of the following list of possible values: Initial DMP, Updated DMP, Final DMP, Funding Proposal DMP (Grants/CAs), Updated DMP (Grants/CAs), Final DMP (Grants/CAs), Program-level DMP, No Data DMP.</dmp-type>
+<dmp-name>REQUIRED for all DMPs.</dmp-name>
+<description>Summary/description</description>
+<purpose>Purpose</purpose>
+<dmp-links>
+<!--  dmp-link is repeatable  -->
+<!--  DMP Links can refer to either an URL or an InPort Catalog Item  -->
+<dmp-link>
+<link-type>URL</link-type>
+<url>https://www.sample.url/</url>
+<relationship>Relationship</relationship>
+</dmp-link>
+<dmp-link>
+<link-type>InPort Catalog Item</link-type>
+<catalog-item-id>123456</catalog-item-id>
+<relationship>Relationship</relationship>
+</dmp-link>
+</dmp-links>
+</general-information>
+<program-information>
+<implementing-program-information>
+<programs>
+<!--  programs for implementing-program-information is NOT repeatable  -->
+<program>Program name. Consult https://www.fisheries.noaa.gov/inport/help/components/programs for the list of Programs.</program>
+</programs>
+<additional-information>Additional program info.</additional-information>
+</implementing-program-information>
+<funding-program-information>
+<programs>
+<!--  programs for funding-program-information is repeatable  -->
+<program>Program name. Consult https://www.fisheries.noaa.gov/inport/help/components/programs for the list of Programs.</program>
+</programs>
+<additional-information>Additional program info.</additional-information>
+<funded-project>Funded project</funded-project>
+<funded-project-identifier>Funded project ID</funded-project-identifier>
+<funding-award-number>Funding award number</funding-award-number>
+</funding-program-information>
+<partner-program-information>
+<programs>
+<!--  programs for partner-program-information is repeatable  -->
+<program>Program name. Consult https://www.fisheries.noaa.gov/inport/help/components/programs for the list of Programs.</program>
+</programs>
+<additional-information>Additional program info.</additional-information>
+</partner-program-information>
+</program-information>
+<coverage>
+<temporal-coverage>
+<collection-scope>Use one of the following list of possible values: One-time, Ongoing, Unknown.</collection-scope>
+<description>Temporal coverage description.</description>
+<start-date>Enter the date in ISO 8601 format (YYYY-MM-DD), up to the appropriate granularity which is significant. For example, if the date is significant only up to the month, enter YYYY-MM.</start-date>
+<end-date>Enter the date in ISO 8601 format (YYYY-MM-DD), up to the appropriate granularity which is significant. For example, if the date is significant only up to the month, enter YYYY-MM.</end-date>
+</temporal-coverage>
+<geographic-coverage>
+<description>Geographic coverage description.</description>
+<west-bound>Enter a numeric value greater than or equal to -180, and less than 180. All bounds must be supplied (no partial bounding boxes).</west-bound>
+<east-bound>Enter a numeric value greater than -180, and less than or equal to 180. All bounds must be supplied (no partial bounding boxes).</east-bound>
+<north-bound>Enter a numeric value between -90 to 90. All bounds must be supplied (no partial bounding boxes). The north bound must be greater or equal to the south bound.</north-bound>
+<south-bound>Enter a numeric value between -90 to 90. All bounds must be supplied (no partial bounding boxes). The north bound must be greater or equal to the south bound.</south-bound>
+</geographic-coverage>
+</coverage>
+<data-acquisition>
+<has-data-acquisition-plan>Use one of the following list of possible values: Yes, No, In Development</has-data-acquisition-plan>
+<has-restricted-designations>Use one of the following list of possible values: Unrestricted, Restricted, In Development.</has-restricted-designations>
+<data-acquisition-plans>
+<!--  data-acquisition-plan is repeatable  -->
+<data-acquisition-plan>
+<url>https://www.sample.url/</url>
+<relationship>Relationship</relationship>
+</data-acquisition-plan>
+</data-acquisition-plans>
+</data-acquisition>
+<data-collection>
+<data-set-type>Data set type</data-set-type>
+<data-volume>Data volume</data-volume>
+<collection-method>General collection method</collection-method>
+<collection-standards>Standards employed</collection-standards>
+<non-noaa-observing-system>Non NOAA observing system</non-noaa-observing-system>
+<instruments>
+<!--  instrument is repeatable  -->
+<instrument>
+<identifier>Instrument Name. Consult https://www.fisheries.noaa.gov/inport/help/components/instruments for the list of Instruments.</identifier>
+</instrument>
+</instruments>
+<platforms>
+<!--  platform is repeatable  -->
+<platform>
+<identifier>Platform Name. Consult https://www.fisheries.noaa.gov/inport/help/components/platforms for the list of Platforms.</identifier>
+</platform>
+</platforms>
+<observing-systems>
+<!--  observing-system is repeatable  -->
+<observing-system>
+<system-name>Observing System Name. Consult https://www.fisheries.noaa.gov/inport/help/components/observing-systems for the list of Observing Systems.</system-name>
+</observing-system>
+</observing-systems>
+</data-collection>
+<contact-information>
+<point-of-contact>
+<contact-name>Contact Name. Consult https://www.fisheries.noaa.gov/inport/help/components/contacts for the list of Contacts.</contact-name>
+<contact-email>Contact Email. Either Contact Name or Contact Email is required (Contact Email preferred).</contact-email>
+<affiliation>Affiliation</affiliation>
+<contact-address>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the address line for the Contact.</contact-address>
+<contact-address-city>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the city for the Contact.</contact-address-city>
+<contact-address-state>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the State abbreviation for the Contact.</contact-address-state>
+<contact-address-zip>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the zip code for the Contact.</contact-address-zip>
+<contact-address-country>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the country for the Contact.</contact-address-country>
+<contact-phone-number>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the phone number for the Contact.</contact-phone-number>
+<contact-mobile-number>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the mobile number for the Contact.</contact-mobile-number>
+<contact-fax-number>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the fax number for the Contact.</contact-fax-number>
+<contact-url>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the URL for the Contact.</contact-url>
+<contact-url-name>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the name of the URL for the Contact.</contact-url-name>
+<contact-url-description>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the description of the URL for the Contact.</contact-url-description>
+<contact-url-function>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the function of the URL for the Contact, from the following list of possible values: Online Resource, Browse Graphic.</contact-url-function>
+<contact-business-hours>Only processed if the contact has a NOAA email address and does not exist in InPort. Enter the business hours for the Contact.</contact-business-hours>
+</point-of-contact>
+<responsible-party>
+<contact-name>Contact Name. Consult https://www.fisheries.noaa.gov/inport/help/components/contacts for the list of Contacts.</contact-name>
+<contact-email>Contact Email. Either Contact Name or Contact Email is required (Contact Email preferred).</contact-email>
+<affiliation>Affiliation</affiliation>
+</responsible-party>
+</contact-information>
+<resources>
+<management-resources-available>Use one of the following list of possible values: Yes, No, Unknown</management-resources-available>
+<dissemination-resources-available>Use one of the following list of possible values: Yes, No, Unknown</dissemination-resources-available>
+<archive-resources-available>Use one of the following list of possible values: Yes, No, Unknown</archive-resources-available>
+<project-budget-percentage>Project budget percentage.</project-budget-percentage>
+</resources>
+<data-protection>
+<archive-delay>Archive delay</archive-delay>
+<data-storage-location>Data storage location</data-storage-location>
+<data-protection-plan>Data protection plan</data-protection-plan>
+</data-protection>
+<data-lineage>
+<lineage-statement>Lineage statement</lineage-statement>
+<quality-control-procedures>Quality control procedures</quality-control-procedures>
+<related-lineage-links>
+<!--  related-lineage-link is repeatable  -->
+<!--  Related Lineage Links can refer to either an URL or an InPort Catalog Item  -->
+<related-lineage-link>
+<link-type>URL</link-type>
+<url>https://www.sample.url/</url>
+<relationship>Relationship</relationship>
+</related-lineage-link>
+<related-lineage-link>
+<link-type>InPort Catalog Item</link-type>
+<catalog-item-id>123456</catalog-item-id>
+<relationship>Relationship</relationship>
+</related-lineage-link>
+</related-lineage-links>
+</data-lineage>
+<data-documentation>
+<metadata-process>Metadata process</metadata-process>
+<metadata-assistance-required>Answer Yes or No</metadata-assistance-required>
+</data-documentation>
+<data-access>
+<restriction-status>Use one of the following list of possible values: Unrestricted, Partially Restricted, Fully Restricted</restriction-status>
+<restriction-explanation>Restriction explanation</restriction-explanation>
+<data-for-publication>Use one of the following list of possible values: Yes, No, To Be Determined</data-for-publication>
+<data-license>Data license</data-license>
+<data-dois>
+<!--  data-doi-link is repeatable  -->
+<data-doi-link>
+<url>https://www.sample.url/</url>
+<relationship>Relationship</relationship>
+</data-doi-link>
+</data-dois>
+<data-access-providers>Data access providers</data-access-providers>
+<data-access-methods>
+<!--  data-access-method is repeatable  -->
+<data-access-method>Use one of the following list of possible values: NCEI, Web Service, API, FTP Bulk Download, HTTP Bulk Download, Website, Web Page, or Portal, Asynchronous Ordering Service, To Be Determined, Unable to Provide Access</data-access-method>
+</data-access-methods>
+<no-access-explanation>No access explanation</no-access-explanation>
+<cloud-access>Use one of the following list of possible values: Yes, No, To Be Determined</cloud-access>
+<access-level-of-service>Use one of the following list of possible values: Basic Access, Long Term Preservation and Basic Access, Enhanced Access and Basic Quality Assurance, Scientific Improvements, Derived Products, Authoritative Records, National Services and International Leadership</access-level-of-service>
+<dissemination-plans>
+<!--  dissemination-plan is repeatable  -->
+<dissemination-plan>Use one of the following list of possible values: No Delay, At Publication, 2 Years After Collection, 2 Years After Project End Date, To Be Determined, Unable to Provide Access, Limited Access Only, No Access Intended</dissemination-plan>
+</dissemination-plans>
+<dissemination-date>Enter the date in ISO 8601 format (YYYY-MM-DD)</dissemination-date>
+</data-access>
+<long-term-preservation>
+<archive-locations>
+<!--  archive-location is repeatable  -->
+<archive-location>Use one of the following list of possible values: NCEI, Other Approved Federal Archive, NARA, To Be Determined, Unable to Archive, No Archiving Intended</archive-location>
+</archive-locations>
+<other-archive>Other archive</other-archive>
+<other-archive-explanation>Archive explanation</other-archive-explanation>
+<no-archive-explanation>No Archiving Intended explanation</no-archive-explanation>
+</long-term-preservation>
+<comments>
+<comment>Enter comments</comment>
+</comments>
+<related-items mode="replace">
+<!--  related-item is repeatable  -->
+<related-item>
+<catalog-item-id>REQUIRED for each related-item. Enter the Cat ID of the item to create a related item link to.</catalog-item-id>
+<relationship-type>REQUIRED for each related-item. Enter the relationship type from the following list of possible values: Cross Reference, Larger Work Citation, Part of a Seamless Database, Stereo Mate, Revision Of, Series.</relationship-type>
+<notes>Enter notes on the relationship between this Catalog Item and the one linked to.</notes>
+</related-item>
+</related-items>
+<catalog-details>
+<tags>
+<!--  tag is repeatable  -->
+<tag>Enter a tag for the record.</tag>
+</tags>
+</catalog-details>
+</inport-metadata>
