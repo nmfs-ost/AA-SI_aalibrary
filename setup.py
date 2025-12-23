@@ -66,7 +66,8 @@ setup_info = dict(
         "pytz>=2024.1",
         "tqdm>=4.66.2",
         "azure-storage-file-datalake>=12.7.0",
-        "numcodecs==0.15.1"
+        "numcodecs==0.15.1",
+        "python-dotenv"
     ],
     # Add _ prefix to the names of temporary build dirs
     # options={'build': {'build_base': '_build'}, },
