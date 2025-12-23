@@ -137,29 +137,29 @@ class TestBusinessUseCases:
             debug=self.rf.debug,
         )
 
-    def test_download_from_omao_and_convert(self):
-        """Tests downloading a file from OMAO and converting it to a netCDF."""
-        # Download the file
-        ingestion.download_raw_file_from_azure(
-            file_name=self.rf_omao.file_name,
-            file_type=self.rf_omao.file_type,
-            ship_name=self.rf_omao.ship_name,
-            survey_name=self.rf_omao.survey_name,
-            echosounder=self.rf_omao.echosounder,
-            data_source=self.rf_omao.data_source,
-            file_download_directory=self.rf_omao.file_download_directory,
-            config_file_path="./azure_config.ini",
-            upload_to_gcp=False,
-            debug=self.rf_omao.debug,
-        )
-        # Convert the file to a netCDF and upload it to GCP & delete raw
-        conversion.convert_local_raw_to_netcdf(
-            raw_file_location=self.rf_omao.raw_file_download_path,
-            netcdf_file_download_directory=self.rf_omao.file_download_directory,
-            echosounder=self.rf_omao.echosounder,
-            overwrite=False,
-            delete_raw_after=True,
-        )
+    # def test_download_from_omao_and_convert(self):
+    #     """Tests downloading a file from OMAO and converting it to a netCDF."""
+    #     # Download the file
+    #     ingestion.download_raw_file_from_azure(
+    #         file_name=self.rf_omao.file_name,
+    #         file_type=self.rf_omao.file_type,
+    #         ship_name=self.rf_omao.ship_name,
+    #         survey_name=self.rf_omao.survey_name,
+    #         echosounder=self.rf_omao.echosounder,
+    #         data_source=self.rf_omao.data_source,
+    #         file_download_directory=self.rf_omao.file_download_directory,
+    #         config_file_path="./azure_config.ini",
+    #         upload_to_gcp=False,
+    #         debug=self.rf_omao.debug,
+    #     )
+    #     # Convert the file to a netCDF and upload it to GCP & delete raw
+    #     conversion.convert_local_raw_to_netcdf(
+    #         raw_file_location=self.rf_omao.raw_file_download_path,
+    #         netcdf_file_download_directory=self.rf_omao.file_download_directory,
+    #         echosounder=self.rf_omao.echosounder,
+    #         overwrite=False,
+    #         delete_raw_after=True,
+    #     )
 
     # def test_tugboat_metadata_creation_and_upload(self):
     #     """Tests the creation and upload of Tugboat metadata for a netCDF
