@@ -175,5 +175,5 @@ def init_test_folder(test_folder_name: str = "test_data_dir"):
 
 
 if __name__ == "__main__":
-    # start()
-    init_test_folder()
+    start()
+    # init_test_folder()
