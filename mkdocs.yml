@@ -37,6 +37,7 @@ nav:
     - "Uploads": usage/uploads.md
     - "Configuration": usage/configuration.md
     - "Scripts": usage/scripts.md
+    - "Tugboat": usage/tugboat.md
   - "Documentation":
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
