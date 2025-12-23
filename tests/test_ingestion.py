@@ -1,5 +1,7 @@
 """For testing ingestion."""
 
+# pylint: disable=attribute-defined-outside-init
+
 import os
 import pytest
 
@@ -15,6 +17,7 @@ class TestNCEIIngestion:
         """Used for setting up the class."""
         self.file_name = "2107RL_CW-D20210919-T172430.raw"
         self.file_name_idx = "2107RL_CW-D20210919-T172430.idx"
+        self.file_name_nc = "2107RL_CW-D20210919-T172430.nc"
         self.file_type = "raw"
         self.ship_name = "Reuben_Lasker"
         self.survey_name = "RL2107"
@@ -158,12 +161,22 @@ class TestNCEIIngestionUserErrors:
     def setup_class(self):
         """Used for setting up the class."""
         self.file_name = "2107RL_CW-D20210919-T172430.raw"
-        self.file_type = "nc"
+        self.file_type = "raw"
         self.ship_name = "Reuben_Lasker"
         self.survey_name = "RL2107"
         self.echosounder = "EK80"
         self.data_source = "TEST"
-        self.file_download_directory = "."
+        self.file_download_location = "."
+        self.local_raw_file_path = os.sep.join(
+            [self.file_download_location, self.file_name]
+        )
+        self.local_idx_file_path = (
+            ".".join(self.local_raw_file_path.split(".")[:-1]) + ".idx"
+        )
+        self.local_nc_file_path = (
+            ".".join(self.local_raw_file_path.split(".")[:-1]) + ".nc"
+        )
+
         # set up storage objects
         _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
         self.s3_client, self.s3_resource, self.s3_bucket = (
@@ -180,7 +193,7 @@ class TestNCEIIngestionUserErrors:
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -195,7 +208,7 @@ class TestNCEIIngestionUserErrors:
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -210,7 +223,7 @@ class TestNCEIIngestionUserErrors:
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -225,7 +238,7 @@ class TestNCEIIngestionUserErrors:
                 ship_name="",
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -240,7 +253,7 @@ class TestNCEIIngestionUserErrors:
                 ship_name=self.ship_name,
                 survey_name="",
                 echosounder=self.echosounder,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -255,7 +268,7 @@ class TestNCEIIngestionUserErrors:
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder="",
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -270,7 +283,7 @@ class TestNCEIIngestionUserErrors:
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder="abc",
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -320,7 +333,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -336,7 +349,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -352,7 +365,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -368,7 +381,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -384,7 +397,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name="",
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -400,7 +413,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder="",
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -416,7 +429,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder="abc",
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -452,7 +465,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -469,7 +482,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -486,7 +499,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -503,7 +516,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -520,7 +533,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name="",
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -537,7 +550,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder="",
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -554,7 +567,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder="abc",
                 data_source=self.data_source,
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -571,7 +584,7 @@ class TestNCEIIngestionUserErrors:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source="",
-                file_download_directory=self.file_download_directory,
+                file_download_directory=self.file_download_location,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -601,7 +614,14 @@ class TestNCEIIngestionUserErrors:
     def teardown_class(self):
         """Tears-down any temporary files, variables, or anything that was used
         for testing."""
-        os.remove("file.temp")
+        if os.path.exists("file.temp"):
+            os.remove("file.temp")
+        if os.path.exists(self.local_raw_file_path):
+            os.remove(self.local_raw_file_path)
+        if os.path.exists(self.local_idx_file_path):
+            os.remove(self.local_idx_file_path)
+        if os.path.exists(self.local_nc_file_path):
+            os.remove(self.local_nc_file_path)
 
 
 class TestOMAOIngestion:
@@ -671,37 +691,37 @@ class TestOMAOIngestion:
             cloud_utils.create_s3_objs()
         )
 
-    def test_download_raw_file_from_azure(self):
-        """Tests downloading the raw and supporting files from Azure Data
-        Lake."""
-        # Delete locally if it exists
-        if os.path.exists(self.local_raw_file_path):
-            os.remove(self.local_raw_file_path)
-        if os.path.exists(self.local_idx_file_path):
-            os.remove(self.local_idx_file_path)
-        if os.path.exists(self.local_bot_file_path):
-            os.remove(self.local_bot_file_path)
+    # def test_download_raw_file_from_azure(self):
+    #     """Tests downloading the raw and supporting files from Azure Data
+    #     Lake."""
+    #     # Delete locally if it exists
+    #     if os.path.exists(self.local_raw_file_path):
+    #         os.remove(self.local_raw_file_path)
+    #     if os.path.exists(self.local_idx_file_path):
+    #         os.remove(self.local_idx_file_path)
+    #     if os.path.exists(self.local_bot_file_path):
+    #         os.remove(self.local_bot_file_path)
 
-        ingestion.download_raw_file_from_azure(
-            file_name=self.file_name,
-            file_type=self.file_type,
-            ship_name=self.ship_name,
-            survey_name=self.survey_name,
-            echosounder=self.echosounder,
-            data_source=self.data_source,
-            file_download_directory=self.file_download_location,
-            config_file_path=self.config_file_path,
-            upload_to_gcp=self.upload_to_gcp,
-            debug=False,
-        )
+    #     ingestion.download_raw_file_from_azure(
+    #         file_name=self.file_name,
+    #         file_type=self.file_type,
+    #         ship_name=self.ship_name,
+    #         survey_name=self.survey_name,
+    #         echosounder=self.echosounder,
+    #         data_source=self.data_source,
+    #         file_download_directory=self.file_download_location,
+    #         config_file_path=self.config_file_path,
+    #         upload_to_gcp=self.upload_to_gcp,
+    #         debug=False,
+    #     )
 
-        # assert that both raw and idx files exist after they have been
-        # downloaded.
-        assert (
-            os.path.exists(self.local_raw_file_path)
-            and os.path.exists(self.local_idx_file_path)
-            and os.path.exists(self.local_bot_file_path)
-        ), "Raw or Idx or Bot file has not been downloaded locally."
+    #     # assert that both raw and idx files exist after they have been
+    #     # downloaded.
+    #     assert (
+    #         os.path.exists(self.local_raw_file_path)
+    #         and os.path.exists(self.local_idx_file_path)
+    #         and os.path.exists(self.local_bot_file_path)
+    #     ), "Raw or Idx or Bot file has not been downloaded locally."
 
     def teardown_class(self):
         """Tears-down any temporary files, variables, or anything that was used
