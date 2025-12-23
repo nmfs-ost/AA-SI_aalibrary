@@ -1,0 +1,168 @@
+<!--  Last Update: InPort Release 6.0.4.0  -->
+<!--  Consult the InPort DMP XML Loader Help Guide https://www.fisheries.noaa.gov/inport/help/xml-loader/dmp for field definitions.  -->
+<inport-metadata version="1.13">
+<item-identification>
+<catalog-item-id>75987 REQUIRED if updating an existing Catalog Item. Enter its Catalog Item ID here. Do not include this tag if you are creating a new item, rather than updating an existing item.</catalog-item-id>
+<catalog-item-type>Data Management Plan</catalog-item-type>
+<parent-catalog-item-id> 75987 REQUIRED if creating a new Catalog Item. Enter the Catalog Item ID of the existing Catalog Item under which this new item should be created. Do not include this tag if you are updating, and not creating an item.</parent-catalog-item-id>
+</item-identification>
+<general-information>
+<dmp-type>Initial DMP</dmp-type>
+<dmp-name>Active Acoustics Strategic Initiative</dmp-name>
+<description>The active acoustic strategic initiative aims to develop cloud-based infrastructure (storage and computing) for classifying echosounder data collected as part of NOAA’s mission to manage living marine resources (LMRs) to the best taxonomic level (e.g., species) possible. The data uploaded to Google Cloud Storage (GCS) consists of data collected from the six NMFS Science Centers/FMCs (AFSC, PIFSC, NWFSC, SWFSC, SEFSC, and NEFSC) and NCEI. The data currently includes raw echosounder data (collected via narrow and wideband echosounders), converted files for analysis, ancillary files, as well as metadata files.</description>
+<purpose>The acoustic data uploaded to the Google Cloud Storage (GCS) will be utilized for future autonomous analysis, with intentions to implement advanced analytical methods accessible to all NOAA divisions. The data files are managed autonomously within the cloud, with older files subject to deletion, enabling GCS to function as a cache. The data will ultimately be permanently archived at the National Centers for Environmental Information (NCEI), ensuring its long-term discoverability and accessibility.</purpose>
+</general-information>
+<program-information>
+<implementing-program-information>
+<programs>
+<!--  programs for implementing-program-information is NOT repeatable  -->
+<program>TBD</program>
+</programs>
+<additional-information>TBD</additional-information>
+</implementing-program-information>
+<funding-program-information>
+<programs>
+<!--  programs for funding-program-information is repeatable  -->
+<program>TBD</program>
+</programs>
+<additional-information>TBD</additional-information>
+<funded-project>TBD</funded-project>
+<funded-project-identifier>TBD</funded-project-identifier>
+<funding-award-number>TBD</funding-award-number>
+</funding-program-information>
+<partner-program-information>
+<programs>
+<!--  programs for partner-program-information is repeatable  -->
+<program>TBD</program>
+</programs>
+<additional-information>TBD</additional-information>
+</partner-program-information>
+</program-information>
+<coverage>
+<temporal-coverage>
+<collection-scope>Ongoing</collection-scope>
+<description>Data files are collected during dedicated acoustic/trawl surveys and other LMR surveys, with year round coverage inside and outside of the US EEZ in the Atlantic, Pacific, Gulf of Mexico, and Arctic Oceans.</description>
+<start-date>Not applicable; Continuous</start-date>
+<end-date>Not applicable; Continuous</end-date>
+</temporal-coverage>
+<geographic-coverage>
+<description>Data coverage includes inside and outside of the US EEZ in the Atlantic, Pacific, Gulf of Mexico, and Arctic Oceans.</description>
+<west-bound>Not applicable; Dependent on data collection surveys</west-bound>
+<east-bound>Not applicable; Dependent on data collection surveys</east-bound>
+<north-bound>Not applicable; Dependent on data collection surveys</north-bound>
+<south-bound>Not applicable; Dependent on data collection surveys</south-bound>
+</geographic-coverage>
+</coverage>
+<data-acquisition>
+<has-data-acquisition-plan>No; The Active Acoustics Strategic Initiative Google Cloud Storage effectively acts as a host to cache data until analysis and archival are completed. The data files are acquired through each of the six aforementioned Science Centers/FMCs.</has-data-acquisition-plan>
+<has-restricted-designations>Potentially.</has-restricted-designations>
+</data-acquisition>
+<data-collection>
+<data-set-type>digital numerical data, structured data, imagery</data-set-type>
+<data-volume>Hundreds of terabytes</data-volume>
+<collection-method>research vessel</collection-method>
+<collection-standards>TBD</collection-standards>
+<non-noaa-observing-system>TBD</non-noaa-observing-system>
+<instruments>
+<!--  instrument is repeatable  -->
+<instrument>
+<identifier>scientific and commercial sonars ( e.g., Kongsberg/Simrad, BioSonics, AZFP, Exail).</identifier>
+</instrument>
+</instruments>
+<platforms>
+<!--  platform is repeatable  -->
+<platform>
+<identifier>NOAA ships, uncrewed platforms (e.g., USV, AUV), and moorings</identifier>
+</platform>
+</platforms>
+<observing-systems>
+<!--  observing-system is repeatable  -->
+<observing-system>
+<system-name>TBD</system-name>
+</observing-system>
+</observing-systems>
+</data-collection>
+<contact-information>
+<point-of-contact>
+<contact-name>Hannan Khan</contact-name>
+<contact-email>hannan.khan@noaa.gov</contact-email>
+<affiliation>Supporting NOAA NMFS CIO</affiliation>
+</point-of-contact>
+<responsible-party>
+<contact-name>Michael Jech</contact-name>
+<contact-email>michael.jech@noaa.gov</contact-email>
+<affiliation>NEFSC</affiliation>
+</responsible-party>
+</contact-information>
+<resources>
+<management-resources-available>Yes, at the FMC level.</management-resources-available>
+<dissemination-resources-available>Data stored within GCS is not publicly available.</dissemination-resources-available>
+<archive-resources-available>Yes</archive-resources-available>
+<project-budget-percentage>unknown</project-budget-percentage>
+</resources>
+<data-protection>
+<archive-delay>One to two months</archive-delay>
+<data-storage-location>Google Cloud Storage, provided through the Google Cloud Platform.</data-storage-location>
+<data-protection-plan>Discuss data back-up, disaster recovery/contingency planning, and off-site data storage relevant to the data collection: The data in GCS follows a soft-delete policy which protects it from accidental or malicious deletion by retaining deleted objects in a soft-deleted state for seven days, during which the object cannot be permanently deleted.</data-protection-plan>
+</data-protection>
+<data-lineage>
+<lineage-statement>The goal is to make active acoustic data accessible through a single cloud storage source. This is achieved through manual data upload to GCS via a python package, AALibrary. The data can originate from one of the Science Centers/FMCs, or NCEI, with future plans to include data from OMAO, and a direct connection to the vessels via Globus. The data is transformed through various analysis libraries such as AALibrary and Echopype. The data files are archived to NCEI through a manual process using AALibrary. Older files are managed by a self-running clean-up script with auto-delete functionality. Finally, the archived data files are available to the public after archival at NCEI.</lineage-statement>
+<quality-control-procedures>TBD</quality-control-procedures>
+</data-lineage>
+<data-documentation>
+<metadata-process>Metadata process</metadata-process>
+<metadata-assistance-required>Answer Yes or No</metadata-assistance-required>
+</data-documentation>
+<data-access>
+<restriction-status>Use one of the following list of possible values: Unrestricted, Partially Restricted, Fully Restricted</restriction-status>
+<restriction-explanation>Restriction explanation</restriction-explanation>
+<data-for-publication>Use one of the following list of possible values: Yes, No, To Be Determined</data-for-publication>
+<data-license>Data license</data-license>
+<data-dois>
+<!--  data-doi-link is repeatable  -->
+<data-doi-link>
+<url>https://www.sample.url/</url>
+<relationship>Relationship</relationship>
+</data-doi-link>
+</data-dois>
+<data-access-providers>Data access providers</data-access-providers>
+<data-access-methods>
+<!--  data-access-method is repeatable  -->
+<data-access-method>Use one of the following list of possible values: NCEI, Web Service, API, FTP Bulk Download, HTTP Bulk Download, Website, Web Page, or Portal, Asynchronous Ordering Service, To Be Determined, Unable to Provide Access</data-access-method>
+</data-access-methods>
+<no-access-explanation>No access explanation</no-access-explanation>
+<cloud-access>Use one of the following list of possible values: Yes, No, To Be Determined</cloud-access>
+<access-level-of-service>Use one of the following list of possible values: Basic Access, Long Term Preservation and Basic Access, Enhanced Access and Basic Quality Assurance, Scientific Improvements, Derived Products, Authoritative Records, National Services and International Leadership</access-level-of-service>
+<dissemination-plans>
+<!--  dissemination-plan is repeatable  -->
+<dissemination-plan>Use one of the following list of possible values: No Delay, At Publication, 2 Years After Collection, 2 Years After Project End Date, To Be Determined, Unable to Provide Access, Limited Access Only, No Access Intended</dissemination-plan>
+</dissemination-plans>
+<dissemination-date>Enter the date in ISO 8601 format (YYYY-MM-DD)</dissemination-date>
+</data-access>
+<long-term-preservation>
+<archive-locations>
+<!--  archive-location is repeatable  -->
+<archive-location>Use one of the following list of possible values: NCEI, Other Approved Federal Archive, NARA, To Be Determined, Unable to Archive, No Archiving Intended</archive-location>
+</archive-locations>
+<other-archive>Other archive</other-archive>
+<other-archive-explanation>Archive explanation</other-archive-explanation>
+<no-archive-explanation>No Archiving Intended explanation</no-archive-explanation>
+</long-term-preservation>
+<comments>
+<comment>Enter comments</comment>
+</comments>
+<related-items mode="replace">
+<!--  related-item is repeatable  -->
+<related-item>
+<catalog-item-id>REQUIRED for each related-item. Enter the Cat ID of the item to create a related item link to.</catalog-item-id>
+<relationship-type>REQUIRED for each related-item. Enter the relationship type from the following list of possible values: Cross Reference, Larger Work Citation, Part of a Seamless Database, Stereo Mate, Revision Of, Series.</relationship-type>
+<notes>Enter notes on the relationship between this Catalog Item and the one linked to.</notes>
+</related-item>
+</related-items>
+<catalog-details>
+<tags>
+<!--  tag is repeatable  -->
+<tag>Enter a tag for the record.</tag>
+</tags>
+</catalog-details>
+</inport-metadata>
