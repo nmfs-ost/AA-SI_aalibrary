@@ -11,9 +11,11 @@ from dotenv import load_dotenv
 if __package__ is None or __package__ == "":
     # uses current directory visibility
     from utils import cloud_utils
+    from utils.tugboat_validations import TugboatValidator
 else:
     # uses current package visibility
     from aalibrary.utils import cloud_utils
+    from utils.tugboat_validations import TugboatValidator
 
 
 class TugboatAPI:
@@ -135,6 +137,26 @@ class TugboatAPI:
         print("Please update the file with your submission details.")
         return file_download_path
 
+    def validate_submission_json(
+        self, submission_json_file_path: str = "", submission_dict: dict = None
+    ):
+        """Validates a submission JSON (supplied through a file path or dict)
+        using the TugboatValidator. Prints out the errors in the submission to
+        the console stderr.
+
+        Args:
+            submission_json_file_path (str, optional): The file path to the
+                submission JSON. Defaults to "".
+            submission_dict (dict, optional): The dictionary containing the
+                submission details. Defaults to None.
+        """
+
+        validator = TugboatValidator(
+            submission_json_file_path=submission_json_file_path,
+            submission_dict=submission_dict,
+        )
+        validator.validate_submission()
+
     def get_all_platforms(self):
         """Fetches all platforms from the Tugboat API."""
         url = urllib.parse.urljoin(self.tugboat_api_url, "platforms")
@@ -168,8 +190,9 @@ class TugboatAPI:
             )
             print(response.text)
 
-    def resubmit_submission(self, submission_id: str,
-                            submission_json_file_path: str = ""):
+    def resubmit_submission(
+        self, submission_id: str, submission_json_file_path: str = ""
+    ):
         """Resubmits a submission to the Tugboat API."""
         # Create the URL for the resubmission endpoint
         url = urllib.parse.urljoin(
@@ -179,8 +202,11 @@ class TugboatAPI:
         with open(submission_json_file_path, "r", encoding="utf-8") as f:
             submission_payload = json.load(f)
         response = requests.post(
-            url, headers=self.headers, json=submission_payload, timeout=10,
-            verify=False
+            url,
+            headers=self.headers,
+            json=submission_payload,
+            timeout=10,
+            verify=False,
         )
         # Checking the response status code
         if response.status_code == 201:  # 201 Created for successful POST
@@ -244,21 +270,22 @@ class TugboatAPI:
     def get_all_people(self) -> list:
         """Fetches all people & their info from the Tugboat API."""
 
-        url = urllib.parse.urljoin(self.tugboat_api_url,
-                                   "people?itemsPerPage=1073741824")
-        return self._get_request_as_json(url)['items']
+        url = urllib.parse.urljoin(
+            self.tugboat_api_url, "people?itemsPerPage=1073741824"
+        )
+        return self._get_request_as_json(url)["items"]
 
     def search_people_by_email(self, email: str) -> dict:
         """Searches for people by email in the Tugboat API."""
         url = urllib.parse.urljoin(
             self.tugboat_api_url,
-            f"people?itemsPerPage=1073741824&email={urllib.parse.quote(email)}"
+            f"people?itemsPerPage=1073741824&email={urllib.parse.quote(email)}",
         )
         resp = self._get_request_as_json(url)
-        if resp['totalItems'] == 0:
+        if resp["totalItems"] == 0:
             return None
         else:
-            return resp['items']
+            return resp["items"]
 
 
 if __name__ == "__main__":

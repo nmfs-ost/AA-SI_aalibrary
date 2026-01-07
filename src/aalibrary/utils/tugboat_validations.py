@@ -112,6 +112,11 @@ class TugboatValidator:
         """Validates a submission."""
         self._validate_type()
         self.validate_all_datetimes()
+        self.validate_sea_area()
+        self.validate_sources()
+        self.validate_arrival_port()
+        self.validate_departure_port()
+        self.validate_instruments()
 
 
 if __name__ == "__main__":
