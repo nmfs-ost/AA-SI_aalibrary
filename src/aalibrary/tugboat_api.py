@@ -15,7 +15,7 @@ if __package__ is None or __package__ == "":
 else:
     # uses current package visibility
     from aalibrary.utils import cloud_utils
-    from utils.tugboat_validations import TugboatValidator
+    from aalibrary.utils.tugboat_validations import TugboatValidator
 
 
 class TugboatAPI:
