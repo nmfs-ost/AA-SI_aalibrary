@@ -55,7 +55,7 @@ class TugboatValidator:
         except ValueError:
             return False
 
-    def validate_all_datetimes(self):
+    def validate_all_datetimes(self) -> bool:
         """Validates all datetime fields in the submission dictionary.
 
         Returns:
