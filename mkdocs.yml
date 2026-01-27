@@ -31,6 +31,7 @@ nav:
     - "Installation": getting-started/installation.md
     - "Permissions": getting-started/permissions.md
     - "Testing": getting-started/testing.md
+    - "Video Tutorials": getting-started/video-tutorials.md
   - "Usage":
     - "Downloads": usage/downloads.md
     - "Conversions": usage/conversions.md
