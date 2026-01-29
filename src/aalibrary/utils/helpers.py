@@ -456,11 +456,26 @@ azure_connection_string = """
     return azure_config_file_path
 
 
-def get_parsed_datetime_from_filename(file_name: str, return_as_dict: bool = False):
+def get_parsed_datetime_from_filename(
+    file_name: str, return_as_dict: bool = False
+):
+    """Gets the parsed datetime from a filename. Checks for various datetime
+    naming patterns in the file name using regex. If there is a match, parses
+    the individual elements of the datetime, returning a string.
+
+    Args:
+        file_name (str): The file name to parse the datetime from.
+        return_as_dict (bool, optional): Whether or not to return the parsed
+            datetime values as a dictionary.Defaults to False (string).
+
+    Returns:
+        (str | dict): The parsed datetime string or dictionary, depending on
+            `return_as_dict`.
+    """
 
     # Get the parsed datetime of the file.
-    datetime_regex_with_DT = r"D\d{8}-T\d{6}"
-    datetime_regex_match_with_DT = re.search(datetime_regex_with_DT, file_name)
+    datetime_regex_with_dt = r"D\d{8}-T\d{6}"
+    datetime_regex_match_with_dt = re.search(datetime_regex_with_dt, file_name)
     # Check if datetime uses pattern without 'D' and 'T'
     datetime_regex = r"\d{8}-\d{6}"
     datetime_regex_match = re.search(datetime_regex, file_name)
@@ -469,10 +484,10 @@ def get_parsed_datetime_from_filename(file_name: str, return_as_dict: bool = Fal
     datetime_regex_match_w_underscore = re.search(
         datetime_regex_w_underscore, file_name
     )
-    if datetime_regex_match_with_DT:
+    if datetime_regex_match_with_dt:
         # ex. 2107RL_CW-D20211001-T132449.raw
         # TODO: `telegram` within raw file has a time stamp, maybe extract
-        temp = datetime_regex_match_with_DT.group()
+        temp = datetime_regex_match_with_dt.group()
         year_str = temp[1:5]
         month_str = temp[5:7]
         date_str = temp[7:9]
