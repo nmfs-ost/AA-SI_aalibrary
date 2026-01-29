@@ -1,12 +1,12 @@
 """For helper functions."""
 
 import os
+import re
 from typing import List
 import json
 import logging
 import string
 import requests
-
 
 import boto3
 
@@ -454,6 +454,79 @@ azure_connection_string = """
         f"Please fill out the azure config file at: {azure_config_file_path}"
     )
     return azure_config_file_path
+
+
+def get_parsed_datetime_from_filename(file_name: str, return_as_dict: bool = False):
+
+    # Get the parsed datetime of the file.
+    datetime_regex_with_DT = r"D\d{8}-T\d{6}"
+    datetime_regex_match_with_DT = re.search(datetime_regex_with_DT, file_name)
+    # Check if datetime uses pattern without 'D' and 'T'
+    datetime_regex = r"\d{8}-\d{6}"
+    datetime_regex_match = re.search(datetime_regex, file_name)
+    # Check if datetime uses pattern without 'D' and 'T'
+    datetime_regex_w_underscore = r"\d{8}_\d{6}"
+    datetime_regex_match_w_underscore = re.search(
+        datetime_regex_w_underscore, file_name
+    )
+    if datetime_regex_match_with_DT:
+        # ex. 2107RL_CW-D20211001-T132449.raw
+        # TODO: `telegram` within raw file has a time stamp, maybe extract
+        temp = datetime_regex_match_with_DT.group()
+        year_str = temp[1:5]
+        month_str = temp[5:7]
+        date_str = temp[7:9]
+        hour_str = temp[11:13]
+        minute_str = temp[13:15]
+        second_str = temp[15:]
+        try:
+            datetime_str = (
+                f"{year_str}-{month_str}-{date_str} "
+                f"{hour_str}:{minute_str}:{second_str}"
+            )
+            if return_as_dict:
+                return {
+                    "year": year_str,
+                    "month": month_str,
+                    "date": date_str,
+                    "hour": hour_str,
+                    "minute": minute_str,
+                    "second": second_str,
+                }
+            return datetime_str
+        except AttributeError:
+            return ""
+    elif datetime_regex_match or datetime_regex_match_w_underscore:
+        #            01234567-912345
+        # ex. 2107RL-20211001-132449.raw
+        temp = (
+            datetime_regex_match_w_underscore.group()
+            if datetime_regex_match_w_underscore
+            else datetime_regex_match.group()
+        )
+        year_str = temp[0:4]
+        month_str = temp[4:6]
+        date_str = temp[6:8]
+        hour_str = temp[9:11]
+        minute_str = temp[11:13]
+        second_str = temp[13:]
+        try:
+            datetime_str = (
+                f"{year_str}-{month_str}-{date_str} "
+                f"{hour_str}:{minute_str}:{second_str}"
+            )
+            if return_as_dict:
+                return {
+                    "year": year_str,
+                    "month": month_str,
+                    "date": date_str,
+                    "hour": hour_str,
+                    "minute": minute_str,
+                    "second": second_str,
+                }
+            return datetime_str
+        except AttributeError:
+            return ""
 
 
 if __name__ == "__main__":

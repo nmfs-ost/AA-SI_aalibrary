@@ -18,11 +18,13 @@ if __package__ is None or __package__ == "":
     import utils
     import config
     import ices_ship_names
+    from utils.helpers import get_parsed_datetime_from_filename
 else:
     # uses current package visibility
     from aalibrary import utils
     from aalibrary import config
     from aalibrary import ices_ship_names
+    from aalibrary.utils.helpers import get_parsed_datetime_from_filename
 
 
 class RawFile:
@@ -80,24 +82,19 @@ class RawFile:
     def _create_vars_for_use_later(self):
         """Creates vars that will add value and can be utilized later."""
 
-        # Get the parsed datetime of the file.
-        datetime_regex = r"D\d{8}-T\d{6}"
-        datetime_regex_match = re.search(
-            datetime_regex, self.file_name
+        datetime_dict = get_parsed_datetime_from_filename(
+            file_name=self.file_name, return_as_dict=True
         )
-        if datetime_regex_match:
-            # ex. 2107RL_CW-D20211001-T132449.raw
-            # TODO: `telegram` within raw file has a time stamp, maybe extract
-            temp = datetime_regex_match.group()
-            self.year_str = temp[1:5]
-            self.month_str = temp[5:7]
-            self.date_str = temp[7:9]
+        if datetime_dict is not None:
+            self.year_str = datetime_dict["year"]
+            self.month_str = datetime_dict["month"]
+            self.date_str = datetime_dict["date"]
             self.year = int(self.year_str)
             self.month = int(self.month_str)
             self.date = int(self.date_str)
-            self.hour_str = temp[11:13]
-            self.minute_str = temp[13:15]
-            self.second_str = temp[15:]
+            self.hour_str = datetime_dict["hour"]
+            self.minute_str = datetime_dict["minute"]
+            self.second_str = datetime_dict["second"]
             self.hour = int(self.hour_str)
             self.minute = int(self.minute_str)
             self.second = int(self.second_str)
