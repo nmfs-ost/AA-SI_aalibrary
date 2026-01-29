@@ -2,7 +2,6 @@
 all of the attributes of a file."""
 
 from collections import OrderedDict
-import re
 import logging
 import os
 import pprint
