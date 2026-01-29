@@ -1,7 +1,7 @@
 from setuptools import setup, find_namespace_packages
 
 # Get version number
-with open("./src/aalibrary/about.py") as f:
+with open("./src/aalibrary/__about__.py", encoding="utf-8") as f:
     info = {}
     for line in f:
         if line.startswith("__version__"):
@@ -21,7 +21,7 @@ setup_info = dict(
         # 'Tracker': 'https://github.com/pyglet/pyglet/issues',
     },
     description="A python library used for fetching acoustics data.",
-    long_description=open("README.md").read(),
+    long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     license="Apache-2.0",
     # classifiers=[
