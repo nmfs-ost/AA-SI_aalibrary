@@ -1,21 +1,15 @@
 {
-  "details": {
-    "additionalProp1": {},
-    "additionalProp2": {},
-    "additionalProp3": {}
-  },
-  "type": "string",
+  "type": "WCSD",
   "cruiseId": "string",
-  "masterReleaseDate": "string",
-  "ship": "string",
+  "platform": "string",
   "departurePort": "string",
   "departureDate": "string",
   "arrivalPort": "string",
   "arrivalDate": "string",
   "seaArea": "string",
-  "cruiseTitle": "string",
-  "cruisePurpose": "string",
-  "cruiseDescription": "string",
+  "datasetTitle": "string",
+  "datasetPurpose": "string",
+  "datasetDescription": "string",
   "sources": [
     "string"
   ],
@@ -28,21 +22,15 @@
   "projects": [
     "string"
   ],
-  "metadataAuthor": "string",
-  "instruments": [
-    {
-      "shortName": "string",
-      "releaseDate": "string",
-      "status": "string",
-      "dataComment": "string",
-      "ancillaryDataDetails": "string",
-      "dataURI": "gs://example-bucket/example-cruise/example-package/example-instrument",
-      "ancillaryDataURI": "gs://example-bucket/example-cruise/ancillary",
-      "calibrationState": "string",
-      "calibrationDate": "string",
-      "calFilePath": "gs://example-bucket/example-cruise/example-package/calibration",
-      "calReportPath": "gs://example-bucket/example-cruise/example-package/calibration"
-    }
-  ],
+  "dataSubmitter": "string",
+  "instrumentShortName": "string",
+  "datasetType": "Raw",
+  "ancillaryDataDetails": "string",
+  "ancillaryDataURI": "gs://example-bucket/example-cruise/ancillary",
+  "dataURI": "gs://example-bucket/example-cruise/example-package/example-instrument",
+  "calibrationState": "CALIBRATED_W_CALIBRATION_DATA",
+  "calibrationDate": "string",
+  "calFileURI": "gs://example-bucket/example-cruise/example-package/calibration/cal_file.txt",
+  "calReportURI": "gs://example-bucket/example-cruise/example-package/calibration/cal_report.txt",
   "documentsURI": "gs://example-bucket/example-cruise/docs"
 }
