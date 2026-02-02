@@ -1,15 +1,15 @@
 {
   "type": "WCSD",
   "cruiseId": "string",
-  "platform": "string",
+  "platform": "string, previously ship",
   "departurePort": "string",
   "departureDate": "string",
   "arrivalPort": "string",
   "arrivalDate": "string",
   "seaArea": "string",
-  "datasetTitle": "string",
-  "datasetPurpose": "string",
-  "datasetDescription": "string",
+  "datasetTitle": "string, previously cruiseTitle",
+  "datasetPurpose": "string, previously cruisePurpose",
+  "datasetDescription": "string, previously cruiseDescription",
   "sources": [
     "string"
   ],
@@ -22,7 +22,7 @@
   "projects": [
     "string"
   ],
-  "dataSubmitter": "string",
+  "dataSubmitter": "string, previously metadataAuthor",
   "instrumentShortName": "string",
   "datasetType": "Raw",
   "ancillaryDataDetails": "string",
