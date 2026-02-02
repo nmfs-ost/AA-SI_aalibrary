@@ -169,7 +169,7 @@ class TugboatAPI:
             submission_payload = json.load(f)
 
         response = requests.post(
-            url, headers=self.headers, json=submission_payload, timeout=10
+            url, headers=self.headers, json=submission_payload, timeout=10,verify=False,
         )
         # Checking the response status code
         if response.status_code == 201:  # 201 Created for successful POST
