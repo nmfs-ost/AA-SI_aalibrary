@@ -4,6 +4,8 @@ import os
 import json
 import urllib
 import requests
+import warnings
+warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 from dotenv import load_dotenv
 
@@ -213,9 +215,16 @@ class TugboatAPI:
 
     def get_all_submissions(self):
         """Fetches all submissions from the Tugboat API."""
-        url = urllib.parse.urljoin(self.tugboat_api_url, "submissions")
-        all_submissions = self._get_request_as_json(url)
-        return all_submissions["items"]
+        page = 1
+        all_submissions = []
+        while True:
+            url = urllib.parse.urljoin(self.tugboat_api_url, f"submissions?page={page}")
+            submissions = self._get_request_as_json(url)["items"]
+            if submissions == []:
+                break
+            all_submissions.extend(submissions)
+            page += 1
+        return all_submissions
 
     def get_submission_by_id(self, submission_id: str):
         """Fetches a submission by its ID from the Tugboat API."""
@@ -237,9 +246,16 @@ class TugboatAPI:
         """Fetches all jobs from the Tugboat API. Useful for checking
         the status of a submission."""
 
-        url = urllib.parse.urljoin(self.tugboat_api_url, "jobs")
-        all_jobs = self._get_request_as_json(url)
-        return all_jobs["items"]
+        page = 1
+        all_jobs = []
+        while True:
+            url = urllib.parse.urljoin(self.tugboat_api_url, f"jobs?page={page}")
+            jobs = self._get_request_as_json(url)["items"]
+            if jobs == []:
+                break
+            all_jobs.extend(jobs)
+            page += 1
+        return all_jobs
 
     def get_job_by_id(self, job_id: str):
         """Fetches a job by its ID from the Tugboat API. Useful for checking
@@ -252,8 +268,16 @@ class TugboatAPI:
     def get_all_people(self) -> list:
         """Fetches all people & their info from the Tugboat API."""
 
-        url = urllib.parse.urljoin(self.tugboat_api_url, "people")
-        return self._get_request_as_json(url)["items"]
+        page = 1
+        all_people = []
+        while True:
+            url = urllib.parse.urljoin(self.tugboat_api_url, f"people?page={page}")
+            people = self._get_request_as_json(url)["items"]
+            if people == []:
+                break
+            all_people.extend(people)
+            page += 1
+        return all_people
 
     def get_person_by_id(self, person_id: str) -> dict:
         """Fetches a person by their ID from the Tugboat API."""
@@ -306,9 +330,16 @@ class TugboatAPI:
 
     def get_all_organizations(self) -> list:
         """Fetches all organizations from the Tugboat API."""
-
-        url = urllib.parse.urljoin(self.tugboat_api_url, "organizations")
-        return self._get_request_as_json(url)["items"]
+        page = 1
+        all_organizations = []
+        while True:
+            url = urllib.parse.urljoin(self.tugboat_api_url, f"organizations?page={page}")
+            organizations = self._get_request_as_json(url)["items"]
+            if organizations == []:
+                break
+            all_organizations.extend(organizations)
+            page += 1
+        return all_organizations
 
     ################################################################# PLATFORMS
     def get_platform_by_id(self, platform_id: str) -> dict:
@@ -320,9 +351,16 @@ class TugboatAPI:
 
     def get_all_platforms(self) -> list:
         """Fetches all platforms from the Tugboat API."""
-
-        url = urllib.parse.urljoin(self.tugboat_api_url, "platforms")
-        return self._get_request_as_json(url)["items"]
+        page = 1
+        all_platforms = []
+        while True:
+            url = urllib.parse.urljoin(self.tugboat_api_url, f"platforms?page={page}")
+            platforms = self._get_request_as_json(url)["items"]
+            if platforms == []:
+                break
+            all_platforms.extend(platforms)
+            page += 1
+        return all_platforms
 
     ############################################################### INSTRUMENTS
     def get_instrument_by_id(self, instrument_id: str) -> dict:
@@ -346,9 +384,16 @@ class TugboatAPI:
 
     def get_all_instruments(self) -> list:
         """Fetches all instruments from the Tugboat API."""
-
-        url = urllib.parse.urljoin(self.tugboat_api_url, "instruments")
-        return self._get_request_as_json(url)["items"]
+        page = 1
+        all_instruments = []
+        while True:
+            url = urllib.parse.urljoin(self.tugboat_api_url, f"instruments?page={page}")
+            instruments = self._get_request_as_json(url)["items"]
+            if instruments == []:
+                break
+            all_instruments.extend(instruments)
+            page += 1
+        return all_instruments
 
     ################################################################# SEA AREAS
     def get_sea_area_by_id(self, sea_area_id: str) -> dict:
@@ -360,9 +405,16 @@ class TugboatAPI:
 
     def get_all_sea_areas(self) -> list:
         """Fetches all sea areas from the Tugboat API."""
-
-        url = urllib.parse.urljoin(self.tugboat_api_url, "sea-areas")
-        return self._get_request_as_json(url)["items"]
+        page = 1
+        all_sea_areas = []
+        while True:
+            url = urllib.parse.urljoin(self.tugboat_api_url, f"sea-areas?page={page}")
+            sea_areas = self._get_request_as_json(url)["items"]
+            if sea_areas == []:
+                break
+            all_sea_areas.extend(sea_areas)
+            page += 1
+        return all_sea_areas
 
 
 if __name__ == "__main__":
@@ -374,7 +426,13 @@ if __name__ == "__main__":
     # print(tb_api.get_all_organizations())
     # print(tb_api.get_organization_by_id("151"))
 
-    # print(tb_api.get_all_platforms())
+    print(tb_api.get_all_instruments())
+    print(tb_api.get_all_platforms())
+    print(tb_api.get_all_people())
+    print(tb_api.get_all_sea_areas())
+    print(tb_api.get_all_submissions())
+    print(tb_api.get_all_jobs())
+    print(tb_api.get_all_organizations())
     # print(tb_api.get_platform_by_id("51"))
     # print(tb_api.get_all_platforms())
     # print(tb_api.get_all_instruments())
@@ -387,5 +445,5 @@ if __name__ == "__main__":
     # )
     # tb_api.get_submission_by_id(submission_id="test0")
     # print(tb_api._tugboat_cred)
-    print(tb_api.get_all_submissions())
-    print(tb_api.get_submission_job_by_id(submission_id="156"))
+    # print(tb_api.get_all_submissions())
+    # print(tb_api.get_submission_job_by_id(submission_id="156"))
