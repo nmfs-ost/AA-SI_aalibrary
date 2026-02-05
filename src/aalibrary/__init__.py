@@ -6,6 +6,8 @@ import logging
 # flake8: noqa
 from . import utils
 
+__version__ = "1.0.0"
+
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",

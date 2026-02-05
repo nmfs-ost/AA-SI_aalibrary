@@ -1,7 +1,7 @@
 from setuptools import setup, find_namespace_packages
 
 # Get version number
-with open("./src/aalibrary/__about__.py", encoding="utf-8") as f:
+with open("./src/aalibrary/__init__.py", encoding="utf-8") as f:
     info = {}
     for line in f:
         if line.startswith("__version__"):
