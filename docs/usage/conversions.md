@@ -6,7 +6,7 @@ In order to convert a raw file into a netcdf, use the following example as a gui
 
 ```python
 from aalibrary import utils
-from aalibrary.ingestion import convert_raw_to_netcdf
+from aalibrary.conversion import convert_raw_to_netcdf
 
 # Create a GCP bucket object
 gcp_stor_client, gcp_bucket_name, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()

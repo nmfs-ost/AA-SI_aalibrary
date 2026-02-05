@@ -49,7 +49,7 @@ from aalibrary.ingestion import download_survey_from_ncei
 download_survey_from_ncei(ship_name="Reuben_Lasker",
                           survey_name="RL2107",
                           download_directory="./test_data_dir",
-                          debug: bool = False)
+                          debug = False)
 ```
 
 ## Downloading A Raw File From Azure Data Lake (OMAO)
