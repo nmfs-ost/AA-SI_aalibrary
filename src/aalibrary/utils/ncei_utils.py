@@ -45,7 +45,9 @@ def get_all_ship_names_in_ncei(
 
     Args:
         normalize (bool, optional): Whether or not to normalize the ship_name
-            attribute to how GCP stores it. Defaults to False.
+            attribute to how GCP stores it.
+            NOTE: Can only normalize if `return_full_paths=False`.
+            Defaults to False.
         s3_client (boto3.client, optional): The client used to perform this
             operation. Defaults to None, but creates a client for you instead.
         return_full_paths (bool, optional): Whether or not you want a full
@@ -62,7 +64,7 @@ def get_all_ship_names_in_ncei(
     subdirs = get_subdirectories_in_s3_bucket_location(
         prefix=prefix, s3_client=s3_client, return_full_paths=return_full_paths
     )
-    if normalize:
+    if normalize and not return_full_paths:
         subdirs = [normalize_ship_name(ship_name=subdir) for subdir in subdirs]
     return subdirs
 
@@ -956,11 +958,12 @@ if __name__ == "__main__":
     # print(get_random_raw_file_from_ncei())
     # print(search_ncei_objects_for_string(search_param="EK500"))
 
-    import timeit
+    # import timeit
 
-    print("Starting timeit...")
-    time = timeit.timeit(
-        lambda: search_ncei_objects_for_string(search_param="EK500"), number=5
-    )
-    print(f"Time taken: {time/5} seconds per run")
-    print(f"{time:.6f} seconds (over 5 runs)")
+    # print("Starting timeit...")
+    # time = timeit.timeit(
+    #     lambda: search_ncei_objects_for_string(search_param="EK500"), number=5
+    # )
+    # print(f"Time taken: {time/5} seconds per run")
+    # print(f"{time:.6f} seconds (over 5 runs)")
+    print(get_all_ship_names_in_ncei(return_full_paths=True, normalize=True))
