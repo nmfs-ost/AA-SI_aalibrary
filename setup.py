@@ -56,6 +56,7 @@ setup_info = dict(
         "google-api-python-client",
         "google-cloud",
         "google-cloud-bigquery",
+        "google-cloud-bigquery-storage",
         "google-cloud-storage",
         "google-cloud-vision",
         "numpy>=1.26.4",
