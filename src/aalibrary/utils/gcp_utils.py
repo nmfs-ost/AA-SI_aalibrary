@@ -4,6 +4,7 @@ through our google storage bucket."""
 from typing import List
 
 from google.cloud import storage
+from tqdm import tqdm
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -305,15 +306,18 @@ def rename_gcs_folder(
     if not new_folder_prefix.endswith("/"):
         new_folder_prefix += "/"
 
+    len_blobs = get_num_objects_in_blob(
+        gcp_bucket_name=gcp_bucket_name, folder_prefix=old_folder_prefix
+    )
     blobs = bucket.list_blobs(prefix=old_folder_prefix)
 
-    for blob in blobs:
+    for blob in tqdm(blobs, desc="Renaming GCS objects", total=len_blobs):
         # Construct the new blob name
-        new_blob_name = new_folder_prefix + blob.name[len(old_folder_prefix):]
+        new_blob_name = new_folder_prefix + blob.name[len(old_folder_prefix) :]
 
         # Rename the blob
         new_blob = bucket.rename_blob(blob, new_blob_name)
-        print(f"Renamed {blob.name} to {new_blob.name}")
+        print(f"\n\tRenamed {blob.name} to {new_blob.name}")
 
 
 def move_folder_in_gcs(
@@ -341,11 +345,18 @@ def move_folder_in_gcs(
 
     # List all blobs (objects) with the source prefix
     blobs = bucket.list_blobs(prefix=source_prefix)
+    len_blobs = get_num_objects_in_blob(
+        gcp_bucket_name=gcp_bucket_name, folder_prefix=source_prefix
+    )
 
-    for blob in blobs:
+    for blob in tqdm(
+        blobs,
+        desc="Moving GCS objects",
+        total=len_blobs,
+    ):
         # Construct the new blob name
         # This removes the source_prefix and adds the destination_prefix
-        new_blob_name = destination_prefix + blob.name[len(source_prefix):]
+        new_blob_name = destination_prefix + blob.name[len(source_prefix) :]
 
         # Copy the blob to the new name
         new_blob = bucket.copy_blob(blob, bucket, new_name=new_blob_name)
@@ -353,7 +364,7 @@ def move_folder_in_gcs(
         # Delete the original blob
         blob.delete()
 
-        print(f"Moved '{blob.name}' to '{new_blob.name}'")
+        print(f"\n\tMoved '{blob.name}' to '{new_blob.name}'")
 
 
 def copy_folder_within_gcs(
@@ -381,16 +392,44 @@ def copy_folder_within_gcs(
 
     # List all blobs (objects) with the source prefix
     blobs = bucket.list_blobs(prefix=source_prefix)
+    len_blobs = get_num_objects_in_blob(
+        gcp_bucket_name=gcp_bucket_name, folder_prefix=source_prefix)
 
-    for blob in blobs:
+    for blob in tqdm(blobs, desc="Copying GCS objects", total=len_blobs):
         # Construct the new blob name
         # This removes the source_prefix and adds the destination_prefix
-        new_blob_name = destination_prefix + blob.name[len(source_prefix):]
+        new_blob_name = destination_prefix + blob.name[len(source_prefix) :]
 
         # Copy the blob to the new name
         new_blob = bucket.copy_blob(blob, bucket, new_name=new_blob_name)
 
-        print(f"Copied '{blob.name}' to '{new_blob.name}'")
+        print(f"\n\tCopied '{blob.name}' to '{new_blob.name}'")
+
+
+def get_num_objects_in_blob(
+    gcp_bucket_name: str = "",
+    folder_prefix: str = "",
+) -> int:
+    """Gets the number of objects in a given folder prefix in a GCS bucket.
+
+    Args:
+        gcp_bucket_name (str, optional): The GCP bucket where the folder resides. Defaults to "".
+        folder_prefix (str, optional): The folder prefix to count objects in. Defaults to "".
+
+    Returns:
+        int: The number of objects in the specified folder prefix.
+    """
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(gcp_bucket_name)
+
+    # List all blobs (objects) with the specified folder prefix
+    blobs = bucket.list_blobs(prefix=folder_prefix)
+
+    # Count the number of blobs
+    num_objects = sum(1 for _ in blobs)
+
+    return num_objects
 
 
 if __name__ == "__main__":
@@ -412,6 +451,6 @@ if __name__ == "__main__":
 
     rename_gcs_folder(
         gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
-        old_folder_prefix="other/HB_Data/",
-        new_folder_prefix="other/Henry_B_Bigelow/",
+        old_folder_prefix="other/deletable/RL2107/EK80_renamed/",
+        new_folder_prefix="other/deletable/RL2107/EK80/",
     )
