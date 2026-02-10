@@ -707,6 +707,65 @@ def get_folder_prefix_size_in_ncei_cache(
     return int(df["folder_size_bytes"].iloc[0]) if not df.empty else 0
 
 
+def get_random_raw_file_from_ncei_cache_with_search_param(
+    search_param: str = "",
+    gcp_bq_client: bigquery.Client = None,
+) -> Union[List[str], None]:
+    """Gets a random raw file name from the NCEI cache in BigQuery along with
+    its associated ship name, survey name, and echosounder name based on a
+    search parameter. The search parameter is a string that is searched for in
+    the `s3_object_key`. So you can search for a specific ship name, survey
+    name, or echosounder name.
+
+    Args:
+        search_param (str): The string to search for in the `s3_object_key`
+            column of the NCEI cache in BigQuery. The random raw file returned
+            will be one that has this string in its `s3_object_key`.
+        gcp_bq_client (bigquery.Client, optional): A GCP BigQuery client
+            object. If not provided, one will be created.
+            NOTE: By default, the created object will be using a connection to
+            the `ggn-nmfs-aa-dev-1` project.
+    Returns:
+        List[str]: A list object with strings denoting each parameter required
+            for creating a raw file object. None if no raw file is found with
+            the search parameter.
+            Ex. [
+                random_ship_name,
+                random_survey_name,
+                random_echosounder,
+                random_raw_file,
+            ]
+    """
+    gcp_bq_client = (
+        setup_gbq_client_objs()[0] if gcp_bq_client is None else gcp_bq_client
+    )
+
+    random_raw_file_query = f"""SELECT ship_name, survey_name,
+        echosounder_name, file_name
+        FROM `ggn-nmfs-aa-dev-1.metadata.ncei_cache`
+        WHERE s3_object_key LIKE '%{search_param}%'
+        AND file_type = 'raw'
+        ORDER BY RAND()
+        LIMIT 1"""
+    random_raw_file_df = bq_query_to_pandas(
+        gcp_bq_client, random_raw_file_query
+    )
+    if random_raw_file_df.empty:
+        return None
+
+    random_ship_name = random_raw_file_df["ship_name"].iloc[0]
+    random_survey_name = random_raw_file_df["survey_name"].iloc[0]
+    random_echosounder = random_raw_file_df["echosounder_name"].iloc[0]
+    random_raw_file = random_raw_file_df["file_name"].iloc[0]
+
+    return [
+        random_ship_name,
+        random_survey_name,
+        random_echosounder,
+        random_raw_file,
+    ]
+
+
 if __name__ == "__main__":
     gcp_bq_client, _ = setup_gbq_client_objs(project_id="ggn-nmfs-aa-dev-1")
 
@@ -881,5 +940,12 @@ if __name__ == "__main__":
     print(
         get_folder_prefix_size_in_ncei_cache(
             folder_prefix="data/raw/Reuben_Lasker/RL2107/"
+        )
+    )
+
+    # Test get_random_raw_file_from_ncei_cache_with_search_param
+    print(
+        get_random_raw_file_from_ncei_cache_with_search_param(
+            search_param="RL2107", gcp_bq_client=gcp_bq_client
         )
     )
