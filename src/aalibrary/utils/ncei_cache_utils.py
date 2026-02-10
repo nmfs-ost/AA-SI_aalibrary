@@ -2,7 +2,7 @@
 through NCEI's s3 bucket using the cache created by the
 `daily_ncei_cache.ipynb` script."""
 
-from typing import List
+from typing import List, Union
 
 from google.cloud import bigquery
 
@@ -51,7 +51,9 @@ def get_all_ship_names_in_ncei_cache(
             `return_full_paths` parameter.
     """
 
-    gcp_bq_client = setup_gbq_client_objs()[0]
+    gcp_bq_client = (
+        setup_gbq_client_objs()[0] if gcp_bq_client is None else gcp_bq_client
+    )
 
     if return_full_paths:
         query = """SELECT s3_object_key
@@ -98,7 +100,9 @@ def get_all_surveys_in_ncei_cache(
             `return_full_paths` parameter.
     """
 
-    gcp_bq_client = setup_gbq_client_objs()[0]
+    gcp_bq_client = (
+        setup_gbq_client_objs()[0] if gcp_bq_client is None else gcp_bq_client
+    )
 
     if return_full_paths:
         query = """SELECT s3_object_key
@@ -584,6 +588,125 @@ def get_echosounder_from_raw_file(
     return df["echosounder_name"].iloc[0]
 
 
+def check_if_tugboat_metadata_exists_in_survey_in_ncei_cache(
+    ship_name: str = "",
+    survey_name: str = "",
+    gcp_bq_client: bigquery.Client = None,
+) -> Union[str, None]:
+    """Checks if there is metadata associated with a specific survey of a
+    specific ship in the NCEI cache in BigQuery.
+
+    Args:
+        ship_name (str): The name of the ship to check for metadata JSON.
+            NOTE: The ship's name MUST be spelled exactly as it is in NCEI. Use
+            the `get_all_ship_names_in_ncei` function to see all possible NCEI
+            ship names.
+        survey_name (str): The name of the survey to check for metadata.
+            NOTE: The survey's name MUST be spelled exactly as it is in NCEI.
+            Use  the `get_all_surveys_in_ncei` function to see all possible
+            NCEI survey names.
+        gcp_bq_client (bigquery.Client, optional): A GCP BigQuery client
+            object. If not provided, one will be created.
+            NOTE: By default, the created object will be using a connection to
+            the `ggn-nmfs-aa-dev-1` project.
+
+    Returns:
+        bool: True if there is metadata associated with the survey and ship,
+            False otherwise.
+    """
+    gcp_bq_client = (
+        setup_gbq_client_objs()[0] if gcp_bq_client is None else gcp_bq_client
+    )
+    ship_name_normalized = normalize_ship_name(ship_name=ship_name)
+
+    query = f"""SELECT s3_object_key
+    FROM `ggn-nmfs-aa-dev-1.metadata.ncei_cache`
+    WHERE ship_name_normalized = '{ship_name_normalized}'
+    AND survey_name = '{survey_name}'
+    AND file_type = 'json'
+    AND s3_object_key LIKE '%metadata.json'"""
+    df = bq_query_to_pandas(gcp_bq_client, query)
+    return df["s3_object_key"].iloc[0] if not df.empty else None
+
+
+def get_all_metadata_files_in_survey_in_ncei_cache(
+    ship_name: str = "",
+    survey_name: str = "",
+    gcp_bq_client: bigquery.Client = None,
+    return_full_paths: bool = False,
+) -> List[str]:
+    """Gets all of the metadata file names from a specific survey of a specific
+    ship in the NCEI cache in BigQuery.
+
+    Args:
+        ship_name (str): The name of the ship to get metadata file names for.
+            NOTE: The ship's name MUST be spelled exactly as it is in NCEI. Use
+            the `get_all_ship_names_in_ncei` function to see all possible NCEI
+            ship names.
+        survey_name (str): The name of the survey to get metadata file names
+            for.
+            NOTE: The survey's name MUST be spelled exactly as it is in NCEI.
+            Use  the `get_all_surveys_in_ncei` function to see all possible
+            NCEI survey names.
+        gcp_bq_client (bigquery.Client, optional): A GCP BigQuery client
+            object. If not provided, one will be created.
+            NOTE: By default, the created object will be using a connection to
+            the `ggn-nmfs-aa-dev-1` project.
+        return_full_paths (bool, optional): Whether or not you want a full
+            path from bucket root to the subdirectory returned. Set to false
+            if you only want the subdirectory names listed. Defaults to False.
+    Returns:
+        List[str]: A list of strings, each being a metadata file name for a
+            specific survey of a specific ship.
+    """
+    gcp_bq_client = (
+        setup_gbq_client_objs()[0] if gcp_bq_client is None else gcp_bq_client
+    )
+    metadata_prefix = f"data/raw/{ship_name}/{survey_name}/metadata/"
+
+    if return_full_paths:
+        query = f"""SELECT s3_object_key
+        FROM `ggn-nmfs-aa-dev-1.metadata.ncei_cache`
+        WHERE s3_object_key LIKE '{metadata_prefix}%'"""
+        df = bq_query_to_pandas(gcp_bq_client, query)
+        return df["s3_object_key"].dropna().unique().tolist()
+
+    query = f"""SELECT file_name
+    FROM `ggn-nmfs-aa-dev-1.metadata.ncei_cache`
+    WHERE s3_object_key LIKE '{metadata_prefix}%'"""
+    df = bq_query_to_pandas(gcp_bq_client, query)
+    return df["file_name"].dropna().unique().tolist()
+
+
+def get_folder_prefix_size_in_ncei_cache(
+    folder_prefix: str = "",
+    gcp_bq_client: bigquery.Client = None,
+) -> int:
+    """Gets the size of a folder prefix in the NCEI cache in BigQuery.
+
+    Args:
+        folder_prefix (str): The folder prefix to get the size of. This should
+            be in the format of "data/raw/{ship_name}/" or
+            "data/raw/{ship_name}/{survey_name}/" etc. depending on the level
+            of the folder you want to get the size of.
+        gcp_bq_client (bigquery.Client, optional): A GCP BigQuery client
+            object. If not provided, one will be created.
+            NOTE: By default, the created object will be using a connection to
+            the `ggn-nmfs-aa-dev-1` project.
+    Returns:
+        int: The size of the folder prefix in bytes.
+    """
+    gcp_bq_client = (
+        setup_gbq_client_objs()[0] if gcp_bq_client is None else gcp_bq_client
+    )
+
+    query = f"""SELECT SUM(size_bytes) as folder_size_bytes
+    FROM `ggn-nmfs-aa-dev-1.metadata.ncei_cache`
+    WHERE s3_object_key LIKE '{folder_prefix}%'"""
+    df = bq_query_to_pandas(gcp_bq_client, query)
+    return int(df["folder_size_bytes"].iloc[0]) if not df.empty else 0
+
+
 if __name__ == "__main__":
     gcp_bq_client, _ = setup_gbq_client_objs(project_id="ggn-nmfs-aa-dev-1")
 
@@ -724,5 +847,39 @@ if __name__ == "__main__":
             ship_name="Reuben_Lasker",
             survey_name="RL2107",
             gcp_bq_client=gcp_bq_client,
+        )
+    )
+
+    # Test check_if_tugboat_metadata_exists_in_survey_in_ncei_cache
+    print(
+        check_if_tugboat_metadata_exists_in_survey_in_ncei_cache(
+            ship_name="Roger_Revelle",
+            survey_name="RR2212",
+            gcp_bq_client=gcp_bq_client,
+        )
+    )
+
+    # Test get_all_metadata_files_in_survey_in_ncei_cache
+    print(
+        get_all_metadata_files_in_survey_in_ncei_cache(
+            ship_name="Roger_Revelle",
+            survey_name="RR2212",
+            gcp_bq_client=gcp_bq_client,
+            return_full_paths=True,
+        )
+    )
+    print(
+        get_all_metadata_files_in_survey_in_ncei_cache(
+            ship_name="Roger_Revelle",
+            survey_name="RR2212",
+            gcp_bq_client=gcp_bq_client,
+            return_full_paths=False,
+        )
+    )
+
+    # Test get_folder_prefix_size_in_ncei_cache
+    print(
+        get_folder_prefix_size_in_ncei_cache(
+            folder_prefix="data/raw/Reuben_Lasker/RL2107/"
         )
     )
