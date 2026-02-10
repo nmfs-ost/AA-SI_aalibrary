@@ -962,7 +962,8 @@ if __name__ == "__main__":
 
     # print("Starting timeit...")
     # time = timeit.timeit(
-    #     lambda: search_ncei_objects_for_string(search_param="EK500"), number=5
+    #     lambda: search_ncei_objects_for_string(search_param="EK500"),
+    # number=5
     # )
     # print(f"Time taken: {time/5} seconds per run")
     # print(f"{time:.6f} seconds (over 5 runs)")
