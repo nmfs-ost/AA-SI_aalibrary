@@ -36,7 +36,7 @@ from pathlib import Path
 from loguru import logger
 
 # Import the real app main (separate file)
-from src.aalibrary.utils.raw_fetch_schedule_builder import default_output_path, main as builder_main
+from aalibrary.utils.raw_fetch_schedule_builder import default_output_path, main as builder_main
 
 def print_help() -> None:
     print(__doc__.strip() + "\n")
