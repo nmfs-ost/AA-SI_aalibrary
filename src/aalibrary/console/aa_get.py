@@ -8,7 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from raw_fetch_schedule_builder import default_output_path, main as builder_main
+from aalibrary.utils.raw_fetch_schedule_builder import default_output_path, main as builder_main
 
 
 def _coerce_yaml_name(name: str) -> str:
