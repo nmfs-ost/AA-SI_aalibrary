@@ -42,20 +42,20 @@ def select_int(message: str, values: list[int], *, max_height: str = "70%") -> i
 
 
 def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> datetime:
-    year = select_int(f"📅 {label} year:", list(range(year_min, year_max + 1)))
+    year = select_int(f"📅   {label} year:", list(range(year_min, year_max + 1)))
 
     month_choices = [
         {"name": f"{i:02d} - {calendar.month_name[i]}", "value": i}
         for i in range(1, 13)
     ]
-    month = int(select_value(f"🗓️  {label} month:", month_choices))
+    month = int(select_value(f"🗓️   {label} month:", month_choices))
 
     dim = days_in_month(year, month)
-    day = select_int(f"📆 {label} day:", list(range(1, dim + 1)))
+    day = select_int(f"📆   {label} day:", list(range(1, dim + 1)))
 
-    hour = select_int(f"🕒 {label} hour:", list(range(0, 24)))
-    minute = select_int(f"⏱️  {label} minute:", list(range(0, 60)))
-    second = select_int(f"⏲️  {label} second:", list(range(0, 60)))
+    hour = select_int(f"🕒   {label} hour:", list(range(0, 24)))
+    minute = select_int(f"⏱️   {label} minute:", list(range(0, 60)))
+    second = select_int(f"⏲️   {label} second:", list(range(0, 60)))
 
     return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
 
@@ -67,7 +67,7 @@ def default_output_path() -> Path:
 
 def ask_output_path() -> Path:
     raw = inquirer.text(
-        message="💾 Output YAML path:",
+        message="💾   Output YAML path:",
         default=str(default_output_path()),
     ).execute()
 
@@ -139,7 +139,7 @@ def choose_vessel() -> str:
     vessels = get_vessel_names()
     return str(
         inquirer.fuzzy(
-            message="🛥️  Select vessel (type to search):",
+            message="🛥️   Select vessel (type to search):",
             choices=vessels,
             max_height="70%",
         ).execute()
@@ -150,7 +150,7 @@ def choose_survey(vessel: str) -> str:
     surveys = get_fake_surveys_for_vessel(vessel, n=60)
     return str(
         inquirer.fuzzy(
-            message=f"📋 Select survey for {vessel} (type to search):",
+            message=f"📋   Select survey for {vessel} (type to search):",
             choices=surveys,
             max_height="70%",
         ).execute()
@@ -161,7 +161,7 @@ def choose_instrument() -> str:
     instruments = get_instruments()
     return str(
         inquirer.select(
-            message="🎛️  Select instrument:",
+            message="🎛️   Select instrument:",
             choices=instruments,
             max_height="70%",
         ).execute()
@@ -190,7 +190,7 @@ def build_request() -> Request:
         windows.append(create_time_window())
 
         more = inquirer.confirm(
-            message="➕ Add another time window for this same vessel/survey/instrument?",
+            message="➕   Add another time window for this same vessel/survey/instrument?",
             default=False,
         ).execute()
         if not more:
@@ -215,7 +215,7 @@ def main(output_path: Path | None = None) -> Path:
     If output_path is provided, skips the output-path prompt.
     Returns the saved path.
     """
-    print("\n🧭 Raw Fetch Schedule Builder (terminal UI)\n")
+    print("\n🧭   aa-get : Fetch Schedule Builder\n")
 
     requests: list[Request] = []
 
@@ -223,7 +223,7 @@ def main(output_path: Path | None = None) -> Path:
         requests.append(build_request())
 
         another_req = inquirer.confirm(
-            message="🧩 Create another request (different vessel/survey/instrument)?",
+            message="🧩   Create another request (different vessel/survey/instrument)?",
             default=False,
         ).execute()
 
@@ -249,16 +249,16 @@ def main(output_path: Path | None = None) -> Path:
 
     write_yaml_file(out_path, schedule_dict)
 
-    print("\n🧾 Result (YAML)\n")
+    print("\n🧾   Result (YAML)\n")
     if yaml is None:
         import json
         print(json.dumps(schedule_dict, indent=2))
-        print(f"\n💾 Saved (JSON fallback) to: {out_path}\n")
+        print(f"\n💾   Saved (JSON fallback) to: {out_path}\n")
     else:
         print(yaml.safe_dump(schedule_dict, sort_keys=False))
-        print(f"\n💾 Saved YAML to: {out_path}\n")
+        print(f"\n💾   Saved YAML to: {out_path}\n")
 
-    print("✅ Done.\n")
+    print("✅   Done.\n")
     return out_path
 
 
