@@ -967,4 +967,5 @@ if __name__ == "__main__":
     # )
     # print(f"Time taken: {time/5} seconds per run")
     # print(f"{time:.6f} seconds (over 5 runs)")
-    print(get_all_ship_names_in_ncei(return_full_paths=True, normalize=True))
+    # print(get_all_ship_names_in_ncei(return_full_paths=True, normalize=True))
+    print(get_all_surveys_in_ncei(s3_client=s3_client, return_full_paths=True))
