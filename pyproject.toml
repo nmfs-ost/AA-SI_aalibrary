@@ -78,3 +78,4 @@ aa-detect-shoal = "aalibrary.console.aa_detect_shoal:main"
 aa-detect-seafloor = "aalibrary.console.aa_detect_seafloor:main"
 
 aa-get = "aalibrary.console.aa_get:main"
+aa-refresh = "aalibrary.console.aa_refresh:main"
