@@ -7,9 +7,13 @@ requests:
           end: "2021-07-31T23:59:59Z"
         - start: "2021-08-01T00:00:00Z"
           end: "2021-08-31T23:59:59Z"
+        - start: "2021-08-01T00:00:00Z"
+          end: "2021-08-31T23:59:59Z"
     - vessel: "Falkor"
       survey: "FK2101"
       instrument: "EK80"
       time-windows:
         - start: "2021-01-01T00:00:00Z"
           end: "2021-01-31T23:59:59Z"
+    - vessel: "Falkor"
+      survey: "FK3333"
