@@ -210,7 +210,7 @@ def parse_yaml_and_fetch_results(
     the resulting SQL query to return the results of the YAML submission."""
     sql_query = parse_yaml_file(yaml_file_path=yaml_file_path)
     results = execute_sql_query(sql_query=sql_query, client=client)
-    return results
+    return list(set(results))
 
 
 if __name__ == "__main__":
@@ -220,9 +220,9 @@ if __name__ == "__main__":
     # yaml_test._print_yaml_dict()
     # yaml_test._print_requests_sql()
     print(yaml_test.sql_query)
-    # results = parse_yaml_and_fetch_results(
-    #     yaml_file_path=r"C:\Users\Hannah Khan\Desktop\repos\AA-SI_aalibrary\other\scripts\multi-fetch-algo-template.yaml",
-    #     client=bigquery.Client(project="ggn-nmfs-aa-dev-1"),
-    # )
-    # print(results)
-    # print(len(results))
+    results = parse_yaml_and_fetch_results(
+        yaml_file_path=r"C:\Users\Hannah Khan\Desktop\repos\AA-SI_aalibrary\other\scripts\multi-fetch-algo-template.yaml",
+        client=bigquery.Client(project="ggn-nmfs-aa-dev-1"),
+    )
+    print(results)
+    print(len(results))
