@@ -28,3 +28,4 @@ mkdocstrings-python
 mkdocs-git-revision-date-localized-plugin
 nbformat
 python-dotenv
+sqlparse
