@@ -7,6 +7,7 @@ from pathlib import Path
 import calendar
 import random
 from typing import Any
+from aalibrary.utils import ncei_cache_utils
 
 from InquirerPy import inquirer
 
@@ -136,7 +137,7 @@ class Request:
 
 
 def choose_vessel() -> str:
-    vessels = get_vessel_names()
+    vessels = ncei_cache_utils.get_all_ship_names_in_ncei_cache()
     return str(
         inquirer.fuzzy(
             message="🛥️   Select vessel (type to search):",
@@ -147,7 +148,7 @@ def choose_vessel() -> str:
 
 
 def choose_survey(vessel: str) -> str:
-    surveys = get_fake_surveys_for_vessel(vessel, n=60)
+    surveys = ncei_cache_utils.get_all_survey_names_from_a_ship_in_ncei_cache(vessel)
     return str(
         inquirer.fuzzy(
             message=f"📋   Select survey for {vessel} (type to search):",
@@ -158,7 +159,7 @@ def choose_survey(vessel: str) -> str:
 
 
 def choose_instrument() -> str:
-    instruments = get_instruments()
+    instruments = ncei_cache_utils.get_all_echosounders_in_a_survey_in_ncei_cache(ship_name=None, survey_name=None, gcp_bq_client=None, return_full_paths=None)
     return str(
         inquirer.select(
             message="🎛️   Select instrument:",
