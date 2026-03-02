@@ -158,8 +158,8 @@ def choose_survey(vessel: str) -> str:
     )
 
 
-def choose_instrument() -> str:
-    instruments = ncei_cache_utils.get_all_echosounders_in_a_survey_in_ncei_cache(ship_name=None, survey_name=None, gcp_bq_client=None, return_full_paths=None)
+def choose_instrument(ship_name: str, survey_name: str) -> str:
+    instruments = ncei_cache_utils.get_all_echosounders_in_a_survey_in_ncei_cache(ship_name=ship_name, survey_name=survey_name, gcp_bq_client=None, return_full_paths=None)
     return str(
         inquirer.select(
             message="🎛️   Select instrument:",
