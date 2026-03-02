@@ -184,7 +184,7 @@ def create_time_window() -> TimeWindow:
 def build_request() -> Request:
     vessel = choose_vessel()
     survey = choose_survey(vessel)
-    instrument = choose_instrument()
+    instrument = choose_instrument(vessel, survey)
 
     windows: list[TimeWindow] = []
     while True:
