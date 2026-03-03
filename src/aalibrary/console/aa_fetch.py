@@ -90,7 +90,7 @@ def main() -> int:
     # Parse args
     args = parser.parse_args()
 
-
+    print(args)
 
     if args.yaml_path is None:
         args.yaml_path = Path(sys.stdin.readline().strip())
