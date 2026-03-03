@@ -154,14 +154,6 @@ def download_raw_file_from_azure(
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
-    # Create gcp bucket objects if upload_to_gcp is True and gcp_bucket object is not passed in.
-    if upload_to_gcp and (gcp_bucket is None):
-        _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
-    try:
-        _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
-    except Exception as e:
-        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n %s", e)
-        raise
 
     rf = RawFile(
         file_name=file_name,
@@ -175,7 +167,6 @@ def download_raw_file_from_azure(
         upload_to_gcp=upload_to_gcp,
         debug=debug,
         gcp_bucket=gcp_bucket,
-        s3_resource=s3_resource,
     )
 
     # Location of temporary file in sandbox environment.
@@ -185,8 +176,6 @@ def download_raw_file_from_azure(
     azure_datalake_directory_client = get_data_lake_directory_client(
         config_file_path=config_file_path
     )
-
-    # TODO: check to see if you want to download from gcp instead.
 
     if rf.raw_file_exists_in_omao:
         print(f"DOWNLOADING FILE {rf.raw_file_name} FROM OMAO")
@@ -328,13 +317,6 @@ def download_raw_file_from_ncei(
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
-    if upload_to_gcp and (gcp_bucket is None):
-        _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
-    try:
-        _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
-    except Exception as e:
-        logging.error("CANNOT ESTABLISH CONNECTION TO S3 BUCKET..\n%s", e)
-        raise
 
     rf = RawFile(
         file_name=file_name,
@@ -345,9 +327,8 @@ def download_raw_file_from_ncei(
         data_source="NCEI",
         file_download_directory=file_download_directory,
         upload_to_gcp=upload_to_gcp,
-        debug=debug,
         gcp_bucket=gcp_bucket,
-        s3_resource=s3_resource,
+        debug=debug,
     )
 
     if rf.raw_file_exists_in_ncei:
@@ -514,7 +495,6 @@ def _download_survey_from_ncei(
             ship_name=ship_name,
             survey_name=survey_name,
             echosounder=echosounder,
-            data_source="NCEI",
             file_download_directory=file_download_directory,
             upload_to_gcp=upload_to_gcp,
             debug=debug,
@@ -565,10 +545,6 @@ def download_raw_file(
             Defaults to False.
     """
 
-    if gcp_bucket is None:
-        _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
-    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
-
     rf = RawFile(
         file_name=file_name,
         file_type="raw",
@@ -579,7 +555,6 @@ def download_raw_file(
         file_download_directory=file_download_directory,
         debug=debug,
         gcp_bucket=gcp_bucket,
-        s3_resource=s3_resource,
     )
 
     if rf.raw_file_exists_in_gcp:
@@ -631,7 +606,6 @@ def download_raw_file(
             ship_name=rf.ship_name,
             survey_name=rf.survey_name,
             echosounder=rf.echosounder,
-            data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
             upload_to_gcp=True,
             debug=rf.debug,
@@ -765,13 +739,6 @@ def download_netcdf_file(
             Defaults to False.
     """
 
-    assert gcp_bucket is not None, (
-        "A GCP bucket must be provided. Please "
-        "create one using `cloud_utils.setup_gcp_storage_objs`."
-    )
-
-    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
-
     rf = RawFile(
         file_name=raw_file_name,
         file_type=file_type,
@@ -782,7 +749,6 @@ def download_netcdf_file(
         file_download_directory=file_download_directory,
         gcp_bucket=gcp_bucket,
         debug=debug,
-        s3_resource=s3_resource,
     )
 
     if rf.netcdf_file_exists_in_gcp:
@@ -1020,12 +986,12 @@ if __name__ == "__main__":
     #     max_limit=5,
     #     debug=True,
     # )
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        cloud_utils.setup_gcp_storage_objs(
-            project_id="ggn-nmfs-aa-prod-1",
-            gcp_bucket_name="ggn-nmfs-aa-prod-1-data",
-        )
-    )
+    # gcp_stor_client, gcp_bucket_name, gcp_bucket = (
+    #     cloud_utils.setup_gcp_storage_objs(
+    #         project_id="ggn-nmfs-aa-prod-1",
+    #         gcp_bucket_name="ggn-nmfs-aa-prod-1-data",
+    #     )
+    # )
 
     # upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
     #     local_echosounder_directory_to_upload="./test_data_dir/Reuben_Lasker/RL2107/EK80/",
@@ -1104,17 +1070,16 @@ if __name__ == "__main__":
     # "Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
-    download_raw_file_from_ncei(
-        file_name="2107RL_FM-D20210808-T033245.raw",
-        file_type="raw",
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        echosounder="EK80",
-        data_source="NCEI",
-        file_download_directory="./test_data_dir/",
-        gcp_bucket=gcp_bucket,
-        debug=True,
-    )
+    # download_raw_file_from_ncei(
+    #     file_name="2107RL_FM-D20210808-T033245.raw",
+    #     file_type="raw",
+    #     ship_name="Reuben_Lasker",
+    #     survey_name="RL2107",
+    #     echosounder="EK80",
+    #     file_download_directory="./test_data_dir/",
+    #     upload_to_gcp=True,
+    #     debug=True,
+    # )
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket,
     # file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(
