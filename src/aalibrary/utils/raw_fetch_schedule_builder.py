@@ -48,65 +48,76 @@ def select_int(message: str, values: list[int], *, max_height: str = "70%") -> i
 
 
 # ----------------------------
-# Manual datetime input (validated)
+# Manual time input (validated)
 # ----------------------------
 
-_DATETIME_RE = re.compile(
-    r"^\s*(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:Z)?\s*$"
-)
+_TIME_RE = re.compile(r"^\s*(\d{2}):(\d{2})(?::(\d{2}))?\s*$")
 
 
-def parse_user_datetime_utc(text: str) -> datetime:
+def parse_user_time(text: str) -> tuple[int, int, int]:
     """
-    Parse a user-entered datetime as UTC.
+    Parse user-entered time.
 
-    Accepted formats (UTC):
-      - YYYY-MM-DD HH:MM
-      - YYYY-MM-DD HH:MM:SS
-      - YYYY-MM-DDTHH:MM
-      - YYYY-MM-DDTHH:MM:SS
-    Optional trailing 'Z' is allowed.
+    Accepted formats:
+      HH:MM
+      HH:MM:SS
 
-    Returns a timezone-aware datetime in UTC.
-    Raises ValueError if invalid.
+    Returns (hour, minute, second). Raises ValueError if invalid.
     """
-    m = _DATETIME_RE.match(text or "")
+    m = _TIME_RE.match(text or "")
     if not m:
         raise ValueError(
-            "Invalid datetime format. Use 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD HH:MM:SS' (UTC). "
-            "Examples: 2026-03-03 14:05   or   2026-03-03 14:05:30"
+            "Invalid time format. Use 'HH:MM' or 'HH:MM:SS'. Example: 14:05 or 14:05:30"
         )
 
-    year, month, day, hour, minute, second = m.groups()
-    sec = int(second) if second is not None else 0
+    hh_s, mm_s, ss_s = m.groups()
+    hh = int(hh_s)
+    mm = int(mm_s)
+    ss = int(ss_s) if ss_s is not None else 0
 
-    # datetime() raises ValueError for invalid dates/times (e.g., Feb 30, 25:00)
-    return datetime(
-        int(year), int(month), int(day),
-        int(hour), int(minute), sec,
-        tzinfo=timezone.utc,
-    )
+    if not (0 <= hh <= 23):
+        raise ValueError("Hour must be 00–23.")
+    if not (0 <= mm <= 59):
+        raise ValueError("Minute must be 00–59.")
+    if not (0 <= ss <= 59):
+        raise ValueError("Second must be 00–59.")
+
+    return hh, mm, ss
 
 
-def pick_datetime(label: str) -> datetime:
+def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> datetime:
     """
-    Manual datetime entry with validation.
-    Input is interpreted as UTC.
+    Hybrid datetime picker:
+      - Date portion (Year → Month → Day) uses arrow selection (as before)
+      - Time portion is manual text input with validation: HH:MM[:SS]
+    Interprets time as UTC.
     """
-    def _validator(s: str) -> bool:
-        parse_user_datetime_utc(s)  # raises ValueError if invalid
+    # --- Date: arrow selection ---
+    year = select_int(f"📅   {label} year:", list(range(year_min, year_max + 1)))
+
+    month_choices = [
+        {"name": f"{i:02d} - {calendar.month_name[i]}", "value": i}
+        for i in range(1, 13)
+    ]
+    month = int(select_value(f"🗓️   {label} month:", month_choices))
+
+    dim = days_in_month(year, month)
+    day = select_int(f"📆   {label} day:", list(range(1, dim + 1)))
+
+    # --- Time: manual entry ---
+    def _time_validator(s: str) -> bool:
+        parse_user_time(s)  # raises ValueError if invalid
         return True
 
-    raw = inquirer.text(
-        message=f"⏱️   {label} (UTC) [YYYY-MM-DD HH:MM:SS]:",
-        validate=_validator,
-        invalid_message=(
-            "Invalid datetime. Use 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD HH:MM:SS' (UTC). "
-            "Example: 2026-03-03 14:05"
-        ),
+    raw_time = inquirer.text(
+        message=f"⏱️   {label} time (UTC) [HH:MM[:SS]]:",
+        default="00:00",
+        validate=_time_validator,
+        invalid_message="Invalid time. Use HH:MM or HH:MM:SS (UTC). Example: 14:05 or 14:05:30",
     ).execute()
 
-    return parse_user_datetime_utc(str(raw))
+    hour, minute, second = parse_user_time(str(raw_time))
+    return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
 
 
 def default_output_path() -> Path:
@@ -127,7 +138,7 @@ def ask_output_path() -> Path:
 
 
 # ----------------------------
-# Fake NOAA-ish data (swap-outs)
+# Fake NOAA-ish data (kept for reference)
 # ----------------------------
 
 def get_vessel_names() -> list[str]:
@@ -241,7 +252,6 @@ def create_time_window() -> TimeWindow:
             start_dt = pick_datetime("Start")
             end_dt = pick_datetime("End")
         except ValueError as e:
-            # parse_user_datetime_utc throws ValueError with a good message
             print(f"\n🚫 {e}\n")
             continue
 
