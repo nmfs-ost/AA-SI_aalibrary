@@ -65,65 +65,33 @@ WHY THERE IS NO STDOUT
   This keeps stdout clean for other tools in the ecosystem and avoids breaking pipes.
 
 HOW YAML_PATH IS PROVIDED
-  You may pass the YAML file path in two ways:
-
   (A) Positional argument:
       aa-fetch /path/to/fetch_request.yaml
 
   (B) Piped into stdin (one line):
       echo /path/to/fetch_request.yaml | aa-fetch
 
-  (C) Force reading from stdin using '-' (explicit):
-      echo /path/to/fetch_request.yaml | aa-fetch -
-
   Notes:
     • If YAML_PATH is omitted and stdin is NOT piped, aa-fetch prints this help and exits.
     • When reading from stdin, aa-fetch reads exactly ONE line and strips whitespace.
 
 DOWNLOAD DIRECTORY CONTROLS (ONLY TWO FLAGS)
-  You control where downloads land using only these options:
-
   -o, --output_root PATH
-      The parent directory in which aa-fetch will create a new download directory.
-
-      Default:
-        current working directory (CWD)
-
-      Example:
-        aa-fetch -o /data/fetches fetch_request.yaml
+      Default: current working directory (CWD)
 
   -n, --download_dir_name NAME
-      The name of the download directory created under output_root.
-
-      Default:
-        aa_fetch_<YYYYMMDD_HHMMSS>
-
-      Example:
-        aa-fetch -o /data/fetches -n RL2107_EK60 fetch_request.yaml
-
-  Combined behavior:
-      download_dir = output_root / download_dir_name
+      Default: aa_fetch_<YYYYMMDD_HHMMSS>
 
 PIPELINE EXAMPLES
-  1) Build YAML interactively, then execute aa-fetch on it:
-      aa-get -n request.yaml | aa-fetch 
-
-  2) Execute using an explicit YAML path:
-      aa-fetch ./request.yaml
-
-  3) Create a run-specific download directory:
-      aa-fetch -o ./downloads -n run_001 ./request.yaml
-
-  4) Read YAML path from stdin explicitly:
-      echo ./request.yaml | aa-fetch -o ./downloads -n Bigelow_20240610_20250610
-
+  aa-get -n request.yaml | aa-fetch
+  aa-fetch ./request.yaml
+  aa-fetch -o ./downloads -n run_001 ./request.yaml
 
 TROUBLESHOOTING
-  • "YAML file does not exist" — check the path or your pipeline output.
-  • "Expected YAML_PATH from stdin, but got EOF/empty line" — your pipe produced nothing.
-  • Authentication errors (if fetch uses cloud services) — ensure environment credentials are set.
-
+  • "File does not exist" — check the YAML path or your pipeline output.
+  • Auth errors — ensure your environment credentials are set.
 """
+    print(help_text.strip() + "\n", file=sys.stderr)
 
 def _default_download_dir_name() -> str:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
