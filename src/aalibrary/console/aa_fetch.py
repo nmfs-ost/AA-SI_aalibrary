@@ -118,6 +118,7 @@ def main() -> int:
     # YAML path from positional or piped stdin
     try:
         yaml_path = _resolve_yaml_path(args.yaml_path).expanduser().resolve()
+        print(yaml_path)
     except SystemExit:
         parser.print_help(sys.stderr)
         return 0
