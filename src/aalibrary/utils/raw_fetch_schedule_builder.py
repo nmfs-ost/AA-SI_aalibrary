@@ -47,6 +47,16 @@ def select_int(message: str, values: list[int], *, max_height: str = "70%") -> i
     return int(select_value(message, choices, max_height=max_height))
 
 
+def fmt_date(dt: datetime) -> str:
+    """YYYY-MM-DD"""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
+
+
+def fmt_time(dt: datetime) -> str:
+    """HH:MM:SS"""
+    return dt.astimezone(timezone.utc).strftime("%H:%M:%S")
+
+
 # ----------------------------
 # Manual time input (validated)
 # ----------------------------
@@ -85,14 +95,16 @@ def parse_user_time(text: str) -> tuple[int, int, int]:
     return hh, mm, ss
 
 
-def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> datetime:
+# ----------------------------
+# Hybrid date picker + manual time entry
+# ----------------------------
+
+def pick_date(label: str, *, year_min: int = 1970, year_max: int = 2100) -> tuple[int, int, int]:
     """
-    Hybrid datetime picker:
-      - Date portion (Year → Month → Day) uses arrow selection (as before)
-      - Time portion is manual text input with validation: HH:MM:SS
-    Interprets time as UTC.
+    Date picker:
+      Year → Month → Day
+    Uses arrow selection (same as your previous flow).
     """
-    # --- Date: arrow selection ---
     year = select_int(f"📅   {label} year:", list(range(year_min, year_max + 1)))
 
     month_choices = [
@@ -103,22 +115,45 @@ def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> 
 
     dim = days_in_month(year, month)
     day = select_int(f"📆   {label} day:", list(range(1, dim + 1)))
+    return year, month, day
 
-    # --- Time: manual entry ---
+
+def pick_time_text(label: str, *, default: str = "00:00:00") -> tuple[int, int, int]:
+    """
+    Time picker:
+      Manual text entry HH:MM[:SS] with validation.
+    """
     def _time_validator(s: str) -> bool:
-        parse_user_time(s)  # raises ValueError if invalid
+        parse_user_time(s)
         return True
 
     raw_time = inquirer.text(
-        message=f"⏱️   {label} time (UTC) [HH:MM:SS]:",
-        default="00:00",
+        message=f"⏱️   {label} time (UTC) [HH:MM[:SS]]:",
+        default=default,
         validate=_time_validator,
         invalid_message="Invalid time. Use HH:MM or HH:MM:SS (UTC). Example: 14:05 or 14:05:30",
     ).execute()
 
-    hour, minute, second = parse_user_time(str(raw_time))
-    return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    return parse_user_time(str(raw_time))
 
+
+def pick_datetime_parts(label: str) -> tuple[str, str, datetime]:
+    """
+    Collect (date_str, time_str, dt_utc) where:
+      date_str = YYYY-MM-DD
+      time_str = HH:MM:SS
+      dt_utc    = timezone-aware datetime in UTC
+    """
+    y, m, d = pick_date(label)
+    hh, mm, ss = pick_time_text(label, default="00:00:00")
+
+    dt = datetime(y, m, d, hh, mm, ss, tzinfo=timezone.utc)
+    return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M:%S"), dt
+
+
+# ----------------------------
+# Output path helpers
+# ----------------------------
 
 def default_output_path() -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -191,8 +226,13 @@ def get_instruments() -> list[str]:
 
 @dataclass
 class TimeWindow:
-    start: str
-    end: str
+    """
+    Stores structured parts for the requested YAML schema.
+    """
+    start_date: str   # YYYY-MM-DD
+    start_time: str   # HH:MM:SS
+    end_date: str     # YYYY-MM-DD
+    end_time: str     # HH:MM:SS
 
 
 @dataclass
@@ -246,20 +286,28 @@ def choose_instrument(ship_name: str, survey_name: str) -> str:
 
 
 def create_time_window() -> TimeWindow:
-    """Prompt for Start + End, validate end > start."""
+    """
+    Prompt for Start (date via arrows + time via text) and End (same),
+    validate end > start (UTC).
+    """
     while True:
         try:
-            start_dt = pick_datetime("Start")
-            end_dt = pick_datetime("End")
+            s_date, s_time, s_dt = pick_datetime_parts("Start")
+            e_date, e_time, e_dt = pick_datetime_parts("End")
         except ValueError as e:
             print(f"\n🚫 {e}\n")
             continue
 
-        if end_dt <= start_dt:
+        if e_dt <= s_dt:
             print("\n🚫 End must be after Start. Please try again.\n")
             continue
 
-        return TimeWindow(start=to_utc_z(start_dt), end=to_utc_z(end_dt))
+        return TimeWindow(
+            start_date=s_date,
+            start_time=s_time,
+            end_date=e_date,
+            end_time=e_time,
+        )
 
 
 def build_request() -> Request:
@@ -312,13 +360,41 @@ def main(output_path: Path | None = None) -> Path:
         if not another_req:
             break
 
+    # Emit YAML schema exactly as requested:
+    #
+    # requests:
+    #   - vessel: "Falkor"
+    #     survey: "FK2101"
+    #     instrument: "EK80"
+    #     time-windows:
+    #       - start:
+    #         - date: "2021-10-10"
+    #           time: "00:00:00"
+    #       - end:
+    #         - date: "2021-10-10"
+    #           time: "23:59:59"
+    #
     schedule_dict: dict[str, Any] = {
         "requests": [
             {
                 "vessel": r.vessel,
                 "survey": r.survey,
                 "instrument": r.instrument,
-                "time-windows": [{"start": w.start, "end": w.end} for w in r.time_windows],
+                "time-windows": [
+                    {
+                        "start": [
+                            {"date": w.start_date, "time": w.start_time}
+                        ]
+                    }
+                    if i % 2 == 0 else
+                    {
+                        "end": [
+                            {"date": w.end_date, "time": w.end_time}
+                        ]
+                    }
+                    for w in r.time_windows
+                    for i in range(2)
+                ],
             }
             for r in requests
         ]
