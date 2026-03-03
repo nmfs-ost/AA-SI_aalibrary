@@ -16,7 +16,6 @@ from aalibrary.utils import helpers
 from aalibrary.utils.helpers import (
     get_netcdf_gcp_location_from_raw_gcp_location,
 )
-from aalibrary import config
 
 
 def setup_gbq_client_objs(
@@ -39,7 +38,7 @@ def setup_gbq_client_objs(
             Cloud Storage file system.
     """
     if project_id is None:
-        project_id = os.environ["AALIBRARY_GCP_PROJECT_ID"]
+        project_id = os.getenv("AALIBRARY_GCP_PROJECT_ID")
 
     gcp_bq_client = bigquery.Client(location=location)
 
@@ -49,8 +48,8 @@ def setup_gbq_client_objs(
 
 
 def setup_gcp_storage_objs(
-    project_id: str = "ggn-nmfs-aa-dev-1",
-    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    project_id: str = None,
+    gcp_bucket_name: str = None,
 ) -> Tuple[storage.Client, str, storage.Client.bucket]:
     """Sets up Google Cloud Platform storage objects for use in accessing and
     modifying storage buckets.
@@ -72,9 +71,9 @@ def setup_gcp_storage_objs(
             api).
     """
     if project_id is None:
-        project_id = os.environ["AALIBRARY_GCP_PROJECT_ID"]
+        project_id = os.getenv("AALIBRARY_GCP_PROJECT_ID")
     if gcp_bucket_name is None:
-        gcp_bucket_name = os.environ["AALIBRARY_GCP_BUCKET_NAME"]
+        gcp_bucket_name = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
 
     gcp_stor_client = storage.Client(project=project_id)
 
@@ -702,18 +701,3 @@ if __name__ == "__main__":
     #         return_full_paths=False,
     #     )
     # )
-    config.gcp_project_id = "ggn-nmfs-aa-prod-1"
-    config.gcp_bucket_name = "ggn-nmfs-aa-prod-1-data"
-    rfa = RawFile(
-        file_name="2107RL_CW-D19s970916-T165947.raw",
-        file_type="raw",
-        ship_name="henry b bigelow",
-        survey_name="RL2107",
-        echosounder="EK80",
-        data_source="NCEI",
-        file_download_directory="./test_data_dir",
-        is_metadata=False,
-        debug=True,
-    )
-    print(rfa.gcp_project_id)
-    print(rfa.gcp_bucket_name)
