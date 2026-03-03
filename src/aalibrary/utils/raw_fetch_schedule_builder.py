@@ -89,7 +89,7 @@ def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> 
     """
     Hybrid datetime picker:
       - Date portion (Year → Month → Day) uses arrow selection (as before)
-      - Time portion is manual text input with validation: HH:MM[:SS]
+      - Time portion is manual text input with validation: HH:MM:SS
     Interprets time as UTC.
     """
     # --- Date: arrow selection ---
@@ -110,7 +110,7 @@ def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> 
         return True
 
     raw_time = inquirer.text(
-        message=f"⏱️   {label} time (UTC) [HH:MM[:SS]]:",
+        message=f"⏱️   {label} time (UTC) [HH:MM:SS]:",
         default="00:00",
         validate=_time_validator,
         invalid_message="Invalid time. Use HH:MM or HH:MM:SS (UTC). Example: 14:05 or 14:05:30",
