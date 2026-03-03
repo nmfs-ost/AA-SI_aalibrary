@@ -98,7 +98,7 @@ def pick_datetime(label: str) -> datetime:
         return True
 
     raw = inquirer.text(
-        message=f"⏱️   {label} (UTC) [YYYY-MM-DD HH:MM[:SS]]:",
+        message=f"⏱️   {label} (UTC) [YYYY-MM-DD HH:MM:SS]:",
         validate=_validator,
         invalid_message=(
             "Invalid datetime. Use 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD HH:MM:SS' (UTC). "
