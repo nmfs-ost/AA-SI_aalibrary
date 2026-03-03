@@ -765,6 +765,7 @@ def get_random_raw_file_from_ncei_cache_with_search_param(
         random_raw_file,
     ]
 
+# TODO: get time windows of a survey
 
 if __name__ == "__main__":
     gcp_bq_client, _ = setup_gbq_client_objs(project_id="ggn-nmfs-aa-dev-1")
