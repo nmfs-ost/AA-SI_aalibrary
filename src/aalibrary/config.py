@@ -62,9 +62,14 @@ def use_gcp_dev():
     """Sets environment variables to use GCP development resources."""
     os.environ["AALIBRARY_GCP_PROJECT_ID"] = "ggn-nmfs-aa-dev-1"
     os.environ["AALIBRARY_GCP_BUCKET_NAME"] = "ggn-nmfs-aa-dev-1-data"
+    print("You are now using the GCP Dev environment.")
 
 
 def use_gcp_prod():
     """Sets environment variables to use GCP production resources."""
     os.environ["AALIBRARY_GCP_PROJECT_ID"] = "ggn-nmfs-aa-prod-1"
     os.environ["AALIBRARY_GCP_BUCKET_NAME"] = "ggn-nmfs-aa-prod-1-data"
+    print(
+        "You are now using the GCP Prod environment. Remember to switch back"
+        " to the Dev environment when you are done!"
+    )
