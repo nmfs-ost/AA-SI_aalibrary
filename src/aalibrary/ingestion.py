@@ -249,7 +249,9 @@ def download_raw_file_from_azure(
                     f"`{rf.idx_gcp_storage_bucket_location}`"
                 )
             )
-        elif rf.idx_file_exists_in_omao and (not rf.idx_file_exists_in_gcp):            # Upload idx to GCP at the correct storage bucket location.
+        elif rf.idx_file_exists_in_omao and (
+            not rf.idx_file_exists_in_gcp
+        ):  # Upload idx to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
                 file_name=rf.idx_file_name,
                 file_type="idx",
@@ -270,7 +272,9 @@ def download_raw_file_from_azure(
                     f" `{rf.bot_gcp_storage_bucket_location}`"
                 )
             )
-        elif rf.bot_file_exists_in_ncei and (not rf.bot_file_exists_in_gcp):            # Upload bot to GCP at the correct storage bucket location.
+        elif rf.bot_file_exists_in_ncei and (
+            not rf.bot_file_exists_in_gcp
+        ):  # Upload bot to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
                 file_name=rf.bot_file_name,
                 file_type="bot",
@@ -1122,15 +1126,17 @@ if __name__ == "__main__":
     # "Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
-    download_raw_file_from_ncei(file_name="2107RL_FM-D20210808-T033245.raw",
-                      file_type="raw",
-                      ship_name="Reuben_Lasker",
-                      survey_name="RL2107",
-                      echosounder="EK80",
-                      data_source="NCEI",
-                      file_download_directory="./test_data_dir/",
-                      gcp_bucket=gcp_bucket,
-                      debug=True)
+    download_raw_file_from_ncei(
+        file_name="2107RL_FM-D20210808-T033245.raw",
+        file_type="raw",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="NCEI",
+        file_download_directory="./test_data_dir/",
+        gcp_bucket=gcp_bucket,
+        debug=True,
+    )
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket,
     # file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(
