@@ -129,13 +129,6 @@ EXAMPLES
       aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001
       aa-get | aa-fetch (Barebones, defaults to CWD and timestamped filename)
 
-TROUBLESHOOTING
-  • If the UI appears to “bark” when piping, ensure the UI is rendering to a TTY
-    (some environments require directing UI output to stderr while stdout is piped).
-  • If aa-fetch says it got EOF/empty stdin, aa-get likely didn’t emit a path
-    (or the pipeline was modified). Try:
-      aa-get -n request.yaml | cat
-    to verify the emitted path.
 """
     print(help_text.strip() + "\n", file=sys.stderr)
 
