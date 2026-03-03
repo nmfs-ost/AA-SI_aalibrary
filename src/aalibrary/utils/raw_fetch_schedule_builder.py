@@ -6,9 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 import calendar
 import random
+import re
 from typing import Any
-from aalibrary.utils import ncei_cache_utils
 
+from aalibrary.utils import ncei_cache_utils
 from InquirerPy import inquirer
 
 try:
@@ -16,6 +17,10 @@ try:
 except Exception:
     yaml = None
 
+
+# ----------------------------
+# Helpers
+# ----------------------------
 
 def days_in_month(year: int, month: int) -> int:
     return calendar.monthrange(year, month)[1]
@@ -42,23 +47,66 @@ def select_int(message: str, values: list[int], *, max_height: str = "70%") -> i
     return int(select_value(message, choices, max_height=max_height))
 
 
-def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> datetime:
-    year = select_int(f"📅   {label} year:", list(range(year_min, year_max + 1)))
+# ----------------------------
+# Manual datetime input (validated)
+# ----------------------------
 
-    month_choices = [
-        {"name": f"{i:02d} - {calendar.month_name[i]}", "value": i}
-        for i in range(1, 13)
-    ]
-    month = int(select_value(f"🗓️   {label} month:", month_choices))
+_DATETIME_RE = re.compile(
+    r"^\s*(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:Z)?\s*$"
+)
 
-    dim = days_in_month(year, month)
-    day = select_int(f"📆   {label} day:", list(range(1, dim + 1)))
 
-    hour = select_int(f"🕒   {label} hour:", list(range(0, 24)))
-    minute = select_int(f"⏱️   {label} minute:", list(range(0, 60)))
-    second = select_int(f"⏲️   {label} second:", list(range(0, 60)))
+def parse_user_datetime_utc(text: str) -> datetime:
+    """
+    Parse a user-entered datetime as UTC.
 
-    return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    Accepted formats (UTC):
+      - YYYY-MM-DD HH:MM
+      - YYYY-MM-DD HH:MM:SS
+      - YYYY-MM-DDTHH:MM
+      - YYYY-MM-DDTHH:MM:SS
+    Optional trailing 'Z' is allowed.
+
+    Returns a timezone-aware datetime in UTC.
+    Raises ValueError if invalid.
+    """
+    m = _DATETIME_RE.match(text or "")
+    if not m:
+        raise ValueError(
+            "Invalid datetime format. Use 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD HH:MM:SS' (UTC). "
+            "Examples: 2026-03-03 14:05   or   2026-03-03 14:05:30"
+        )
+
+    year, month, day, hour, minute, second = m.groups()
+    sec = int(second) if second is not None else 0
+
+    # datetime() raises ValueError for invalid dates/times (e.g., Feb 30, 25:00)
+    return datetime(
+        int(year), int(month), int(day),
+        int(hour), int(minute), sec,
+        tzinfo=timezone.utc,
+    )
+
+
+def pick_datetime(label: str) -> datetime:
+    """
+    Manual datetime entry with validation.
+    Input is interpreted as UTC.
+    """
+    def _validator(s: str) -> bool:
+        parse_user_datetime_utc(s)  # raises ValueError if invalid
+        return True
+
+    raw = inquirer.text(
+        message=f"⏱️   {label} (UTC) [YYYY-MM-DD HH:MM[:SS]]:",
+        validate=_validator,
+        invalid_message=(
+            "Invalid datetime. Use 'YYYY-MM-DD HH:MM' or 'YYYY-MM-DD HH:MM:SS' (UTC). "
+            "Example: 2026-03-03 14:05"
+        ),
+    ).execute()
+
+    return parse_user_datetime_utc(str(raw))
 
 
 def default_output_path() -> Path:
@@ -77,6 +125,10 @@ def ask_output_path() -> Path:
         path = path.with_suffix(".yaml")
     return path
 
+
+# ----------------------------
+# Fake NOAA-ish data (swap-outs)
+# ----------------------------
 
 def get_vessel_names() -> list[str]:
     return [
@@ -122,6 +174,10 @@ def get_instruments() -> list[str]:
     return ["EK60", "EK80", "ADCP", "EK500"]
 
 
+# ----------------------------
+# Data model
+# ----------------------------
+
 @dataclass
 class TimeWindow:
     start: str
@@ -135,6 +191,10 @@ class Request:
     instrument: str
     time_windows: list[TimeWindow]
 
+
+# ----------------------------
+# UI flows
+# ----------------------------
 
 def choose_vessel() -> str:
     vessels = ncei_cache_utils.get_all_ship_names_in_ncei_cache()
@@ -159,7 +219,12 @@ def choose_survey(vessel: str) -> str:
 
 
 def choose_instrument(ship_name: str, survey_name: str) -> str:
-    instruments = ncei_cache_utils.get_all_echosounders_in_a_survey_in_ncei_cache(ship_name=ship_name, survey_name=survey_name, gcp_bq_client=None, return_full_paths=None)
+    instruments = ncei_cache_utils.get_all_echosounders_in_a_survey_in_ncei_cache(
+        ship_name=ship_name,
+        survey_name=survey_name,
+        gcp_bq_client=None,
+        return_full_paths=None,
+    )
     return str(
         inquirer.select(
             message="🎛️   Select instrument:",
@@ -170,9 +235,15 @@ def choose_instrument(ship_name: str, survey_name: str) -> str:
 
 
 def create_time_window() -> TimeWindow:
+    """Prompt for Start + End, validate end > start."""
     while True:
-        start_dt = pick_datetime("Start")
-        end_dt = pick_datetime("End")
+        try:
+            start_dt = pick_datetime("Start")
+            end_dt = pick_datetime("End")
+        except ValueError as e:
+            # parse_user_datetime_utc throws ValueError with a good message
+            print(f"\n🚫 {e}\n")
+            continue
 
         if end_dt <= start_dt:
             print("\n🚫 End must be after Start. Please try again.\n")
