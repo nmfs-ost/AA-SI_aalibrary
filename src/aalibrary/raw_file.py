@@ -39,8 +39,8 @@ class RawFile:
     is_metadata: bool = False
     upload_to_gcp: bool = False
     debug: bool = False
-    gcp_project_id: str = "ggn-nmfs-aa-dev-1"
-    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data"
+    gcp_project_id: str = os.getenv("AALIBRARY_GCP_PROJECT_ID")
+    gcp_bucket_name: str = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
     gcp_bucket: storage.Client.bucket = None
     s3_resource: boto3.resource = None
     # Get all valid and normalized ICES ship names
@@ -80,6 +80,13 @@ class RawFile:
 
     def _create_vars_for_use_later(self):
         """Creates vars that will add value and can be utilized later."""
+
+        # Handle undefined GCP project id and bucket name by using environment
+        # variables.
+        if self.gcp_project_id is None:
+            self.gcp_project_id = os.getenv("AALIBRARY_GCP_PROJECT_ID")
+        if self.gcp_bucket_name is None:
+            self.gcp_bucket_name = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
 
         datetime_dict = get_parsed_datetime_from_filename(
             file_name=self.file_name, return_as_dict=True
