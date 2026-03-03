@@ -5,6 +5,13 @@ requests:
       time-windows:
         - start: "2021-01-01T00:00:00Z"
           end: "2021-01-31T23:59:59Z"
+        - start:
+          - date: "2021-10-10" # selected by user from list.
+            time: "00:00:00" # selected by user by manual input.
+        - end:
+          - date: "2021-10-10" # selected by user from list.
+            time: "00:00:00" # selected by user by manual input.
+
     - vessel: "Falkor"
       survey: "FK007"
     - vessel: "Reuben Lasker"
