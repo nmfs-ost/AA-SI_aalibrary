@@ -1,5 +1,6 @@
 """This file contains all utility functions for Active Acoustics."""
 
+import os
 import configparser
 import traceback
 from typing import List, Tuple
@@ -15,10 +16,11 @@ from aalibrary.utils import helpers
 from aalibrary.utils.helpers import (
     get_netcdf_gcp_location_from_raw_gcp_location,
 )
+from aalibrary import config
 
 
 def setup_gbq_client_objs(
-    location: str = "US", project_id: str = "ggn-nmfs-aa-dev-1"
+    location: str = "US", project_id: str = None
 ) -> Tuple[bigquery.Client, gcsfs.GCSFileSystem]:
     """Sets up Google Big Query client objects used to execute queries and
     such.
@@ -28,12 +30,16 @@ def setup_gbq_client_objs(
             tables/database. This is usually set when creating the database in
             big query. Defaults to "US".
         project_id (str, optional): The project id that the big query instance
-            belongs to. Defaults to "ggn-nmfs-aa-dev-1".
+            belongs to. Defaults to os.environ["AALIBRARY_GCP_PROJECT_ID"]
+            which is "ggn-nmfs-aa-dev-1" by default but can be changed via
+            `aalibrary.config.use_gcp_prod()`.
 
     Returns:
         Tuple: The big query client object, along with an object for the Google
             Cloud Storage file system.
     """
+    if project_id is None:
+        project_id = os.environ["AALIBRARY_GCP_PROJECT_ID"]
 
     gcp_bq_client = bigquery.Client(location=location)
 
@@ -50,10 +56,14 @@ def setup_gcp_storage_objs(
     modifying storage buckets.
 
     Args:
-        project_id (str, optional): The project id of the project you want to
-            access. Defaults to "ggn-nmfs-aa-dev-1".
+        project_id (str, optional): The project id that the gcp instance
+            belongs to. Defaults to os.environ["AALIBRARY_GCP_PROJECT_ID"]
+            which is "ggn-nmfs-aa-dev-1" by default but can be changed via
+            `aalibrary.config.use_gcp_prod()`.
         gcp_bucket_name (str, optional): The name of the exact bucket you want
-            to access. Defaults to "ggn-nmfs-aa-dev-1-data".
+            to access. Defaults to os.environ["AALIBRARY_GCP_BUCKET_NAME"]
+            which is "ggn-nmfs-aa-dev-1-data" by default but can be changed via
+            `aalibrary.config.use_gcp_prod()`.
 
     Returns:
         Tuple[storage.Client, str, storage.Client.bucket]: The storage client,
@@ -61,6 +71,10 @@ def setup_gcp_storage_objs(
             object itself (which will be executing the commands used in this
             api).
     """
+    if project_id is None:
+        project_id = os.environ["AALIBRARY_GCP_PROJECT_ID"]
+    if gcp_bucket_name is None:
+        gcp_bucket_name = os.environ["AALIBRARY_GCP_BUCKET_NAME"]
 
     gcp_stor_client = storage.Client(project=project_id)
 
@@ -665,8 +679,9 @@ def get_service_client_sas(
 
 
 if __name__ == "__main__":
-    s3_client, s3_resource, s3_bucket = create_s3_objs()
+    # s3_client, s3_resource, s3_bucket = create_s3_objs()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
+    print(gcp_bucket_name)
     # all_objs = list_all_objects_in_s3_bucket_location(
     #     prefix="data/raw/Reuben_Lasker/RL2107/metadata",
     #     s3_resource=s3_bucket
@@ -680,10 +695,25 @@ if __name__ == "__main__":
     #     )
     # )
 
-    print(
-        list_all_folders_in_gcp_bucket_location(
-            "NCEI/Reuben_Lasker/RL2107/EK80/data/",
-            gcp_bucket,
-            return_full_paths=False,
-        )
+    # print(
+    #     list_all_folders_in_gcp_bucket_location(
+    #         "NCEI/Reuben_Lasker/RL2107/EK80/data/",
+    #         gcp_bucket,
+    #         return_full_paths=False,
+    #     )
+    # )
+    config.gcp_project_id = "ggn-nmfs-aa-prod-1"
+    config.gcp_bucket_name = "ggn-nmfs-aa-prod-1-data"
+    rfa = RawFile(
+        file_name="2107RL_CW-D19s970916-T165947.raw",
+        file_type="raw",
+        ship_name="henry b bigelow",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="NCEI",
+        file_download_directory="./test_data_dir",
+        is_metadata=False,
+        debug=True,
     )
+    print(rfa.gcp_project_id)
+    print(rfa.gcp_bucket_name)

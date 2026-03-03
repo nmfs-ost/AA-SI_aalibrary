@@ -1,5 +1,9 @@
 """Used for storing environment-specific settings such as database URIs and
-such."""
+such.
+Also contains functions for setting environment variables to use different GCP
+resources."""
+
+import os
 
 RAW_DATA_FILE_TYPES = ["raw", "idx", "bot"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
@@ -52,3 +56,15 @@ VALID_ECHOSOUNDERS = [
     "sme80-201901",
 ]
 VALID_DATA_SOURCES = ["NCEI", "OMAO", "HDD", "TEST"]
+
+
+def use_gcp_dev():
+    """Sets environment variables to use GCP development resources."""
+    os.environ["AALIBRARY_GCP_PROJECT_ID"] = "ggn-nmfs-aa-dev-1"
+    os.environ["AALIBRARY_GCP_BUCKET_NAME"] = "ggn-nmfs-aa-dev-1-data"
+
+
+def use_gcp_prod():
+    """Sets environment variables to use GCP production resources."""
+    os.environ["AALIBRARY_GCP_PROJECT_ID"] = "ggn-nmfs-aa-prod-1"
+    os.environ["AALIBRARY_GCP_BUCKET_NAME"] = "ggn-nmfs-aa-prod-1-data"
