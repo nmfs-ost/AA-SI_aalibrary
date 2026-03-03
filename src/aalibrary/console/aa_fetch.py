@@ -139,7 +139,7 @@ def main() -> int:
             if stdin_data:
                 sys.argv.append(stdin_data)
         else:
-            #print_help()
+            print_help()
             sys.exit(0)
 
     parser = argparse.ArgumentParser(
