@@ -119,13 +119,16 @@ def download_raw_file_from_azure(
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
-    data_source: str = "OMAO",
     file_download_directory: str = ".",
     config_file_path: str = "",
     upload_to_gcp: bool = False,
+    gcp_bucket: storage.Client.bucket = None,
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
+    Downloads a raw, idx, and bot file from OMAO. If `upload_to_gcp` is
+    enabled, the downloaded files will also upload to the GCP storage bucket
+    if they do not exist.
 
     Args:
         file_name (str, optional): The file name (includes extension).
@@ -138,9 +141,6 @@ def download_raw_file_from_azure(
             Defaults to "".
         echosounder (str, optional): The echosounder used to gather the data.
             Defaults to "".
-        data_source (str, optional): The source of the file. Necessary due to
-            the way the storage bucket is organized. Can be one of
-            ["NCEI", "OMAO", "HDD"]. Defaults to "".
         file_download_directory (str, optional): The local directory you want
             to store your file in. Defaults to current directory. Defaults
             to ".".
@@ -149,11 +149,14 @@ def download_raw_file_from_azure(
             variable defined. Defaults to "".
         upload_to_gcp (bool, optional): Whether or not you want to upload to
             GCP. Defaults to False.
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
+            used to download the file. Defaults to None.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
-    # Create gcp bucket objects
-    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
+    # Create gcp bucket objects if upload_to_gcp is True and gcp_bucket object is not passed in.
+    if upload_to_gcp and (gcp_bucket is None):
+        _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
     try:
         _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
     except Exception as e:
@@ -166,7 +169,7 @@ def download_raw_file_from_azure(
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
-        data_source=data_source,
+        data_source="OMAO",
         file_download_directory=file_download_directory,
         is_metadata=False,
         upload_to_gcp=upload_to_gcp,
@@ -185,29 +188,29 @@ def download_raw_file_from_azure(
 
     # TODO: check to see if you want to download from gcp instead.
 
-    # TODO: add if statement to check if the file exists in azure or not.
-    print(f"DOWNLOADING FILE {rf.raw_file_name} FROM OMAO")
-    download_file_from_azure_directory(
-        directory_client=azure_datalake_directory_client,
-        download_directory=rf.file_download_directory,
-        file_path=rf.raw_omao_file_path,
-    )
-
-    # Force download the idx file.
-    print(f"DOWNLOADING IDX FILE {rf.idx_file_name} FROM OMAO")
-    download_file_from_azure_directory(
-        directory_client=azure_datalake_directory_client,
-        download_directory=rf.file_download_directory,
-        file_path=rf.idx_omao_file_path,
-    )
-
-    # Force download the bot file.
-    print(f"DOWNLOADING BOT FILE {rf.bot_file_name} FROM OMAO")
-    download_file_from_azure_directory(
-        directory_client=azure_datalake_directory_client,
-        download_directory=rf.file_download_directory,
-        file_path=rf.bot_omao_file_path,
-    )
+    if rf.raw_file_exists_in_omao:
+        print(f"DOWNLOADING FILE {rf.raw_file_name} FROM OMAO")
+        download_file_from_azure_directory(
+            directory_client=azure_datalake_directory_client,
+            download_directory=rf.file_download_directory,
+            file_path=rf.raw_omao_file_path,
+        )
+    if rf.idx_file_exists_in_omao:
+        # Force download the idx file.
+        print(f"DOWNLOADING IDX FILE {rf.idx_file_name} FROM OMAO")
+        download_file_from_azure_directory(
+            directory_client=azure_datalake_directory_client,
+            download_directory=rf.file_download_directory,
+            file_path=rf.idx_omao_file_path,
+        )
+    if rf.bot_file_exists_in_omao:
+        # Force download the bot file.
+        print(f"DOWNLOADING BOT FILE {rf.bot_file_name} FROM OMAO")
+        download_file_from_azure_directory(
+            directory_client=azure_datalake_directory_client,
+            download_directory=rf.file_download_directory,
+            file_path=rf.bot_omao_file_path,
+        )
 
     if upload_to_gcp:
         if rf.raw_file_exists_in_gcp:
@@ -223,17 +226,17 @@ def download_raw_file_from_azure(
             # upload it.
             # Upload raw to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
-                file_name=file_name,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
+                file_name=rf.file_name,
+                file_type="raw",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
+                echosounder=rf.echosounder,
                 file_location=rf.raw_file_download_path,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
+                gcp_bucket=rf.gcp_bucket,
+                data_source=rf.data_source,
                 debug=debug,
             )
-            # Upload the metadata file as well.
+            # Upload the raw metadata file as well.
             metadata.create_and_upload_metadata_df_for_raw(
                 rf=rf,
                 debug=debug,
@@ -246,17 +249,17 @@ def download_raw_file_from_azure(
                     f"`{rf.idx_gcp_storage_bucket_location}`"
                 )
             )
-        else:
-            # Upload idx to GCP at the correct storage bucket location.
+        elif rf.idx_file_exists_in_omao and (not rf.idx_file_exists_in_gcp):            # Upload idx to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
                 file_name=rf.idx_file_name,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
+                file_type="idx",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
+                echosounder=rf.echosounder,
                 file_location=rf.idx_file_download_path,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
+                gcp_bucket=rf.gcp_bucket,
+                data_source=rf.data_source,
+                is_metadata=False,
                 debug=debug,
             )
 
@@ -267,17 +270,17 @@ def download_raw_file_from_azure(
                     f" `{rf.bot_gcp_storage_bucket_location}`"
                 )
             )
-        else:
-            # Upload bot to GCP at the correct storage bucket location.
+        elif rf.bot_file_exists_in_ncei and (not rf.bot_file_exists_in_gcp):            # Upload bot to GCP at the correct storage bucket location.
             upload_file_to_gcp_storage_bucket(
                 file_name=rf.bot_file_name,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
+                file_type="bot",
+                ship_name=rf.ship_name,
+                survey_name=rf.survey_name,
+                echosounder=rf.echosounder,
                 file_location=rf.bot_file_download_path,
-                gcp_bucket=gcp_bucket,
-                data_source=data_source,
+                gcp_bucket=rf.gcp_bucket,
+                data_source=rf.data_source,
+                is_metadata=False,
                 debug=debug,
             )
 
@@ -386,7 +389,7 @@ def download_raw_file_from_ncei(
                 data_source=rf.data_source,
                 debug=rf.debug,
             )
-            # Upload the metadata file as well.
+            # Upload the raw metadata file as well.
             metadata.create_and_upload_metadata_df_for_raw(
                 rf=rf,
                 debug=rf.debug,
@@ -1037,8 +1040,8 @@ if __name__ == "__main__":
     # )
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         cloud_utils.setup_gcp_storage_objs(
-            project_id="ggn-nmfs-aa-dev-1",
-            gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
+            project_id="ggn-nmfs-aa-prod-1",
+            gcp_bucket_name="ggn-nmfs-aa-prod-1-data",
         )
     )
 
@@ -1119,15 +1122,15 @@ if __name__ == "__main__":
     # "Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx",
     #                                  s3_resource=s3_resource,
     #                                  s3_bucket_name="noaa-wcsd-pds"))
-    # download_raw_file(file_name="2107RL_FM-D20210808-T033245.raw",
-    #                   file_type="raw",
-    #                   ship_name="Reuben_Lasker",
-    #                   survey_name="RL2107",
-    #                   echosounder="EK80",
-    #                   data_source="NCEI",
-    #                   file_download_directory=f"./test_data_dir/",
-    #                   is_metadata=False,
-    #                   debug=True)
+    download_raw_file_from_ncei(file_name="2107RL_FM-D20210808-T033245.raw",
+                      file_type="raw",
+                      ship_name="Reuben_Lasker",
+                      survey_name="RL2107",
+                      echosounder="EK80",
+                      data_source="NCEI",
+                      file_download_directory="./test_data_dir/",
+                      gcp_bucket=gcp_bucket,
+                      debug=True)
     # print(utils.cloud_utils.check_if_file_exists_in_gcp(gcp_bucket,
     # file_path="NCEI/Reuben_Lasker/RL2107/EK80/data/raw/2107RL_CW-D20210813-T220732a.raw"))
     # convert_local_raw_to_netcdf(
