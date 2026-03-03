@@ -349,7 +349,11 @@ class RawFile:
             )
         )
 
-        # TODO: create vars for omao data lake existence.
+        # Vars for omao data lake existence.
+        self.raw_file_exists_in_omao = False
+        self.idx_file_exists_in_omao = False
+        self.bot_file_exists_in_omao = False
+        self.netcdf_file_exists_in_omao = False
 
     def _check_for_assertion_errors(self):
         """Checks for errors in each variable in our self.__dict__."""
