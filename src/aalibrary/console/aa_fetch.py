@@ -91,12 +91,14 @@ def main() -> int:
     args = parser.parse_args()
 
 
-    if not args.yaml_path.exists():
+
+    if args.yaml_path is None:
+        args.yaml_path = Path(sys.stdin.readline().strip())
         logger.error(f"YAML file does not exist: {args.yaml_path}")
-        return 2
-    if not args.yaml_path.is_file():
-        logger.error(f"YAML path is not a file: {args.yaml_path}")
-        return 2
+
+    if not args.yaml_path.exists():
+        logger.error(f"File '{args.input_path}' does not exist.")
+        sys.exit(1)
 
     # Output directory handling (two flags you described)
     output_root = (args.output_root or Path.cwd()).expanduser().resolve()
