@@ -297,9 +297,9 @@ def download_raw_file_from_ncei(
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
-    data_source: str = "NCEI",
     file_download_directory: str = ".",
     upload_to_gcp: bool = False,
+    gcp_bucket: storage.Client.bucket = None,
     debug: bool = False,
 ):
     """ENTRYPOINT FOR END-USERS
@@ -318,18 +318,18 @@ def download_raw_file_from_ncei(
             Defaults to "".
         echosounder (str, optional): The echosounder used to gather the data.
             Defaults to "".
-        data_source (str, optional): The source of the file. Necessary due to
-            the way the storage bucket is organized. Can be one of
-            ["NCEI", "OMAO", "HDD"]. Defaults to "".
         file_download_directory (str, optional): The local file directory you
             want to store your file in. Defaults to current directory.
             Defaults to ".".
         upload_to_gcp (bool, optional): Whether or not you want to upload to
             GCP. Defaults to False.
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
+            used to download the file. Defaults to None.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
-    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
+    if upload_to_gcp and (gcp_bucket is None):
+        _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
     try:
         _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
     except Exception as e:
@@ -342,7 +342,7 @@ def download_raw_file_from_ncei(
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
-        data_source=data_source,
+        data_source="NCEI",
         file_download_directory=file_download_directory,
         upload_to_gcp=upload_to_gcp,
         debug=debug,
@@ -523,7 +523,6 @@ def _download_survey_from_ncei(
 
 def download_raw_file(
     file_name: str = "",
-    file_type: str = "raw",
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
@@ -547,8 +546,6 @@ def download_raw_file(
 
     Args:
         file_name (str, optional): The file name (includes extension).
-            Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
@@ -574,7 +571,7 @@ def download_raw_file(
 
     rf = RawFile(
         file_name=file_name,
-        file_type=file_type,
+        file_type="raw",
         ship_name=ship_name,
         survey_name=survey_name,
         echosounder=echosounder,
@@ -768,6 +765,11 @@ def download_netcdf_file(
             Defaults to False.
     """
 
+    assert gcp_bucket is not None, (
+        "A GCP bucket must be provided. Please "
+        "create one using `cloud_utils.setup_gcp_storage_objs`."
+    )
+
     _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
 
     rf = RawFile(
@@ -812,30 +814,6 @@ def download_netcdf_file(
             " `download_raw_file`."
         )
         raise FileNotFoundError
-
-
-# def upload_entire_cruise_directory_to_gcp_storage_bucket(
-#     directory_path: str = "",
-#     gcp_bucket: storage.Client.bucket = None,
-#     debug: bool = False,
-# ):
-#     """Uploads an entire folder to the GCP storage bucket AS-IS. The folder
-#     is assumed to be the cruise/survey folder.
-#     NOTE: Does not check for metadata, file or folder naming conventions,etc.
-
-#     Args:
-#         directory_path (str, optional): The directory you would like to copy
-#             to the storage bucket. Defaults to "".
-#         gcp_bucket (storage.Client.bucket, optional): The storage bucket
-#             object used for uploading. Defaults to None.
-#         debug (bool, optional): Whether or not to print debug statements.
-#             Defaults to False.
-#     """
-#     # Get all files in the directory_path
-#     all_files_paths = []
-#     for root, _, files in os.walk(directory_path):
-#         for file in files:
-#             all_files_paths.append(os.path.join(root, file))
 
 
 def find_and_upload_survey_metadata_from_s3(
