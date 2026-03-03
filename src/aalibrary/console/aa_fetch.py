@@ -97,7 +97,7 @@ def main() -> int:
         logger.error(f"YAML file does not exist: {args.yaml_path}")
 
     if not args.yaml_path.exists():
-        logger.error(f"File '{args.input_path}' does not exist.")
+        logger.error(f"File '{args.yaml_path}' does not exist.")
         sys.exit(1)
 
     # Output directory handling (two flags you described)
