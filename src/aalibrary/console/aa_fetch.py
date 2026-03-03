@@ -53,13 +53,13 @@ def main() -> int:
 
 
     if len(sys.argv) == 1:
-            if not sys.stdin.isatty():
-                stdin_data = sys.stdin.readline().strip()
-                if stdin_data:
-                    sys.argv.append(stdin_data)
-            else:
-                #print_help()
-                sys.exit(0)
+        if not sys.stdin.isatty():
+            stdin_data = sys.stdin.readline().strip()
+            if stdin_data:
+                sys.argv.append(stdin_data)
+        else:
+            #print_help()
+            sys.exit(0)
 
     parser = argparse.ArgumentParser(
         description="Execute aa-fetch YAML job (no stdout output)."
