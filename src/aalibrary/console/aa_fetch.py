@@ -41,7 +41,7 @@ from pathlib import Path
 
 from loguru import logger
 
-import aalibrary.utils.multi_fetch_yaml_parser as mf
+
 
 
 def print_help() -> None:
@@ -110,6 +110,7 @@ def main() -> int:
             print_help()
             sys.exit(0)
 
+    import aalibrary.utils.multi_fetch_yaml_parser as mf
     parser = argparse.ArgumentParser(
         description="Execute aa-fetch YAML job (no stdout output)."
     )
