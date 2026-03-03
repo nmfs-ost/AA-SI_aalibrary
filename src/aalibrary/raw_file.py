@@ -350,6 +350,8 @@ class RawFile:
         )
 
         # Vars for omao data lake existence.
+        # TODO: implement after we have access to the OMAO data lake and can
+        # figure out how to check for files in it.
         self.raw_file_exists_in_omao = False
         self.idx_file_exists_in_omao = False
         self.bot_file_exists_in_omao = False
