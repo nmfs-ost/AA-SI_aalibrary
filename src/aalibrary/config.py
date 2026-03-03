@@ -2,8 +2,12 @@
 such.
 Also contains functions for setting environment variables to use different GCP
 resources."""
-
+from loguru import logger
+import sys
 import os
+
+logger.remove()  # remove default handler so you're explicit
+logger.add(sys.stderr, level="INFO")
 
 RAW_DATA_FILE_TYPES = ["raw", "idx", "bot"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
@@ -62,14 +66,14 @@ def use_gcp_dev():
     """Sets environment variables to use GCP development resources."""
     os.environ["AALIBRARY_GCP_PROJECT_ID"] = "ggn-nmfs-aa-dev-1"
     os.environ["AALIBRARY_GCP_BUCKET_NAME"] = "ggn-nmfs-aa-dev-1-data"
-    print("You are now using the GCP Dev environment.")
+    logger.info("You are now using the GCP Dev environment.")
 
 
 def use_gcp_prod():
     """Sets environment variables to use GCP production resources."""
     os.environ["AALIBRARY_GCP_PROJECT_ID"] = "ggn-nmfs-aa-prod-1"
     os.environ["AALIBRARY_GCP_BUCKET_NAME"] = "ggn-nmfs-aa-prod-1-data"
-    print(
+    logger.info(
         "You are now using the GCP Prod environment. Remember to switch back"
         " to the Dev environment when you are done!"
     )
