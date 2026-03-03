@@ -85,14 +85,24 @@ def _resolve_yaml_path(positional: str | None) -> Path:
 
 
 def main() -> int:
+
+
+    if len(sys.argv) == 1:
+            if not sys.stdin.isatty():
+                stdin_data = sys.stdin.readline().strip()
+                if stdin_data:
+                    sys.argv.append(stdin_data)
+            else:
+                #print_help()
+                sys.exit(0)
+
     parser = argparse.ArgumentParser(
         description="Execute aa-fetch YAML job (no stdout output)."
     )
 
     parser.add_argument(
         "yaml_path",
-        nargs="?",
-        default=None,
+        type=Path,
         help="Path to YAML file. Optional. If omitted, reads one line from stdin. Use '-' to force stdin.",
     )
 
