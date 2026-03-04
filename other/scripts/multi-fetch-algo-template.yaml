@@ -3,24 +3,25 @@ requests:
       survey: "FK2101"
       instrument: "EK80"
       time-windows:
-        - start: "2021-01-01T00:00:00Z"
-          end: "2021-01-31T23:59:59Z"
-        - start:
-          - date: "2021-10-10" # selected by user from list.
-            time: "00:00:00" # selected by user by manual input.
-        - end:
-          - date: "2021-10-10" # selected by user from list.
-            time: "00:00:00" # selected by user by manual input.
-
+        - start-date: "2021-10-10" # selected by user from list.
+          start-time: "00:00:00" # selected by user by manual input.
+          end-date: "2021-10-10" # selected by user from list.
+          end-time: "23:59:59" # selected by user by manual input.
     - vessel: "Falkor"
       survey: "FK007"
     - vessel: "Reuben Lasker"
       survey: "RL2107"
       instrument: "EK80"
       time-windows:
-        - start: "2021-07-01T00:00:00Z"
-          end: "2021-07-31T23:59:59Z"
-        - start: "2021-08-01T00:00:00Z"
-          end: "2021-08-31T23:59:59Z"
-        - start: "2021-08-01T00:00:00Z"
-          end: "2021-08-31T23:59:59Z"
+        - start-date: "2021-07-01"
+          start-time: "00:00:00"
+          end-date: "2021-07-31"
+          end-time: "23:59:59"
+        - start-date: "2021-08-01"
+          start-time: "00:00:00"
+          end-date: "2021-08-31"
+          end-time: "23:59:59"
+        - start-date: "2021-09-01"
+          start-time: "00:00:00"
+          end-date: "2021-09-30"
+          end-time: "23:59:59"
