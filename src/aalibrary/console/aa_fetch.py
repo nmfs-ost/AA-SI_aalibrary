@@ -175,7 +175,6 @@ def main() -> int:
             logger.info(f"SQL query built from YAML:\n{yaml_test.sql_query}")
 
         # Execute fetch. No BigQuery args here (per your requirement).
-        mf.download_results(results, download_dir)
         # If your parser uses BigQuery internally, it can pull credentials from env/defaults.
         results = mf.parse_yaml_and_fetch_results(yaml_file_path=str(args.yaml_path))
 
@@ -183,6 +182,7 @@ def main() -> int:
         try:
             logger.info(f"Fetch results: {results}")
             logger.info(f"Result count: {len(results)}")
+            mf.download_results(results, download_dir)
 
         except Exception:
             logger.info("Fetch completed (results not sizeable/loggable cleanly).")
