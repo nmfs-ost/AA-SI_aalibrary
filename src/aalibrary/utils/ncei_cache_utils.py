@@ -335,7 +335,7 @@ def get_all_file_names_for_a_surveys_echosounder(
     echosounder_name: str = "",
     gcp_bq_client: bigquery.Client = None,
     return_full_paths: bool = False,
-):
+) -> List[str]:
     """Gets all of the file names from a specific survey of a specific
     ship in the NCEI cache in BigQuery.
 
@@ -393,7 +393,7 @@ def get_all_raw_file_names_from_survey_in_ncei_cache(
     survey_name: str = "",
     gcp_bq_client: bigquery.Client = None,
     return_full_paths: bool = False,
-):
+) -> List[str]:
     """Gets all of the raw file names from a specific survey of a specific
     ship in the NCEI cache in BigQuery.
 
