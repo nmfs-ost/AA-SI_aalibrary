@@ -166,20 +166,27 @@ class RequestParser:
                     self.request_dict["time-windows"]
                 ):
                     if idx == 0:
-                        self.sql_conditions_clause += (
-                            f"""(file_datetime >= '{time_dict["start"]}'\n"""
-                        )
-                        self.sql_conditions_clause += (
-                            f"""AND file_datetime <= '{time_dict["end"]}')\n"""
-                        )
+                        self.sql_conditions_clause += """("""
+                        if time_dict.get("start-date", None):
+                            self.sql_conditions_clause += f"""LEFT(file_datetime,10) >= '{time_dict["start-date"]}'\n"""
+                        if time_dict.get("start-time", None):
+                            self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) >= '{time_dict["start-time"]}'\n"""
+                        if time_dict.get("end-date", None):
+                            self.sql_conditions_clause += f"""AND LEFT(file_datetime,10) <= '{time_dict["end-date"]}'\n"""
+                        if time_dict.get("end-time", None):
+                            self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) <= '{time_dict["end-time"]}'"""
+                        self.sql_conditions_clause += """)\n"""
                     else:
-                        self.sql_conditions_clause += (
-                            f"""OR (file_datetime"""
-                            f""" >= '{time_dict["start"]}'\n"""
-                        )
-                        self.sql_conditions_clause += (
-                            f"""AND file_datetime <= '{time_dict["end"]}')\n"""
-                        )
+                        self.sql_conditions_clause += """OR ("""
+                        if time_dict.get("start-date", None):
+                            self.sql_conditions_clause += f"""LEFT(file_datetime,10) >= '{time_dict["start-date"]}'\n"""
+                        if time_dict.get("start-time", None):
+                            self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) >= '{time_dict["start-time"]}'\n"""
+                        if time_dict.get("end-date", None):
+                            self.sql_conditions_clause += f"""AND LEFT(file_datetime,10) <= '{time_dict["end-date"]}'\n"""
+                        if time_dict.get("end-time", None):
+                            self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) <= '{time_dict["end-time"]}'"""
+                        self.sql_conditions_clause += """)\n"""
             self.sql_conditions_clause += """)\n"""
 
     def _create_sql_query(self):
@@ -220,9 +227,9 @@ if __name__ == "__main__":
     # yaml_test._print_yaml_dict()
     # yaml_test._print_requests_sql()
     print(yaml_test.sql_query)
-    results = parse_yaml_and_fetch_results(
-        yaml_file_path=r"C:\Users\Hannah Khan\Desktop\repos\AA-SI_aalibrary\other\scripts\multi-fetch-algo-template.yaml",
-        client=bigquery.Client(project="ggn-nmfs-aa-dev-1"),
-    )
-    print(results)
-    print(len(results))
+    # results = parse_yaml_and_fetch_results(
+    #     yaml_file_path=r"C:\Users\Hannah Khan\Desktop\repos\AA-SI_aalibrary\other\scripts\multi-fetch-algo-template.yaml",
+    #     client=bigquery.Client(project="ggn-nmfs-aa-dev-1"),
+    # )
+    # print(results)
+    # print(len(results))
