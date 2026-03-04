@@ -13,10 +13,20 @@ from google.cloud import bigquery
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
-    from cloud_utils import bq_query_to_pandas, setup_gbq_client_objs
+    from cloud_utils import (
+        bq_query_to_pandas,
+        setup_gbq_client_objs,
+        create_s3_objs,
+    )
+    from ncei_utils import download_single_file_from_aws
     from helpers import normalize_ship_name
 else:
-    from aalibrary.utils.cloud_utils import bq_query_to_pandas, setup_gbq_client_objs
+    from aalibrary.utils.cloud_utils import (
+        bq_query_to_pandas,
+        setup_gbq_client_objs,
+        create_s3_objs,
+    )
+    from aalibrary.utils.ncei_utils import download_single_file_from_aws
     from aalibrary.utils.helpers import (
         normalize_ship_name,
     )
@@ -223,6 +233,18 @@ def parse_yaml_and_fetch_results(
     sql_query = parse_yaml_file(yaml_file_path=yaml_file_path)
     results = execute_sql_query(sql_query=sql_query, client=client)
     return list(set(results))
+
+
+def download_results(
+    results: List[str], download_directory: str = "./"
+) -> None:
+    """This function takes the results of the YAML submission (a list of s3
+    object keys) and downloads the corresponding files from the s3 bucket."""
+    for s3_object_key in results:
+        download_single_file_from_aws(
+            file_url=s3_object_key,
+            download_directory=download_directory,
+        )
 
 
 if __name__ == "__main__":
