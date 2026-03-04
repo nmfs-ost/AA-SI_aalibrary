@@ -138,7 +138,7 @@ def get_available_dates_for_survey(vessel: str, survey: str) -> list[str]:
     Expected function (per your note):
         get_dates_of_survey_in_ncei_cache(...)
     """
-    raw_dates = ncei_cache_utils.get_dates_of_survey_in_ncei_cache(vessel=vessel, survey=survey)
+    raw_dates = ncei_cache_utils.get_dates_of_survey_in_ncei_cache(survey=survey)
     dates = _normalize_available_dates(raw_dates)
     if not dates:
         raise RuntimeError(
