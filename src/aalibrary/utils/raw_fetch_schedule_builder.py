@@ -320,9 +320,26 @@ def write_yaml_file(path: Path, data: dict[str, Any]) -> None:
     if yaml is None:
         import json
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    else:
-        text = yaml.safe_dump(data, sort_keys=False)
-        path.write_text(text, encoding="utf-8")
+        return
+
+    # Force quotes on all scalars so date/time-like values are always strings
+    class _QuotedDumper(yaml.SafeDumper):
+        pass
+
+    def _quoted_str_representer(dumper, value: str):
+        # Always emit strings with explicit quotes
+        return dumper.represent_scalar("tag:yaml.org,2002:str", value, style='"')
+
+    _QuotedDumper.add_representer(str, _quoted_str_representer)
+
+    text = yaml.dump(
+        data,
+        Dumper=_QuotedDumper,
+        sort_keys=False,
+        default_flow_style=False,
+        allow_unicode=True,
+    )
+    path.write_text(text, encoding="utf-8")
 
 
 def main(output_path: Path | None = None) -> Path:
