@@ -276,9 +276,6 @@ def convert_raw_to_netcdf(
     """
     # TODO: Implement an 'upload' param default to True.
 
-    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
-    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
-
     rf = RawFile(
         file_name=file_name,
         file_type=file_type,
@@ -291,8 +288,6 @@ def convert_raw_to_netcdf(
         gcp_bucket=gcp_bucket,
         is_metadata=is_metadata,
         debug=debug,
-        s3_resource=s3_resource,
-        s3_bucket_name="noaa-wcsd-pds",
     )
 
     # Here we check for a netcdf version of the raw file on GCP
@@ -307,7 +302,7 @@ def convert_raw_to_netcdf(
             echosounder=rf.echosounder,
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
-            gcp_bucket=gcp_bucket,
+            gcp_bucket=rf.gcp_bucket,
             debug=rf.debug,
         )
     else:
@@ -348,7 +343,7 @@ def convert_raw_to_netcdf(
             survey_name=rf.survey_name,
             echosounder=rf.echosounder,
             file_location=rf.netcdf_file_download_path,
-            gcp_bucket=gcp_bucket,
+            gcp_bucket=rf.gcp_bucket,
             data_source=rf.data_source,
             is_metadata=False,
             debug=rf.debug,
@@ -408,9 +403,6 @@ def convert_raw_to_netcdf_ices(
             Defaults to False.
     """
 
-    _, _, gcp_bucket = utils.cloud_utils.setup_gcp_storage_objs()
-    _, s3_resource, _ = utils.cloud_utils.create_s3_objs()
-
     rf = RawFile(
         file_name=file_name,
         file_type=file_type,
@@ -423,8 +415,6 @@ def convert_raw_to_netcdf_ices(
         gcp_bucket=gcp_bucket,
         is_metadata=is_metadata,
         debug=debug,
-        s3_resource=s3_resource,
-        s3_bucket_name="noaa-wcsd-pds",
     )
 
     # Here we check for a netcdf version of the raw file on GCP
@@ -439,7 +429,7 @@ def convert_raw_to_netcdf_ices(
             echosounder=rf.echosounder,
             data_source=rf.data_source,
             file_download_directory=rf.file_download_directory,
-            gcp_bucket=gcp_bucket,
+            gcp_bucket=rf.gcp_bucket,
             debug=rf.debug,
         )
     else:
@@ -479,7 +469,7 @@ def convert_raw_to_netcdf_ices(
             survey_name=rf.survey_name,
             echosounder=rf.echosounder,
             file_location=rf.netcdf_file_download_path,
-            gcp_bucket=gcp_bucket,
+            gcp_bucket=rf.gcp_bucket,
             data_source=rf.data_source,
             is_metadata=False,
             debug=rf.debug,
