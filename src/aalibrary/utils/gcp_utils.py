@@ -393,7 +393,8 @@ def copy_folder_within_gcs(
     # List all blobs (objects) with the source prefix
     blobs = bucket.list_blobs(prefix=source_prefix)
     len_blobs = get_num_objects_in_blob(
-        gcp_bucket_name=gcp_bucket_name, folder_prefix=source_prefix)
+        gcp_bucket_name=gcp_bucket_name, folder_prefix=source_prefix
+    )
 
     for blob in tqdm(blobs, desc="Copying GCS objects", total=len_blobs):
         # Construct the new blob name
