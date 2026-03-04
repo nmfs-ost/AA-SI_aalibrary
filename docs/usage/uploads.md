@@ -9,6 +9,9 @@ For a detailed description (pros/cons) of all upload tools/options, take a look 
 !!! info "INFO: More Info On GCP"
     For more information on GCP implementation, please take a look at the [GCP Overview Page](../documentation/gcp_overview.md).
 
+!!! note "NOTE: Default GCP Environment"
+    By default, `aalibrary` uses the dev GCP project and bucket. If you would like to switch to the prod environment, simply call aalibrary.config.use_gcp_prod() before running your functions. If you would like to use a custom environment, follow the instructions outlined [here](../usage/configuration.md#gcp-environment-configuration).
+
 ## Uploading Echosounder Files To GCP
 
 In order to upload selective Echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet. This function maintains the formatting and folder structure that AALibrary uses. This makes retrieval of the files using the AALibrary possible.

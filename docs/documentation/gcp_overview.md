@@ -3,6 +3,10 @@
 AALibrary serves as a data-fetching tool with many capabilities (such as Python implementation and console-based UI implementation).
 This library provides also provides advanced methods for interacting with the GCP cloud storage buckets/metadata database, to allow users to fetch specific data, perform analyses, and more…
 
+## Default GCP Environment in `AALibrary`
+
+The default environment in AALibrary is the dev environment, `ggn-nmfs-aa-dev-1`. To switch to the prod environment, or another custom environment or bucket, please follow the docs [here](../usage/configuration.md#gcp-environment-configuration).
+
 ## Current Environments (aka ‘Projects’) in GCP
 
 * ggn-nmfs-aa-dev-1:
