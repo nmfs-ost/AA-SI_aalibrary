@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from pathlib import Path
-import calendar
-import random
 import re
-from typing import Any
+from typing import Any, Iterable
 
 from aalibrary.utils import ncei_cache_utils
 from InquirerPy import inquirer
@@ -21,10 +19,6 @@ except Exception:
 # ----------------------------
 # Helpers
 # ----------------------------
-
-def days_in_month(year: int, month: int) -> int:
-    return calendar.monthrange(year, month)[1]
-
 
 def to_utc_z(dt: datetime) -> str:
     if dt.tzinfo is None:
@@ -40,11 +34,6 @@ def select_value(message: str, choices: list[dict[str, Any]], *, max_height: str
         choices=choices,
         max_height=max_height,
     ).execute()
-
-
-def select_int(message: str, values: list[int], *, max_height: str = "70%") -> int:
-    choices = [{"name": str(v), "value": v} for v in values]
-    return int(select_value(message, choices, max_height=max_height))
 
 
 # ----------------------------
@@ -66,9 +55,7 @@ def parse_user_time(text: str) -> tuple[int, int, int]:
     """
     m = _TIME_RE.match(text or "")
     if not m:
-        raise ValueError(
-            "Invalid time format. Use 'HH:MM' or 'HH:MM:SS'. Example: 14:05 or 14:05:30"
-        )
+        raise ValueError("Invalid time format. Use HH:MM or HH:MM:SS. Example: 14:05 or 14:05:30")
 
     hh_s, mm_s, ss_s = m.groups()
     hh = int(hh_s)
@@ -85,40 +72,17 @@ def parse_user_time(text: str) -> tuple[int, int, int]:
     return hh, mm, ss
 
 
-# ----------------------------
-# Hybrid date picker + manual time entry
-# ----------------------------
-
-def pick_date(label: str, *, year_min: int = 1970, year_max: int = 2100) -> tuple[int, int, int]:
-    """
-    Date picker:
-      Year → Month → Day
-    Uses arrow selection (same as the previous flow).
-    """
-    year = select_int(f"📅   {label} year:", list(range(year_min, year_max + 1)))
-
-    month_choices = [
-        {"name": f"{i:02d} - {calendar.month_name[i]}", "value": i}
-        for i in range(1, 13)
-    ]
-    month = int(select_value(f"🗓️   {label} month:", month_choices))
-
-    dim = days_in_month(year, month)
-    day = select_int(f"📆   {label} day:", list(range(1, dim + 1)))
-    return year, month, day
-
-
 def pick_time_text(label: str, *, default: str = "00:00:00") -> tuple[int, int, int]:
     """
     Time picker:
-      Manual text entry HH:MM:SS with validation.
+      Manual text entry HH:MM[:SS] with validation.
     """
     def _time_validator(s: str) -> bool:
         parse_user_time(s)
         return True
 
     raw_time = inquirer.text(
-        message=f"⏱️   {label} time (UTC) [HH:MM:SS]:",
+        message=f"⏱️   {label} time (UTC) [HH:MM[:SS]]:",
         default=default,
         validate=_time_validator,
         invalid_message="Invalid time. Use HH:MM or HH:MM:SS (UTC). Example: 14:05 or 14:05:30",
@@ -127,18 +91,91 @@ def pick_time_text(label: str, *, default: str = "00:00:00") -> tuple[int, int, 
     return parse_user_time(str(raw_time))
 
 
-def pick_datetime_parts(label: str) -> tuple[str, str, datetime]:
+# ----------------------------
+# Date selection based on available survey dates
+# ----------------------------
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _normalize_available_dates(raw_dates: Iterable[Any]) -> list[str]:
+    """
+    Convert the output of ncei_cache_utils.get_dates_of_survey_in_ncei_cache(...)
+    into a sorted list of unique YYYY-MM-DD strings.
+
+    This is defensive: raw_dates might already be strings, or datetime/date objects,
+    or other representations depending on cache implementation.
+    """
+    out: set[str] = set()
+    for d in raw_dates:
+        if d is None:
+            continue
+        if isinstance(d, str):
+            s = d.strip()
+            # accept "YYYY-MM-DD" or full ISO like "YYYY-MM-DDTHH:MM:SSZ"
+            if len(s) >= 10:
+                s10 = s[:10]
+                if _DATE_RE.match(s10):
+                    out.add(s10)
+        elif isinstance(d, datetime):
+            out.add(d.astimezone(timezone.utc).strftime("%Y-%m-%d"))
+        elif isinstance(d, date):
+            out.add(d.strftime("%Y-%m-%d"))
+        else:
+            # last-ditch: stringification
+            s = str(d).strip()
+            if len(s) >= 10:
+                s10 = s[:10]
+                if _DATE_RE.match(s10):
+                    out.add(s10)
+
+    return sorted(out)
+
+
+def get_available_dates_for_survey(vessel: str, survey: str) -> list[str]:
+    """
+    Pull available dates for (vessel, survey) from the cache utility.
+    Expected function (per your note):
+        get_dates_of_survey_in_ncei_cache(...)
+    """
+    raw_dates = ncei_cache_utils.get_dates_of_survey_in_ncei_cache(vessel=vessel, survey=survey)
+    dates = _normalize_available_dates(raw_dates)
+    if not dates:
+        raise RuntimeError(
+            f"No available dates found for vessel={vessel!r}, survey={survey!r} in NCEI cache."
+        )
+    return dates
+
+
+def pick_date_from_available(label: str, available_dates: list[str]) -> str:
+    """
+    Pick a date (YYYY-MM-DD) from a list of available dates.
+    Cursor starts at first option (no default passed).
+    """
+    choices = [{"name": d, "value": d} for d in available_dates]
+    return str(
+        inquirer.select(
+            message=f"📆   {label} date (available):",
+            choices=choices,
+            max_height="70%",
+        ).execute()
+    )
+
+
+def pick_datetime_parts(label: str, available_dates: list[str]) -> tuple[str, str, datetime]:
     """
     Collect (date_str, time_str, dt_utc) where:
-      date_str = YYYY-MM-DD
-      time_str = HH:MM:SS
+      date_str = YYYY-MM-DD (must be in available_dates)
+      time_str = HH:MM:SS (manual validated)
       dt_utc    = timezone-aware datetime in UTC
-    """
-    y, m, d = pick_date(label)
-    hh, mm, ss = pick_time_text(label, default="00:00:00")
 
+    This respects "world time / unix time" by constructing an actual UTC datetime.
+    """
+    date_str = pick_date_from_available(label, available_dates)
+    hh, mm, ss = pick_time_text(label, default="00:00:00")
+    y, m, d = (int(date_str[0:4]), int(date_str[5:7]), int(date_str[8:10]))
     dt = datetime(y, m, d, hh, mm, ss, tzinfo=timezone.utc)
-    return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M:%S"), dt
+    return date_str, f"{hh:02d}:{mm:02d}:{ss:02d}", dt
 
 
 # ----------------------------
@@ -163,72 +200,22 @@ def ask_output_path() -> Path:
 
 
 # ----------------------------
-# Fake NOAA-ish data (kept for reference)
-# ----------------------------
-
-def get_vessel_names() -> list[str]:
-    return [
-        "Reuben Lasker",
-        "Falkor",
-        "Henry B. Bigelow",
-        "Oscar Dyson",
-        "Nancy Foster",
-        "Pisces",
-        "Delaware II",
-        "Bell M. Shimada",
-        "Gordon Gunter",
-        "Albatross IV",
-    ]
-
-
-def get_fake_surveys_for_vessel(vessel: str, n: int = 60) -> list[str]:
-    rng = random.Random(hash(vessel) & 0xFFFFFFFF)
-    years = [2021, 2022, 2023, 2024, 2025, 2026]
-
-    words = vessel.split()
-    prefix = "".join([w[0] for w in words[:2]]).upper()
-    if len(prefix) < 2:
-        prefix = (prefix + "X")[:2]
-
-    surveys: list[str] = []
-    for _ in range(n):
-        yy = rng.choice(years) % 100
-        leg = rng.randint(1, 9)
-        seq = rng.randint(0, 9)
-        surveys.append(f"{prefix}{yy:02d}{leg}{seq}")
-
-    out: list[str] = []
-    seen: set[str] = set()
-    for s in surveys:
-        if s not in seen:
-            out.append(s)
-            seen.add(s)
-    return out
-
-
-def get_instruments() -> list[str]:
-    return ["EK60", "EK80", "ADCP", "EK500"]
-
-
-# ----------------------------
 # Data model
 # ----------------------------
 
 @dataclass
 class TimeWindow:
     """
-    Stores structured parts for the requested YAML schema.
-
     Schema target:
-      - start-date: "YYYY-MM-DD"
-        start-time: "HH:MM:SS"
-        end-date:   "YYYY-MM-DD"
-        end-time:   "HH:MM:SS"
+      - start-date: "YYYY-MM-DD"   (must be available for survey)
+        start-time: "HH:MM:SS"     (manual validated)
+        end-date:   "YYYY-MM-DD"   (must be available for survey)
+        end-time:   "HH:MM:SS"     (manual validated)
     """
-    start_date: str   # YYYY-MM-DD
-    start_time: str   # HH:MM:SS
-    end_date: str     # YYYY-MM-DD
-    end_time: str     # HH:MM:SS
+    start_date: str
+    start_time: str
+    end_date: str
+    end_time: str
 
 
 @dataclass
@@ -281,15 +268,15 @@ def choose_instrument(ship_name: str, survey_name: str) -> str:
     )
 
 
-def create_time_window() -> TimeWindow:
+def create_time_window(*, available_dates: list[str]) -> TimeWindow:
     """
-    Prompt for Start (date via arrows + time via text) and End (same),
+    Prompt for Start (date from available list + time via text) and End (same),
     validate end > start (UTC).
     """
     while True:
         try:
-            s_date, s_time, s_dt = pick_datetime_parts("Start")
-            e_date, e_time, e_dt = pick_datetime_parts("End")
+            s_date, s_time, s_dt = pick_datetime_parts("Start", available_dates)
+            e_date, e_time, e_dt = pick_datetime_parts("End", available_dates)
         except ValueError as e:
             print(f"\n🚫 {e}\n")
             continue
@@ -311,9 +298,12 @@ def build_request() -> Request:
     survey = choose_survey(vessel)
     instrument = choose_instrument(vessel, survey)
 
+    # NEW: constrain date picking to available survey dates
+    available_dates = get_available_dates_for_survey(vessel, survey)
+
     windows: list[TimeWindow] = []
     while True:
-        windows.append(create_time_window())
+        windows.append(create_time_window(available_dates=available_dates))
 
         more = inquirer.confirm(
             message="➕   Add another time window for this same vessel/survey/instrument?",
@@ -356,8 +346,7 @@ def main(output_path: Path | None = None) -> Path:
         if not another_req:
             break
 
-    # Emit YAML schema exactly as requested:
-    #
+    # Emit YAML schema:
     # requests:
     #   - vessel: "Falkor"
     #     survey: "FK004E"
@@ -367,7 +356,6 @@ def main(output_path: Path | None = None) -> Path:
     #         start-time: "00:00:00"
     #         end-date: "2012-09-01"
     #         end-time: "23:59:59"
-    #
     schedule_dict: dict[str, Any] = {
         "requests": [
             {
