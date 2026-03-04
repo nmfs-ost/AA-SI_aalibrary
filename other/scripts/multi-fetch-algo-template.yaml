@@ -1,11 +1,11 @@
 requests:
     - vessel: "Falkor"
-      survey: "FK2101"
-      instrument: "EK80"
+      survey: "FK004E"
+      instrument: "EM302"
       time-windows:
-        - start-date: "2021-10-10" # selected by user from list.
+        - start-date: "2012-08-29" # selected by user from list.
           start-time: "00:00:00" # selected by user by manual input.
-          end-date: "2021-10-10" # selected by user from list.
+          end-date: "2012-09-01" # selected by user from list.
           end-time: "23:59:59" # selected by user by manual input.
     - vessel: "Falkor"
       survey: "FK007"
