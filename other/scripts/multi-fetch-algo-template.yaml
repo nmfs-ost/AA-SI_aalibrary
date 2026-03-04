@@ -8,6 +8,17 @@ requests:
           end-date: "2012-09-01" # selected by user from list.
           end-time: "23:59:59" # selected by user by manual input.
     - vessel: "Falkor"
+      survey: "FK004E"
+      instrument: "EM302"
+      time-windows:
+        - start-date: "2012-08-29" # selected by user from list.
+    - vessel: "Falkor"
+      survey: "FK004E"
+      instrument: "EM302"
+      time-windows:
+        - start-date: "2012-08-29" # selected by user from list.
+          end-date: "2012-09-01" # selected by user from list.
+    - vessel: "Falkor"
       survey: "FK007"
     - vessel: "Reuben Lasker"
       survey: "RL2107"
