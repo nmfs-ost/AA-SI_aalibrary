@@ -626,7 +626,8 @@ def check_if_folder_exists_in_gcp(
     folder_prefix: str = "",
 ) -> bool:
     """Checks if a folder exists in a GCP bucket by checking for the existence
-    of any objects with the given folder prefix.
+    of any objects with the given folder prefix. Works on empty folders as
+    well.
 
     Args:
         gcp_bucket (storage.Client.bucket, optional): The GCP bucket client
