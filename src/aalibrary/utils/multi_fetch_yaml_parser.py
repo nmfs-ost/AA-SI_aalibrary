@@ -13,10 +13,10 @@ from google.cloud import bigquery
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
-    from cloud_utils import bq_query_to_pandas
+    from cloud_utils import bq_query_to_pandas, setup_gbq_client_objs
     from helpers import normalize_ship_name
 else:
-    from aalibrary.utils.cloud_utils import bq_query_to_pandas
+    from aalibrary.utils.cloud_utils import bq_query_to_pandas, setup_gbq_client_objs
     from aalibrary.utils.helpers import (
         normalize_ship_name,
     )
@@ -214,7 +214,12 @@ def parse_yaml_and_fetch_results(
     yaml_file_path: str, client: bigquery.Client = None
 ) -> List[str]:
     """This function combines the two steps of parsing the YAML and executing
-    the resulting SQL query to return the results of the YAML submission."""
+    the resulting SQL query to return the results of the YAML submission. If no
+    client is provided, the function will create a client using the default GCP
+    environment."""
+    if client is None:
+        client, _ = setup_gbq_client_objs()
+
     sql_query = parse_yaml_file(yaml_file_path=yaml_file_path)
     results = execute_sql_query(sql_query=sql_query, client=client)
     return list(set(results))
