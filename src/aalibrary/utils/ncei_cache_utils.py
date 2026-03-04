@@ -765,7 +765,35 @@ def get_random_raw_file_from_ncei_cache_with_search_param(
         random_raw_file,
     ]
 
-# TODO: get time windows of a survey
+
+def get_dates_of_survey_in_ncei_cache(
+    survey_name: str,
+    gcp_bq_client: bigquery.Client = None,
+) -> List[str]:
+    """Gets the dates of a specific survey in the NCEI cache in BigQuery for
+    all raw files. The date is in the format of "YYYY-MM-DD".
+    Args:
+        survey_name (str): The name of the survey to get the dates for.
+        gcp_bq_client (bigquery.Client, optional): A GCP BigQuery client
+            object. If not provided, one will be created.
+
+    Returns:
+        List[str]: A list of strings, each being a date in the format of
+            "YYYY-MM-DD" for a specific survey in the NCEI cache in BigQuery.
+    """
+    gcp_bq_client = (
+        setup_gbq_client_objs()[0] if gcp_bq_client is None else gcp_bq_client
+    )
+    dates_query = f"""SELECT
+    DISTINCT (LEFT(file_datetime, 10)) file_date,
+    FROM `ggn-nmfs-aa-dev-1.metadata.ncei_cache`
+    WHERE
+    survey_name = '{survey_name}'
+    AND file_type = 'raw'
+    ORDER BY file_date ASC"""
+    df = bq_query_to_pandas(gcp_bq_client, dates_query)
+    return df["file_date"].tolist() if not df.empty else []
+
 
 if __name__ == "__main__":
     gcp_bq_client, _ = setup_gbq_client_objs(project_id="ggn-nmfs-aa-dev-1")
