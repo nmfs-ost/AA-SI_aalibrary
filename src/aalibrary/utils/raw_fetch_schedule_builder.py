@@ -47,16 +47,6 @@ def select_int(message: str, values: list[int], *, max_height: str = "70%") -> i
     return int(select_value(message, choices, max_height=max_height))
 
 
-def fmt_date(dt: datetime) -> str:
-    """YYYY-MM-DD"""
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
-
-
-def fmt_time(dt: datetime) -> str:
-    """HH:MM:SS"""
-    return dt.astimezone(timezone.utc).strftime("%H:%M:%S")
-
-
 # ----------------------------
 # Manual time input (validated)
 # ----------------------------
@@ -103,7 +93,7 @@ def pick_date(label: str, *, year_min: int = 1970, year_max: int = 2100) -> tupl
     """
     Date picker:
       Year → Month → Day
-    Uses arrow selection (same as your previous flow).
+    Uses arrow selection (same as the previous flow).
     """
     year = select_int(f"📅   {label} year:", list(range(year_min, year_max + 1)))
 
@@ -121,14 +111,14 @@ def pick_date(label: str, *, year_min: int = 1970, year_max: int = 2100) -> tupl
 def pick_time_text(label: str, *, default: str = "00:00:00") -> tuple[int, int, int]:
     """
     Time picker:
-      Manual text entry HH:MM[:SS] with validation.
+      Manual text entry HH:MM:SS with validation.
     """
     def _time_validator(s: str) -> bool:
         parse_user_time(s)
         return True
 
     raw_time = inquirer.text(
-        message=f"⏱️   {label} time (UTC) [HH:MM[:SS]]:",
+        message=f"⏱️   {label} time (UTC) [HH:MM:SS]:",
         default=default,
         validate=_time_validator,
         invalid_message="Invalid time. Use HH:MM or HH:MM:SS (UTC). Example: 14:05 or 14:05:30",
@@ -228,6 +218,12 @@ def get_instruments() -> list[str]:
 class TimeWindow:
     """
     Stores structured parts for the requested YAML schema.
+
+    Schema target:
+      - start-date: "YYYY-MM-DD"
+        start-time: "HH:MM:SS"
+        end-date:   "YYYY-MM-DD"
+        end-time:   "HH:MM:SS"
     """
     start_date: str   # YYYY-MM-DD
     start_time: str   # HH:MM:SS
@@ -364,15 +360,13 @@ def main(output_path: Path | None = None) -> Path:
     #
     # requests:
     #   - vessel: "Falkor"
-    #     survey: "FK2101"
-    #     instrument: "EK80"
+    #     survey: "FK004E"
+    #     instrument: "EM302"
     #     time-windows:
-    #       - start:
-    #         - date: "2021-10-10"
-    #           time: "00:00:00"
-    #       - end:
-    #         - date: "2021-10-10"
-    #           time: "23:59:59"
+    #       - start-date: "2012-08-29"
+    #         start-time: "00:00:00"
+    #         end-date: "2012-09-01"
+    #         end-time: "23:59:59"
     #
     schedule_dict: dict[str, Any] = {
         "requests": [
@@ -382,18 +376,12 @@ def main(output_path: Path | None = None) -> Path:
                 "instrument": r.instrument,
                 "time-windows": [
                     {
-                        "start": [
-                            {"date": w.start_date, "time": w.start_time}
-                        ]
-                    }
-                    if i % 2 == 0 else
-                    {
-                        "end": [
-                            {"date": w.end_date, "time": w.end_time}
-                        ]
+                        "start-date": w.start_date,
+                        "start-time": w.start_time,
+                        "end-date": w.end_date,
+                        "end-time": w.end_time,
                     }
                     for w in r.time_windows
-                    for i in range(2)
                 ],
             }
             for r in requests
