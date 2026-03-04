@@ -6,9 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 import calendar
 import random
+import re
 from typing import Any
-from aalibrary.utils import ncei_cache_utils
 
+from aalibrary.utils import ncei_cache_utils
 from InquirerPy import inquirer
 
 try:
@@ -16,6 +17,10 @@ try:
 except Exception:
     yaml = None
 
+
+# ----------------------------
+# Helpers
+# ----------------------------
 
 def days_in_month(year: int, month: int) -> int:
     return calendar.monthrange(year, month)[1]
@@ -42,7 +47,64 @@ def select_int(message: str, values: list[int], *, max_height: str = "70%") -> i
     return int(select_value(message, choices, max_height=max_height))
 
 
-def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> datetime:
+def fmt_date(dt: datetime) -> str:
+    """YYYY-MM-DD"""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
+
+
+def fmt_time(dt: datetime) -> str:
+    """HH:MM:SS"""
+    return dt.astimezone(timezone.utc).strftime("%H:%M:%S")
+
+
+# ----------------------------
+# Manual time input (validated)
+# ----------------------------
+
+_TIME_RE = re.compile(r"^\s*(\d{2}):(\d{2})(?::(\d{2}))?\s*$")
+
+
+def parse_user_time(text: str) -> tuple[int, int, int]:
+    """
+    Parse user-entered time.
+
+    Accepted formats:
+      HH:MM
+      HH:MM:SS
+
+    Returns (hour, minute, second). Raises ValueError if invalid.
+    """
+    m = _TIME_RE.match(text or "")
+    if not m:
+        raise ValueError(
+            "Invalid time format. Use 'HH:MM' or 'HH:MM:SS'. Example: 14:05 or 14:05:30"
+        )
+
+    hh_s, mm_s, ss_s = m.groups()
+    hh = int(hh_s)
+    mm = int(mm_s)
+    ss = int(ss_s) if ss_s is not None else 0
+
+    if not (0 <= hh <= 23):
+        raise ValueError("Hour must be 00–23.")
+    if not (0 <= mm <= 59):
+        raise ValueError("Minute must be 00–59.")
+    if not (0 <= ss <= 59):
+        raise ValueError("Second must be 00–59.")
+
+    return hh, mm, ss
+
+
+# ----------------------------
+# Hybrid date picker + manual time entry
+# ----------------------------
+
+def pick_date(label: str, *, year_min: int = 1970, year_max: int = 2100) -> tuple[int, int, int]:
+    """
+    Date picker:
+      Year → Month → Day
+    Uses arrow selection (same as your previous flow).
+    """
     year = select_int(f"📅   {label} year:", list(range(year_min, year_max + 1)))
 
     month_choices = [
@@ -53,13 +115,45 @@ def pick_datetime(label: str, *, year_min: int = 1970, year_max: int = 2100) -> 
 
     dim = days_in_month(year, month)
     day = select_int(f"📆   {label} day:", list(range(1, dim + 1)))
+    return year, month, day
 
-    hour = select_int(f"🕒   {label} hour:", list(range(0, 24)))
-    minute = select_int(f"⏱️   {label} minute:", list(range(0, 60)))
-    second = select_int(f"⏲️   {label} second:", list(range(0, 60)))
 
-    return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+def pick_time_text(label: str, *, default: str = "00:00:00") -> tuple[int, int, int]:
+    """
+    Time picker:
+      Manual text entry HH:MM[:SS] with validation.
+    """
+    def _time_validator(s: str) -> bool:
+        parse_user_time(s)
+        return True
 
+    raw_time = inquirer.text(
+        message=f"⏱️   {label} time (UTC) [HH:MM[:SS]]:",
+        default=default,
+        validate=_time_validator,
+        invalid_message="Invalid time. Use HH:MM or HH:MM:SS (UTC). Example: 14:05 or 14:05:30",
+    ).execute()
+
+    return parse_user_time(str(raw_time))
+
+
+def pick_datetime_parts(label: str) -> tuple[str, str, datetime]:
+    """
+    Collect (date_str, time_str, dt_utc) where:
+      date_str = YYYY-MM-DD
+      time_str = HH:MM:SS
+      dt_utc    = timezone-aware datetime in UTC
+    """
+    y, m, d = pick_date(label)
+    hh, mm, ss = pick_time_text(label, default="00:00:00")
+
+    dt = datetime(y, m, d, hh, mm, ss, tzinfo=timezone.utc)
+    return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M:%S"), dt
+
+
+# ----------------------------
+# Output path helpers
+# ----------------------------
 
 def default_output_path() -> Path:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -77,6 +171,10 @@ def ask_output_path() -> Path:
         path = path.with_suffix(".yaml")
     return path
 
+
+# ----------------------------
+# Fake NOAA-ish data (kept for reference)
+# ----------------------------
 
 def get_vessel_names() -> list[str]:
     return [
@@ -122,10 +220,19 @@ def get_instruments() -> list[str]:
     return ["EK60", "EK80", "ADCP", "EK500"]
 
 
+# ----------------------------
+# Data model
+# ----------------------------
+
 @dataclass
 class TimeWindow:
-    start: str
-    end: str
+    """
+    Stores structured parts for the requested YAML schema.
+    """
+    start_date: str   # YYYY-MM-DD
+    start_time: str   # HH:MM:SS
+    end_date: str     # YYYY-MM-DD
+    end_time: str     # HH:MM:SS
 
 
 @dataclass
@@ -135,6 +242,10 @@ class Request:
     instrument: str
     time_windows: list[TimeWindow]
 
+
+# ----------------------------
+# UI flows
+# ----------------------------
 
 def choose_vessel() -> str:
     vessels = ncei_cache_utils.get_all_ship_names_in_ncei_cache()
@@ -159,7 +270,12 @@ def choose_survey(vessel: str) -> str:
 
 
 def choose_instrument(ship_name: str, survey_name: str) -> str:
-    instruments = ncei_cache_utils.get_all_echosounders_in_a_survey_in_ncei_cache(ship_name=ship_name, survey_name=survey_name, gcp_bq_client=None, return_full_paths=None)
+    instruments = ncei_cache_utils.get_all_echosounders_in_a_survey_in_ncei_cache(
+        ship_name=ship_name,
+        survey_name=survey_name,
+        gcp_bq_client=None,
+        return_full_paths=None,
+    )
     return str(
         inquirer.select(
             message="🎛️   Select instrument:",
@@ -170,15 +286,28 @@ def choose_instrument(ship_name: str, survey_name: str) -> str:
 
 
 def create_time_window() -> TimeWindow:
+    """
+    Prompt for Start (date via arrows + time via text) and End (same),
+    validate end > start (UTC).
+    """
     while True:
-        start_dt = pick_datetime("Start")
-        end_dt = pick_datetime("End")
+        try:
+            s_date, s_time, s_dt = pick_datetime_parts("Start")
+            e_date, e_time, e_dt = pick_datetime_parts("End")
+        except ValueError as e:
+            print(f"\n🚫 {e}\n")
+            continue
 
-        if end_dt <= start_dt:
+        if e_dt <= s_dt:
             print("\n🚫 End must be after Start. Please try again.\n")
             continue
 
-        return TimeWindow(start=to_utc_z(start_dt), end=to_utc_z(end_dt))
+        return TimeWindow(
+            start_date=s_date,
+            start_time=s_time,
+            end_date=e_date,
+            end_time=e_time,
+        )
 
 
 def build_request() -> Request:
@@ -231,13 +360,41 @@ def main(output_path: Path | None = None) -> Path:
         if not another_req:
             break
 
+    # Emit YAML schema exactly as requested:
+    #
+    # requests:
+    #   - vessel: "Falkor"
+    #     survey: "FK2101"
+    #     instrument: "EK80"
+    #     time-windows:
+    #       - start:
+    #         - date: "2021-10-10"
+    #           time: "00:00:00"
+    #       - end:
+    #         - date: "2021-10-10"
+    #           time: "23:59:59"
+    #
     schedule_dict: dict[str, Any] = {
         "requests": [
             {
                 "vessel": r.vessel,
                 "survey": r.survey,
                 "instrument": r.instrument,
-                "time-windows": [{"start": w.start, "end": w.end} for w in r.time_windows],
+                "time-windows": [
+                    {
+                        "start": [
+                            {"date": w.start_date, "time": w.start_time}
+                        ]
+                    }
+                    if i % 2 == 0 else
+                    {
+                        "end": [
+                            {"date": w.end_date, "time": w.end_time}
+                        ]
+                    }
+                    for w in r.time_windows
+                    for i in range(2)
+                ],
             }
             for r in requests
         ]

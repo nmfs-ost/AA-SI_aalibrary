@@ -57,7 +57,80 @@ from aalibrary.utils.raw_fetch_schedule_builder import default_output_path, main
 
 
 def print_help() -> None:
-    print(__doc__.strip() + "\n")
+    """
+    Verbose, human-friendly help text (aa-clean style).
+    Prints to stderr so it never contaminates pipeline stdout.
+    """
+    help_text = r"""
+aa-get — Interactive YAML schedule builder (prints saved YAML path)
+
+WHAT THIS TOOL DOES
+  • Launches an interactive terminal UI (InquirerPy) to build a fetch schedule YAML
+  • Saves the YAML to disk in a consistent schema
+  • Prints ONLY the saved YAML path to stdout as the final line (pipeline-friendly)
+
+WHY IT PRINTS A PATH TO STDOUT
+  aa-get is designed to feed downstream tools by emitting the YAML file path.
+  The primary intended downstream consumer is:
+
+      aa-fetch
+
+  This enables a clean two-step pipeline:
+      (1) aa-get builds the YAML
+      (2) aa-fetch consumes the YAML and performs the download/execution
+
+HOW TO USE WITH aa-fetch (RECOMMENDED)
+  Build the YAML interactively, then immediately execute it:
+
+      aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001
+      aa-get | aa-fetch (Barebones, defaults to CWD and timestamped filename)
+
+  Notes:
+    • During the interactive UI, aa-get may render UI output to your terminal.
+    • The FINAL line written to stdout is the YAML file path.
+    • aa-fetch reads that single path from stdin and executes the job.
+
+USAGE
+  aa-get [OPTIONS] [OUTPUT_DIR]
+
+ARGUMENTS
+  OUTPUT_DIR
+      Optional directory to save into.
+      Defaults to the current working directory.
+
+      Special value:
+        -   Read OUTPUT_DIR from stdin (one line). Useful if you want to pipe an
+            output directory into aa-get explicitly:
+              echo /tmp/schedules | aa-get -n request.yaml -
+
+OPTIONS
+  -d, --output_dir PATH
+      Directory to save into (overrides positional OUTPUT_DIR).
+      Default: current working directory (CWD)
+
+  -n, --file_name NAME
+      Output filename. Adds .yaml if missing.
+      Default: fetch_request_<YYYYMMDD_HHMMSS>.yaml
+
+  -h, --help
+      Show this help and exit.
+
+EXAMPLES
+  1) Save into CWD with a timestamped filename:
+      aa-get
+
+  2) Save into a directory via positional OUTPUT_DIR:
+      aa-get ./schedules
+
+  3) Save into a directory via flag, with an explicit filename:
+      aa-get -d ./schedules -n test.yaml
+
+  4) Recommended end-to-end pipeline (build → execute):
+      aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001
+      aa-get | aa-fetch (Barebones, defaults to CWD and timestamped filename)
+
+"""
+    print(help_text.strip() + "\n", file=sys.stderr)
 
 
 def _coerce_yaml_file_name(name: str) -> str:
