@@ -401,6 +401,30 @@ def check_if_file_exists_in_s3(
         return False
 
 
+def check_if_folder_exists_in_s3(
+    prefix: str = "",
+    s3_resource: boto3.resource = None,
+    bucket_name: str = "noaa-wcsd-pds",
+) -> bool:
+    """Checks to see if a folder exists in an s3 bucket by checking for the
+    existence of any objects with the given prefix.
+
+    Args:
+        prefix (str, optional): The folder location. Defaults to "".
+        s3_resource (boto3.resource, optional): The boto3 resource for this
+            particular bucket. Defaults to None.
+        bucket_name (str, optional): The bucket name. Defaults to "".
+
+    Returns:
+        bool: True if the folder exists within the bucket. False otherwise.
+    """
+
+    objects_with_prefix = list(
+        s3_resource.Bucket(bucket_name).objects.limit(count=1).filter(Prefix=prefix)
+    )
+    return len(objects_with_prefix) > 0
+
+
 def get_object_key_for_s3(
     file_url: str = "",
     file_name: str = "",
@@ -719,9 +743,8 @@ def get_service_client_sas(
 
 
 if __name__ == "__main__":
-    # s3_client, s3_resource, s3_bucket = create_s3_objs()
+    s3_client, s3_resource, s3_bucket = create_s3_objs()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
-    print(gcp_bucket_name)
     # all_objs = list_all_objects_in_s3_bucket_location(
     #     prefix="data/raw/Reuben_Lasker/RL2107/metadata",
     #     s3_resource=s3_bucket
@@ -742,9 +765,11 @@ if __name__ == "__main__":
     #         return_full_paths=False,
     #     )
     # )
-    print(
-        check_if_file_exists_in_gcp(
-            bucket=gcp_bucket,
-            file_path="ggn-nmfs-aa-dev-1-data/NCEI/Reuben_Lasker/RL2107/EK80/data/netcdf/",
-        )
-    )
+    # print(
+    #     check_if_file_exists_in_gcp(
+    #         bucket=gcp_bucket,
+    #         file_path="ggn-nmfs-aa-dev-1-data/NCEI/Reuben_Lasker/RL2107/EK80/data/netcdf/",
+    #     )
+    # )
+    print(check_if_folder_exists_in_s3(prefix="data/raw/Reuben_Lasker/",
+                                 s3_resource=s3_resource))
