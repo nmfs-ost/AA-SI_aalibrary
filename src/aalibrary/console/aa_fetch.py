@@ -182,6 +182,8 @@ def main() -> int:
         try:
             logger.info(f"Fetch results: {results}")
             logger.info(f"Result count: {len(results)}")
+            mf.download_results(results, download_dir)
+
         except Exception:
             logger.info("Fetch completed (results not sizeable/loggable cleanly).")
 
