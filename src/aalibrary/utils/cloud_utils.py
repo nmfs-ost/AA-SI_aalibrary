@@ -335,7 +335,7 @@ def download_file_from_gcp_as_string(
     blob = gcp_bucket.blob(blob_file_path, chunk_size=1024 * 1024 * 1)
     # Download from blob
     try:
-        return blob.download_as_text(encoding='utf-8')
+        return blob.download_as_text(encoding="utf-8")
     except Exception:
         print(traceback.format_exc())
         raise
@@ -621,9 +621,49 @@ def list_all_folders_in_gcp_bucket_location(
         return [b.split("/")[-2] for b in folder_prefixes]
 
 
+def check_if_folder_exists_in_gcp(
+    gcp_bucket: storage.Client.bucket = None,
+    folder_prefix: str = "",
+) -> bool:
+    """Checks if a folder exists in a GCP bucket by checking for the existence
+    of any objects with the given folder prefix.
+
+    Args:
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket client
+            object. If none, one will be created for you based on the default
+            project and bucket within the environment variables.
+            Defaults to None.
+        folder_prefix (str, optional): The folder prefix to check for
+            existence.
+            Defaults to "".
+            Example: "NCEI/Reuben_Lasker/RL2107/EK80/data/netcdf"
+
+    Returns:
+        bool: True if the folder exists, False otherwise.
+    """
+
+    if gcp_bucket is None:
+        _, _, gcp_bucket = setup_gcp_storage_objs()
+
+    if folder_prefix and not folder_prefix.endswith("/"):
+        folder_prefix += "/"
+
+    folder_name = folder_prefix.split("/")[-2]
+    parent_dir = "/".join(folder_prefix.split("/")[:-2]) + "/"
+
+    folders_in_parent_dir = list_all_folders_in_gcp_bucket_location(
+        location=parent_dir,
+        gcp_bucket=gcp_bucket,
+        return_full_paths=False,
+    )
+
+    return folder_name in folders_in_parent_dir
+
+
 def get_existing_netcdf_uris_for_survey(
     survey_name: str = "",
-) -> List[str]: # TODO ...
+) -> List[str]:  # TODO
+    ...
 
 
 def get_data_lake_directory_client(
@@ -701,3 +741,9 @@ if __name__ == "__main__":
     #         return_full_paths=False,
     #     )
     # )
+    print(
+        check_if_file_exists_in_gcp(
+            bucket=gcp_bucket,
+            file_path="ggn-nmfs-aa-dev-1-data/NCEI/Reuben_Lasker/RL2107/EK80/data/netcdf/",
+        )
+    )
