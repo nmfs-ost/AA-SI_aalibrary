@@ -230,8 +230,6 @@ def main():
                                             survey,
                                             "--sonar_model",
                                             sonar_model,
-                                            "--data_source",
-                                            "NCEI",
                                             "--file_download_directory",
                                             folder_name,
                                         ]
@@ -245,8 +243,6 @@ def main():
                                         + survey
                                         + "_"
                                         + sonar_model
-                                        + "_"
-                                        + "NCEI"
                                     )
 
                                     # Create the full path using '.'
