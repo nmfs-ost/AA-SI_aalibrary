@@ -339,82 +339,30 @@ def _build_all_tabs(
     ymax: Optional[float],
 ):
     da = ds[var]
-    has_chan = "channel" in da.dims
-    has_freq_dim = "frequency_nominal" in da.dims
 
-    if has_chan and has_freq_dim:
-        chan_dim = "channel"
-        freq_dim = "frequency_nominal"
-        ccoord = ds[chan_dim]
-        fcoord = ds[freq_dim]
-
-        outer_mode = "freq" if group_by in ("auto", "freq") else "channel"
-
-        if outer_mode == "freq":
-            outer_tabs = []
-            for fi in range(fcoord.size):
-                f_val = fcoord.isel({freq_dim: fi}).values
-                inner_tabs = []
-                for ci in range(ccoord.size):
-                    c_val = ccoord.isel({chan_dim: ci}).values
-                    da2 = da.isel({freq_dim: fi, chan_dim: ci})
-                    da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
-                    plot = _plot_echogram(
-                        da=da2,
-                        x_name=x_name,
-                        y_name=y_name,
-                        title=f"{var} • {_coord_to_str(c_val)} • {_coord_to_str(f_val)}",
-                        cmap=cmap,
-                        vmin=vmin,
-                        vmax=vmax,
-                        width=width,
-                        height=height,
-                        toolbar=toolbar,
-                    )
-                    inner_tabs.append((f"{_coord_to_str(c_val)}", plot))
-                outer_tabs.append((f"{_coord_to_str(f_val)}", pn.Tabs(*inner_tabs, sizing_mode="stretch_both")))
-            return pn.Tabs(*outer_tabs, sizing_mode="stretch_both")
-
-        outer_tabs = []
-        for ci in range(ccoord.size):
-            c_val = ccoord.isel({chan_dim: ci}).values
-            inner_tabs = []
-            for fi in range(fcoord.size):
-                f_val = fcoord.isel({freq_dim: fi}).values
-                da2 = da.isel({chan_dim: ci, freq_dim: fi})
-                da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
-                plot = _plot_echogram(
-                    da=da2,
-                    x_name=x_name,
-                    y_name=y_name,
-                    title=f"{var} • {_coord_to_str(c_val)} • {_coord_to_str(f_val)}",
-                    cmap=cmap,
-                    vmin=vmin,
-                    vmax=vmax,
-                    width=width,
-                    height=height,
-                    toolbar=toolbar,
-                )
-                inner_tabs.append((f"{_coord_to_str(f_val)}", plot))
-            outer_tabs.append((f"{_coord_to_str(c_val)}", pn.Tabs(*inner_tabs, sizing_mode="stretch_both")))
-        return pn.Tabs(*outer_tabs, sizing_mode="stretch_both")
-
-    if has_chan:
+    # Your file: Sv(channel, ping_time, range_sample)
+    if "channel" in da.dims:
         chan_dim = "channel"
         ccoord = ds[chan_dim]
-        f_on_chan = _get_freq_coord_for_channel(ds, chan_dim)
+
+        # In your file, frequency_nominal is a *data variable* (channel)
+        f_on_chan = None
+        if "frequency_nominal" in ds.data_vars:
+            f = ds["frequency_nominal"]
+            if chan_dim in f.dims:
+                f_on_chan = f
 
         tabs = []
         for ci in range(ccoord.size):
             c_val = ccoord.isel({chan_dim: ci}).values
-            da2 = da.isel({chan_dim: ci})
-            da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
 
+            label = _coord_to_str(c_val)
             if f_on_chan is not None:
                 f_val = f_on_chan.isel({chan_dim: ci}).values
                 label = f"{_coord_to_str(c_val)} • {_coord_to_str(f_val)} Hz"
-            else:
-                label = f"{_coord_to_str(c_val)}"
+
+            da2 = da.isel({chan_dim: ci})
+            da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
 
             plot = _plot_echogram(
                 da=da2,
@@ -430,35 +378,10 @@ def _build_all_tabs(
             )
             tabs.append((label, plot))
 
+        # IMPORTANT: build tabs from (title, panel) pairs (this is the correct API)
         return pn.Tabs(*tabs, sizing_mode="stretch_both")
 
-    if has_freq_dim:
-        freq_dim = "frequency_nominal"
-        fcoord = ds[freq_dim]
-
-        tabs = []
-        for fi in range(fcoord.size):
-            f_val = fcoord.isel({freq_dim: fi}).values
-            da2 = da.isel({freq_dim: fi})
-            da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
-
-            label = f"{_coord_to_str(f_val)}"
-            plot = _plot_echogram(
-                da=da2,
-                x_name=x_name,
-                y_name=y_name,
-                title=f"{var} • frequency={label}",
-                cmap=cmap,
-                vmin=vmin,
-                vmax=vmax,
-                width=width,
-                height=height,
-                toolbar=toolbar,
-            )
-            tabs.append((label, plot))
-
-        return pn.Tabs(*tabs, sizing_mode="stretch_both")
-
+    # Fallback to original behavior for other layouts
     da2 = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
     plot = _plot_echogram(
         da=da2,
@@ -473,7 +396,7 @@ def _build_all_tabs(
         toolbar=toolbar,
     )
     return pn.Column(
-        pn.pane.Markdown("No channel/frequency dimension detected; plotting a single array."),
+        pn.pane.Markdown("No channel dimension detected; plotting a single array."),
         plot,
         sizing_mode="stretch_both",
     )
