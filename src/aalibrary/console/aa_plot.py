@@ -4,14 +4,20 @@ aa-plot — Interactive echogram plotting (HTML) for Echopype/xarray NetCDF data
 
 Goals:
 - Accept .nc path from argv OR stdin (pipeline-friendly).
-- Plot a variable (default: Sv if present) for ALL channels/frequencies in a tabbed UI (Panel).
+- Plot a variable (default: Sv if present).
+- Plot ALL channels and/or frequencies in a tabbed UI (Panel + hvPlot).
+  * If Sv has a 'channel' dimension, tabs are per-channel (labels include frequency_nominal if present).
+  * If Sv has a 'frequency_nominal' dimension, tabs are per-frequency.
+  * If BOTH are dimensions, tabs are nested: frequency -> channel.
 - No matplotlib. Output is standalone HTML.
 - Print absolute HTML path to stdout for downstream chaining.
+- Keep stdout clean except for final path (logs go to stderr via loguru).
 
 Examples:
   aa-plot data.nc --all -o plots/echogram.html
   aa-nc raw.raw | aa-sv | aa-clean | aa-plot --all
   aa-plot data.nc --var Sv --channel "GPT 38 kHz 0090720d" -o one.html
+  aa-plot data.nc --all --group-by freq   # force outer tabs by frequency when possible
 """
 
 from __future__ import annotations
@@ -22,7 +28,7 @@ import sys
 from contextlib import redirect_stdout, redirect_stderr
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Any, Dict
 
 import xarray as xr
 from loguru import logger
@@ -35,7 +41,7 @@ pn.extension()
 
 
 # ---------------------------
-# Helpers
+# CLI help
 # ---------------------------
 
 def print_help() -> None:
@@ -51,6 +57,11 @@ Core selection:
   --all                     Plot all channels/frequencies as tabs (recommended).
   --frequency FLOAT         Select single nominal frequency (Hz) (nearest match).
   --channel NAME            Select single channel by name (exact match preferred).
+  --group-by {auto,channel,freq}
+                            When --all and both channel+frequency are available:
+                              auto   -> frequency outer tabs, channel inner tabs (default)
+                              channel-> channel outer tabs, frequency inner tabs
+                              freq   -> frequency outer tabs, channel inner tabs
 
 Axes:
   --x NAME                  Override x-axis dim/coord (default: auto-detect).
@@ -83,11 +94,38 @@ Notes:
     print(help_text.strip())
 
 
+# ---------------------------
+# Generic utilities
+# ---------------------------
+
+def _configure_logging(quiet: bool) -> None:
+    logger.remove()
+    if quiet:
+        logger.add(sys.stderr, level="WARNING", backtrace=False, diagnose=False)
+    else:
+        logger.add(sys.stderr, level="INFO", backtrace=True, diagnose=False)
+
+
 def _read_input_path_from_stdin() -> Optional[str]:
     if sys.stdin.isatty():
         return None
     token = sys.stdin.readline().strip()
     return token or None
+
+
+def _coord_to_str(val: Any) -> str:
+    """Robust-ish stringification for coords that may be bytes/numpy scalars."""
+    try:
+        if hasattr(val, "item"):
+            val = val.item()
+    except Exception:
+        pass
+    if isinstance(val, bytes):
+        try:
+            return val.decode("utf-8", errors="replace")
+        except Exception:
+            return repr(val)
+    return str(val)
 
 
 def _detect_axis(ds: xr.Dataset, candidates: Tuple[str, ...], fallback_index: int) -> str:
@@ -104,18 +142,6 @@ def _detect_axes(ds: xr.Dataset) -> Tuple[str, str]:
     x_name = _detect_axis(ds, ("ping_time", "time", "ping", "profile_time"), fallback_index=0)
     y_name = _detect_axis(ds, ("echo_range", "range", "range_meter", "range_sample", "depth"), fallback_index=1)
     return x_name, y_name
-
-
-def _detect_stack_dims(ds: xr.Dataset) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Return (freq_dim, chan_dim) if present as dims/coords.
-    Common in echopype outputs:
-      - frequency_nominal
-      - channel
-    """
-    freq_dim = "frequency_nominal" if ("frequency_nominal" in ds.dims or "frequency_nominal" in ds.coords) else None
-    chan_dim = "channel" if ("channel" in ds.dims or "channel" in ds.coords) else None
-    return freq_dim, chan_dim
 
 
 def _ensure_variable(ds: xr.Dataset, var: Optional[str]) -> str:
@@ -141,7 +167,6 @@ def _downsample_da(da: xr.DataArray, x_name: str, step: int) -> xr.DataArray:
 def _apply_ylim(da: xr.DataArray, y_name: str, ymin: Optional[float], ymax: Optional[float]) -> xr.DataArray:
     if ymin is None and ymax is None:
         return da
-    # Prefer label-based slicing if possible
     if y_name in da.coords:
         coord = da[y_name]
         lo = ymin if ymin is not None else float(coord.min())
@@ -149,24 +174,44 @@ def _apply_ylim(da: xr.DataArray, y_name: str, ymin: Optional[float], ymax: Opti
         try:
             return da.sel({y_name: slice(lo, hi)})
         except Exception:
-            # Fall back to original if slicing fails
             return da
     return da
 
 
-def _coord_to_str(val: Any) -> str:
-    # robust-ish string for coords that may be bytes/numpy scalars
+def _nearest_index(coord: xr.DataArray, target: float) -> int:
+    # Works for numeric coords
+    return int(abs(coord - target).argmin().item())
+
+
+def _get_freq_coord_for_channel(ds: xr.Dataset, chan_dim: str) -> Optional[xr.DataArray]:
+    """
+    Many echopype datasets store frequency_nominal as a coord on the channel dimension:
+      frequency_nominal(channel) -> values in Hz
+    Return that coord if present and indexed by chan_dim.
+    """
+    if "frequency_nominal" not in ds.coords and "frequency_nominal" not in ds.variables:
+        return None
     try:
-        if hasattr(val, "item"):
-            val = val.item()
+        f = ds["frequency_nominal"]
+        if chan_dim in f.dims:
+            return f
     except Exception:
-        pass
-    if isinstance(val, bytes):
-        try:
-            return val.decode("utf-8", errors="replace")
-        except Exception:
-            return repr(val)
-    return str(val)
+        return None
+    return None
+
+
+def _label_channel(ds: xr.Dataset, chan_dim: str, chan_value: Any) -> str:
+    """
+    Build a nice tab label for a channel. If frequency_nominal(channel) exists,
+    append it to the label.
+    """
+    ch = _coord_to_str(chan_value)
+    fcoord = _get_freq_coord_for_channel(ds, chan_dim)
+    if fcoord is not None:
+        # find matching index by value if possible; else caller should pass index-based selection
+        # We'll let caller pass chan_value from coord.isel; then align by isel index there.
+        return ch  # base; caller will add freq if it has index
+    return ch
 
 
 @dataclass
@@ -175,86 +220,167 @@ class SliceSpec:
     da: xr.DataArray
 
 
-def _make_slices(
+# ---------------------------
+# Slice planning
+# ---------------------------
+
+def _available_dims_for_var(ds: xr.Dataset, var: str) -> Tuple[bool, bool]:
+    da = ds[var]
+    has_chan = "channel" in da.dims or "channel" in ds.dims
+    has_freq_dim = "frequency_nominal" in da.dims
+    return has_chan, has_freq_dim
+
+
+def _make_single_selection(
     ds: xr.Dataset,
     var: str,
-    freq_dim: Optional[str],
-    chan_dim: Optional[str],
-    all_plots: bool,
     frequency: Optional[float],
     channel: Optional[str],
 ) -> List[SliceSpec]:
-    """
-    Builds a list of DataArray slices to plot.
-    Strategy:
-      - If --all: create one tab per channel if 'channel' exists; else per frequency if exists;
-                if both exist, create per channel AND per frequency? (that can explode).
-                We choose:
-                  * If channel exists -> per channel (preferred)
-                  * Else if frequency exists -> per frequency
-      - If not --all:
-          * If --channel: select that channel
-          * Else if --frequency: nearest frequency
-          * Else: default first slice (channel first, else frequency first, else raw)
-    """
     da = ds[var]
-    slices: List[SliceSpec] = []
 
-    # Prefer channel stacking over frequency when both exist
-    if all_plots:
-        if chan_dim and chan_dim in da.dims:
-            coord = ds[chan_dim]
-            for i in range(coord.size):
-                lab = f"{chan_dim}={_coord_to_str(coord.isel({chan_dim: i}).values)}"
-                slices.append(SliceSpec(lab, da.isel({chan_dim: i})))
-            return slices
-        if freq_dim and freq_dim in da.dims:
-            coord = ds[freq_dim]
-            for i in range(coord.size):
-                v = coord.isel({freq_dim: i}).values
-                lab = f"{freq_dim}={_coord_to_str(v)}"
-                slices.append(SliceSpec(lab, da.isel({freq_dim: i})))
-            return slices
-        return [SliceSpec(var, da)]
+    chan_dim = "channel" if "channel" in da.dims else None
+    freq_dim = "frequency_nominal" if "frequency_nominal" in da.dims else None
 
-    # single selection mode
-    if chan_dim and chan_dim in da.dims:
+    # Channel selection
+    if channel is not None and chan_dim is not None:
         coord = ds[chan_dim]
-        if channel is not None:
-            # exact match if possible
-            vals = [_coord_to_str(v) for v in coord.values]
-            try:
-                idx = vals.index(channel)
-            except ValueError:
-                idx = 0
-            v = coord.isel({chan_dim: idx}).values
-            return [SliceSpec(f"{chan_dim}={_coord_to_str(v)}", da.isel({chan_dim: idx}))]
+        vals = [_coord_to_str(v) for v in coord.values]
+        idx = vals.index(channel) if channel in vals else 0
+        ch_val = coord.isel({chan_dim: idx}).values
+        label = f"channel={_coord_to_str(ch_val)}"
+        fcoord = _get_freq_coord_for_channel(ds, chan_dim)
+        if fcoord is not None:
+            f_val = fcoord.isel({chan_dim: idx}).values
+            label = f"{_coord_to_str(ch_val)} • {_coord_to_str(f_val)} Hz"
+        return [SliceSpec(label, da.isel({chan_dim: idx}))]
 
-        # no channel requested; maybe frequency
-        if frequency is not None and freq_dim and freq_dim in da.dims:
-            # pick nearest on freq dim first, then keep default channel=0
-            fcoord = ds[freq_dim]
-            idxf = int(abs(fcoord - frequency).argmin().item())
-            fv = fcoord.isel({freq_dim: idxf}).values
-            da2 = da.isel({freq_dim: idxf, chan_dim: 0}) if chan_dim in da.dims else da.isel({freq_dim: idxf})
-            return [SliceSpec(f"{freq_dim}~{_coord_to_str(fv)} & {chan_dim}=0", da2)]
+    # Frequency selection (dimension)
+    if frequency is not None and freq_dim is not None:
+        fcoord = ds[freq_dim]
+        idxf = _nearest_index(fcoord, frequency)
+        f_val = fcoord.isel({freq_dim: idxf}).values
+        label = f"frequency~{_coord_to_str(f_val)}"
+        return [SliceSpec(label, da.isel({freq_dim: idxf}))]
 
-        # default: first channel
-        v = coord.isel({chan_dim: 0}).values
-        return [SliceSpec(f"{chan_dim}={_coord_to_str(v)}", da.isel({chan_dim: 0}))]
+    # Frequency selection (coord on channel)
+    if frequency is not None and chan_dim is not None:
+        fcoord = _get_freq_coord_for_channel(ds, chan_dim)
+        if fcoord is not None:
+            idx = _nearest_index(fcoord, frequency)
+            ch_val = ds[chan_dim].isel({chan_dim: idx}).values
+            f_val = fcoord.isel({chan_dim: idx}).values
+            label = f"{_coord_to_str(ch_val)} • {_coord_to_str(f_val)} Hz"
+            return [SliceSpec(label, da.isel({chan_dim: idx}))]
 
-    if freq_dim and freq_dim in da.dims:
-        coord = ds[freq_dim]
-        if frequency is not None:
-            idx = int(abs(coord - frequency).argmin().item())
-            v = coord.isel({freq_dim: idx}).values
-            return [SliceSpec(f"{freq_dim}~{_coord_to_str(v)}", da.isel({freq_dim: idx}))]
+    # Default first slice preference: channel -> freq -> raw
+    if chan_dim is not None:
+        ch_val = ds[chan_dim].isel({chan_dim: 0}).values
+        label = f"channel={_coord_to_str(ch_val)}"
+        fcoord = _get_freq_coord_for_channel(ds, chan_dim)
+        if fcoord is not None:
+            f_val = fcoord.isel({chan_dim: 0}).values
+            label = f"{_coord_to_str(ch_val)} • {_coord_to_str(f_val)} Hz"
+        return [SliceSpec(label, da.isel({chan_dim: 0}))]
 
-        v = coord.isel({freq_dim: 0}).values
-        return [SliceSpec(f"{freq_dim}={_coord_to_str(v)}", da.isel({freq_dim: 0}))]
+    if freq_dim is not None:
+        f_val = ds[freq_dim].isel({freq_dim: 0}).values
+        return [SliceSpec(f"frequency={_coord_to_str(f_val)}", da.isel({freq_dim: 0}))]
 
     return [SliceSpec(var, da)]
 
+
+def _make_all_tabs(
+    ds: xr.Dataset,
+    var: str,
+    group_by: str,
+) -> pn.viewable.Viewable:
+    """
+    Build a tabbed (possibly nested) Panel layout.
+
+    Cases:
+    1) Sv dims include BOTH frequency_nominal and channel -> nested tabs.
+    2) Sv dims include channel only -> tabs per channel (labels include frequency_nominal(channel) if present).
+    3) Sv dims include frequency_nominal only -> tabs per frequency.
+    4) Neither -> single plot.
+    """
+    da = ds[var]
+    has_chan = "channel" in da.dims
+    has_freq_dim = "frequency_nominal" in da.dims
+
+    # Helper to render one DA -> plot pane (returns HoloViews object)
+    # (actual plotting happens later; here we just organize slices)
+    if has_chan and has_freq_dim:
+        freq_dim = "frequency_nominal"
+        chan_dim = "channel"
+        fcoord = ds[freq_dim]
+        ccoord = ds[chan_dim]
+
+        # Outer/inner control
+        outer = "freq" if group_by in ("auto", "freq") else "channel"
+
+        def make_channel_tab(fi: int, ci: int) -> SliceSpec:
+            f_val = fcoord.isel({freq_dim: fi}).values
+            c_val = ccoord.isel({chan_dim: ci}).values
+            label = f"{_coord_to_str(c_val)} • {_coord_to_str(f_val)}"
+            return SliceSpec(label, da.isel({freq_dim: fi, chan_dim: ci}))
+
+        if outer == "freq":
+            outer_tabs = []
+            for fi in range(fcoord.size):
+                f_val = fcoord.isel({freq_dim: fi}).values
+                inner_items: List[Tuple[str, xr.DataArray]] = []
+                for ci in range(ccoord.size):
+                    spec = make_channel_tab(fi, ci)
+                    inner_items.append((spec.label, spec.da))
+                inner_tabs = pn.Tabs(*inner_items, sizing_mode="stretch_both")
+                outer_tabs.append((f"freq={_coord_to_str(f_val)}", inner_tabs))
+            return pn.Tabs(*outer_tabs, sizing_mode="stretch_both")
+
+        # outer == channel
+        outer_tabs = []
+        for ci in range(ccoord.size):
+            c_val = ccoord.isel({chan_dim: ci}).values
+            inner_items: List[Tuple[str, xr.DataArray]] = []
+            for fi in range(fcoord.size):
+                spec = make_channel_tab(fi, ci)
+                inner_items.append((spec.label, spec.da))
+            inner_tabs = pn.Tabs(*inner_items, sizing_mode="stretch_both")
+            outer_tabs.append((f"channel={_coord_to_str(c_val)}", inner_tabs))
+        return pn.Tabs(*outer_tabs, sizing_mode="stretch_both")
+
+    if has_chan:
+        chan_dim = "channel"
+        ccoord = ds[chan_dim]
+        f_on_chan = _get_freq_coord_for_channel(ds, chan_dim)
+        items: List[Tuple[str, xr.DataArray]] = []
+        for ci in range(ccoord.size):
+            c_val = ccoord.isel({chan_dim: ci}).values
+            if f_on_chan is not None:
+                f_val = f_on_chan.isel({chan_dim: ci}).values
+                label = f"{_coord_to_str(c_val)} • {_coord_to_str(f_val)} Hz"
+            else:
+                label = f"{_coord_to_str(c_val)}"
+            items.append((label, da.isel({chan_dim: ci})))
+        return pn.Tabs(*items, sizing_mode="stretch_both")
+
+    if has_freq_dim:
+        freq_dim = "frequency_nominal"
+        fcoord = ds[freq_dim]
+        items: List[Tuple[str, xr.DataArray]] = []
+        for fi in range(fcoord.size):
+            f_val = fcoord.isel({freq_dim: fi}).values
+            label = f"freq={_coord_to_str(f_val)}"
+            items.append((label, da.isel({freq_dim: fi})))
+        return pn.Tabs(*items, sizing_mode="stretch_both")
+
+    # No stacking dims: single
+    return pn.Column(pn.pane.Markdown("No channel/frequency dimension detected; plotting single array."))
+
+
+# ---------------------------
+# Plotting
+# ---------------------------
 
 def _plot_echogram(
     da: xr.DataArray,
@@ -268,9 +394,6 @@ def _plot_echogram(
     height: int,
     toolbar: str,
 ):
-    """
-    Try hvplot.image first (fast for regular grids), else fallback quadmesh.
-    """
     clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
     try:
         return da.hvplot.image(
@@ -302,10 +425,11 @@ def _plot_echogram(
         )
 
 
-def _build_panel(
+def _render_layout(
     ds: xr.Dataset,
     var: str,
     all_plots: bool,
+    group_by: str,
     frequency: Optional[float],
     channel: Optional[str],
     x_override: Optional[str],
@@ -326,38 +450,6 @@ def _build_panel(
     if y_override:
         y_name = y_override
 
-    freq_dim, chan_dim = _detect_stack_dims(ds)
-
-    slices = _make_slices(
-        ds=ds,
-        var=var,
-        freq_dim=freq_dim,
-        chan_dim=chan_dim,
-        all_plots=all_plots,
-        frequency=frequency,
-        channel=channel,
-    )
-
-    items = []
-    for s in slices:
-        da2 = s.da
-        da2 = _downsample_da(da2, x_name=x_name, step=decimate)
-        da2 = _apply_ylim(da2, y_name=y_name, ymin=ymin, ymax=ymax)
-
-        plot = _plot_echogram(
-            da=da2,
-            x_name=x_name,
-            y_name=y_name,
-            title=f"{var} • {s.label}",
-            cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
-            width=width,
-            height=height,
-            toolbar=toolbar,
-        )
-        items.append((s.label, plot))
-
     header = pn.pane.Markdown(
         f"### aa-plot echogram\n"
         f"- **file:** `{ds.encoding.get('source','(in-memory)')}`\n"
@@ -366,21 +458,65 @@ def _build_panel(
         sizing_mode="stretch_width",
     )
 
-    if len(items) == 1:
-        return pn.Column(header, items[0][1], sizing_mode="stretch_both")
+    # If all_plots, build tabs first, then map each tab content to a plot
+    if all_plots:
+        tabs = _make_all_tabs(ds, var, group_by=group_by)
 
-    tabs = pn.Tabs(*items, sizing_mode="stretch_both")
-    return pn.Column(header, tabs, sizing_mode="stretch_both")
+        # Recursively replace DataArray objects inside pn.Tabs with plots
+        def materialize(node):
+            if isinstance(node, pn.Tabs):
+                new_items = []
+                for (name, obj) in node.objects:
+                    new_items.append((name, materialize(obj)))
+                return pn.Tabs(*new_items, sizing_mode="stretch_both")
+            if isinstance(node, xr.DataArray):
+                da = node
+                da = _downsample_da(da, x_name=x_name, step=decimate)
+                da = _apply_ylim(da, y_name=y_name, ymin=ymin, ymax=ymax)
+                return _plot_echogram(
+                    da=da,
+                    x_name=x_name,
+                    y_name=y_name,
+                    title=f"{var} • {node.name or ''}".strip(),
+                    cmap=cmap,
+                    vmin=vmin,
+                    vmax=vmax,
+                    width=width,
+                    height=height,
+                    toolbar=toolbar,
+                )
+            if isinstance(node, pn.Column) or isinstance(node, pn.Row):
+                # not expected here, but keep safe
+                return node
+            return node
+
+        body = materialize(tabs)
+        return pn.Column(header, body, sizing_mode="stretch_both")
+
+    # single selection mode
+    specs = _make_single_selection(ds, var, frequency=frequency, channel=channel)
+    spec = specs[0]
+    da = spec.da
+    da = _downsample_da(da, x_name=x_name, step=decimate)
+    da = _apply_ylim(da, y_name=y_name, ymin=ymin, ymax=ymax)
+    plot = _plot_echogram(
+        da=da,
+        x_name=x_name,
+        y_name=y_name,
+        title=f"{var} • {spec.label}",
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        width=width,
+        height=height,
+        toolbar=toolbar,
+    )
+    return pn.Column(header, plot, sizing_mode="stretch_both")
 
 
-def _configure_logging(quiet: bool) -> None:
-    logger.remove()
-    if quiet:
-        # keep stdout clean; silence almost everything
-        logger.add(sys.stderr, level="WARNING", backtrace=False, diagnose=False)
-    else:
-        logger.add(sys.stderr, level="INFO", backtrace=True, diagnose=False)
-
+# ---------------------------
+# Main
+# ---------------------------
 
 def main() -> None:
     # stdin behavior: if invoked with no args and stdin has a token, treat it as input_path
@@ -403,6 +539,13 @@ def main() -> None:
     p.add_argument("--all", action="store_true", help="Plot all channels/frequencies as tabs.")
     p.add_argument("--frequency", type=float, default=None, help="Select nominal frequency (Hz) (nearest match).")
     p.add_argument("--channel", type=str, default=None, help="Select channel by name (exact match preferred).")
+    p.add_argument(
+        "--group-by",
+        type=str,
+        default="auto",
+        choices=["auto", "channel", "freq"],
+        help="When --all and both channel+freq dims exist, controls tab nesting order.",
+    )
 
     # axes
     p.add_argument("--x", dest="x_override", type=str, default=None, help="Override x-axis dim/coord name.")
@@ -468,7 +611,7 @@ def main() -> None:
         raise SystemExit(2)
 
     try:
-        # keep stdout clean while opening dataset
+        # keep stdout/stderr clean while opening dataset
         buf = io.StringIO()
         with redirect_stdout(buf), redirect_stderr(buf):
             ds = xr.open_dataset(args.input_path)
@@ -477,13 +620,13 @@ def main() -> None:
         ds.encoding["source"] = str(args.input_path)
 
         var = _ensure_variable(ds, args.var)
-
         logger.info(f"Plotting var='{var}' from {args.input_path.name}")
 
-        layout = _build_panel(
+        layout = _render_layout(
             ds=ds,
             var=var,
             all_plots=args.all,
+            group_by=args.group_by,
             frequency=args.frequency,
             channel=args.channel,
             x_override=args.x_override,
