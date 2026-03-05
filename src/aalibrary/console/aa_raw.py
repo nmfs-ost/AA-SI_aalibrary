@@ -61,9 +61,6 @@ def main():
     parser.add_argument("--survey_name", required=True, help="Name of the survey.")
     parser.add_argument("--sonar_model", required=True, help="Type of echosounder.")
     parser.add_argument(
-        "--data_source", required=False, default="NCEI", help="Source of the data."
-    )
-    parser.add_argument(
         "--file_download_directory",
         required=False,
         default=".",
@@ -83,7 +80,6 @@ def main():
         ship_name=args.ship_name,
         survey_name=args.survey_name,
         echosounder=args.sonar_model,
-        data_source=args.data_source,
         file_download_directory=args.file_download_directory,
         upload_to_gcp=args.upload_to_gcp,
         debug=args.debug,

@@ -9,7 +9,7 @@ Pipeline behavior (AA-style):
 - Produces a new NetCDF output (original unchanged by default).
 - Emits output .nc path(s) to stdout (one per line) so it can be piped downstream.
 
-Core behavior:
+Core behavior:https://80-mryan.cluster-elnmuk7bnbbzqw4vcgtaay3c52.cloudworkstations.dev/lab?authuser=0
 - Load all supplied .evr files
 - Compute a UNION mask (inside any region from any .evr)
 - Apply mask to dataset variables that share the echogram (time, depth) dims
@@ -33,38 +33,77 @@ def print_help() -> None:
 
 aa-evr — apply Echoview region(s) (.evr) to an echogram NetCDF (.nc)
 
+PIPELINE BEHAVIOR (AA-style)
+  - Reads input .nc/.netcdf4 path(s) from stdin (newline-delimited) when piped
+    OR accepts one or more positional input paths.
+  - Writes a new NetCDF output per input (original unchanged).
+  - Prints each output .nc path to stdout (one per line) for downstream piping.
+  - Logs go to stderr (keeps stdout clean).
+
 USAGE
   # pipeline style
   aa-sv input.raw | aa-evr --evr regions1.evr regions2.evr | aa-mvbs
 
-  # direct style
+  # direct style (single file)
   aa-evr input.nc --evr regions.evr
-  aa-evr input1.nc input2.nc --evr a.evr b.evr --out-dir masked/
+
+  # multiple inputs
+  aa-evr a.nc b.nc --evr a.evr b.evr --out-dir masked/
 
 INPUT
-  - If no positional input is provided and stdin is piped, reads newline-delimited .nc paths from stdin.
-  - Otherwise, accepts one or more positional input paths.
+  INPUT_PATH [INPUT_PATH ...]
+    Optional positional input path(s). If omitted, aa-evr reads from stdin.
 
 OUTPUT
-  - Writes a new NetCDF per input.
-  - Prints each output path to stdout (one per line) for downstream piping.
+  -o, --output_path PATH
+    Output file path. Only valid when exactly ONE input is processed.
+    (For pipelines / multiple inputs, use --out-dir instead.)
 
-OPTIONS
-  --evr EVR [EVR ...]      One or more .evr files after a SINGLE --evr (required).
-  -o, --output_path PATH   Output file path (only valid when exactly 1 input is processed).
-  --out-dir DIR            Output directory for per-input outputs (recommended for pipelines).
-  --suffix TEXT            Suffix appended to output stem (default: _evr).
-  --overwrite              Overwrite existing outputs.
-  --var NAME               Data variable used to build/apply mask (default: Sv).
-  --time-dim NAME          Time dimension name (default: auto: ping_time, else time).
-  --depth-dim NAME         Depth dimension name (default: auto: depth, else range_bin).
-  --channel-index INT      If var has 'channel' dim, choose which channel to build mask from (default: 0).
-  --write-mask             Write union region mask to output as int8 variable 'region_mask'.
-  --debug                  Verbose logging to stderr.
+  --out-dir DIR
+    Output directory for per-input outputs.
 
-NOTES
-  - This tool masks values outside the region(s) by setting them to NaN.
-  - Logging goes to stderr so stdout remains clean for piping.
+  --suffix TEXT
+    Suffix appended to output stem (default: _evr)
+
+REQUIRED
+  --evr EVR [EVR ...]
+    One or more .evr files after a SINGLE --evr flag (required).
+
+MASKING BEHAVIOR
+  - Loads all supplied .evr files and unions all regions from all files.
+  - Computes a boolean union mask on (time_dim, depth_dim).
+  - For every variable that contains (time_dim, depth_dim), values outside the
+    mask are set to NaN (structure preserved).
+
+DIM / VARIABLE CONTROLS
+  --var NAME
+    Variable used to build/apply mask (default: Sv)
+
+  --time-dim NAME
+    Time dimension name (default: infer ping_time, else time)
+
+  --depth-dim NAME
+    Depth dimension name (default: infer depth, else range_bin)
+
+  --channel-index INT
+    If --var has a 'channel' dimension, which channel to build mask from
+    (default: 0)
+
+OTHER
+  --overwrite
+    Overwrite existing output files
+
+  --write-mask
+    Write union mask to output as int8 variable 'region_mask'
+
+  --debug
+    Verbose logging to stderr
+
+EXAMPLES
+  aa-evr input.nc --evr regions.evr
+  aa-evr input.nc --evr a.evr b.evr --suffix _masked
+  aa-evr a.nc b.nc --evr regions.evr --out-dir masked/ --overwrite
+  cat paths.txt | aa-evr --evr regions.evr --out-dir masked/
 
 """
     print(help_text)
