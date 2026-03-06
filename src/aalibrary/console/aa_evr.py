@@ -409,85 +409,201 @@ def _build_union_region_mask(
     """
     Build a boolean union mask aligned to ds[var] on (time_dim, depth_dim).
 
-    Behavior:
-      - Normal case (echogram EVR): use echoregions Regions2D.region_mask to get a depth–time mask.
-      - GPS/alongtrack EVR fallback: if the EVR has no usable depth points (all NaN),
-        perform TIME-ONLY masking: keep all depths for ping_times that fall within the union
-        of region time ranges in the EVR.
+    Two modes (auto):
+      1) Normal echogram EVR (depth+time polygons): use echoregions Regions2D.region_mask()
+      2) GPS/alongtrack EVR (no usable depth polygons): TIME-ONLY fallback
+         -> keep ALL depths for pings whose ping_time falls within any region time span.
 
-    Returns:
-      xr.DataArray[bool] with dims (time_dim, depth_dim)
+    Notes:
+      - Your installed echoregions.read_evr signature appears to be old and filters by min_depth/max_depth.
+        We call read_evr with a VERY WIDE depth window to avoid it turning sentinel depths into NaN,
+        then we replace/clip depth points ourselves.
+      - We force ping_time coord to be 1D to avoid xarray "dimension exists as scalar variable" issues.
     """
-    var_da = ds[var]
-    da = _select_channel(var_da, channel_index)
 
-    # Build surface echoregions expects: dims ("ping_time","depth")
+    # --- select var and channel (if present) ---
+    var_da = ds[var]
+    if "channel" in var_da.dims:
+        if channel_index < 0 or channel_index >= var_da.sizes["channel"]:
+            raise ValueError(f"--channel-index {channel_index} out of range (size={var_da.sizes['channel']})")
+        da = var_da.isel(channel=channel_index)
+        # drop channel coord/var if it exists
+        if "channel" in da.coords:
+            try:
+                da = da.drop_vars("channel")
+            except Exception:
+                pass
+    else:
+        da = var_da
+
+    # --- build surface for echoregions: dims ("ping_time","depth") ---
     da_for_mask = da.rename({time_dim: "ping_time", depth_dim: "depth"}).transpose("ping_time", "depth", ...)
 
-    # Ensure 1D ping_time coordinate
+    # Force ping_time to be a clean 1D coordinate vector (prevents scalar ping_time coord issues)
     pt_vals = np.asarray(ds[time_dim].values if time_dim in ds else da.coords[time_dim].values)
     da_for_mask = da_for_mask.assign_coords(ping_time=("ping_time", pt_vals))
 
-    # Attach meters-valued depth coordinate if available (best for echogram EVRs)
-    depth_vals = _get_depth_vals_meters_1d(ds, var_da, time_dim=time_dim, depth_dim=depth_dim, channel_index=channel_index)
+    # Attach meters-valued depth coord if available (best for real echogram EVRs)
+    # Try echo_range then depth, possibly 2D -> take first ping.
+    depth_vals = None
+
+    def _pick_channel_if_needed(x):
+        if x is None:
+            return None
+        if ("channel" in x.dims) and ("channel" in var_da.dims):
+            try:
+                x = x.isel(channel=channel_index)
+                if "channel" in x.coords:
+                    try:
+                        x = x.drop_vars("channel")
+                    except Exception:
+                        pass
+            except Exception:
+                return None
+        return x
+
+    for name in ("echo_range", "depth"):
+        x = _pick_channel_if_needed(ds[name]) if name in ds else None
+        if x is None and name in var_da.coords:
+            x = _pick_channel_if_needed(var_da.coords[name])
+
+        if x is None:
+            continue
+
+        # want 1D over depth_dim; if 2D, take first time
+        if depth_dim in x.dims and time_dim not in x.dims:
+            depth_vals = np.asarray(x.values)
+            break
+        if (time_dim in x.dims) and (depth_dim in x.dims):
+            # IMPORTANT: convert to numpy so we don't carry scalar time coords
+            depth_vals = np.asarray(x.isel({time_dim: 0}).values)
+            break
+
     if depth_vals is not None:
         da_for_mask = da_for_mask.assign_coords(depth=("depth", np.asarray(depth_vals)))
         ech_depth_min = float(np.nanmin(depth_vals))
         ech_depth_max = float(np.nanmax(depth_vals))
     else:
-        # fallback: whatever depth coordinate exists (may be indices)
-        ech_depth_min = float(np.nanmin(da_for_mask["depth"].values))
-        ech_depth_max = float(np.nanmax(da_for_mask["depth"].values))
+        # fallback: whatever "depth" coord is (may be indices)
+        dtmp = np.asarray(da_for_mask["depth"].values)
+        ech_depth_min = float(np.nanmin(dtmp))
+        ech_depth_max = float(np.nanmax(dtmp))
 
     if debug:
         logger.debug(f"Mask depth range (m): {ech_depth_min} → {ech_depth_max}")
         logger.debug(f"Mask time range: {pt_vals.min()} → {pt_vals.max()}")
 
-    # compute if dask-backed
+    # dask safety
     try:
         da_for_mask = da_for_mask.compute()
     except Exception:
         pass
 
-    union_mask: Optional[xr.DataArray] = None
+    union_mask = None
 
     for evr_path in evr_files:
-        regions2d = _read_evr_compat(evr_path, debug=debug)
+        # --- IMPORTANT: avoid old read_evr depth filtering by using huge bounds ---
+        regions2d = er.read_evr(str(evr_path), min_depth=-1.0e9, max_depth=1.0e9)
 
-        df = _regions_dataframe(regions2d)
+        # Get dataframe (works across versions)
+        df = None
+        if hasattr(regions2d, "to_dataframe"):
+            try:
+                df = regions2d.to_dataframe()
+            except Exception:
+                df = None
+        if df is None and hasattr(regions2d, "data"):
+            try:
+                df = regions2d.data
+            except Exception:
+                df = None
         if df is None:
             raise RuntimeError(f"Could not access Regions2D dataframe for {evr_path}")
 
-        # Normalize EVR content
-        df = _coerce_region_times(df)
-        df = _fix_and_clip_region_depths(df, ech_depth_min=ech_depth_min, ech_depth_max=ech_depth_max)
-        df = _maybe_close_polygons(df)
-        _set_regions_dataframe(regions2d, df)
+        df = df.copy()
 
-        # Detect whether this EVR provides usable depth (echogram) polygons
-        depth_finite = []
-        if "depth" in df.columns:
-            for d_list in df["depth"]:
-                try:
-                    depth_finite.extend([d for d in d_list if isinstance(d, (int, float, np.floating)) and np.isfinite(d)])
-                except Exception:
-                    pass
-
-        has_depth = len(depth_finite) > 0
-
-        if not has_depth and "time" in df.columns:
-            # ---------------------------
-            # GPS/alongtrack fallback: TIME-ONLY mask
-            # ---------------------------
-            pt = pd.to_datetime(da_for_mask["ping_time"].values)
-
-            mask_time = np.zeros(pt.shape, dtype=bool)
+        # --- normalize TIME lists to datetime64 ---
+        if "time" in df.columns:
+            new_time = []
             for t_list in df["time"]:
                 try:
-                    t = pd.to_datetime(t_list)
-                    if len(t) == 0:
+                    t = pd.to_datetime(list(t_list), errors="coerce")
+                    t = t.dropna()
+                    new_time.append([np.datetime64(x) for x in t])
+                except Exception:
+                    new_time.append([])
+            df["time"] = new_time
+
+        # --- normalize DEPTH lists: replace sentinel edges, clip to echogram range ---
+        if "depth" in df.columns:
+            new_depth = []
+            for d_list in df["depth"]:
+                fixed = []
+                for d in list(d_list):
+                    try:
+                        x = float(d)
+                    except Exception:
+                        fixed.append(np.nan)
                         continue
-                    mask_time |= (pt >= t.min()) & (pt <= t.max())
+
+                    if np.isfinite(x):
+                        # sentinel edges
+                        if x <= -9000:
+                            x = ech_depth_min
+                        elif x >= 9000:
+                            x = ech_depth_max
+                        # clip
+                        x = min(max(x, ech_depth_min), ech_depth_max)
+
+                    fixed.append(x)
+                new_depth.append(fixed)
+            df["depth"] = new_depth
+
+        # --- close polygons (simple safe closure) ---
+        if ("time" in df.columns) and ("depth" in df.columns):
+            closed_t, closed_d = [], []
+            for t_list, d_list in zip(df["time"], df["depth"]):
+                try:
+                    if len(t_list) and len(d_list) and (t_list[0] != t_list[-1] or d_list[0] != d_list[-1]):
+                        t_list = list(t_list) + [t_list[0]]
+                        d_list = list(d_list) + [d_list[0]]
+                except Exception:
+                    pass
+                closed_t.append(t_list)
+                closed_d.append(d_list)
+            df["time"] = closed_t
+            df["depth"] = closed_d
+
+        # write back
+        try:
+            regions2d.data = df
+        except Exception:
+            pass
+
+        # Determine if EVR has any usable depth points
+        has_depth = False
+        if "depth" in df.columns:
+            for d_list in df["depth"]:
+                for x in d_list:
+                    if isinstance(x, (int, float, np.floating)) and np.isfinite(x):
+                        has_depth = True
+                        break
+                if has_depth:
+                    break
+
+        # ---------------------------
+        # GPS / alongtrack fallback: TIME-ONLY mask
+        # ---------------------------
+        if (not has_depth) and ("time" in df.columns):
+            mask_time = np.zeros(pt_vals.shape, dtype=bool)
+
+            for t_list in df["time"]:
+                if not t_list:
+                    continue
+                try:
+                    tmin = np.min(t_list)
+                    tmax = np.max(t_list)
+                    mask_time |= (pt_vals >= tmin) & (pt_vals <= tmax)
                 except Exception:
                     continue
 
@@ -498,13 +614,12 @@ def _build_union_region_mask(
             ).broadcast_like(da_for_mask)
 
             if debug:
-                inside = int(mask_time.sum())
-                logger.debug(f"{evr_path.name}: time-only mask inside pings={inside}/{mask_time.size}")
+                logger.debug(f"{evr_path.name}: time-only inside pings={int(mask_time.sum())}/{mask_time.size}")
 
+        # ---------------------------
+        # Normal echogram EVR: depth–time mask
+        # ---------------------------
         else:
-            # ---------------------------
-            # Normal: depth–time region mask
-            # ---------------------------
             region_mask_ds, _ = regions2d.region_mask(da_for_mask, collapse_to_2d=False)
             if "mask_3d" not in region_mask_ds:
                 raise RuntimeError(f"Expected 'mask_3d' in region_mask output for {evr_path}")
@@ -518,10 +633,9 @@ def _build_union_region_mask(
     if union_mask is None:
         raise RuntimeError("No region mask produced.")
 
-    # Rename back to dataset dims and return
+    # rename back to dataset dims
     union_mask = union_mask.rename({"ping_time": time_dim, "depth": depth_dim}).transpose(time_dim, depth_dim)
     return union_mask
-
 
 def _apply_mask(ds: xr.Dataset, mask: xr.DataArray, time_dim: str, depth_dim: str, write_mask: bool) -> xr.Dataset:
     ds_out = ds.copy(deep=False)
