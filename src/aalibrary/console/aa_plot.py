@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import sys
 from contextlib import redirect_stdout, redirect_stderr
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Any
 
@@ -43,6 +45,23 @@ _DEPTH_RANGE_NAMES = frozenset({
     "echo_range", "range", "range_meter", "range_sample",
     "depth", "range_bin", "distance", "range_m",
 })
+
+# ---------------------------------------------------------------------------
+# Colormaps curated for active-acoustics echograms.
+# The JS callback swaps palettes in-browser; no re-render needed.
+# ---------------------------------------------------------------------------
+_CMAP_OPTIONS = [
+    "inferno",
+    "viridis",
+    "plasma",
+    "magma",
+    "cividis",
+    "turbo",
+    "coolwarm",
+    "gray",
+    "RdYlBu_r",
+    "Spectral_r",
+]
 
 
 def print_help() -> None:
@@ -72,13 +91,15 @@ Axes:
 Appearance:
   --vmin FLOAT              Lower color limit.
   --vmax FLOAT              Upper color limit.
-  --cmap NAME               Colormap name (default: inferno).
+  --cmap NAME               Initial colormap name (default: inferno). A live
+                            switcher is embedded in the HTML output.
   --width INT               Plot width  (default: 1200).
   --height INT              Plot height (default: 450).
   --toolbar STR             Toolbar: above/below/left/right/disable (default: above).
   --no-hover                Disable hover tooltip overlay.
   --no-crosshair            Disable crosshair cursor.
-  --no-minimap              Disable the navigation minimap below the main plot.
+  --no-cmap-picker          Disable the interactive colormap picker in the HTML.
+  --no-log                  Disable the copyable data-summary log panel.
 
 Subsetting / performance:
   --decimate INT            Take every Nth sample along x-axis (default: 1).
@@ -232,6 +253,241 @@ def _x_label(x_name: str) -> str:
     return nice.get(x_name, x_name)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  DATA SUMMARY LOG  —  collapsible, copyable <pre> block
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _build_data_log(
+    ds: xr.Dataset,
+    var: str,
+    x_name: str,
+    y_name: str,
+    flip_y: bool,
+) -> pn.pane.HTML:
+    """Build a collapsible, copyable plain-text data summary."""
+
+    lines: list[str] = []
+    sep = "=" * 66
+
+    lines.append(sep)
+    lines.append("  aa-plot  ·  Data Summary Log")
+    lines.append(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(sep)
+
+    # --- File / source -------------------------------------------------------
+    src = ds.encoding.get("source", "(in-memory)")
+    lines.append(f"  Source file : {src}")
+    lines.append(f"  Variable   : {var}")
+    lines.append(f"  X-axis     : {x_name}")
+    lines.append(f"  Y-axis     : {y_name}  {'(inverted — surface at top)' if flip_y else ''}")
+    lines.append("")
+
+    # --- Global attributes ---------------------------------------------------
+    attrs = ds.attrs
+    interesting_keys = [
+        "sonar_model", "survey_name", "title", "keywords", "conventions",
+        "date_created", "time_coverage_start", "time_coverage_end",
+        "geospatial_lat_min", "geospatial_lat_max",
+        "geospatial_lon_min", "geospatial_lon_max",
+        "institution", "source", "platform_name", "instrument_type",
+    ]
+    written_attrs = False
+    for k in interesting_keys:
+        if k in attrs and attrs[k]:
+            if not written_attrs:
+                lines.append("  ── Dataset Attributes ──")
+                written_attrs = True
+            lines.append(f"    {k:30s}: {attrs[k]}")
+    if written_attrs:
+        lines.append("")
+
+    # --- Dimensions ----------------------------------------------------------
+    da = ds[var]
+    lines.append("  ── Dimensions ──")
+    for d, s in da.sizes.items():
+        lines.append(f"    {d:30s}: {s}")
+    lines.append("")
+
+    # --- Coordinate ranges ---------------------------------------------------
+    lines.append("  ── Coordinate Ranges ──")
+    for cname in da.dims:
+        if cname in ds.coords:
+            c = ds[cname]
+            try:
+                cmin = _coord_to_str(c.min().values)
+                cmax = _coord_to_str(c.max().values)
+                lines.append(f"    {cname:30s}: {cmin}  →  {cmax}")
+            except Exception:
+                lines.append(f"    {cname:30s}: (could not compute range)")
+    lines.append("")
+
+    # --- Channel / frequency summary -----------------------------------------
+    chan_dim = "channel" if "channel" in da.dims else None
+    if chan_dim:
+        lines.append("  ── Channels ──")
+        ccoord = ds[chan_dim]
+        f_on_chan = None
+        for loc in (ds.data_vars, ds.coords):
+            if "frequency_nominal" in loc:
+                f = ds["frequency_nominal"]
+                if chan_dim in f.dims:
+                    f_on_chan = f
+                    break
+
+        for ci in range(ccoord.size):
+            ch_str = _coord_to_str(ccoord.isel({chan_dim: ci}).values)
+            freq_str = ""
+            if f_on_chan is not None:
+                fv = f_on_chan.isel({chan_dim: ci}).values
+                freq_str = f"  ({_coord_to_str(fv)} Hz)"
+            lines.append(f"    [{ci}]  {ch_str}{freq_str}")
+        lines.append("")
+
+    # --- Variable statistics -------------------------------------------------
+    lines.append(f"  ── {var} Statistics ──")
+    try:
+        vals = da.values
+        finite = vals[np.isfinite(vals)]
+        total = vals.size
+        nan_count = total - finite.size
+        lines.append(f"    Total samples  : {total:,}")
+        lines.append(f"    NaN / Inf      : {nan_count:,}  ({100 * nan_count / max(total, 1):.1f}%)")
+        if finite.size > 0:
+            lines.append(f"    Min            : {finite.min():.4f}")
+            lines.append(f"    Max            : {finite.max():.4f}")
+            lines.append(f"    Mean           : {finite.mean():.4f}")
+            lines.append(f"    Std            : {finite.std():.4f}")
+            for q in (5, 25, 50, 75, 95):
+                lines.append(f"    P{q:<14d}: {np.percentile(finite, q):.4f}")
+    except Exception as exc:
+        lines.append(f"    (statistics unavailable: {exc})")
+    lines.append("")
+
+    # --- Data variables list --------------------------------------------------
+    lines.append("  ── All Data Variables ──")
+    for dv in ds.data_vars:
+        shape_str = ", ".join(f"{d}={s}" for d, s in ds[dv].sizes.items())
+        lines.append(f"    {dv:30s}: ({shape_str})")
+    lines.append(sep)
+
+    log_text = "\n".join(lines)
+
+    # Build as an HTML pane so the <pre> block is natively selectable / copyable
+    html = (
+        '<details style="margin:8px 0;">'
+        '<summary style="cursor:pointer; font-weight:600; font-size:0.95em; '
+        'color:#ddd; background:#1e1e1e; padding:6px 12px; border-radius:4px; '
+        'user-select:none;">'
+        '&#128203; Data Summary Log  (click to expand &mdash; text is copyable)'
+        '</summary>'
+        '<pre id="aa-plot-log" style="background:#1a1a2e; color:#c8d6e5; '
+        'padding:14px 18px; border-radius:0 0 4px 4px; font-size:0.82em; '
+        'line-height:1.55; overflow-x:auto; white-space:pre; user-select:text; '
+        f'cursor:text; max-height:500px; overflow-y:auto;">{log_text}</pre>'
+        '</details>'
+    )
+
+    return pn.pane.HTML(html, sizing_mode="stretch_width")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  DYNAMIC COLORMAP PICKER  — pure Bokeh JS callback, zero re-render cost
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _get_bokeh_palette(name: str, n: int = 256) -> list[str]:
+    """Resolve a colormap name into a list of hex color strings."""
+    from bokeh.palettes import all_palettes
+
+    # Try matplotlib first (most reliable for continuous 256-colour ramps)
+    try:
+        import matplotlib
+        matplotlib.use("Agg")          # no GUI backend needed
+        import matplotlib.pyplot as plt
+        cmap = plt.get_cmap(name, n)
+        return [
+            "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
+            for r, g, b, _ in (cmap(i) for i in range(n))
+        ]
+    except Exception:
+        pass
+
+    # Fallback: bokeh all_palettes
+    if name in all_palettes:
+        biggest = max(all_palettes[name].keys())
+        return list(all_palettes[name][biggest])
+
+    from bokeh.palettes import Inferno256
+    return list(Inferno256)
+
+
+def _build_cmap_picker(default_cmap: str) -> pn.pane.Bokeh:
+    """Return a Bokeh Select widget + CustomJS that swaps the color-mapper
+    palette on every figure in the document.  Pure client-side — works in
+    static ``embed=True`` HTML with zero extra pre-rendered states."""
+    from bokeh.models import CustomJS, Select as BokehSelect
+
+    # Pre-compute palette arrays for each option
+    palette_map: dict[str, list[str]] = {}
+    for cm in _CMAP_OPTIONS:
+        palette_map[cm] = _get_bokeh_palette(cm, 256)
+
+    palettes_json = json.dumps(palette_map)
+
+    js_code = """
+    var palettes = JSON.parse(palettes_json);
+    var chosen = cb_obj.value;
+    var pal = palettes[chosen];
+    if (!pal) return;
+
+    /* Helper: apply palette to anything that looks like a colour mapper */
+    function applyPalette(model, palette) {
+        if (!model) return;
+        if (model.palette !== undefined) {
+            model.palette = palette;
+            if (model.change) model.change.emit();
+        }
+        if (model.color_mapper && model.color_mapper.palette !== undefined) {
+            model.color_mapper.palette = palette;
+            if (model.color_mapper.change) model.color_mapper.change.emit();
+        }
+    }
+
+    /* Walk the entire Bokeh document model graph */
+    try {
+        var doc = Bokeh.documents[0];
+        var models = doc._all_models;
+        if (models) {
+            /* _all_models can be a Map or a plain object depending on Bokeh version */
+            var iter = (typeof models.forEach === 'function')
+                ? function(fn){ models.forEach(fn); }
+                : (typeof models.values === 'function')
+                    ? function(fn){ for (var m of models.values()) fn(m); }
+                    : function(fn){ for (var k in models) fn(models[k]); };
+            iter(function(m) { applyPalette(m, pal); });
+        }
+    } catch(e) {
+        console.warn('aa-plot cmap picker:', e);
+    }
+    """
+
+    select = BokehSelect(
+        title="Colormap",
+        value=default_cmap if default_cmap in _CMAP_OPTIONS else _CMAP_OPTIONS[0],
+        options=_CMAP_OPTIONS,
+        width=180,
+    )
+    select.js_on_change(
+        "value",
+        CustomJS(args={"palettes_json": palettes_json}, code=js_code),
+    )
+
+    return pn.pane.Bokeh(select, sizing_mode="fixed")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  HOVER + CROSSHAIR
+# ═══════════════════════════════════════════════════════════════════════════
+
 def _build_hover_tools(var: str, x_name: str, y_name: str):
     """Return Bokeh HoverTool + CrosshairTool instances for echogram overlays."""
     from bokeh.models import HoverTool, CrosshairTool
@@ -256,6 +512,10 @@ def _build_hover_tools(var: str, x_name: str, y_name: str):
 
     return hover, crosshair
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PLOT CONSTRUCTION
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _plot_echogram(
     da: xr.DataArray,
@@ -312,47 +572,12 @@ def _plot_echogram(
         logger.debug(f"Could not build hover/crosshair tools: {exc}")
 
     if extra_tools:
-        # default_tools already includes pan, box_zoom, reset, save, wheel_zoom
         plot = plot.opts(
             opts.QuadMesh(tools=extra_tools, active_tools=["wheel_zoom"]),
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
 
     return plot
-
-
-def _build_minimap(
-    da: xr.DataArray,
-    x_name: str,
-    y_name: str,
-    cmap: str,
-    vmin: Optional[float],
-    vmax: Optional[float],
-    width: int,
-    flip_y: bool = True,
-):
-    """Build a small overview echogram (minimap) with a RangeToolLink
-    so the user can drag a viewport rectangle to navigate the main plot."""
-    from bokeh.models import RangeTool
-    clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
-
-    mini = da.hvplot.quadmesh(
-        x=x_name,
-        y=y_name,
-        cmap=cmap,
-        clim=clim,
-        width=width,
-        height=120,
-        colorbar=False,
-        toolbar="disable",
-        xlabel="",
-        ylabel="",
-    )
-
-    if flip_y:
-        mini = mini.opts(invert_yaxis=True)
-
-    return mini
 
 
 def _prep_da(
@@ -366,52 +591,6 @@ def _prep_da(
     da = _downsample_da(da, x_name=x_name, step=decimate)
     da = _apply_ylim(da, y_name=y_name, ymin=ymin, ymax=ymax)
     return da
-
-
-def _wrap_with_minimap(
-    plot,
-    da: xr.DataArray,
-    x_name: str,
-    y_name: str,
-    cmap: str,
-    vmin: Optional[float],
-    vmax: Optional[float],
-    width: int,
-    flip_y: bool,
-    show_minimap: bool,
-):
-    """Wrap a main plot with a minimap navigator below it.
-
-    Uses a linked selection via Panel RangeToolLink so that dragging
-    a selection box on the minimap pans the main plot.
-    """
-    if not show_minimap:
-        return plot
-
-    try:
-        mini = _build_minimap(da, x_name, y_name, cmap, vmin, vmax, width, flip_y)
-
-        # Use Panel's RangeToolLink for x-axis navigation
-        from panel.widgets import RangeSlider
-        range_x = pn.widgets.RangeSlider(name="x", visible=False)
-
-        main_pane = pn.pane.HoloViews(plot, linked_axes=True)
-        mini_pane = pn.pane.HoloViews(mini, linked_axes=True)
-
-        # Link x-axes via shared Bokeh range
-        minimap_col = pn.Column(
-            main_pane,
-            pn.pane.Markdown(
-                "<div style='color:#888; font-size:0.8em; margin:0 0 2px 4px;'>"
-                "&#9660; Navigation minimap — use box-zoom on the overview below</div>",
-                sizing_mode="stretch_width",
-            ),
-            mini_pane,
-        )
-        return minimap_col
-    except Exception as exc:
-        logger.debug(f"Minimap construction failed ({exc}); returning main plot only.")
-        return plot
 
 
 def _build_single_plot(
@@ -433,7 +612,6 @@ def _build_single_plot(
     flip_y: bool = True,
     show_hover: bool = True,
     show_crosshair: bool = True,
-    show_minimap: bool = True,
 ):
     da = ds[var]
     chan_dim = "channel" if "channel" in da.dims else None
@@ -485,7 +663,7 @@ def _build_single_plot(
 
     da = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
 
-    plot = _plot_echogram(
+    return _plot_echogram(
         da=da,
         x_name=x_name,
         y_name=y_name,
@@ -499,10 +677,6 @@ def _build_single_plot(
         flip_y=flip_y,
         show_hover=show_hover,
         show_crosshair=show_crosshair,
-    )
-
-    return _wrap_with_minimap(
-        plot, da, x_name, y_name, cmap, vmin, vmax, width, flip_y, show_minimap,
     )
 
 
@@ -524,7 +698,6 @@ def _build_all_tabs(
     flip_y: bool = True,
     show_hover: bool = True,
     show_crosshair: bool = True,
-    show_minimap: bool = True,
 ):
     da = ds[var]
 
@@ -570,12 +743,9 @@ def _build_all_tabs(
                 show_crosshair=show_crosshair,
             )
 
-            wrapped = _wrap_with_minimap(
-                plot, da2, x_name, y_name, cmap, vmin, vmax, width, flip_y, show_minimap,
-            )
+            tabs.append((label, plot))
 
-            tabs.append((label, wrapped))
-
+        # IMPORTANT: build tabs from (title, panel) pairs (this is the correct API)
         return pn.Tabs(*tabs, sizing_mode="stretch_both", dynamic=True)
 
     # Fallback — no channel dim
@@ -596,25 +766,23 @@ def _build_all_tabs(
         show_crosshair=show_crosshair,
     )
 
-    wrapped = _wrap_with_minimap(
-        plot, da2, x_name, y_name, cmap, vmin, vmax, width, flip_y, show_minimap,
-    )
-
     return pn.Column(
         pn.pane.Markdown("No channel dimension detected; plotting a single array."),
-        wrapped,
+        plot,
         sizing_mode="stretch_both",
     )
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  HEADER
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool) -> pn.pane.Markdown:
     """Build a richer metadata header with dataset summary."""
     source = ds.encoding.get("source", "(in-memory)")
 
-    # Gather dimension sizes for display
     dim_info = " × ".join(f"{d}={s}" for d, s in ds[var].sizes.items())
 
-    # Try to get some metadata
     attrs = ds.attrs
     sonar_model = attrs.get("sonar_model", attrs.get("keywords", ""))
     survey_name = attrs.get("survey_name", attrs.get("title", ""))
@@ -636,11 +804,16 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
         f"{meta_block}\n"
         f"\n"
         f"<span style='color:#777; font-size:0.85em;'>"
-        f"Hover for values • Scroll-wheel to zoom • Shift+drag to pan"
+        f"Hover for values · Scroll-wheel to zoom · Shift+drag to pan · "
+        f"Use the colormap picker to change palette live"
         f"</span>"
     )
     return pn.pane.Markdown(md, sizing_mode="stretch_width")
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  LAYOUT ASSEMBLY
+# ═══════════════════════════════════════════════════════════════════════════
 
 def _render_layout(
     ds: xr.Dataset,
@@ -663,7 +836,8 @@ def _render_layout(
     flip_y: bool = True,
     show_hover: bool = True,
     show_crosshair: bool = True,
-    show_minimap: bool = True,
+    show_cmap_picker: bool = True,
+    show_log: bool = True,
 ) -> pn.viewable.Viewable:
     x_name, y_name = _detect_axes(ds)
     if x_override:
@@ -681,6 +855,15 @@ def _render_layout(
 
     header = _build_header(ds, var, x_name, y_name, flip_y)
 
+    # --- Colormap picker (client-side JS, zero render cost) ------------------
+    controls = None
+    if show_cmap_picker:
+        controls = pn.Row(
+            _build_cmap_picker(cmap),
+            sizing_mode="stretch_width",
+        )
+
+    # --- Plots ---------------------------------------------------------------
     if all_plots:
         body = _build_all_tabs(
             ds=ds,
@@ -700,33 +883,48 @@ def _render_layout(
             flip_y=flip_y,
             show_hover=show_hover,
             show_crosshair=show_crosshair,
-            show_minimap=show_minimap,
         )
-        return pn.Column(header, body, sizing_mode="stretch_both")
+    else:
+        body = _build_single_plot(
+            ds=ds,
+            var=var,
+            x_name=x_name,
+            y_name=y_name,
+            frequency=frequency,
+            channel=channel,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            width=width,
+            height=height,
+            toolbar=toolbar,
+            decimate=decimate,
+            ymin=ymin,
+            ymax=ymax,
+            flip_y=flip_y,
+            show_hover=show_hover,
+            show_crosshair=show_crosshair,
+        )
 
-    body = _build_single_plot(
-        ds=ds,
-        var=var,
-        x_name=x_name,
-        y_name=y_name,
-        frequency=frequency,
-        channel=channel,
-        cmap=cmap,
-        vmin=vmin,
-        vmax=vmax,
-        width=width,
-        height=height,
-        toolbar=toolbar,
-        decimate=decimate,
-        ymin=ymin,
-        ymax=ymax,
-        flip_y=flip_y,
-        show_hover=show_hover,
-        show_crosshair=show_crosshair,
-        show_minimap=show_minimap,
-    )
-    return pn.Column(header, body, sizing_mode="stretch_both")
+    # --- Data summary log ----------------------------------------------------
+    log_panel = None
+    if show_log:
+        log_panel = _build_data_log(ds, var, x_name, y_name, flip_y)
 
+    # --- Assemble column -----------------------------------------------------
+    parts = [header]
+    if controls:
+        parts.append(controls)
+    parts.append(body)
+    if log_panel:
+        parts.append(log_panel)
+
+    return pn.Column(*parts, sizing_mode="stretch_both")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  CLI
+# ═══════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
     if len(sys.argv) == 1:
@@ -761,7 +959,7 @@ def main() -> None:
 
     p.add_argument("--vmin", type=float, default=None, help="Lower color limit.")
     p.add_argument("--vmax", type=float, default=None, help="Upper color limit.")
-    p.add_argument("--cmap", type=str, default="inferno", help="Colormap name (default: inferno).")
+    p.add_argument("--cmap", type=str, default="inferno", help="Initial colormap (default: inferno).")
     p.add_argument("--width", type=int, default=1200, help="Plot width (px).")
     p.add_argument("--height", type=int, default=450, help="Plot height (px).")
     p.add_argument(
@@ -774,7 +972,8 @@ def main() -> None:
 
     p.add_argument("--no-hover", action="store_true", help="Disable hover tooltip with Sv + coord readout.")
     p.add_argument("--no-crosshair", action="store_true", help="Disable crosshair cursor.")
-    p.add_argument("--no-minimap", action="store_true", help="Disable navigation minimap.")
+    p.add_argument("--no-cmap-picker", action="store_true", help="Disable the interactive colormap picker.")
+    p.add_argument("--no-log", action="store_true", help="Disable the copyable data-summary log panel.")
 
     p.add_argument("--decimate", type=int, default=1, help="Keep every Nth x sample (default: 1).")
     p.add_argument("--ymin", type=float, default=None, help="Y-axis min crop.")
@@ -847,7 +1046,8 @@ def main() -> None:
             flip_y=not args.no_flip,
             show_hover=not args.no_hover,
             show_crosshair=not args.no_crosshair,
-            show_minimap=not args.no_minimap,
+            show_cmap_picker=not args.no_cmap_picker,
+            show_log=not args.no_log,
         )
 
         args.output_path.parent.mkdir(parents=True, exist_ok=True)
