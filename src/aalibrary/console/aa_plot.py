@@ -269,7 +269,6 @@ _SIDEBAR_CSS = """\
     overflow-y: auto;
     overflow-x: hidden;
     width: 100%;
-    min-width: 300px;
     user-select: text;
     cursor: text;
     line-height: 1.6;
@@ -400,7 +399,7 @@ def _build_data_log(
     y_name: str,
     flip_y: bool,
 ) -> pn.pane.HTML:
-    """Build a styled sidebar card with dataset summary, copyable via button."""
+    """Build a styled full-width card with dataset summary, copyable via button."""
 
     sections: list[str] = []
 
@@ -482,9 +481,9 @@ def _build_data_log(
 
     # --- Channel / frequency summary -----------------------------------------
     chan_dim = "channel" if "channel" in da.dims else None
+    f_on_chan = None
     if chan_dim:
         ccoord = ds[chan_dim]
-        f_on_chan = None
         for loc in (ds.data_vars, ds.coords):
             if "frequency_nominal" in loc:
                 f = ds["frequency_nominal"]
@@ -523,6 +522,7 @@ def _build_data_log(
     # --- Variable statistics -------------------------------------------------
     sec = '<div class="aa-section">'
     sec += f'<div class="aa-section-head">{var} Statistics</div>'
+    finite = np.array([])  # default so plain_lines block below is safe
     try:
         vals = da.values
         finite = vals[np.isfinite(vals)]
@@ -968,7 +968,6 @@ def _build_all_tabs(
 
             tabs.append((label, plot))
 
-        # IMPORTANT: build tabs from (title, panel) pairs (this is the correct API)
         return pn.Tabs(*tabs, sizing_mode="stretch_both", dynamic=False)
 
     # Fallback — no channel dim
@@ -1126,24 +1125,20 @@ def _render_layout(
             show_crosshair=show_crosshair,
         )
 
-    # --- Data summary panel ---------------------------------------------------
-    log_panel = None
+    # --- Assemble layout -----------------------------------------------------
+    # Colormap picker sits inline with the header (top bar).
+    # Data summary panel goes full-width below the plot.
+    if controls:
+        header_row = pn.Row(header, controls, sizing_mode="stretch_width")
+    else:
+        header_row = header
+
+    parts = [header_row, body]
+
     if show_log:
         log_panel = _build_data_log(ds, var, x_name, y_name, flip_y)
-
-    # --- Assemble layout -----------------------------------------------------
-    # Plot on top, then colormap picker + data panel side-by-side below.
-    parts = [header, body]
-
-    below_parts = []
-    if controls:
-        below_parts.append(controls)
-    if log_panel:
-        below_parts.append(log_panel)
-
-    if below_parts:
         parts.append(pn.Spacer(height=8))
-        parts.append(pn.Row(*below_parts, sizing_mode="stretch_width"))
+        parts.append(log_panel)
 
     return pn.Column(*parts, sizing_mode="stretch_both")
 
