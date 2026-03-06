@@ -72,7 +72,7 @@ def print_help() -> None:
 aa-evl — apply Echoview line(s) (.evl) to an echogram NetCDF (.nc/.netcdf4)
 
 USAGE
-  aa-sv input.raw | aa-depth | aa-evl --evl seafloor.evl | aa-plot --all
+  echo input.nc | aa-evl --evl seafloor.evl | aa-plot --all
   aa-evl input.nc --evl top.evl bottom.evl --keep between
   echo input.nc | aa-evl --evl seafloor.evl --depth-offset -5.0 --overwrite
 

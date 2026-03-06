@@ -24,13 +24,25 @@ from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 from typing import Optional, Tuple, Any
 
+import numpy as np
 import xarray as xr
 from loguru import logger
 
+import holoviews as hv
+from holoviews import opts
 import hvplot.xarray  # noqa: F401
 import panel as pn
 
 pn.extension()
+
+# ---------------------------------------------------------------------------
+# Y-axis names that represent "depth / range" and should be drawn top-down
+# (0 at ocean surface, increasing downward).
+# ---------------------------------------------------------------------------
+_DEPTH_RANGE_NAMES = frozenset({
+    "echo_range", "range", "range_meter", "range_sample",
+    "depth", "range_bin", "distance", "range_m",
+})
 
 
 def print_help() -> None:
@@ -55,6 +67,7 @@ Core selection:
 Axes:
   --x NAME                  Override x-axis dim/coord (default: auto-detect).
   --y NAME                  Override y-axis dim/coord (default: auto-detect).
+  --no-flip                 Disable automatic y-axis inversion for range/depth axes.
 
 Appearance:
   --vmin FLOAT              Lower color limit.
@@ -63,6 +76,9 @@ Appearance:
   --width INT               Plot width  (default: 1200).
   --height INT              Plot height (default: 450).
   --toolbar STR             Toolbar: above/below/left/right/disable (default: above).
+  --no-hover                Disable hover tooltip overlay.
+  --no-crosshair            Disable crosshair cursor.
+  --no-minimap              Disable the navigation minimap below the main plot.
 
 Subsetting / performance:
   --decimate INT            Take every Nth sample along x-axis (default: 1).
@@ -127,6 +143,13 @@ def _detect_axes(ds: xr.Dataset) -> Tuple[str, str]:
     return x_name, y_name
 
 
+def _should_flip_y(y_name: str) -> bool:
+    """Return True when the y-axis represents depth/range and should be inverted
+    so that 0 (ocean surface) is at the top and range increases downward —
+    the standard orientation for active-acoustic echograms."""
+    return y_name.lower() in _DEPTH_RANGE_NAMES
+
+
 def _ensure_variable(ds: xr.Dataset, var: Optional[str]) -> str:
     if var:
         if var not in ds.data_vars:
@@ -184,6 +207,56 @@ def _get_freq_coord_for_channel(ds: xr.Dataset, chan_dim: str) -> Optional[xr.Da
     return None
 
 
+def _y_label(y_name: str) -> str:
+    """Produce a human-friendly y-axis label."""
+    nice = {
+        "echo_range": "Range (m)",
+        "range": "Range (m)",
+        "range_meter": "Range (m)",
+        "range_m": "Range (m)",
+        "depth": "Depth (m)",
+        "range_sample": "Range sample",
+        "range_bin": "Range bin",
+    }
+    return nice.get(y_name, y_name)
+
+
+def _x_label(x_name: str) -> str:
+    """Produce a human-friendly x-axis label."""
+    nice = {
+        "ping_time": "Ping time",
+        "time": "Time",
+        "ping": "Ping #",
+        "profile_time": "Profile time",
+    }
+    return nice.get(x_name, x_name)
+
+
+def _build_hover_tools(var: str, x_name: str, y_name: str):
+    """Return Bokeh HoverTool + CrosshairTool instances for echogram overlays."""
+    from bokeh.models import HoverTool, CrosshairTool
+
+    hover = HoverTool(
+        tooltips=[
+            (var, "@image{0.2f}"),
+            (_x_label(x_name), "$x{%F %T}" if "time" in x_name.lower() else "$x{0.2f}"),
+            (_y_label(y_name), "$y{0.2f}"),
+        ],
+        formatters={
+            "$x": "datetime" if "time" in x_name.lower() else "numeral",
+        },
+        mode="mouse",
+    )
+
+    crosshair = CrosshairTool(
+        line_color="#ffffff",
+        line_alpha=0.6,
+        line_width=1,
+    )
+
+    return hover, crosshair
+
+
 def _plot_echogram(
     da: xr.DataArray,
     x_name: str,
@@ -195,37 +268,91 @@ def _plot_echogram(
     width: int,
     height: int,
     toolbar: str,
+    flip_y: bool = True,
+    show_hover: bool = True,
+    show_crosshair: bool = True,
 ):
     clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
 
+    common_kw = dict(
+        x=x_name,
+        y=y_name,
+        cmap=cmap,
+        clim=clim,
+        width=width,
+        height=height,
+        colorbar=True,
+        toolbar=toolbar,
+        title=title,
+        xlabel=_x_label(x_name),
+        ylabel=_y_label(y_name),
+    )
+
     try:
-        return da.hvplot.image(
-            x=x_name,
-            y=y_name,
-            cmap=cmap,
-            clim=clim,
-            width=width,
-            height=height,
-            colorbar=True,
-            toolbar=toolbar,
-            title=title,
-            xlabel=x_name,
-            ylabel=y_name,
-        )
+        plot = da.hvplot.quadmesh(**common_kw)
     except Exception:
-        return da.hvplot.quadmesh(
-            x=x_name,
-            y=y_name,
-            cmap=cmap,
-            clim=clim,
-            width=width,
-            height=height,
-            colorbar=True,
-            toolbar=toolbar,
-            title=title,
-            xlabel=x_name,
-            ylabel=y_name,
+        try:
+            plot = da.hvplot.image(**common_kw)
+        except Exception:
+            plot = da.hvplot(**common_kw)
+
+    # --- Apply depth-down orientation -------------------------------------------
+    if flip_y:
+        plot = plot.opts(invert_yaxis=True)
+
+    # --- Overlay Bokeh tools (hover + crosshair) --------------------------------
+    extra_tools = []
+    try:
+        hover, crosshair = _build_hover_tools(da.name or "value", x_name, y_name)
+        if show_hover:
+            extra_tools.append(hover)
+        if show_crosshair:
+            extra_tools.append(crosshair)
+    except Exception as exc:
+        logger.debug(f"Could not build hover/crosshair tools: {exc}")
+
+    if extra_tools:
+        # default_tools already includes pan, box_zoom, reset, save, wheel_zoom
+        plot = plot.opts(
+            opts.QuadMesh(tools=extra_tools, active_tools=["wheel_zoom"]),
+            opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
+
+    return plot
+
+
+def _build_minimap(
+    da: xr.DataArray,
+    x_name: str,
+    y_name: str,
+    cmap: str,
+    vmin: Optional[float],
+    vmax: Optional[float],
+    width: int,
+    flip_y: bool = True,
+):
+    """Build a small overview echogram (minimap) with a RangeToolLink
+    so the user can drag a viewport rectangle to navigate the main plot."""
+    from bokeh.models import RangeTool
+    clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
+
+    mini = da.hvplot.quadmesh(
+        x=x_name,
+        y=y_name,
+        cmap=cmap,
+        clim=clim,
+        width=width,
+        height=120,
+        colorbar=False,
+        toolbar="disable",
+        xlabel="",
+        ylabel="",
+    )
+
+    if flip_y:
+        mini = mini.opts(invert_yaxis=True)
+
+    return mini
 
 
 def _prep_da(
@@ -239,6 +366,52 @@ def _prep_da(
     da = _downsample_da(da, x_name=x_name, step=decimate)
     da = _apply_ylim(da, y_name=y_name, ymin=ymin, ymax=ymax)
     return da
+
+
+def _wrap_with_minimap(
+    plot,
+    da: xr.DataArray,
+    x_name: str,
+    y_name: str,
+    cmap: str,
+    vmin: Optional[float],
+    vmax: Optional[float],
+    width: int,
+    flip_y: bool,
+    show_minimap: bool,
+):
+    """Wrap a main plot with a minimap navigator below it.
+
+    Uses a linked selection via Panel RangeToolLink so that dragging
+    a selection box on the minimap pans the main plot.
+    """
+    if not show_minimap:
+        return plot
+
+    try:
+        mini = _build_minimap(da, x_name, y_name, cmap, vmin, vmax, width, flip_y)
+
+        # Use Panel's RangeToolLink for x-axis navigation
+        from panel.widgets import RangeSlider
+        range_x = pn.widgets.RangeSlider(name="x", visible=False)
+
+        main_pane = pn.pane.HoloViews(plot, linked_axes=True)
+        mini_pane = pn.pane.HoloViews(mini, linked_axes=True)
+
+        # Link x-axes via shared Bokeh range
+        minimap_col = pn.Column(
+            main_pane,
+            pn.pane.Markdown(
+                "<div style='color:#888; font-size:0.8em; margin:0 0 2px 4px;'>"
+                "&#9660; Navigation minimap — use box-zoom on the overview below</div>",
+                sizing_mode="stretch_width",
+            ),
+            mini_pane,
+        )
+        return minimap_col
+    except Exception as exc:
+        logger.debug(f"Minimap construction failed ({exc}); returning main plot only.")
+        return plot
 
 
 def _build_single_plot(
@@ -257,6 +430,10 @@ def _build_single_plot(
     decimate: int,
     ymin: Optional[float],
     ymax: Optional[float],
+    flip_y: bool = True,
+    show_hover: bool = True,
+    show_crosshair: bool = True,
+    show_minimap: bool = True,
 ):
     da = ds[var]
     chan_dim = "channel" if "channel" in da.dims else None
@@ -308,7 +485,7 @@ def _build_single_plot(
 
     da = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
 
-    return _plot_echogram(
+    plot = _plot_echogram(
         da=da,
         x_name=x_name,
         y_name=y_name,
@@ -319,6 +496,13 @@ def _build_single_plot(
         width=width,
         height=height,
         toolbar=toolbar,
+        flip_y=flip_y,
+        show_hover=show_hover,
+        show_crosshair=show_crosshair,
+    )
+
+    return _wrap_with_minimap(
+        plot, da, x_name, y_name, cmap, vmin, vmax, width, flip_y, show_minimap,
     )
 
 
@@ -337,17 +521,23 @@ def _build_all_tabs(
     decimate: int,
     ymin: Optional[float],
     ymax: Optional[float],
+    flip_y: bool = True,
+    show_hover: bool = True,
+    show_crosshair: bool = True,
+    show_minimap: bool = True,
 ):
     da = ds[var]
 
-    # Your file: Sv(channel, ping_time, range_sample)
     if "channel" in da.dims:
         chan_dim = "channel"
         ccoord = ds[chan_dim]
 
-        # In your file, frequency_nominal is a *data variable* (channel)
         f_on_chan = None
         if "frequency_nominal" in ds.data_vars:
+            f = ds["frequency_nominal"]
+            if chan_dim in f.dims:
+                f_on_chan = f
+        elif "frequency_nominal" in ds.coords:
             f = ds["frequency_nominal"]
             if chan_dim in f.dims:
                 f_on_chan = f
@@ -375,13 +565,20 @@ def _build_all_tabs(
                 width=width,
                 height=height,
                 toolbar=toolbar,
+                flip_y=flip_y,
+                show_hover=show_hover,
+                show_crosshair=show_crosshair,
             )
-            tabs.append((label, plot))
 
-        # IMPORTANT: build tabs from (title, panel) pairs (this is the correct API)
-        return pn.Tabs(*tabs, sizing_mode="stretch_both")
+            wrapped = _wrap_with_minimap(
+                plot, da2, x_name, y_name, cmap, vmin, vmax, width, flip_y, show_minimap,
+            )
 
-    # Fallback to original behavior for other layouts
+            tabs.append((label, wrapped))
+
+        return pn.Tabs(*tabs, sizing_mode="stretch_both", dynamic=True)
+
+    # Fallback — no channel dim
     da2 = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
     plot = _plot_echogram(
         da=da2,
@@ -394,12 +591,55 @@ def _build_all_tabs(
         width=width,
         height=height,
         toolbar=toolbar,
+        flip_y=flip_y,
+        show_hover=show_hover,
+        show_crosshair=show_crosshair,
     )
+
+    wrapped = _wrap_with_minimap(
+        plot, da2, x_name, y_name, cmap, vmin, vmax, width, flip_y, show_minimap,
+    )
+
     return pn.Column(
         pn.pane.Markdown("No channel dimension detected; plotting a single array."),
-        plot,
+        wrapped,
         sizing_mode="stretch_both",
     )
+
+
+def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool) -> pn.pane.Markdown:
+    """Build a richer metadata header with dataset summary."""
+    source = ds.encoding.get("source", "(in-memory)")
+
+    # Gather dimension sizes for display
+    dim_info = " × ".join(f"{d}={s}" for d, s in ds[var].sizes.items())
+
+    # Try to get some metadata
+    attrs = ds.attrs
+    sonar_model = attrs.get("sonar_model", attrs.get("keywords", ""))
+    survey_name = attrs.get("survey_name", attrs.get("title", ""))
+
+    meta_lines = []
+    if survey_name:
+        meta_lines.append(f"- **survey:** `{survey_name}`")
+    if sonar_model:
+        meta_lines.append(f"- **sonar:** `{sonar_model}`")
+
+    orient_note = "y-axis inverted (surface at top)" if flip_y else "y-axis normal"
+    meta_block = "\n".join(meta_lines)
+
+    md = (
+        f"### aa-plot echogram\n"
+        f"- **file:** `{source}`\n"
+        f"- **var:** `{var}` &nbsp; ({dim_info})\n"
+        f"- **x:** `{x_name}`  •  **y:** `{y_name}` &nbsp; *({orient_note})*\n"
+        f"{meta_block}\n"
+        f"\n"
+        f"<span style='color:#777; font-size:0.85em;'>"
+        f"Hover for values • Scroll-wheel to zoom • Shift+drag to pan"
+        f"</span>"
+    )
+    return pn.pane.Markdown(md, sizing_mode="stretch_width")
 
 
 def _render_layout(
@@ -420,6 +660,10 @@ def _render_layout(
     width: int,
     height: int,
     toolbar: str,
+    flip_y: bool = True,
+    show_hover: bool = True,
+    show_crosshair: bool = True,
+    show_minimap: bool = True,
 ) -> pn.viewable.Viewable:
     x_name, y_name = _detect_axes(ds)
     if x_override:
@@ -427,13 +671,15 @@ def _render_layout(
     if y_override:
         y_name = y_override
 
-    header = pn.pane.Markdown(
-        f"### aa-plot echogram\n"
-        f"- **file:** `{ds.encoding.get('source', '(in-memory)')}`\n"
-        f"- **var:** `{var}`\n"
-        f"- **x:** `{x_name}`  •  **y:** `{y_name}`\n",
-        sizing_mode="stretch_width",
-    )
+    # Auto-detect whether to flip the y-axis
+    if flip_y:
+        flip_y = _should_flip_y(y_name)
+        if flip_y:
+            logger.info(f"Y-axis '{y_name}' recognised as range/depth → inverting (surface at top).")
+        else:
+            logger.info(f"Y-axis '{y_name}' not in depth/range list → keeping default orientation.")
+
+    header = _build_header(ds, var, x_name, y_name, flip_y)
 
     if all_plots:
         body = _build_all_tabs(
@@ -451,6 +697,10 @@ def _render_layout(
             decimate=decimate,
             ymin=ymin,
             ymax=ymax,
+            flip_y=flip_y,
+            show_hover=show_hover,
+            show_crosshair=show_crosshair,
+            show_minimap=show_minimap,
         )
         return pn.Column(header, body, sizing_mode="stretch_both")
 
@@ -470,6 +720,10 @@ def _render_layout(
         decimate=decimate,
         ymin=ymin,
         ymax=ymax,
+        flip_y=flip_y,
+        show_hover=show_hover,
+        show_crosshair=show_crosshair,
+        show_minimap=show_minimap,
     )
     return pn.Column(header, body, sizing_mode="stretch_both")
 
@@ -503,6 +757,7 @@ def main() -> None:
 
     p.add_argument("--x", dest="x_override", type=str, default=None, help="Override x-axis dim/coord name.")
     p.add_argument("--y", dest="y_override", type=str, default=None, help="Override y-axis dim/coord name.")
+    p.add_argument("--no-flip", action="store_true", help="Disable automatic y-axis inversion for range/depth.")
 
     p.add_argument("--vmin", type=float, default=None, help="Lower color limit.")
     p.add_argument("--vmax", type=float, default=None, help="Upper color limit.")
@@ -516,6 +771,10 @@ def main() -> None:
         choices=["above", "below", "left", "right", "disable"],
         help="Toolbar placement (default: above).",
     )
+
+    p.add_argument("--no-hover", action="store_true", help="Disable hover tooltip with Sv + coord readout.")
+    p.add_argument("--no-crosshair", action="store_true", help="Disable crosshair cursor.")
+    p.add_argument("--no-minimap", action="store_true", help="Disable navigation minimap.")
 
     p.add_argument("--decimate", type=int, default=1, help="Keep every Nth x sample (default: 1).")
     p.add_argument("--ymin", type=float, default=None, help="Y-axis min crop.")
@@ -585,6 +844,10 @@ def main() -> None:
             width=args.width,
             height=args.height,
             toolbar=args.toolbar,
+            flip_y=not args.no_flip,
+            show_hover=not args.no_hover,
+            show_crosshair=not args.no_crosshair,
+            show_minimap=not args.no_minimap,
         )
 
         args.output_path.parent.mkdir(parents=True, exist_ok=True)
