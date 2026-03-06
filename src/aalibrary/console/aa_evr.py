@@ -2,18 +2,24 @@
 """
 aa-evr
 
-Console tool that masks an echogram NetCDF using one or more Echoview region files (.evr).
+Apply Echoview region files (.evr) to an echogram NetCDF (.nc/.netcdf4) using echoregions Regions2D.
 
 Pipeline behavior (AA-style):
-- Reads input NetCDF (.nc/.netcdf4) file path(s) from stdin (newline-delimited) OR accepts them as positional args.
-- Produces a new NetCDF output (original unchanged by default).
-- Emits output .nc path(s) to stdout (one per line) so it can be piped downstream.
+- Accepts input NetCDF path(s) as positional arguments OR reads newline-delimited paths from stdin.
+- Produces a NEW NetCDF output per input (original unchanged).
+- Prints the output .nc path(s) to stdout (one per line) for downstream piping.
+- Logs go to stderr (keeps stdout clean).
 
-Core behavior:https://80-mryan.cluster-elnmuk7bnbbzqw4vcgtaay3c52.cloudworkstations.dev/lab?authuser=0
-- Load all supplied .evr files
-- Compute a UNION mask (inside any region from any .evr)
-- Apply mask to dataset variables that share the echogram (time, depth) dims
-  (values outside regions set to NaN)
+Core behavior:
+- --evr is provided ONCE and accepts one or more .evr file paths after it.
+- Loads all EVRs, unions all regions across all EVRs into one mask.
+- Applies the union mask to all dataset variables that include (time_dim, depth_dim) by setting outside-region values to NaN.
+
+Important nuance:
+- EVR regions are defined in depth/range units (typically meters).
+- Many echopype-derived Sv datasets have vertical dimension like range_sample/range_bin (index),
+  plus a meters-valued coordinate/variable like 'depth' (often added by aa-depth) or 'echo_range'.
+  aa-evr will prefer a meters-valued depth coordinate when available.
 """
 
 import argparse
@@ -25,101 +31,91 @@ from typing import Iterable, List, Optional, Tuple
 import numpy as np
 import xarray as xr
 from loguru import logger
+
 import echoregions as er
 
+
+# ---------------------------
+# Help / UX
+# ---------------------------
 
 def print_help() -> None:
     help_text = """
 
-aa-evr — apply Echoview region(s) (.evr) to an echogram NetCDF (.nc)
-
-PIPELINE BEHAVIOR (AA-style)
-  - Reads input .nc/.netcdf4 path(s) from stdin (newline-delimited) when piped
-    OR accepts one or more positional input paths.
-  - Writes a new NetCDF output per input (original unchanged).
-  - Prints each output .nc path to stdout (one per line) for downstream piping.
-  - Logs go to stderr (keeps stdout clean).
+aa-evr — mask echogram NetCDF using Echoview region file(s) (.evr)
 
 USAGE
-  # pipeline style
-  aa-sv input.raw | aa-evr --evr regions1.evr regions2.evr | aa-mvbs
+  # pipeline style (stdin->stdout)
+  aa-sv input.raw | aa-depth | aa-evr --evr regions/*.evr | aa-plot --all
 
-  # direct style (single file)
-  aa-evr input.nc --evr regions.evr
+  # direct style
+  aa-evr input.nc --evr a.evr b.evr
 
-  # multiple inputs
-  aa-evr a.nc b.nc --evr a.evr b.evr --out-dir masked/
+  # many inputs
+  aa-evr a.nc b.nc --evr regions/*.evr --out-dir masked/
 
 INPUT
   INPUT_PATH [INPUT_PATH ...]
-    Optional positional input path(s). If omitted, aa-evr reads from stdin.
-
-OUTPUT
-  -o, --output_path PATH
-    Output file path. Only valid when exactly ONE input is processed.
-    (For pipelines / multiple inputs, use --out-dir instead.)
-
-  --out-dir DIR
-    Output directory for per-input outputs.
-
-  --suffix TEXT
-    Suffix appended to output stem (default: _evr)
+    Optional positional input .nc/.netcdf4 path(s). If omitted, aa-evr reads from stdin
+    (newline-delimited paths).
 
 REQUIRED
   --evr EVR [EVR ...]
-    One or more .evr files after a SINGLE --evr flag (required).
+    One or more .evr file paths after a SINGLE --evr flag.
 
-MASKING BEHAVIOR
-  - Loads all supplied .evr files and unions all regions from all files.
-  - Computes a boolean union mask on (time_dim, depth_dim).
-  - For every variable that contains (time_dim, depth_dim), values outside the
-    mask are set to NaN (structure preserved).
+OUTPUT
+  -o, --output_path PATH
+    Output file path (ONLY valid when processing exactly 1 input).
+  --out-dir DIR
+    Output directory for per-input outputs (recommended for pipelines / multiple inputs).
+  --suffix TEXT
+    Suffix appended to output stem (default: _evr)
+  --overwrite
+    Overwrite existing outputs
 
-DIM / VARIABLE CONTROLS
+MASKING
   --var NAME
-    Variable used to build/apply mask (default: Sv)
-
+    Variable used to build/apply region mask (default: Sv)
   --time-dim NAME
     Time dimension name (default: infer ping_time, else time)
-
   --depth-dim NAME
-    Depth dimension name (default: infer depth, else range_bin)
+    Depth dimension name (default: infer depth, else range_sample, else range_bin)
 
-  --channel-index INT
-    If --var has a 'channel' dimension, which channel to build mask from
-    (default: 0)
+DEPTH COORDINATE (IMPORTANT)
+  EVR depths are typically in meters. If your depth dimension is an index (e.g., range_sample),
+  aa-evr will try to attach a meters-valued depth coordinate automatically:
+    - prefers dataset variable/coord named 'depth' (often from aa-depth),
+    - falls back to 'echo_range' if present.
 
 OTHER
-  --overwrite
-    Overwrite existing output files
+  --channel-index INT   If --var has a 'channel' dim, which channel to build the mask from (default: 0)
+  --write-mask          Write union mask to output as int8 variable 'region_mask'
+  --fail-empty          Exit non-zero if the union mask has zero inside cells
+  --debug               Verbose logging to stderr
 
-  --write-mask
-    Write union mask to output as int8 variable 'region_mask'
-
-  --debug
-    Verbose logging to stderr
-
-EXAMPLES
-  aa-evr input.nc --evr regions.evr
-  aa-evr input.nc --evr a.evr b.evr --suffix _masked
-  aa-evr a.nc b.nc --evr regions.evr --out-dir masked/ --overwrite
-  cat paths.txt | aa-evr --evr regions.evr --out-dir masked/
+NOTES
+  - Logging goes to stderr so stdout stays clean for piping.
+  - Output values outside the region union are set to NaN (structure preserved).
 
 """
     print(help_text)
 
 
-def configure_logging(debug: bool) -> None:
+def _configure_logging(debug: bool) -> None:
     logger.remove()
     logger.add(sys.stderr, level=("DEBUG" if debug else "INFO"))
 
 
-def iter_input_paths(positional_inputs: List[Path]) -> Iterable[Path]:
+# ---------------------------
+# Input handling
+# ---------------------------
+
+def _iter_input_paths(positional_inputs: List[Path]) -> Iterable[Path]:
     """
-    AA-style input resolution:
-    - If positional inputs are provided, use them.
-    - Else, if stdin is piped, read newline-delimited paths.
-    - Else, show help and exit.
+    AA-style:
+      - If positional inputs exist, use them.
+      - Else, if stdin is piped, read newline-delimited paths.
+      - Else, show help and exit 0.
     """
     if positional_inputs:
         for p in positional_inputs:
@@ -137,7 +133,7 @@ def iter_input_paths(positional_inputs: List[Path]) -> Iterable[Path]:
     sys.exit(0)
 
 
-def validate_inputs(input_paths: List[Path], evr_paths: List[Path]) -> None:
+def _validate_inputs(input_paths: List[Path], evr_paths: List[Path]) -> None:
     allowed_ext = {".nc", ".netcdf4"}
 
     if not evr_paths:
@@ -145,8 +141,6 @@ def validate_inputs(input_paths: List[Path], evr_paths: List[Path]) -> None:
         sys.exit(2)
 
     for evr in evr_paths:
-        if evr.suffix.lower() != ".evr":
-            logger.warning(f"EVR file does not end with .evr: {evr}")
         if not evr.exists():
             logger.error(f"EVR file not found: {evr}")
             sys.exit(2)
@@ -156,11 +150,17 @@ def validate_inputs(input_paths: List[Path], evr_paths: List[Path]) -> None:
             logger.error(f"Input file not found: {p}")
             sys.exit(1)
         if p.suffix.lower() not in allowed_ext:
-            logger.error(f"Unsupported input extension for {p.name}. Allowed: {', '.join(sorted(allowed_ext))}")
+            logger.error(
+                f"Unsupported input extension for {p.name}. Allowed: {', '.join(sorted(allowed_ext))}"
+            )
             sys.exit(1)
 
 
-def infer_dims(
+# ---------------------------
+# Mask building utilities
+# ---------------------------
+
+def _infer_dims(
     ds: xr.Dataset,
     var: str,
     time_dim: Optional[str],
@@ -173,6 +173,7 @@ def infer_dims(
 
     da = ds[var]
 
+    # time dim
     if time_dim:
         tdim = time_dim
     else:
@@ -181,21 +182,20 @@ def infer_dims(
         elif "time" in da.dims:
             tdim = "time"
         else:
-            raise ValueError(
-                f"Could not infer time dim for '{var}'. Provide --time-dim."
-            )
+            raise ValueError(f"Could not infer time dim for '{var}'. Provide --time-dim.")
 
+    # depth dim
     if depth_dim:
         ddim = depth_dim
     else:
         if "depth" in da.dims:
             ddim = "depth"
+        elif "range_sample" in da.dims:
+            ddim = "range_sample"
         elif "range_bin" in da.dims:
             ddim = "range_bin"
         else:
-            raise ValueError(
-                f"Could not infer depth dim for '{var}'. Provide --depth-dim."
-            )
+            raise ValueError(f"Could not infer depth dim for '{var}'. Provide --depth-dim.")
 
     if tdim not in da.dims:
         raise ValueError(f"--time-dim '{tdim}' not found in {var}.dims={da.dims}")
@@ -205,29 +205,85 @@ def infer_dims(
     return tdim, ddim
 
 
-def build_union_region_mask(
+def _select_depth_coordinate_meters(
+    ds: xr.Dataset,
+    da: xr.DataArray,
+    time_dim: str,
+    depth_dim: str,
+    channel_index: int,
+) -> Optional[xr.DataArray]:
+    """
+    Try to find a meters-valued depth/range coordinate/variable that matches (time_dim, depth_dim).
+
+    Preference:
+      1) ds['depth'] (aa-depth commonly adds this)
+      2) ds['echo_range'] (echopype often provides this)
+      3) da.coords['depth'] or da.coords['echo_range'] if present
+
+    Returns an array that can be attached as coordinate named 'depth' for region masking,
+    after dims are renamed to ('ping_time','depth').
+    """
+    candidates = []
+
+    # dataset vars
+    for name in ("depth", "echo_range"):
+        if name in ds:
+            candidates.append(ds[name])
+
+    # variable coords
+    for name in ("depth", "echo_range"):
+        if name in da.coords:
+            candidates.append(da.coords[name])
+
+    for c in candidates:
+        if c is None:
+            continue
+
+        # select channel if needed
+        if "channel" in c.dims and "channel" in da.dims:
+            try:
+                c = c.isel(channel=channel_index)
+                if "channel" in c.coords:
+                    try:
+                        c = c.drop_vars("channel")
+                    except Exception:
+                        pass
+            except Exception:
+                continue
+
+        # require it to be indexable/broadcastable over (time_dim, depth_dim)
+        if time_dim in c.dims and depth_dim in c.dims:
+            return c
+
+        # Sometimes it's (depth_dim,) only (e.g., a 1D range in meters)
+        if depth_dim in c.dims and time_dim not in c.dims:
+            return c
+
+    return None
+
+
+def _build_union_region_mask(
     ds: xr.Dataset,
     evr_files: List[Path],
     var: str,
     time_dim: str,
     depth_dim: str,
-    channel_index: int = 0,
+    channel_index: int,
 ) -> xr.DataArray:
     """
-    Returns a boolean DataArray mask aligned to ds[var] on (time_dim, depth_dim):
-      True  => inside ANY region across ALL evr files
+    Build a boolean union mask aligned to ds[var] on (time_dim, depth_dim):
+      True  => inside any region across all EVR files
       False => outside all regions
     """
     da = ds[var]
 
-    # If channel exists, pick one channel to build the mask from (matches echoregions examples)
+    # Choose one channel for mask construction if present
     if "channel" in da.dims:
         if channel_index < 0 or channel_index >= da.sizes["channel"]:
             raise ValueError(
                 f"--channel-index {channel_index} out of range for channel size {da.sizes['channel']}"
             )
         da2 = da.isel(channel=channel_index)
-        # echoregions examples often drop 'channel' coord/var when operating on a single channel
         if "channel" in da2.coords:
             try:
                 da2 = da2.drop_vars("channel")
@@ -236,44 +292,59 @@ def build_union_region_mask(
     else:
         da2 = da
 
-    # echoregions expects a single DataArray; its docs use dims named ping_time and depth
-    rename_map = {}
-    if time_dim != "ping_time":
-        rename_map[time_dim] = "ping_time"
-    if depth_dim != "depth":
-        rename_map[depth_dim] = "depth"
-    if rename_map:
-        da2 = da2.rename(rename_map)
+    # Try to attach meters-valued depth coordinate
+    depth_coord_m = _select_depth_coordinate_meters(
+        ds=ds, da=da, time_dim=time_dim, depth_dim=depth_dim, channel_index=channel_index
+    )
+    if depth_coord_m is not None:
+        logger.debug(
+            f"Using meters-valued depth coordinate for masking: dims={depth_coord_m.dims} "
+            f"name={'depth' if 'depth' in ds else ('echo_range' if 'echo_range' in ds else 'coord')}"
+        )
+    else:
+        logger.warning(
+            "No meters-valued depth/echo_range coordinate found that matches "
+            f"({time_dim}, {depth_dim}). Masking will use the '{depth_dim}' coordinate values directly "
+            "(this may produce an empty mask if depth_dim is an index like range_sample)."
+        )
 
-    # Ensure order is consistent (ping_time, depth) for masking
-    if set(["ping_time", "depth"]).issubset(set(da2.dims)):
-        da2 = da2.transpose("ping_time", "depth", ...)
+    # Rename dims to echoregions example names
+    rename_map = {time_dim: "ping_time", depth_dim: "depth"}
+    da2m = da2.rename(rename_map)
 
-    # If dask-backed, compute to avoid regionmask surprises (docs call .compute())
+    if depth_coord_m is not None:
+        depth_coord_m = depth_coord_m.rename(rename_map)
+
+        # Attach as the coordinate named 'depth' (meters)
+        # If depth_coord_m is 1D on 'depth', this still works.
+        da2m = da2m.assign_coords(depth=depth_coord_m)
+
+    # Ensure ordering
+    da2m = da2m.transpose("ping_time", "depth", ...)
+
+    # Compute (dask safety)
     try:
-        da2c = da2.compute()
+        da2m_c = da2m.compute()
     except Exception:
-        da2c = da2
+        da2m_c = da2m
 
     union_mask: Optional[xr.DataArray] = None
 
     for evr_path in evr_files:
         regions2d = er.read_evr(str(evr_path))
 
-        # Build 3D mask (region_id, depth, ping_time) by default when collapse_to_2d=False
         region_mask_ds, _region_points = regions2d.region_mask(
-            da2c,
+            da2m_c,
             collapse_to_2d=False,
         )
 
         if "mask_3d" not in region_mask_ds:
             raise RuntimeError(f"Expected 'mask_3d' in region_mask output for {evr_path}")
 
-        # Union within this EVR: any region_id == 1 at each (ping_time, depth)
-        # mask_3d dims are typically (region_id, depth, ping_time), so max over region_id -> (depth, ping_time)
+        # Union within this EVR over region_id
         file_mask = (region_mask_ds["mask_3d"].max("region_id") == 1)
 
-        # Make sure dims are (ping_time, depth) for stable broadcasting later
+        # Standardize dims to (ping_time, depth)
         if set(["ping_time", "depth"]).issubset(set(file_mask.dims)):
             file_mask = file_mask.transpose("ping_time", "depth")
 
@@ -282,19 +353,18 @@ def build_union_region_mask(
     if union_mask is None:
         raise RuntimeError("No region mask produced (no EVR files processed?).")
 
-    # Rename mask dims back to dataset dims
-    inv_rename = {v: k for k, v in rename_map.items()}
-    if inv_rename:
-        union_mask = union_mask.rename(inv_rename)
+    # Rename dims back to dataset dims
+    inv_rename = {"ping_time": time_dim, "depth": depth_dim}
+    union_mask = union_mask.rename(inv_rename)
 
-    # Ensure final mask dims order is (time_dim, depth_dim)
+    # Ensure final order for stable broadcasting
     if set([time_dim, depth_dim]).issubset(set(union_mask.dims)):
         union_mask = union_mask.transpose(time_dim, depth_dim)
 
     return union_mask
 
 
-def apply_mask_to_dataset(
+def _apply_mask_to_dataset(
     ds: xr.Dataset,
     mask: xr.DataArray,
     time_dim: str,
@@ -302,8 +372,8 @@ def apply_mask_to_dataset(
     write_mask: bool,
 ) -> xr.Dataset:
     """
-    Apply mask to all data variables that contain (time_dim, depth_dim).
-    Values outside mask become NaN.
+    Apply mask to all data variables containing (time_dim, depth_dim).
+    Outside-region values become NaN.
     """
     ds_out = ds.copy(deep=False)
 
@@ -320,7 +390,11 @@ def apply_mask_to_dataset(
     return ds_out
 
 
-def resolve_output_path(
+# ---------------------------
+# Output path utilities
+# ---------------------------
+
+def _resolve_output_path(
     input_path: Path,
     output_path: Optional[Path],
     out_dir: Optional[Path],
@@ -329,11 +403,15 @@ def resolve_output_path(
     if output_path is not None:
         return output_path
 
-    out_base = input_path.with_suffix("").name + suffix + ".nc"
-    return (out_dir or input_path.parent) / out_base
+    out_name = input_path.with_suffix("").name + suffix + ".nc"
+    return (out_dir or input_path.parent) / out_name
 
 
-def process_file(
+# ---------------------------
+# Main processing
+# ---------------------------
+
+def _process_file(
     input_path: Path,
     evr_files: List[Path],
     output_path: Path,
@@ -343,6 +421,7 @@ def process_file(
     depth_dim: Optional[str],
     channel_index: int,
     write_mask: bool,
+    fail_empty: bool,
 ) -> Optional[Path]:
     if output_path.exists() and not overwrite:
         logger.error(f"Output exists (use --overwrite): {output_path}")
@@ -351,11 +430,10 @@ def process_file(
     logger.info(f"Loading NetCDF: {input_path}")
     ds = xr.open_dataset(input_path)
 
-    tdim, ddim = infer_dims(ds, var=var, time_dim=time_dim, depth_dim=depth_dim)
+    tdim, ddim = _infer_dims(ds, var=var, time_dim=time_dim, depth_dim=depth_dim)
+    logger.debug(f"Using dims for var='{var}': time_dim='{tdim}', depth_dim='{ddim}'")
 
-    logger.debug(f"Inferred dims for var='{var}': time_dim='{tdim}', depth_dim='{ddim}'")
-
-    mask = build_union_region_mask(
+    mask = _build_union_region_mask(
         ds=ds,
         evr_files=evr_files,
         var=var,
@@ -366,14 +444,19 @@ def process_file(
 
     inside = int(mask.sum().item()) if hasattr(mask.sum(), "item") else int(mask.sum())
     total = int(mask.size)
-    if inside == 0:
-        logger.warning("Union mask contains 0 'inside' cells; output variables will be all-NaN where masked.")
-    else:
-        logger.info(f"Union mask coverage: {inside}/{total} cells inside regions")
+    logger.info(f"Union mask coverage: {inside}/{total} cells inside regions")
 
-    ds_out = apply_mask_to_dataset(ds, mask=mask, time_dim=tdim, depth_dim=ddim, write_mask=write_mask)
+    if inside == 0 and fail_empty:
+        logger.error("Union mask is empty (0 inside cells). Failing due to --fail-empty.")
+        try:
+            ds.close()
+        except Exception:
+            pass
+        return None
 
-    # Add minimal provenance
+    ds_out = _apply_mask_to_dataset(ds, mask=mask, time_dim=tdim, depth_dim=ddim, write_mask=write_mask)
+
+    # Minimal provenance
     ds_out.attrs["aa_tool"] = "aa-evr"
     ds_out.attrs["aa_evr_files"] = ",".join(str(p) for p in evr_files)
 
@@ -389,39 +472,40 @@ def process_file(
 
 
 def main() -> None:
-    # If invoked with no args and stdin is not a tty, we still want argparse to run,
-    # so we do NOT mutate sys.argv here. We handle stdin inputs after parsing.
+    if len(sys.argv) == 1 and sys.stdin.isatty():
+        print_help()
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
         description="Mask echogram NetCDF (.nc) using Echoview region file(s) (.evr)."
     )
 
-    # Positional input(s) are optional; if omitted, we read from stdin (pipeline style)
     parser.add_argument(
         "input_paths",
         nargs="*",
         type=Path,
-        help="Input .nc/.netcdf4 file path(s). If omitted, read from stdin.",
+        help="Input .nc/.netcdf4 path(s). If omitted, read from stdin.",
     )
 
     parser.add_argument(
         "--evr",
         required=True,
-        nargs="+",      # <-- single --evr, multiple arguments
+        nargs="+",  # single --evr, multiple paths
         type=Path,
-        help="One or more Echoview .evr region files (provide multiple paths after a single --evr).",
+        help="One or more .evr files (provide multiple paths after a single --evr).",
     )
 
     parser.add_argument(
         "-o",
         "--output_path",
         type=Path,
-        help="Output file path (only valid when exactly 1 input is processed).",
+        help="Output file path (ONLY valid when processing exactly 1 input).",
     )
 
     parser.add_argument(
         "--out-dir",
         type=Path,
-        help="Output directory for per-input outputs (recommended for pipelines).",
+        help="Output directory for per-input outputs (recommended for pipelines / multiple inputs).",
     )
 
     parser.add_argument(
@@ -434,14 +518,14 @@ def main() -> None:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Overwrite existing outputs.",
+        help="Overwrite existing output files.",
     )
 
     parser.add_argument(
         "--var",
         type=str,
         default="Sv",
-        help="Data variable used to build/apply region mask (default: Sv).",
+        help="Variable used to build/apply the region mask (default: Sv).",
     )
 
     parser.add_argument(
@@ -455,20 +539,26 @@ def main() -> None:
         "--depth-dim",
         type=str,
         default=None,
-        help="Depth dimension name (default: infer depth, else range_bin).",
+        help="Depth dimension name (default: infer depth, else range_sample, else range_bin).",
     )
 
     parser.add_argument(
         "--channel-index",
         type=int,
         default=0,
-        help="If var has 'channel' dim, choose which channel to build mask from (default: 0).",
+        help="If --var has a 'channel' dim, which channel index to build mask from (default: 0).",
     )
 
     parser.add_argument(
         "--write-mask",
         action="store_true",
-        help="Write union region mask to output as int8 variable 'region_mask'.",
+        help="Write union mask to output as int8 variable 'region_mask'.",
+    )
+
+    parser.add_argument(
+        "--fail-empty",
+        action="store_true",
+        help="Exit non-zero if the union mask has zero inside cells.",
     )
 
     parser.add_argument(
@@ -478,46 +568,41 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    configure_logging(args.debug)
+    _configure_logging(args.debug)
 
-    # Resolve inputs (positional or stdin)
-    input_paths = [p for p in iter_input_paths(args.input_paths)]
+    input_paths = [p for p in _iter_input_paths(args.input_paths)]
     if not input_paths:
         logger.error("No input paths provided (positional or via stdin).")
         sys.exit(1)
 
-    # Expand/resolve paths
     input_paths = [p.expanduser().resolve() for p in input_paths]
     evr_files = [p.expanduser().resolve() for p in args.evr]
 
-    # Validate
-    validate_inputs(input_paths, evr_files)
+    _validate_inputs(input_paths, evr_files)
 
-    # Output path rules
+    # output path rules
     if args.output_path is not None and len(input_paths) != 1:
         logger.error("--output_path is only valid when processing exactly 1 input. Use --out-dir instead.")
         sys.exit(2)
 
-    if args.out_dir is not None:
-        args.out_dir = args.out_dir.expanduser().resolve()
-        args.out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Pretty-print args (debug)
     if args.debug:
         logger.debug(f"\naa-evr args:\n{pprint.pformat(vars(args))}")
 
-    # Process each input; print each output path to stdout
     any_fail = False
     for in_path in input_paths:
-        out_path = resolve_output_path(
+        out_path = _resolve_output_path(
             input_path=in_path,
             output_path=(args.output_path.expanduser().resolve() if args.output_path else None),
-            out_dir=args.out_dir,
+            out_dir=out_dir,
             suffix=args.suffix,
         )
 
         try:
-            produced = process_file(
+            produced = _process_file(
                 input_path=in_path,
                 evr_files=evr_files,
                 output_path=out_path,
@@ -527,13 +612,16 @@ def main() -> None:
                 depth_dim=args.depth_dim,
                 channel_index=args.channel_index,
                 write_mask=args.write_mask,
+                fail_empty=args.fail_empty,
             )
+
             if produced is not None:
                 logger.success(f"Saved masked NetCDF:\n\t{produced}")
                 logger.success("Piping saved .nc path to stdout ⟶")
                 print(str(produced))
             else:
                 any_fail = True
+
         except Exception as e:
             any_fail = True
             logger.exception(f"Error processing {in_path}: {e}")
