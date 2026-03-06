@@ -406,29 +406,38 @@ def _build_union_region_mask(
     channel_index: int,
     debug: bool,
 ) -> xr.DataArray:
+    """
+    Build a boolean union mask aligned to ds[var] on (time_dim, depth_dim).
+
+    Behavior:
+      - Normal case (echogram EVR): use echoregions Regions2D.region_mask to get a depth–time mask.
+      - GPS/alongtrack EVR fallback: if the EVR has no usable depth points (all NaN),
+        perform TIME-ONLY masking: keep all depths for ping_times that fall within the union
+        of region time ranges in the EVR.
+
+    Returns:
+      xr.DataArray[bool] with dims (time_dim, depth_dim)
+    """
     var_da = ds[var]
     da = _select_channel(var_da, channel_index)
 
-    # Build surface for echoregions: dims ("ping_time","depth")
+    # Build surface echoregions expects: dims ("ping_time","depth")
     da_for_mask = da.rename({time_dim: "ping_time", depth_dim: "depth"}).transpose("ping_time", "depth", ...)
 
-    # Clean 1D ping_time coord
+    # Ensure 1D ping_time coordinate
     pt_vals = np.asarray(ds[time_dim].values if time_dim in ds else da.coords[time_dim].values)
     da_for_mask = da_for_mask.assign_coords(ping_time=("ping_time", pt_vals))
 
-    # Attach meters-valued 1D depth coord if available (critical for real EVR overlap)
+    # Attach meters-valued depth coordinate if available (best for echogram EVRs)
     depth_vals = _get_depth_vals_meters_1d(ds, var_da, time_dim=time_dim, depth_dim=depth_dim, channel_index=channel_index)
     if depth_vals is not None:
         da_for_mask = da_for_mask.assign_coords(depth=("depth", np.asarray(depth_vals)))
         ech_depth_min = float(np.nanmin(depth_vals))
         ech_depth_max = float(np.nanmax(depth_vals))
     else:
-        # fallback: use whatever depth coord exists (may be indices)
+        # fallback: whatever depth coordinate exists (may be indices)
         ech_depth_min = float(np.nanmin(da_for_mask["depth"].values))
         ech_depth_max = float(np.nanmax(da_for_mask["depth"].values))
-        logger.warning(
-            "No meters depth vector found (echo_range/depth). If EVR is in meters and your depth dim is an index, mask may be empty."
-        )
 
     if debug:
         logger.debug(f"Mask depth range (m): {ech_depth_min} → {ech_depth_max}")
@@ -449,28 +458,67 @@ def _build_union_region_mask(
         if df is None:
             raise RuntimeError(f"Could not access Regions2D dataframe for {evr_path}")
 
-        # Normalize EVR content for old echoregions versions:
+        # Normalize EVR content
         df = _coerce_region_times(df)
         df = _fix_and_clip_region_depths(df, ech_depth_min=ech_depth_min, ech_depth_max=ech_depth_max)
         df = _maybe_close_polygons(df)
-        _validate_regions_have_depth(df, evr_path=evr_path)
         _set_regions_dataframe(regions2d, df)
 
-        region_mask_ds, _ = regions2d.region_mask(da_for_mask, collapse_to_2d=False)
+        # Detect whether this EVR provides usable depth (echogram) polygons
+        depth_finite = []
+        if "depth" in df.columns:
+            for d_list in df["depth"]:
+                try:
+                    depth_finite.extend([d for d in d_list if isinstance(d, (int, float, np.floating)) and np.isfinite(d)])
+                except Exception:
+                    pass
 
-        if "mask_3d" not in region_mask_ds:
-            raise RuntimeError(f"Expected 'mask_3d' in region_mask output for {evr_path}")
+        has_depth = len(depth_finite) > 0
 
-        file_union = (region_mask_ds["mask_3d"].max("region_id") > 0)
-        if set(["ping_time", "depth"]).issubset(set(file_union.dims)):
-            file_union = file_union.transpose("ping_time", "depth")
+        if not has_depth and "time" in df.columns:
+            # ---------------------------
+            # GPS/alongtrack fallback: TIME-ONLY mask
+            # ---------------------------
+            pt = pd.to_datetime(da_for_mask["ping_time"].values)
+
+            mask_time = np.zeros(pt.shape, dtype=bool)
+            for t_list in df["time"]:
+                try:
+                    t = pd.to_datetime(t_list)
+                    if len(t) == 0:
+                        continue
+                    mask_time |= (pt >= t.min()) & (pt <= t.max())
+                except Exception:
+                    continue
+
+            file_union = xr.DataArray(
+                mask_time,
+                dims=("ping_time",),
+                coords={"ping_time": da_for_mask["ping_time"]},
+            ).broadcast_like(da_for_mask)
+
+            if debug:
+                inside = int(mask_time.sum())
+                logger.debug(f"{evr_path.name}: time-only mask inside pings={inside}/{mask_time.size}")
+
+        else:
+            # ---------------------------
+            # Normal: depth–time region mask
+            # ---------------------------
+            region_mask_ds, _ = regions2d.region_mask(da_for_mask, collapse_to_2d=False)
+            if "mask_3d" not in region_mask_ds:
+                raise RuntimeError(f"Expected 'mask_3d' in region_mask output for {evr_path}")
+
+            file_union = (region_mask_ds["mask_3d"].max("region_id") > 0)
+            if set(["ping_time", "depth"]).issubset(set(file_union.dims)):
+                file_union = file_union.transpose("ping_time", "depth")
 
         union_mask = file_union if union_mask is None else (union_mask | file_union)
 
     if union_mask is None:
         raise RuntimeError("No region mask produced.")
 
-    # rename back to dataset dims
+    # Rename back to dataset dims and return
     union_mask = union_mask.rename({"ping_time": time_dim, "depth": depth_dim}).transpose(time_dim, depth_dim)
     return union_mask
 
