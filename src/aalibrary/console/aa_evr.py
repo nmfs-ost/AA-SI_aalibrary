@@ -5,26 +5,22 @@ aa-evr
 Mask echogram NetCDF (.nc/.netcdf4) using Echoview region files (.evr) via echoregions Regions2D.
 
 AA-style pipeline behavior:
-- Reads input NetCDF paths from stdin (newline-delimited) when piped OR accepts positional input(s).
-- Produces a NEW NetCDF output per input (original unchanged unless you explicitly point output_path to same file).
+- Reads input NetCDF paths from stdin (newline-delimited) when piped OR accepts positional inputs.
+- Produces a NEW NetCDF output per input.
 - Emits output path(s) to stdout (one per line) for downstream piping.
 - Logs go to stderr.
 
 Core behavior:
-- --evr is provided ONCE and accepts one or more .evr paths after it (argparse nargs="+").
-- Loads all EVRs, unions all regions across them, creates a union mask.
-- Applies mask to all dataset variables that include (time_dim, depth_dim) by setting outside-region values to NaN.
+- --evr is provided once and accepts one or more .evr paths after it (argparse nargs="+").
+- Loads all EVRs and unions all regions across them.
+- Applies union mask to all variables containing (time_dim, depth_dim): outside -> NaN.
 
-Version compatibility:
-- echoregions.read_evr has changed across versions. This tool inspects the installed signature and only passes
-  supported kwargs (e.g., raw_range, min_depth/max_depth, convert_time, convert_range_edges).
-- If convert_time isn't supported, we coerce region times to numpy datetime64 manually.
-- If raw_range isn't supported, we still do robust depth “sentinel” replacement after parsing.
-
-Common pitfall addressed:
-- EVR depths are usually in meters, while Sv vertical dimension may be an index (e.g., range_sample).
-  If the dataset contains meters-valued depth/range (echo_range or depth from aa-depth), this tool will use it
-  as the depth coordinate for region masking (critical for non-empty masks).
+Compatibility note:
+- Older echoregions.read_evr only supports (input_file, min_depth, max_depth) and may FILTER points
+  outside that range (turning them into NaN). Many EVR files use sentinel depths like ±9999.99
+  for region edges; newer echoregions can convert these (docs), but older versions cannot. :contentReference[oaicite:2]{index=2}
+- This tool therefore reads EVR with a VERY WIDE depth window, then replaces sentinel depths itself
+  using the echogram’s min/max depth, and clips to that range.
 """
 
 import argparse
@@ -52,38 +48,33 @@ def print_help() -> None:
 aa-evr — apply Echoview region(s) (.evr) to an echogram NetCDF (.nc/.netcdf4)
 
 USAGE
-  # pipeline style
   aa-sv input.raw | aa-depth | aa-evr --evr regions/*.evr --depth-dim range_sample | aa-plot --all
-
-  # direct style
   aa-evr input.nc --evr a.evr b.evr
 
 REQUIRED
-  --evr EVR [EVR ...]
-    One or more .evr paths after a single --evr flag.
+  --evr EVR [EVR ...]     One or more .evr paths after a single --evr.
 
 INPUT
   INPUT_PATH [INPUT_PATH ...]
     Optional positional .nc paths. If omitted, reads newline-delimited .nc paths from stdin.
 
 OUTPUT
-  -o, --output_path PATH   Only valid when processing exactly 1 input
-  --out-dir DIR            Output directory for pipelines/multiple inputs
-  --suffix TEXT            Output suffix appended to input stem (default: _evr)
-  --overwrite              Overwrite output files if they already exist
+  -o, --output_path PATH  Only valid when processing exactly 1 input
+  --out-dir DIR           Output directory for pipelines/multiple inputs
+  --suffix TEXT           Output suffix appended to input stem (default: _evr)
+  --overwrite             Overwrite output files
 
 MASKING
-  --var NAME               Variable to mask (default: Sv)
-  --time-dim NAME          Default: infer ping_time else time
-  --depth-dim NAME         Default: infer depth else range_sample else range_bin
-  --channel-index INT      Channel used for building mask when var has 'channel' dim (default: 0)
-  --write-mask             Write union mask to output as int8 variable 'region_mask'
-  --fail-empty             Exit non-zero if union mask has zero inside cells (prevents silent blank plots)
-  --debug                  Verbose diagnostics to stderr
+  --var NAME              Variable to mask (default: Sv)
+  --time-dim NAME         Default: infer ping_time else time
+  --depth-dim NAME        Default: infer depth else range_sample else range_bin
+  --channel-index INT     Channel used to build mask when var has 'channel' dim (default: 0)
+  --write-mask            Write union mask as int8 variable 'region_mask'
+  --fail-empty            Exit non-zero if union mask is empty (prevents silent blank plots)
+  --debug                 Verbose diagnostics to stderr
 
-NOTES
-  - Logs go to stderr so stdout stays clean for piping.
-  - Values outside the union of all regions are set to NaN.
+NOTE
+  EVR region files (true echogram EVRs) contain polygon boundaries defined by depth and date/time coordinates. :contentReference[oaicite:3]{index=3}
 """
     )
 
@@ -144,18 +135,13 @@ def _infer_dims(ds: xr.Dataset, var: str, time_dim: Optional[str], depth_dim: Op
 
     da = ds[var]
 
-    # time dim
     if time_dim:
         tdim = time_dim
     else:
-        if "ping_time" in da.dims:
-            tdim = "ping_time"
-        elif "time" in da.dims:
-            tdim = "time"
-        else:
+        tdim = "ping_time" if "ping_time" in da.dims else ("time" if "time" in da.dims else None)
+        if tdim is None:
             raise ValueError(f"Could not infer time dim for '{var}'. Provide --time-dim.")
 
-    # depth dim
     if depth_dim:
         ddim = depth_dim
     else:
@@ -182,7 +168,6 @@ def _select_channel(da: xr.DataArray, channel_index: int) -> xr.DataArray:
     if channel_index < 0 or channel_index >= da.sizes["channel"]:
         raise ValueError(f"--channel-index {channel_index} out of range (size={da.sizes['channel']})")
     da2 = da.isel(channel=channel_index)
-    # avoid carrying channel coord/var into masking surface
     if "channel" in da2.coords:
         try:
             da2 = da2.drop_vars("channel")
@@ -210,14 +195,9 @@ def _get_depth_vals_meters_1d(
     channel_index: int,
 ) -> Optional[np.ndarray]:
     """
-    Return a *plain* 1D numpy vector in meters aligned to depth_dim.
-    Using numpy avoids importing scalar coords (like ping_time) that can break xarray dimension construction.
-    Preference:
-      1) ds['echo_range']
-      2) ds['depth'] (often created by aa-depth)
-      3) var_da.coords['echo_range'/'depth']
+    Return a *plain* 1D numpy depth vector in meters aligned to depth_dim.
+    Prefer echo_range; fallback to depth (often created by aa-depth); fallback to coords.
     """
-    # echo_range first
     if "echo_range" in ds:
         erng = _maybe_select_channel_for_aux(ds["echo_range"], var_da, channel_index)
         if depth_dim in erng.dims and time_dim not in erng.dims:
@@ -225,7 +205,6 @@ def _get_depth_vals_meters_1d(
         if (time_dim in erng.dims) and (depth_dim in erng.dims):
             return np.asarray(erng.isel({time_dim: 0}).values)
 
-    # depth next
     if "depth" in ds:
         dep = _maybe_select_channel_for_aux(ds["depth"], var_da, channel_index)
         if depth_dim in dep.dims and time_dim not in dep.dims:
@@ -233,7 +212,6 @@ def _get_depth_vals_meters_1d(
         if (time_dim in dep.dims) and (depth_dim in dep.dims):
             return np.asarray(dep.isel({time_dim: 0}).values)
 
-    # coords on var
     for name in ("echo_range", "depth"):
         if name in var_da.coords:
             c = _maybe_select_channel_for_aux(var_da.coords[name], var_da, channel_index)
@@ -246,40 +224,24 @@ def _get_depth_vals_meters_1d(
 
 
 # ---------------------------
-# echoregions compatibility + normalization
+# echoregions compatibility + EVR normalization
 # ---------------------------
 
-def _read_evr_compat(
-    evr_path: Path,
-    *,
-    depth_vals: Optional[np.ndarray],
-    min_depth: Optional[float],
-    max_depth: Optional[float],
-    debug: bool,
-):
+def _read_evr_compat(evr_path: Path, debug: bool):
     """
-    Call echoregions.read_evr with only kwargs supported by the installed echoregions version.
+    Call echoregions.read_evr with only kwargs supported by the installed version.
+
+    Your version shows: read_evr(input_file, min_depth=..., max_depth=...) only.
+    We use a VERY WIDE window to avoid old-version filtering of sentinel depths (e.g., 9999.99).
     """
     sig = inspect.signature(er.read_evr)
     params = sig.parameters
 
     kwargs = {}
-
-    # newer versions
-    if "raw_range" in params and depth_vals is not None:
-        kwargs["raw_range"] = np.asarray(depth_vals)
-
-    if "min_depth" in params and min_depth is not None:
-        kwargs["min_depth"] = float(min_depth)
-    if "max_depth" in params and max_depth is not None:
-        kwargs["max_depth"] = float(max_depth)
-
-    if "convert_time" in params:
-        kwargs["convert_time"] = True
-
-    if "convert_range_edges" in params:
-        # generally safe; if unsupported it won't be here
-        kwargs["convert_range_edges"] = True
+    if "min_depth" in params:
+        kwargs["min_depth"] = -1.0e9
+    if "max_depth" in params:
+        kwargs["max_depth"] = 1.0e9
 
     if debug:
         logger.debug(f"read_evr signature: {sig}")
@@ -288,104 +250,147 @@ def _read_evr_compat(
     return er.read_evr(str(evr_path), **kwargs)
 
 
-def _coerce_regions_time_to_datetime64(regions2d) -> None:
+def _regions_dataframe(regions2d):
     """
-    If regions2d stores time lists as strings/objects, coerce to numpy datetime64.
-    Safe no-op if structure differs.
+    Return a pandas DataFrame of regions if possible.
+    Tries .to_dataframe(), else .data, else None.
     """
-    try:
-        df = regions2d.to_dataframe()
-    except Exception:
-        return
+    if hasattr(regions2d, "to_dataframe"):
+        try:
+            return regions2d.to_dataframe()
+        except Exception:
+            pass
+    if hasattr(regions2d, "data"):
+        try:
+            df = regions2d.data
+            return df if isinstance(df, pd.DataFrame) else None
+        except Exception:
+            pass
+    return None
 
+
+def _set_regions_dataframe(regions2d, df: pd.DataFrame) -> None:
+    if hasattr(regions2d, "data"):
+        try:
+            regions2d.data = df
+        except Exception:
+            pass
+
+
+def _coerce_region_times(df: pd.DataFrame) -> pd.DataFrame:
     if "time" not in df.columns:
-        return
-
+        return df
+    out = df.copy()
     coerced = []
-    for t_list in df["time"]:
+    for t_list in out["time"]:
         try:
             coerced.append([np.datetime64(pd.to_datetime(t)) for t in t_list])
         except Exception:
             coerced.append(t_list)
-
-    try:
-        df["time"] = coerced
-        regions2d.data = df
-    except Exception:
-        pass
+    out["time"] = coerced
+    return out
 
 
-def _replace_depth_sentinels(regions2d, min_depth: float, max_depth: float) -> None:
+def _fix_and_clip_region_depths(
+    df: pd.DataFrame,
+    ech_depth_min: float,
+    ech_depth_max: float,
+) -> pd.DataFrame:
     """
-    Some EVR files use sentinel edges like -9999.99 / 9999.99 for polygon bounds.
-    Replace extreme values with min_depth/max_depth derived from echogram depth range.
+    Replace sentinel depths (<=-9000 or >=9000) with echogram min/max,
+    convert to floats where possible, and clip to [ech_depth_min, ech_depth_max].
     """
-    try:
-        df = regions2d.to_dataframe()
-    except Exception:
-        return
-
     if "depth" not in df.columns:
-        return
+        return df
+
+    out = df.copy()
 
     def fix_list(d_list):
-        out = []
+        fixed = []
         for d in d_list:
             try:
                 x = float(d)
-                if x <= -9000:
-                    out.append(float(min_depth))
-                elif x >= 9000:
-                    out.append(float(max_depth))
-                else:
-                    out.append(x)
             except Exception:
-                out.append(d)
-        return out
+                # keep as-is; will become NaN later
+                fixed.append(np.nan)
+                continue
 
-    try:
-        df["depth"] = [fix_list(d_list) for d_list in df["depth"]]
-        regions2d.data = df
-    except Exception:
-        pass
+            if x <= -9000:
+                x = float(ech_depth_min)
+            elif x >= 9000:
+                x = float(ech_depth_max)
+
+            # clip
+            if x < ech_depth_min:
+                x = ech_depth_min
+            elif x > ech_depth_max:
+                x = ech_depth_max
+
+            fixed.append(x)
+        return fixed
+
+    out["depth"] = [fix_list(d_list) for d_list in out["depth"]]
+    return out
 
 
-def _close_regions_polygons(regions2d) -> None:
+def _validate_regions_have_depth(df: pd.DataFrame, evr_path: Path) -> None:
     """
-    Close each region polygon if possible, so region_mask isn't confused by open shapes.
-    Uses Regions2D.close_region(points) when available; safe no-op otherwise.
+    If all region depth values are NaN, this EVR can't be applied to echogram masking.
+    (Often indicates the EVR isn't an echogram depth/time polygon export.)
     """
-    if not hasattr(regions2d, "close_region"):
-        return
+    if "depth" not in df.columns:
+        raise ValueError(
+            f"EVR appears not to contain a 'depth' column usable for masking: {evr_path}"
+        )
 
-    try:
-        df = regions2d.to_dataframe()
-    except Exception:
-        return
-
-    if not {"time", "depth"}.issubset(df.columns):
-        return
-
-    new_times = []
-    new_depths = []
-
-    for t_list, d_list in zip(df["time"], df["depth"]):
+    # flatten and check numeric
+    all_depths = []
+    for d_list in df["depth"]:
         try:
-            pts = list(zip(t_list, d_list))
-            pts2 = regions2d.close_region(pts)
-            t2, d2 = zip(*pts2)
-            new_times.append(list(t2))
-            new_depths.append(list(d2))
+            all_depths.extend(list(d_list))
         except Exception:
-            new_times.append(t_list)
-            new_depths.append(d_list)
+            continue
 
-    try:
-        df["time"] = new_times
-        df["depth"] = new_depths
-        regions2d.data = df
-    except Exception:
-        pass
+    if not all_depths:
+        raise ValueError(f"EVR contains no depth points: {evr_path}")
+
+    finite = [d for d in all_depths if isinstance(d, (int, float, np.floating)) and np.isfinite(d)]
+    if len(finite) == 0:
+        raise ValueError(
+            "EVR depth values are all missing/NaN after parsing. "
+            f"This EVR likely is not an echogram 2D region polygon export usable for Sv masking: {evr_path}\n"
+            "Echogram EVR files contain region boundaries as points with depth and date/time coordinates. :contentReference[oaicite:4]{index=4}"
+        )
+
+
+def _maybe_close_polygons(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure each polygon is closed by repeating the first point at the end if needed.
+    (Works regardless of echoregions having close_region()).
+    """
+    if not {"time", "depth"}.issubset(df.columns):
+        return df
+
+    out = df.copy()
+
+    new_time = []
+    new_depth = []
+
+    for t_list, d_list in zip(out["time"], out["depth"]):
+        try:
+            if len(t_list) >= 2 and len(d_list) >= 2:
+                if (t_list[0] != t_list[-1]) or (d_list[0] != d_list[-1]):
+                    t_list = list(t_list) + [t_list[0]]
+                    d_list = list(d_list) + [d_list[0]]
+        except Exception:
+            pass
+
+        new_time.append(t_list)
+        new_depth.append(d_list)
+
+    out["time"] = new_time
+    out["depth"] = new_depth
+    return out
 
 
 # ---------------------------
@@ -401,75 +406,61 @@ def _build_union_region_mask(
     channel_index: int,
     debug: bool,
 ) -> xr.DataArray:
-    """
-    Build a boolean union mask aligned to ds[var] on (time_dim, depth_dim).
-    """
     var_da = ds[var]
     da = _select_channel(var_da, channel_index)
 
-    # Build the surface echoregions expects: dims ("ping_time","depth") + depth coord in meters if available
+    # Build surface for echoregions: dims ("ping_time","depth")
     da_for_mask = da.rename({time_dim: "ping_time", depth_dim: "depth"}).transpose("ping_time", "depth", ...)
 
-    # Ensure ping_time is a clean 1D coordinate vector
-    pt_vals = None
-    if time_dim in ds:
-        pt_vals = np.asarray(ds[time_dim].values)
-    elif time_dim in da.coords:
-        pt_vals = np.asarray(da.coords[time_dim].values)
-    else:
-        pt_vals = np.asarray(da_for_mask["ping_time"].values)
+    # Clean 1D ping_time coord
+    pt_vals = np.asarray(ds[time_dim].values if time_dim in ds else da.coords[time_dim].values)
     da_for_mask = da_for_mask.assign_coords(ping_time=("ping_time", pt_vals))
 
-    # Attach meters-valued depth coordinate vector if available (critical)
+    # Attach meters-valued 1D depth coord if available (critical for real EVR overlap)
     depth_vals = _get_depth_vals_meters_1d(ds, var_da, time_dim=time_dim, depth_dim=depth_dim, channel_index=channel_index)
     if depth_vals is not None:
         da_for_mask = da_for_mask.assign_coords(depth=("depth", np.asarray(depth_vals)))
+        ech_depth_min = float(np.nanmin(depth_vals))
+        ech_depth_max = float(np.nanmax(depth_vals))
     else:
-        # fallback: use whatever xarray has; may be indices -> empty masks
-        if debug:
-            logger.warning("No meters depth vector found (echo_range/depth). Mask may end up empty.")
+        # fallback: use whatever depth coord exists (may be indices)
+        ech_depth_min = float(np.nanmin(da_for_mask["depth"].values))
+        ech_depth_max = float(np.nanmax(da_for_mask["depth"].values))
+        logger.warning(
+            "No meters depth vector found (echo_range/depth). If EVR is in meters and your depth dim is an index, mask may be empty."
+        )
 
-    # compute if dask-backed (echoregions often computes in docs)
+    if debug:
+        logger.debug(f"Mask depth range (m): {ech_depth_min} → {ech_depth_max}")
+        logger.debug(f"Mask time range: {pt_vals.min()} → {pt_vals.max()}")
+
+    # compute if dask-backed
     try:
         da_for_mask = da_for_mask.compute()
     except Exception:
         pass
 
-    # derive min/max for sentinel replacement + optional read_evr kwargs
-    if depth_vals is not None:
-        min_d = float(np.nanmin(depth_vals))
-        max_d = float(np.nanmax(depth_vals))
-    else:
-        # still provide something reasonable
-        min_d, max_d = 0.0, 10000.0
-
-    if debug:
-        logger.debug(f"Mask depth range (m): {min_d} → {max_d}")
-        logger.debug(f"Mask time range: {pt_vals.min()} → {pt_vals.max()}")
-
     union_mask: Optional[xr.DataArray] = None
 
     for evr_path in evr_files:
-        regions2d = _read_evr_compat(
-            evr_path,
-            depth_vals=depth_vals,
-            min_depth=min_d,
-            max_depth=max_d,
-            debug=debug,
-        )
+        regions2d = _read_evr_compat(evr_path, debug=debug)
 
-        # normalize regions dataframe for older echoregions builds
-        _coerce_regions_time_to_datetime64(regions2d)
-        _replace_depth_sentinels(regions2d, min_depth=min_d, max_depth=max_d)
-        _close_regions_polygons(regions2d)
+        df = _regions_dataframe(regions2d)
+        if df is None:
+            raise RuntimeError(f"Could not access Regions2D dataframe for {evr_path}")
 
-        # compute region mask
+        # Normalize EVR content for old echoregions versions:
+        df = _coerce_region_times(df)
+        df = _fix_and_clip_region_depths(df, ech_depth_min=ech_depth_min, ech_depth_max=ech_depth_max)
+        df = _maybe_close_polygons(df)
+        _validate_regions_have_depth(df, evr_path=evr_path)
+        _set_regions_dataframe(regions2d, df)
+
         region_mask_ds, _ = regions2d.region_mask(da_for_mask, collapse_to_2d=False)
 
         if "mask_3d" not in region_mask_ds:
             raise RuntimeError(f"Expected 'mask_3d' in region_mask output for {evr_path}")
 
-        # union within this EVR over region_id; use >0 robustly
         file_union = (region_mask_ds["mask_3d"].max("region_id") > 0)
         if set(["ping_time", "depth"]).issubset(set(file_union.dims)):
             file_union = file_union.transpose("ping_time", "depth")
@@ -479,18 +470,12 @@ def _build_union_region_mask(
     if union_mask is None:
         raise RuntimeError("No region mask produced.")
 
-    # rename back to dataset dims and return
+    # rename back to dataset dims
     union_mask = union_mask.rename({"ping_time": time_dim, "depth": depth_dim}).transpose(time_dim, depth_dim)
     return union_mask
 
 
-def _apply_mask(
-    ds: xr.Dataset,
-    mask: xr.DataArray,
-    time_dim: str,
-    depth_dim: str,
-    write_mask: bool,
-) -> xr.Dataset:
+def _apply_mask(ds: xr.Dataset, mask: xr.DataArray, time_dim: str, depth_dim: str, write_mask: bool) -> xr.Dataset:
     ds_out = ds.copy(deep=False)
 
     for name, da in list(ds_out.data_vars.items()):
@@ -555,7 +540,7 @@ def _process_file(
     if inside == 0:
         logger.error(
             "Union mask is EMPTY (0 inside cells). Output will plot blank.\n"
-            "Most common causes: EVR time mismatch, or EVR depths in meters but dataset has no meters depth vector."
+            "If your EVR is an echogram region export, check time overlap; if it’s a GPS/alongtrack region file, it may not be usable for Sv masking. :contentReference[oaicite:5]{index=5}"
         )
         if fail_empty:
             try:
@@ -565,7 +550,6 @@ def _process_file(
             return None
 
     ds_out = _apply_mask(ds, mask=mask, time_dim=tdim, depth_dim=ddim, write_mask=write_mask)
-
     ds_out.attrs["aa_tool"] = "aa-evr"
     ds_out.attrs["aa_evr_files"] = ",".join(str(p) for p in evr_files)
 
@@ -584,98 +568,22 @@ def main() -> int:
         print_help()
         return 0
 
-    parser = argparse.ArgumentParser(
-        description="Mask echogram NetCDF (.nc) using Echoview region file(s) (.evr)."
-    )
-
-    parser.add_argument(
-        "input_paths",
-        nargs="*",
-        type=Path,
-        help="Input .nc/.netcdf4 paths. If omitted, read from stdin.",
-    )
-
-    parser.add_argument(
-        "--evr",
-        required=True,
-        nargs="+",
-        type=Path,
-        help="One or more .evr paths after a single --evr.",
-    )
-
-    parser.add_argument(
-        "-o",
-        "--output_path",
-        type=Path,
-        help="Output path (ONLY valid when processing exactly 1 input).",
-    )
-
-    parser.add_argument(
-        "--out-dir",
-        type=Path,
-        help="Output directory for pipelines/multiple inputs.",
-    )
-
-    parser.add_argument(
-        "--suffix",
-        type=str,
-        default="_evr",
-        help="Suffix appended to output stem (default: _evr).",
-    )
-
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Overwrite output files if they exist.",
-    )
-
-    parser.add_argument(
-        "--var",
-        type=str,
-        default="Sv",
-        help="Variable to mask (default: Sv).",
-    )
-
-    parser.add_argument(
-        "--time-dim",
-        type=str,
-        default=None,
-        help="Time dimension name (default: infer ping_time else time).",
-    )
-
-    parser.add_argument(
-        "--depth-dim",
-        type=str,
-        default=None,
-        help="Depth dimension name (default: infer depth else range_sample else range_bin).",
-    )
-
-    parser.add_argument(
-        "--channel-index",
-        type=int,
-        default=0,
-        help="Channel used to build mask when var has 'channel' dim (default: 0).",
-    )
-
-    parser.add_argument(
-        "--write-mask",
-        action="store_true",
-        help="Write union mask to output as int8 variable 'region_mask'.",
-    )
-
-    parser.add_argument(
-        "--fail-empty",
-        action="store_true",
-        help="Exit non-zero if the union mask is empty (0 inside cells).",
-    )
-
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Verbose logging to stderr.",
-    )
-
+    parser = argparse.ArgumentParser(description="Mask echogram NetCDF (.nc) using Echoview EVR region files.")
+    parser.add_argument("input_paths", nargs="*", type=Path, help="Input .nc/.netcdf4 paths (or stdin).")
+    parser.add_argument("--evr", required=True, nargs="+", type=Path, help="One or more .evr paths after a single --evr.")
+    parser.add_argument("-o", "--output_path", type=Path, help="Output path (ONLY valid when processing exactly 1 input).")
+    parser.add_argument("--out-dir", type=Path, help="Output directory for pipelines/multiple inputs.")
+    parser.add_argument("--suffix", type=str, default="_evr", help="Suffix appended to output stem (default: _evr).")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite output files if they exist.")
+    parser.add_argument("--var", type=str, default="Sv", help="Variable to mask (default: Sv).")
+    parser.add_argument("--time-dim", type=str, default=None, help="Time dimension name.")
+    parser.add_argument("--depth-dim", type=str, default=None, help="Depth dimension name (e.g., range_sample).")
+    parser.add_argument("--channel-index", type=int, default=0, help="Channel index for mask building.")
+    parser.add_argument("--write-mask", action="store_true", help="Write 'region_mask' to output.")
+    parser.add_argument("--fail-empty", action="store_true", help="Fail if union mask is empty.")
+    parser.add_argument("--debug", action="store_true", help="Verbose logging to stderr.")
     args = parser.parse_args()
+
     _configure_logging(args.debug)
 
     input_paths = [p for p in _iter_input_paths(args.input_paths)]
