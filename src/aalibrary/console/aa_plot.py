@@ -254,8 +254,137 @@ def _x_label(x_name: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  DATA SUMMARY LOG  —  collapsible, copyable <pre> block
+#  DATA SUMMARY SIDEBAR  —  styled card beside the echogram
 # ═══════════════════════════════════════════════════════════════════════════
+
+_SIDEBAR_CSS = """\
+<style>
+.aa-sidebar {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    font-family: 'Menlo', 'Consolas', 'DejaVu Sans Mono', monospace;
+    font-size: 0.78em;
+    color: #cbd5e1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: 370px;
+    min-width: 370px;
+    max-width: 370px;
+    user-select: text;
+    cursor: text;
+    line-height: 1.6;
+}
+.aa-sidebar-title {
+    background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+    color: #38bdf8;
+    padding: 10px 14px;
+    font-weight: 700;
+    font-size: 1.05em;
+    letter-spacing: 0.04em;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid #1e293b;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.aa-sidebar-title svg {
+    flex-shrink: 0;
+}
+.aa-section {
+    padding: 8px 14px 4px 14px;
+}
+.aa-section-head {
+    color: #94a3b8;
+    font-weight: 600;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid #1e293b;
+    padding-bottom: 4px;
+    margin-bottom: 5px;
+}
+.aa-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+}
+.aa-key {
+    color: #64748b;
+    white-space: nowrap;
+    padding-right: 8px;
+}
+.aa-val {
+    color: #e2e8f0;
+    text-align: right;
+    word-break: break-all;
+}
+.aa-val-em {
+    color: #38bdf8;
+    text-align: right;
+    font-weight: 600;
+}
+.aa-chan-row {
+    padding: 1px 0;
+    display: flex;
+    gap: 6px;
+}
+.aa-chan-idx {
+    color: #475569;
+    min-width: 24px;
+}
+.aa-chan-name {
+    color: #e2e8f0;
+}
+.aa-chan-freq {
+    color: #818cf8;
+    margin-left: auto;
+}
+.aa-divider {
+    border: none;
+    border-top: 1px solid #1e293b;
+    margin: 4px 0;
+}
+.aa-copy-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 5px;
+    color: #94a3b8;
+    padding: 5px 12px;
+    margin: 8px 14px 10px 14px;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-family: inherit;
+    transition: all 0.15s;
+    width: calc(100% - 28px);
+    text-align: center;
+}
+.aa-copy-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+</style>
+"""
+
+# Clipboard icon SVG (16×16)
+_CLIPBOARD_SVG = (
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" '
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+    'stroke-linejoin="round">'
+    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'
+    '</svg>'
+)
+
+
+def _html_row(key: str, val: str, em: bool = False) -> str:
+    cls = "aa-val-em" if em else "aa-val"
+    # Escape HTML entities
+    val = val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f'<div class="aa-row"><span class="aa-key">{key}</span><span class="{cls}">{val}</span></div>'
+
 
 def _build_data_log(
     ds: xr.Dataset,
@@ -263,68 +392,91 @@ def _build_data_log(
     x_name: str,
     y_name: str,
     flip_y: bool,
+    height: int = 450,
 ) -> pn.pane.HTML:
-    """Build a collapsible, copyable plain-text data summary."""
+    """Build a styled sidebar card with dataset summary, copyable via button."""
 
-    lines: list[str] = []
-    sep = "=" * 66
+    sections: list[str] = []
 
-    lines.append(sep)
-    lines.append("  aa-plot  ·  Data Summary Log")
-    lines.append(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(sep)
+    # --- Title bar -----------------------------------------------------------
+    sections.append(
+        f'<div class="aa-sidebar-title">{_CLIPBOARD_SVG} Data Summary</div>'
+    )
 
-    # --- File / source -------------------------------------------------------
+    # --- Source section -------------------------------------------------------
     src = ds.encoding.get("source", "(in-memory)")
-    lines.append(f"  Source file : {src}")
-    lines.append(f"  Variable   : {var}")
-    lines.append(f"  X-axis     : {x_name}")
-    lines.append(f"  Y-axis     : {y_name}  {'(inverted — surface at top)' if flip_y else ''}")
-    lines.append("")
+    src_short = Path(src).name if src != "(in-memory)" else src
+    sec = '<div class="aa-section">'
+    sec += '<div class="aa-section-head">Source</div>'
+    sec += _html_row("file", src_short)
+    sec += _html_row("variable", var, em=True)
+    sec += _html_row("x-axis", x_name)
+    orient = f"{y_name} ↕ inverted" if flip_y else y_name
+    sec += _html_row("y-axis", orient)
+    sec += '</div>'
+    sections.append(sec)
 
-    # --- Global attributes ---------------------------------------------------
+    # --- Dataset attributes --------------------------------------------------
     attrs = ds.attrs
     interesting_keys = [
-        "sonar_model", "survey_name", "title", "keywords", "conventions",
-        "date_created", "time_coverage_start", "time_coverage_end",
-        "geospatial_lat_min", "geospatial_lat_max",
-        "geospatial_lon_min", "geospatial_lon_max",
-        "institution", "source", "platform_name", "instrument_type",
+        ("sonar_model", "sonar"),
+        ("survey_name", "survey"),
+        ("title", "title"),
+        ("institution", "institution"),
+        ("platform_name", "platform"),
+        ("instrument_type", "instrument"),
+        ("date_created", "created"),
+        ("time_coverage_start", "time start"),
+        ("time_coverage_end", "time end"),
     ]
-    written_attrs = False
-    for k in interesting_keys:
-        if k in attrs and attrs[k]:
-            if not written_attrs:
-                lines.append("  ── Dataset Attributes ──")
-                written_attrs = True
-            lines.append(f"    {k:30s}: {attrs[k]}")
-    if written_attrs:
-        lines.append("")
+    attr_rows = []
+    for ak, label in interesting_keys:
+        if ak in attrs and attrs[ak]:
+            attr_rows.append(_html_row(label, str(attrs[ak])))
+
+    if attr_rows:
+        sec = '<div class="aa-section">'
+        sec += '<div class="aa-section-head">Metadata</div>'
+        sec += "".join(attr_rows)
+        sec += '</div>'
+        sections.append(sec)
 
     # --- Dimensions ----------------------------------------------------------
     da = ds[var]
-    lines.append("  ── Dimensions ──")
+    sec = '<div class="aa-section">'
+    sec += '<div class="aa-section-head">Dimensions</div>'
     for d, s in da.sizes.items():
-        lines.append(f"    {d:30s}: {s}")
-    lines.append("")
+        sec += _html_row(d, f"{s:,}")
+    sec += '</div>'
+    sections.append(sec)
 
     # --- Coordinate ranges ---------------------------------------------------
-    lines.append("  ── Coordinate Ranges ──")
+    range_rows = []
     for cname in da.dims:
         if cname in ds.coords:
             c = ds[cname]
             try:
                 cmin = _coord_to_str(c.min().values)
                 cmax = _coord_to_str(c.max().values)
-                lines.append(f"    {cname:30s}: {cmin}  →  {cmax}")
+                # Shorten long timestamps
+                if len(cmin) > 26:
+                    cmin = cmin[:19]
+                if len(cmax) > 26:
+                    cmax = cmax[:19]
+                range_rows.append(_html_row(cname, f"{cmin} → {cmax}"))
             except Exception:
-                lines.append(f"    {cname:30s}: (could not compute range)")
-    lines.append("")
+                range_rows.append(_html_row(cname, "(n/a)"))
+
+    if range_rows:
+        sec = '<div class="aa-section">'
+        sec += '<div class="aa-section-head">Coord Ranges</div>'
+        sec += "".join(range_rows)
+        sec += '</div>'
+        sections.append(sec)
 
     # --- Channel / frequency summary -----------------------------------------
     chan_dim = "channel" if "channel" in da.dims else None
     if chan_dim:
-        lines.append("  ── Channels ──")
         ccoord = ds[chan_dim]
         f_on_chan = None
         for loc in (ds.data_vars, ds.coords):
@@ -334,60 +486,124 @@ def _build_data_log(
                     f_on_chan = f
                     break
 
+        sec = '<div class="aa-section">'
+        sec += '<div class="aa-section-head">Channels</div>'
         for ci in range(ccoord.size):
             ch_str = _coord_to_str(ccoord.isel({chan_dim: ci}).values)
-            freq_str = ""
+            # Shorten long channel IDs for sidebar display
+            if len(ch_str) > 30:
+                ch_str = "…" + ch_str[-28:]
+            freq_html = ""
             if f_on_chan is not None:
                 fv = f_on_chan.isel({chan_dim: ci}).values
-                freq_str = f"  ({_coord_to_str(fv)} Hz)"
-            lines.append(f"    [{ci}]  {ch_str}{freq_str}")
-        lines.append("")
+                try:
+                    fv_num = float(fv)
+                    if fv_num >= 1000:
+                        freq_html = f'<span class="aa-chan-freq">{fv_num / 1000:.0f} kHz</span>'
+                    else:
+                        freq_html = f'<span class="aa-chan-freq">{fv_num:.0f} Hz</span>'
+                except Exception:
+                    freq_html = f'<span class="aa-chan-freq">{_coord_to_str(fv)}</span>'
+            sec += (
+                f'<div class="aa-chan-row">'
+                f'<span class="aa-chan-idx">[{ci}]</span>'
+                f'<span class="aa-chan-name">{ch_str}</span>'
+                f'{freq_html}'
+                f'</div>'
+            )
+        sec += '</div>'
+        sections.append(sec)
 
     # --- Variable statistics -------------------------------------------------
-    lines.append(f"  ── {var} Statistics ──")
+    sec = '<div class="aa-section">'
+    sec += f'<div class="aa-section-head">{var} Statistics</div>'
     try:
         vals = da.values
         finite = vals[np.isfinite(vals)]
         total = vals.size
         nan_count = total - finite.size
-        lines.append(f"    Total samples  : {total:,}")
-        lines.append(f"    NaN / Inf      : {nan_count:,}  ({100 * nan_count / max(total, 1):.1f}%)")
+        sec += _html_row("samples", f"{total:,}")
+        pct_nan = f"{100 * nan_count / max(total, 1):.1f}%"
+        sec += _html_row("NaN / Inf", f"{nan_count:,} ({pct_nan})")
         if finite.size > 0:
-            lines.append(f"    Min            : {finite.min():.4f}")
-            lines.append(f"    Max            : {finite.max():.4f}")
-            lines.append(f"    Mean           : {finite.mean():.4f}")
-            lines.append(f"    Std            : {finite.std():.4f}")
+            sec += '<hr class="aa-divider"/>'
+            sec += _html_row("min", f"{finite.min():.2f}", em=True)
+            sec += _html_row("max", f"{finite.max():.2f}", em=True)
+            sec += _html_row("mean", f"{finite.mean():.2f}")
+            sec += _html_row("std", f"{finite.std():.2f}")
+            sec += '<hr class="aa-divider"/>'
             for q in (5, 25, 50, 75, 95):
-                lines.append(f"    P{q:<14d}: {np.percentile(finite, q):.4f}")
+                label = f"P{q}"
+                sec += _html_row(label, f"{np.percentile(finite, q):.2f}")
     except Exception as exc:
-        lines.append(f"    (statistics unavailable: {exc})")
-    lines.append("")
+        sec += _html_row("error", str(exc))
+    sec += '</div>'
+    sections.append(sec)
 
-    # --- Data variables list --------------------------------------------------
-    lines.append("  ── All Data Variables ──")
+    # --- All data variables --------------------------------------------------
+    sec = '<div class="aa-section">'
+    sec += '<div class="aa-section-head">All Variables</div>'
     for dv in ds.data_vars:
-        shape_str = ", ".join(f"{d}={s}" for d, s in ds[dv].sizes.items())
-        lines.append(f"    {dv:30s}: ({shape_str})")
-    lines.append(sep)
+        shape_str = ", ".join(f"{s}" for s in ds[dv].shape)
+        sec += _html_row(dv, f"({shape_str})")
+    sec += '</div>'
+    sections.append(sec)
 
-    log_text = "\n".join(lines)
+    # --- Build the plain-text version for the copy button --------------------
+    plain_lines: list[str] = []
+    plain_lines.append(f"aa-plot Data Summary — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    plain_lines.append(f"File: {ds.encoding.get('source', '(in-memory)')}")
+    plain_lines.append(f"Variable: {var}  |  X: {x_name}  |  Y: {y_name} {'(inverted)' if flip_y else ''}")
+    plain_lines.append("")
+    for d, s in da.sizes.items():
+        plain_lines.append(f"  {d}: {s}")
+    if chan_dim:
+        plain_lines.append("")
+        ccoord = ds[chan_dim]
+        for ci in range(ccoord.size):
+            ch_str = _coord_to_str(ccoord.isel({chan_dim: ci}).values)
+            freq_part = ""
+            if f_on_chan is not None:
+                fv = f_on_chan.isel({chan_dim: ci}).values
+                freq_part = f"  ({_coord_to_str(fv)} Hz)"
+            plain_lines.append(f"  [{ci}] {ch_str}{freq_part}")
+    try:
+        if finite.size > 0:
+            plain_lines.append("")
+            plain_lines.append(f"  {var}: min={finite.min():.4f}  max={finite.max():.4f}  "
+                               f"mean={finite.mean():.4f}  std={finite.std():.4f}")
+            pcts = {q: np.percentile(finite, q) for q in (5, 25, 50, 75, 95)}
+            plain_lines.append("  Percentiles: " + "  ".join(f"P{q}={v:.4f}" for q, v in pcts.items()))
+    except Exception:
+        pass
 
-    # Build as an HTML pane so the <pre> block is natively selectable / copyable
-    html = (
-        '<details style="margin:8px 0;">'
-        '<summary style="cursor:pointer; font-weight:600; font-size:0.95em; '
-        'color:#ddd; background:#1e1e1e; padding:6px 12px; border-radius:4px; '
-        'user-select:none;">'
-        '&#128203; Data Summary Log  (click to expand &mdash; text is copyable)'
-        '</summary>'
-        '<pre id="aa-plot-log" style="background:#1a1a2e; color:#c8d6e5; '
-        'padding:14px 18px; border-radius:0 0 4px 4px; font-size:0.82em; '
-        'line-height:1.55; overflow-x:auto; white-space:pre; user-select:text; '
-        f'cursor:text; max-height:500px; overflow-y:auto;">{log_text}</pre>'
-        '</details>'
+    plain_text_escaped = "\\n".join(
+        line.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
+        for line in plain_lines
     )
 
-    return pn.pane.HTML(html, sizing_mode="stretch_width")
+    # --- Copy button with inline JS -----------------------------------------
+    copy_btn = (
+        f'<button class="aa-copy-btn" onclick="'
+        f"navigator.clipboard.writeText('{plain_text_escaped}')"
+        f".then(function(){{ this.innerText='Copied!'; var b=this; "
+        f"setTimeout(function(){{ b.innerText='Copy to clipboard'; }}, 1500); }}.bind(this))"
+        f'.catch(function(){{ /* fallback: select pre text */ }});'
+        f'">Copy to clipboard</button>'
+    )
+
+    # --- Assemble sidebar HTML -----------------------------------------------
+    # Height matches the echogram plot so they sit flush
+    sidebar_height = height + 80  # account for title bar + padding
+    html = (
+        f'{_SIDEBAR_CSS}'
+        f'<div class="aa-sidebar" style="height:{sidebar_height}px;">'
+        + "".join(sections)
+        + copy_btn
+        + '</div>'
+    )
+
+    return pn.pane.HTML(html, sizing_mode="fixed", width=370, height=sidebar_height)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -746,7 +962,7 @@ def _build_all_tabs(
             tabs.append((label, plot))
 
         # IMPORTANT: build tabs from (title, panel) pairs (this is the correct API)
-        return pn.Tabs(*tabs, sizing_mode="stretch_both", dynamic=True)
+        return pn.Tabs(*tabs, sizing_mode="stretch_both", dynamic=False)
 
     # Fallback — no channel dim
     da2 = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
@@ -858,10 +1074,7 @@ def _render_layout(
     # --- Colormap picker (client-side JS, zero render cost) ------------------
     controls = None
     if show_cmap_picker:
-        controls = pn.Row(
-            _build_cmap_picker(cmap),
-            sizing_mode="stretch_width",
-        )
+        controls = _build_cmap_picker(cmap)
 
     # --- Plots ---------------------------------------------------------------
     if all_plots:
@@ -906,20 +1119,30 @@ def _render_layout(
             show_crosshair=show_crosshair,
         )
 
-    # --- Data summary log ----------------------------------------------------
+    # --- Data summary sidebar ------------------------------------------------
     log_panel = None
     if show_log:
-        log_panel = _build_data_log(ds, var, x_name, y_name, flip_y)
+        log_panel = _build_data_log(ds, var, x_name, y_name, flip_y, height=height)
 
-    # --- Assemble column -----------------------------------------------------
-    parts = [header]
-    if controls:
-        parts.append(controls)
-    parts.append(body)
-    if log_panel:
-        parts.append(log_panel)
+    # --- Assemble layout -----------------------------------------------------
+    # Sidebar sits to the right of the echogram; cmap picker goes above it.
+    if log_panel or controls:
+        sidebar_parts = []
+        if controls:
+            sidebar_parts.append(controls)
+        if log_panel:
+            sidebar_parts.append(log_panel)
+        sidebar = pn.Column(*sidebar_parts, sizing_mode="fixed", width=370)
 
-    return pn.Column(*parts, sizing_mode="stretch_both")
+        main_area = pn.Row(
+            body,
+            pn.Spacer(width=12),
+            sidebar,
+        )
+    else:
+        main_area = body
+
+    return pn.Column(header, main_area, sizing_mode="stretch_both")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
