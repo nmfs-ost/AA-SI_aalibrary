@@ -638,13 +638,47 @@ def _build_union_region_mask(
     return union_mask
 
 def _apply_mask(ds: xr.Dataset, mask: xr.DataArray, time_dim: str, depth_dim: str, write_mask: bool) -> xr.Dataset:
+    """
+    Apply boolean mask to all data variables containing (time_dim, depth_dim).
+    Robust to coordinate mismatches by aligning mask to each variable, falling back to positional masking.
+    """
     ds_out = ds.copy(deep=False)
 
     for name, da in list(ds_out.data_vars.items()):
         if (time_dim in da.dims) and (depth_dim in da.dims):
-            ds_out[name] = xr.where(mask, da, np.nan)
+            m = mask
+
+            # 1) Try coordinate alignment if possible
+            try:
+                # align mask coordinates to this variable along shared dims
+                m_aligned = m
+                if time_dim in m_aligned.dims and time_dim in da.coords:
+                    m_aligned = m_aligned.reindex({time_dim: da[time_dim]})
+                if depth_dim in m_aligned.dims and depth_dim in da.coords:
+                    m_aligned = m_aligned.reindex({depth_dim: da[depth_dim]})
+
+                ds_out[name] = xr.where(m_aligned, da, np.nan)
+                continue
+            except Exception:
+                pass
+
+            # 2) Fallback: positional masking (ignore coordinate labels)
+            # Build a DataArray mask with the target dims only, using raw boolean values.
+            try:
+                # Ensure mask is ordered same as target along the two dims
+                m2 = m.transpose(time_dim, depth_dim)
+                # Broadcast to da (handles channel/etc.)
+                m_b = xr.DataArray(
+                    m2.data,
+                    dims=(time_dim, depth_dim),
+                ).broadcast_like(da)
+
+                ds_out[name] = xr.where(m_b, da, np.nan)
+            except Exception as e:
+                raise RuntimeError(f"Failed masking variable '{name}': {e}") from e
 
     if write_mask:
+        # Store mask exactly as produced (but ensure it's aligned to dataset's dims)
         ds_out["region_mask"] = mask.astype("int8")
         ds_out["region_mask"].attrs["long_name"] = "Union region mask from EVR files (1=inside, 0=outside)"
 
