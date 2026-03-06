@@ -436,8 +436,30 @@ def _build_union_region_mask(
     else:
         da = var_da
 
+
+
+
     # --- build surface for echoregions: dims ("ping_time","depth") ---
     da_for_mask = da.rename({time_dim: "ping_time", depth_dim: "depth"}).transpose("ping_time", "depth", ...)
+
+
+    # After: da_for_mask = da.rename({time_dim:"ping_time", depth_dim:"depth"}).transpose(...)
+    # Force meters-valued depth coordinate:
+    if "depth" in ds:
+        dep = ds["depth"]
+        if "channel" in dep.dims and "channel" in ds[var].dims:
+            dep = dep.isel(channel=channel_index)
+        # dep is often (ping_time, range_sample); take first ping for 1D vector
+        if "ping_time" in dep.dims and "range_sample" in dep.dims:
+            dep1d = dep.isel(ping_time=0).values
+            da_for_mask = da_for_mask.assign_coords(depth=("depth", dep1d))
+    elif "echo_range" in ds:
+        erng = ds["echo_range"]
+        if "channel" in erng.dims and "channel" in ds[var].dims:
+            erng = erng.isel(channel=channel_index)
+        # erng is often 1D over range_sample
+        da_for_mask = da_for_mask.assign_coords(depth=("depth", erng.values))
+
 
     # Force ping_time to be a clean 1D coordinate vector (prevents scalar ping_time coord issues)
     pt_vals = np.asarray(ds[time_dim].values if time_dim in ds else da.coords[time_dim].values)
@@ -620,6 +642,29 @@ def _build_union_region_mask(
         # Normal echogram EVR: depth–time mask
         # ---------------------------
         else:
+            # pad region endpoint times (prevents 0.1s boundary miss)
+            pad = pd.Timedelta(seconds=1)
+
+            new_times = []
+            for t_list in df["time"]:
+                t = pd.to_datetime(list(t_list), errors="coerce").dropna()
+                if len(t) == 0:
+                    new_times.append(list(t_list))
+                    continue
+
+                tmin, tmax = t.min(), t.max()
+                out = []
+                for ti in t:
+                    if ti == tmin:
+                        out.append(np.datetime64(ti - pad))
+                    elif ti == tmax:
+                        out.append(np.datetime64(ti + pad))
+                    else:
+                        out.append(np.datetime64(ti))
+                new_times.append(out)
+
+            df["time"] = new_times
+            regions2d.data = df
             region_mask_ds, _ = regions2d.region_mask(da_for_mask, collapse_to_2d=False)
             if "mask_3d" not in region_mask_ds:
                 raise RuntimeError(f"Expected 'mask_3d' in region_mask output for {evr_path}")
