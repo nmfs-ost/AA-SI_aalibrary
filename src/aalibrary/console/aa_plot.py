@@ -268,9 +268,8 @@ _SIDEBAR_CSS = """\
     color: #cbd5e1;
     overflow-y: auto;
     overflow-x: hidden;
-    width: 370px;
-    min-width: 370px;
-    max-width: 370px;
+    width: 100%;
+    min-width: 300px;
     user-select: text;
     cursor: text;
     line-height: 1.6;
@@ -292,8 +291,16 @@ _SIDEBAR_CSS = """\
 .aa-sidebar-title svg {
     flex-shrink: 0;
 }
+.aa-sections-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+}
 .aa-section {
     padding: 8px 14px 4px 14px;
+    min-width: 260px;
+    flex: 1 1 260px;
+    box-sizing: border-box;
 }
 .aa-section-head {
     color: #94a3b8;
@@ -357,7 +364,7 @@ _SIDEBAR_CSS = """\
     font-size: 0.9em;
     font-family: inherit;
     transition: all 0.15s;
-    width: calc(100% - 28px);
+    max-width: 220px;
     text-align: center;
 }
 .aa-copy-btn:hover {
@@ -392,7 +399,6 @@ def _build_data_log(
     x_name: str,
     y_name: str,
     flip_y: bool,
-    height: int = 450,
 ) -> pn.pane.HTML:
     """Build a styled sidebar card with dataset summary, copyable via button."""
 
@@ -592,18 +598,19 @@ def _build_data_log(
         f'">Copy to clipboard</button>'
     )
 
-    # --- Assemble sidebar HTML -----------------------------------------------
-    # Height matches the echogram plot so they sit flush
-    sidebar_height = height + 80  # account for title bar + padding
+    # --- Assemble panel HTML -------------------------------------------------
     html = (
         f'{_SIDEBAR_CSS}'
-        f'<div class="aa-sidebar" style="height:{sidebar_height}px;">'
-        + "".join(sections)
+        f'<div class="aa-sidebar">'
+        + sections[0]  # title bar
+        + '<div class="aa-sections-grid">'
+        + "".join(sections[1:])
+        + '</div>'
         + copy_btn
         + '</div>'
     )
 
-    return pn.pane.HTML(html, sizing_mode="fixed", width=370, height=sidebar_height)
+    return pn.pane.HTML(html, sizing_mode="stretch_width")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1119,30 +1126,26 @@ def _render_layout(
             show_crosshair=show_crosshair,
         )
 
-    # --- Data summary sidebar ------------------------------------------------
+    # --- Data summary panel ---------------------------------------------------
     log_panel = None
     if show_log:
-        log_panel = _build_data_log(ds, var, x_name, y_name, flip_y, height=height)
+        log_panel = _build_data_log(ds, var, x_name, y_name, flip_y)
 
     # --- Assemble layout -----------------------------------------------------
-    # Sidebar sits to the right of the echogram; cmap picker goes above it.
-    if log_panel or controls:
-        sidebar_parts = []
-        if controls:
-            sidebar_parts.append(controls)
-        if log_panel:
-            sidebar_parts.append(log_panel)
-        sidebar = pn.Column(*sidebar_parts, sizing_mode="fixed", width=370)
+    # Plot on top, then colormap picker + data panel side-by-side below.
+    parts = [header, body]
 
-        main_area = pn.Row(
-            body,
-            pn.Spacer(width=12),
-            sidebar,
-        )
-    else:
-        main_area = body
+    below_parts = []
+    if controls:
+        below_parts.append(controls)
+    if log_panel:
+        below_parts.append(log_panel)
 
-    return pn.Column(header, main_area, sizing_mode="stretch_both")
+    if below_parts:
+        parts.append(pn.Spacer(height=8))
+        parts.append(pn.Row(*below_parts, sizing_mode="stretch_width"))
+
+    return pn.Column(*parts, sizing_mode="stretch_both")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
