@@ -15,6 +15,8 @@ Goals:
 - Keep stdout clean except for final path (logs go to stderr via loguru).
 - Drawing tools (freehand, polyline, region polygon) overlay the echogram;
   annotations export to EVL (lines) or EVR (regions) Echoview-compatible files.
+  Export uses Bokeh Button + CustomJS with direct ColumnDataSource references —
+  no window globals, no _all_models traversal — works in all contexts.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ import sys
 from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, List
 
 import numpy as np
 import xarray as xr
@@ -81,7 +83,7 @@ Appearance:
   --vmin FLOAT              Lower color limit.
   --vmax FLOAT              Upper color limit.
   --cmap NAME               Initial colormap name (default: inferno).
-  --width INT               Minimum plot width in px; stretches beyond this (default: 800).
+  --width INT               Minimum plot width in px; stretches beyond this (default: 250).
   --height INT              Plot height (default: 450).
   --toolbar STR             Toolbar: above/below/left/right/disable (default: above).
   --no-hover                Disable hover tooltip overlay.
@@ -309,7 +311,6 @@ _CLIPBOARD_SVG = (
     '</svg>'
 )
 
-# Robust clipboard JS.
 _COPY_JS_TEMPLATE = """\
 (function(btn) {{
     var text = {text_json};
@@ -647,376 +648,54 @@ def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  DRAWING TOOLS  (freehand · polyline · region polygon)
+#  DRAWING TOOLS
 # ═══════════════════════════════════════════════════════════════════════════
 
-_DRAW_CSS = """\
-<style>
-.aa-draw-wrap {
-    border-radius: 8px;
-    font-family: 'Menlo','Consolas','DejaVu Sans Mono',monospace;
-    font-size: 0.80em;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
-    overflow: hidden;
-}
-.aa-draw-title {
-    background: linear-gradient(135deg,#f0fdf4 0%,#f8fafc 100%);
-    color: #166534;
-    padding: 9px 14px;
-    font-weight: 700;
-    font-size: 1.0em;
-    letter-spacing: 0.04em;
-    border-bottom: 1px solid #bbf7d0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.aa-draw-body { padding: 10px 14px 12px 14px; }
-.aa-draw-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-    margin-bottom: 10px;
-    line-height: 1.5;
-}
-.aa-draw-legend-item {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    color: #475569;
-    font-size: 0.92em;
-}
-.aa-swatch-freehand {
-    width: 26px; height: 3px;
-    background: #FFD700;
-    border-radius: 2px;
-    flex-shrink: 0;
-}
-.aa-swatch-poly {
-    width: 26px; height: 0;
-    border-top: 2px dashed #00FFFF;
-    flex-shrink: 0;
-}
-.aa-swatch-region {
-    width: 20px; height: 12px;
-    background: rgba(68,153,255,0.35);
-    border: 2px solid #4499FF;
-    border-radius: 3px;
-    flex-shrink: 0;
-}
-.aa-draw-btns {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    margin-top: 8px;
-}
-.aa-draw-btn {
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
-    border-radius: 5px;
-    color: #475569;
-    padding: 5px 13px;
-    cursor: pointer;
-    font-size: 0.91em;
-    font-family: inherit;
-    transition: all 0.14s;
-    white-space: nowrap;
-}
-.aa-draw-btn:hover { background:#e2e8f0; color:#1e293b; border-color:#94a3b8; }
-.aa-draw-btn.evl  { border-color:#00BBCC; color:#0369a1; }
-.aa-draw-btn.evl:hover  { background:#e0f2fe; border-color:#0284c7; }
-.aa-draw-btn.evr  { border-color:#818CF8; color:#4338ca; }
-.aa-draw-btn.evr:hover  { background:#eef2ff; border-color:#6366f1; }
-.aa-draw-btn.clr  { border-color:#FCA5A5; color:#be123c; }
-.aa-draw-btn.clr:hover  { background:#fff1f2; border-color:#fb7185; }
-.aa-draw-hint {
-    color: #94a3b8;
-    font-size: 0.82em;
-    margin-top: 9px;
-    line-height: 1.55;
-}
-</style>
-"""
-
-# Shared JS helpers embedded once in the panel <script> block.
-_DRAW_JS_HELPERS = """\
-<script>
-(function(W){
-  W._aaGetModels = function() {
-    var out = [];
-    try {
-      var docs = window.Bokeh && Bokeh.documents;
-      if (!docs || !docs.length) return out;
-      var m = docs[0]._all_models;
-      if (!m) return out;
-      if (typeof m.forEach === 'function') { m.forEach(function(v){ if(v) out.push(v); }); }
-      else { for (var k in m) { if (m.hasOwnProperty(k)) out.push(m[k]); } }
-    } catch(e) { console.warn('aa-plot getModels:', e); }
-    return out;
-  };
-
-  W._aaMsToEvl = function(ms) {
-    var d = new Date(ms);
-    var p2 = function(n){ return String(n).padStart(2,'0'); };
-    var p3 = function(n){ return String(n).padStart(3,'0'); };
-    var date = String(d.getUTCFullYear()) + p2(d.getUTCMonth()+1) + p2(d.getUTCDate());
-    var time = p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + '.' + p3(d.getUTCMilliseconds()) + '0';
-    return date + ' ' + time;
-  };
-
-  W._aaIsTime = function(xs) {
-    if (!xs || !xs.length) return false;
-    var v = xs[0]; if (Array.isArray(v)) v = v[0];
-    return typeof v === 'number' && v > 1e12;
-  };
-
-  W._aaXStr = function(x, isTime) {
-    return isTime ? _aaMsToEvl(x) : x.toFixed(6);
-  };
-
-  // Collect sources whose names start with prefix, return arrays of {xs,ys}
-  W._aaCollect = function(prefix) {
-    var result = [];
-    _aaGetModels().forEach(function(m) {
-      if (m.name && m.name.indexOf(prefix) === 0 && m.data && m.data.xs) {
-        for (var i = 0; i < m.data.xs.length; i++) {
-          result.push({ xs: m.data.xs[i], ys: m.data.ys[i] });
-        }
-      }
-    });
-    return result;
-  };
-
-  W._aaDownload = function(content, filename) {
-    // Strategy 1: data: URI anchor click — works in most iframe contexts
-    // (unlike blob: URLs which are blocked by GCP / JupyterLab sandbox).
-    try {
-      var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
-      var a = document.createElement('a');
-      a.href = uri;
-      a.download = filename;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // Give the browser a moment; if nothing happened we fall through
-      // (we can't detect failure synchronously, so we just return here —
-      //  the user will see the modal if they click again after nothing downloaded).
-      return;
-    } catch(e1) { /* fall through */ }
-
-    // Strategy 2: open data: URI in a new tab — user can File > Save As
-    try {
-      var uri2 = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
-      var w = window.open(uri2, '_blank');
-      if (w) {
-        w.document && w.document.title && (w.document.title = filename);
-        return;
-      }
-    } catch(e2) { /* fall through */ }
-
-    // Strategy 3: modal textarea — always works; user copies the text manually.
-    // Styled to match the aa-plot sidebar palette.
-    var overlay = document.createElement('div');
-    overlay.style.cssText = [
-      'position:fixed','top:0','left:0','width:100%','height:100%',
-      'background:rgba(15,23,42,0.72)','z-index:99999',
-      'display:flex','align-items:center','justify-content:center'
-    ].join(';');
-
-    var box = document.createElement('div');
-    box.style.cssText = [
-      'background:#f8fafc','border:1px solid #cbd5e1','border-radius:10px',
-      'padding:18px 20px','max-width:720px','width:92%','max-height:80vh',
-      'display:flex','flex-direction:column','gap:10px',
-      'font-family:Menlo,Consolas,DejaVu Sans Mono,monospace','font-size:0.82em'
-    ].join(';');
-
-    var title = document.createElement('div');
-    title.style.cssText = 'font-weight:700;color:#0369a1;font-size:1.05em;';
-    title.textContent = '\u26a0\ufe0f Download blocked \u2014 copy text below (' + filename + ')';
-
-    var hint = document.createElement('div');
-    hint.style.cssText = 'color:#64748b;font-size:0.92em;';
-    hint.textContent = 'Your browser or environment blocked the download (sandboxed iframe). Select all and copy, then paste into a plain .txt file and rename to ' + filename + '.';
-
-    var ta = document.createElement('textarea');
-    ta.value = content;
-    ta.style.cssText = [
-      'width:100%','min-height:220px','resize:vertical',
-      'background:#0f172a','color:#e2e8f0',
-      'border:1px solid #334155','border-radius:6px',
-      'padding:8px 10px','font-family:inherit','font-size:1em',
-      'box-sizing:border-box'
-    ].join(';');
-    ta.readOnly = false;
-    ta.spellcheck = false;
-
-    var btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:8px;';
-
-    var copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Copy to clipboard';
-    copyBtn.style.cssText = [
-      'background:#e0f2fe','border:1px solid #7dd3fc','border-radius:5px',
-      'color:#0369a1','padding:5px 14px','cursor:pointer','font-family:inherit'
-    ].join(';');
-    copyBtn.onclick = function() {
-      ta.select();
-      try {
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(content).then(function(){
-            copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
-            setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
-          });
-        } else {
-          document.execCommand('copy');
-          copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
-          setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
-        }
-      } catch(e) { copyBtn.textContent = 'Copy failed'; }
-    };
-
-    var closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = [
-      'background:#f1f5f9','border:1px solid #cbd5e1','border-radius:5px',
-      'color:#475569','padding:5px 14px','cursor:pointer','font-family:inherit'
-    ].join(';');
-    closeBtn.onclick = function() { document.body.removeChild(overlay); };
-    overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
-
-    btnRow.appendChild(copyBtn);
-    btnRow.appendChild(closeBtn);
-    box.appendChild(title);
-    box.appendChild(hint);
-    box.appendChild(ta);
-    box.appendChild(btnRow);
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-    setTimeout(function(){ ta.select(); }, 80);
-  };
-
-  // Export EVL — collects from aa_freehand_* and aa_lines_* sources
-  // Format: Echoview Line File (EVBD 3)
-  // Each drawn stroke / polyline becomes one named EVL line.
-  W.aaExportEvl = function() {
-    var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
-    // Filter out empty segments
-    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
-    if (!segs.length) {
-      alert('No lines drawn yet.\\nActivate the Freehand (\\u270F) or Polyline (\\u26AA) tool in the echogram toolbar, draw some lines, then export.');
-      return;
-    }
-    var isTime = _aaIsTime(segs[0].xs);
-    var rows = ['EVBD 3 9.0.120.30842', String(segs.length)];
-    segs.forEach(function(seg, li) {
-      rows.push('aa-plot line ' + (li + 1));
-      rows.push('-10000.0000 0 0');
-      rows.push(String(seg.xs.length));
-      for (var i = 0; i < seg.xs.length; i++) {
-        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
-      }
-    });
-    _aaDownload(rows.join('\\n'), 'aa_lines.evl');
-  };
-
-  // Export EVR — collects from aa_regions_* sources
-  // Format: Echoview Region File (EVBD 3)
-  // Each drawn polygon becomes one EVR region (type 1 = analysis).
-  W.aaExportEvr = function() {
-    var segs = _aaCollect('aa_regions_');
-    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
-    if (!segs.length) {
-      alert('No regions drawn yet.\\nActivate the Region (\\u25A1) tool in the echogram toolbar, draw some polygons, then export.');
-      return;
-    }
-    var isTime = _aaIsTime(segs[0].xs);
-    var rows = ['EVBD 3 9.0.120.30842', String(segs.length) + ' 4'];
-    segs.forEach(function(seg, ri) {
-      rows.push('Region ' + (ri + 1));
-      rows.push('');          // notes
-      rows.push('');          // detection settings
-      rows.push('1');         // region type: 1 = analysis
-      rows.push(String(seg.xs.length));
-      for (var i = 0; i < seg.xs.length; i++) {
-        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
-      }
-    });
-    _aaDownload(rows.join('\\n'), 'aa_regions.evr');
-  };
-
-  // Clear all drawing layers
-  W.aaClearDraw = function() {
-    if (!confirm('Clear all drawn lines and regions?')) return;
-    _aaGetModels().forEach(function(m) {
-      if (!m.name) return;
-      var pfx = m.name;
-      if (pfx.indexOf('aa_freehand_') === 0 ||
-          pfx.indexOf('aa_lines_') === 0 ||
-          pfx.indexOf('aa_regions_') === 0) {
-        try {
-          m.data = { xs: [], ys: [] };
-          if (m.change) m.change.emit();
-        } catch(e) {}
-      }
-    });
-  };
-})(window);
-</script>
-"""
-
-
-def _apply_draw_tools(fig, draw_idx: int) -> None:
+def _make_draw_sources(draw_idx: int):
     """
-    Inject three drawing layers + tools onto an existing Bokeh figure.
-
-    Layers
-    ------
-    aa_freehand_{i}  MultiLine  gold  #FFD700   FreehandDrawTool
-    aa_lines_{i}     MultiLine  cyan  #00FFFF   PolyDrawTool  (double-click to finish)
-    aa_regions_{i}   Patches    blue  #4499FF   PolyDrawTool  (double-click to close)
-
-    PolyEditTool is also added so drawn geometry can be edited (shift-click vertex to delete).
-    Sources are named so the JS export helpers can find them across all tabs.
+    Create the three ColumnDataSources for a drawing layer BEFORE the plot hook.
+    Returning them from Python means they can be passed directly as CustomJS args
+    on the export buttons — no DOM traversal or _all_models lookup required.
     """
-    from bokeh.models import (
-        FreehandDrawTool, PolyDrawTool, PolyEditTool,
-        ColumnDataSource,
-    )
+    from bokeh.models import ColumnDataSource
+    fh_src = ColumnDataSource(data={"xs": [], "ys": []})
+    ln_src = ColumnDataSource(data={"xs": [], "ys": []})
+    rg_src = ColumnDataSource(data={"xs": [], "ys": []})
+    return fh_src, ln_src, rg_src
 
-    # ── Freehand (gold) — exports as EVL ──────────────────────────────────
-    fh_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_freehand_{draw_idx}")
+
+def _apply_draw_renderers(fig, fh_src, ln_src, rg_src) -> None:
+    """Attach drawing renderers and tools to a Bokeh figure using pre-created sources."""
+    from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool, ColumnDataSource
+
+    # Freehand (gold) — exports as EVL
     fh_rend = fig.multi_line(
         "xs", "ys", source=fh_src,
         line_color="#FFD700", line_width=2.0, line_alpha=0.92,
         line_cap="round", line_join="round",
     )
     freehand_tool = FreehandDrawTool(renderers=[fh_rend], num_objects=0)
-    freehand_tool.description = "Freehand line (→ EVL)"
+    freehand_tool.description = "Freehand line (\u2192 EVL)"
 
-    # ── Polyline segments (cyan dashed) — exports as EVL ─────────────────
-    ln_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_lines_{draw_idx}")
+    # Polyline (cyan dashed) — exports as EVL
     ln_rend = fig.multi_line(
         "xs", "ys", source=ln_src,
         line_color="#00FFFF", line_width=2.0, line_alpha=0.92,
     )
     ln_rend.glyph.line_dash = [8, 4]
     line_tool = PolyDrawTool(renderers=[ln_rend], num_objects=0)
-    line_tool.description = "Polyline segments (→ EVL, dbl-click to finish)"
+    line_tool.description = "Polyline (\u2192 EVL, dbl-click to finish)"
 
-    # ── Region polygons (blue translucent) — exports as EVR ───────────────
-    rg_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_regions_{draw_idx}")
+    # Region polygons (blue) — exports as EVR
     rg_rend = fig.patches(
         "xs", "ys", source=rg_src,
         fill_color="#4499FF", fill_alpha=0.18,
         line_color="#4499FF", line_width=2.0, line_alpha=0.92,
     )
     region_tool = PolyDrawTool(renderers=[rg_rend], num_objects=0)
-    region_tool.description = "Region polygon (→ EVR, dbl-click to close)"
+    region_tool.description = "Region polygon (\u2192 EVR, dbl-click to close)"
 
-    # ── Vertex editor — lets you drag / delete vertices after drawing ──────
+    # Vertex editor
     try:
         vtx_src = ColumnDataSource(data={"x": [], "y": []})
         vtx_rend = fig.circle(
@@ -1024,87 +703,272 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
             size=9, color="white", fill_alpha=0.85,
             line_color="#64748b", line_width=1.2,
         )
-        edit_tool = PolyEditTool(
-            renderers=[ln_rend, rg_rend],
-            vertex_renderer=vtx_rend,
-        )
+        edit_tool = PolyEditTool(renderers=[ln_rend, rg_rend], vertex_renderer=vtx_rend)
         edit_tool.description = "Edit vertices (shift-click to delete)"
         fig.add_tools(freehand_tool, line_tool, region_tool, edit_tool)
     except Exception as exc:
-        logger.debug(f"PolyEditTool unavailable ({exc}); skipping vertex editor.")
+        logger.debug(f"PolyEditTool unavailable: {exc}")
         fig.add_tools(freehand_tool, line_tool, region_tool)
 
 
-def _build_annotation_panel() -> pn.pane.HTML:
+# ---------------------------------------------------------------------------
+# JS shared snippets — composed into each button's CustomJS code string.
+# Sources arrive as direct Python object references in `args`, not via
+# any DOM or document traversal.
+# ---------------------------------------------------------------------------
+
+# x-axis timestamp formatter for EVL/EVR (Echoview format: YYYYMMDD HHMMSS.mmm0)
+_JS_FMT_X = """\
+function fmtX(v) {
+    if (x_is_time) {
+        var d = new Date(v);
+        var p = function(n, w) { return String(n).padStart(w || 2, '0'); };
+        return p(d.getUTCFullYear(),4) + p(d.getUTCMonth()+1) + p(d.getUTCDate())
+             + ' ' + p(d.getUTCHours()) + p(d.getUTCMinutes())
+             + p(d.getUTCSeconds()) + '.' + p(d.getUTCMilliseconds(),3) + '0';
+    }
+    return v.toFixed(6);
+}
+"""
+
+# Download helper: data: URI -> new-tab data: URI -> modal textarea fallback
+_JS_DOWNLOAD = """\
+function doDownload(content, filename) {
+    try {
+        var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+        var a = document.createElement('a');
+        a.href = uri; a.download = filename; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        return;
+    } catch(e1) {}
+    try {
+        window.open('data:text/plain;charset=utf-8,' + encodeURIComponent(content), '_blank');
+        return;
+    } catch(e2) {}
+    // Modal fallback — always works even in sandboxed iframes
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;'
+        + 'background:rgba(15,23,42,0.75);z-index:99999;'
+        + 'display:flex;align-items:center;justify-content:center;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;'
+        + 'padding:18px 20px;max-width:720px;width:92%;max-height:80vh;'
+        + 'display:flex;flex-direction:column;gap:10px;'
+        + 'font-family:Menlo,Consolas,monospace;font-size:0.82em;';
+    var ttl = document.createElement('div');
+    ttl.style.cssText = 'font-weight:700;color:#0369a1;font-size:1.05em;';
+    ttl.textContent = '\\u26a0\\ufe0f Download blocked \\u2014 copy below (' + filename + ')';
+    var hint = document.createElement('div');
+    hint.style.cssText = 'color:#64748b;font-size:0.92em;';
+    hint.textContent = 'Select all and copy, then paste into a plain .txt and rename to ' + filename + '.';
+    var ta = document.createElement('textarea');
+    ta.value = content;
+    ta.style.cssText = 'width:100%;min-height:200px;resize:vertical;'
+        + 'background:#0f172a;color:#e2e8f0;border:1px solid #334155;'
+        + 'border-radius:6px;padding:8px 10px;font-family:inherit;font-size:1em;box-sizing:border-box;';
+    ta.spellcheck = false;
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;';
+    var cpBtn = document.createElement('button');
+    cpBtn.textContent = 'Copy to clipboard';
+    cpBtn.style.cssText = 'background:#e0f2fe;border:1px solid #7dd3fc;border-radius:5px;'
+        + 'color:#0369a1;padding:5px 14px;cursor:pointer;font-family:inherit;';
+    cpBtn.onclick = function() {
+        ta.select();
+        try {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(content).then(function(){
+                    cpBtn.textContent='Copied!'; cpBtn.style.color='#16a34a';
+                    setTimeout(function(){ cpBtn.textContent='Copy to clipboard'; cpBtn.style.color=''; }, 1800);
+                });
+            } else { document.execCommand('copy'); cpBtn.textContent='Copied!'; }
+        } catch(e) { cpBtn.textContent='Copy failed'; }
+    };
+    var clBtn = document.createElement('button');
+    clBtn.textContent = 'Close';
+    clBtn.style.cssText = 'background:#f1f5f9;border:1px solid #cbd5e1;border-radius:5px;'
+        + 'color:#475569;padding:5px 14px;cursor:pointer;font-family:inherit;';
+    clBtn.onclick = function() { document.body.removeChild(overlay); };
+    overlay.onclick = function(e) { if (e.target===overlay) document.body.removeChild(overlay); };
+    btnRow.appendChild(cpBtn); btnRow.appendChild(clBtn);
+    box.appendChild(ttl); box.appendChild(hint); box.appendChild(ta); box.appendChild(btnRow);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    setTimeout(function(){ ta.select(); }, 80);
+}
+"""
+
+# Collect non-empty segments from a list of CDS objects
+_JS_COLLECT = """\
+function collect(srcs) {
+    var out = [];
+    for (var i = 0; i < srcs.length; i++) {
+        var d = srcs[i].data;
+        if (!d || !d.xs) continue;
+        for (var j = 0; j < d.xs.length; j++) {
+            if (d.xs[j] && d.xs[j].length > 0)
+                out.push({xs: d.xs[j], ys: d.ys[j]});
+        }
+    }
+    return out;
+}
+"""
+
+# EVL export — args: fh_srcs, ln_srcs, x_is_time
+_EVL_JS = _JS_FMT_X + _JS_DOWNLOAD + _JS_COLLECT + """\
+var segs = collect(fh_srcs).concat(collect(ln_srcs));
+if (!segs.length) {
+    alert('No lines drawn yet.\\nActivate the Freehand or Polyline tool in the plot toolbar, draw some lines, then export.');
+    return;
+}
+var rows = ['EVBD 3 9.0.120.30842', String(segs.length)];
+for (var si = 0; si < segs.length; si++) {
+    var seg = segs[si];
+    rows.push('aa-plot line ' + (si + 1));
+    rows.push('-10000.0000 0 0');
+    rows.push(String(seg.xs.length));
+    for (var pi = 0; pi < seg.xs.length; pi++)
+        rows.push(fmtX(seg.xs[pi]) + '\\t' + seg.ys[pi].toFixed(4));
+}
+doDownload(rows.join('\\n'), 'aa_lines.evl');
+"""
+
+# EVR export — args: rg_srcs, x_is_time
+_EVR_JS = _JS_FMT_X + _JS_DOWNLOAD + _JS_COLLECT + """\
+var segs = collect(rg_srcs);
+if (!segs.length) {
+    alert('No regions drawn yet.\\nActivate the Region tool in the plot toolbar, draw some polygons, then export.');
+    return;
+}
+var rows = ['EVBD 3 9.0.120.30842', String(segs.length) + ' 4'];
+for (var si = 0; si < segs.length; si++) {
+    var seg = segs[si];
+    rows.push('aa-plot region ' + (si + 1));
+    rows.push('');
+    rows.push('');
+    rows.push('1');
+    rows.push(String(seg.xs.length));
+    for (var pi = 0; pi < seg.xs.length; pi++)
+        rows.push(fmtX(seg.xs[pi]) + '\\t' + seg.ys[pi].toFixed(4));
+}
+doDownload(rows.join('\\n'), 'aa_regions.evr');
+"""
+
+# Clear all — args: fh_srcs, ln_srcs, rg_srcs
+_CLR_JS = """\
+if (!confirm('Clear all drawn lines and regions?')) return;
+function clr(srcs) {
+    for (var i = 0; i < srcs.length; i++) {
+        srcs[i].data = {xs: [], ys: []};
+        srcs[i].change.emit();
+    }
+}
+clr(fh_srcs); clr(ln_srcs); clr(rg_srcs);
+"""
+
+
+def _build_draw_controls(
+    fh_srcs: list,
+    ln_srcs: list,
+    rg_srcs: list,
+    x_is_time: bool,
+) -> pn.viewable.Viewable:
     """
-    Build the annotation controls pane — consistent with the sidebar style.
+    Annotation toolbar: legend (HTML) + three Bokeh Button widgets.
 
-    The panel is purely HTML + a <script> block defining JS helpers and
-    download functions.  No server required; works in the static embedded HTML.
-
-    EVL format notes
-    ----------------
-    EVBD 3 9.0.120.30842
-    <n_lines>
-    <line_name>
-    -10000.0000 0 0          (bad_data_value  status  editable)
-    <n_points>
-    YYYYMMDD HHMMSS.ssss     depth_m          (tab-separated)
-    ...
-
-    EVR format notes
-    ----------------
-    EVBD 3 9.0.120.30842
-    <n_regions> 4
-    <region_name>
-                             (notes — blank)
-                             (detection_settings — blank)
-    1                        (region type: 1=analysis)
-    <n_points>
-    YYYYMMDD HHMMSS.ssss     depth_m
-    ...
+    The buttons are proper Bokeh objects whose CustomJS callbacks receive
+    the ColumnDataSource lists directly via `args` — serialised into the
+    embedded HTML by Panel/Bokeh just like any other model reference.
+    This is why they work without a live server, without window globals,
+    and without any _all_models traversal.
     """
-    pencil_svg = (
-        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
-        'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
-        '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
-        '</svg>'
+    from bokeh.models import Button as BokehButton, CustomJS
+
+    evl_btn = BokehButton(
+        label="\u2b07 Export EVL  (freehand + polylines)",
+        button_type="primary",
+        width=310,
     )
+    evl_btn.js_on_click(CustomJS(
+        args={"fh_srcs": fh_srcs, "ln_srcs": ln_srcs, "x_is_time": x_is_time},
+        code=_EVL_JS,
+    ))
 
-    html = f"""{_DRAW_CSS}
-{_DRAW_JS_HELPERS}
+    evr_btn = BokehButton(
+        label="\u2b07 Export EVR  (region polygons)",
+        button_type="primary",
+        width=280,
+    )
+    evr_btn.js_on_click(CustomJS(
+        args={"rg_srcs": rg_srcs, "x_is_time": x_is_time},
+        code=_EVR_JS,
+    ))
+
+    clr_btn = BokehButton(
+        label="\U0001f5d1 Clear all",
+        button_type="danger",
+        width=130,
+    )
+    clr_btn.js_on_click(CustomJS(
+        args={"fh_srcs": fh_srcs, "ln_srcs": ln_srcs, "rg_srcs": rg_srcs},
+        code=_CLR_JS,
+    ))
+
+    legend_html = """\
+<style>
+.aa-draw-wrap {
+    border-radius:8px; font-family:'Menlo','Consolas','DejaVu Sans Mono',monospace;
+    font-size:0.80em; background:#f8fafc; border:1px solid #cbd5e1; overflow:hidden;
+}
+.aa-draw-title {
+    background:linear-gradient(135deg,#f0fdf4 0%,#f8fafc 100%);
+    color:#166534; padding:9px 14px; font-weight:700; font-size:1.0em;
+    letter-spacing:0.04em; border-bottom:1px solid #bbf7d0;
+    display:flex; align-items:center; gap:8px;
+}
+.aa-draw-body { padding:10px 14px 6px 14px; }
+.aa-draw-legend { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:6px; line-height:1.5; }
+.aa-draw-legend-item { display:flex; align-items:center; gap:7px; color:#475569; font-size:0.92em; }
+.aa-sw-fh { width:26px; height:3px; background:#FFD700; border-radius:2px; flex-shrink:0; }
+.aa-sw-pl { width:26px; height:0; border-top:2px dashed #00FFFF; flex-shrink:0; }
+.aa-sw-rg { width:20px; height:12px; background:rgba(68,153,255,0.35);
+            border:2px solid #4499FF; border-radius:3px; flex-shrink:0; }
+.aa-draw-hint { color:#94a3b8; font-size:0.82em; margin-top:8px; margin-bottom:6px; line-height:1.55; }
+</style>
 <div class="aa-draw-wrap">
-  <div class="aa-draw-title">{pencil_svg} Annotation Tools</div>
+  <div class="aa-draw-title">&#9998; Annotation Tools</div>
   <div class="aa-draw-body">
     <div class="aa-draw-legend">
       <div class="aa-draw-legend-item">
-        <div class="aa-swatch-freehand"></div>
-        <span><b>Freehand</b> &mdash; activate ✏ in toolbar, draw freely</span>
+        <div class="aa-sw-fh"></div>
+        <span><b>Freehand</b> &mdash; activate &#9999; in toolbar, draw freely</span>
       </div>
       <div class="aa-draw-legend-item">
-        <div class="aa-swatch-poly"></div>
-        <span><b>Polyline</b> &mdash; activate ⬤ in toolbar, click points, dbl-click to finish</span>
+        <div class="aa-sw-pl"></div>
+        <span><b>Polyline</b> &mdash; click points, dbl-click to finish</span>
       </div>
       <div class="aa-draw-legend-item">
-        <div class="aa-swatch-region"></div>
-        <span><b>Region</b> &mdash; activate ▭ in toolbar, click vertices, dbl-click to close</span>
+        <div class="aa-sw-rg"></div>
+        <span><b>Region</b> &mdash; click vertices, dbl-click to close</span>
       </div>
-    </div>
-    <div class="aa-draw-btns">
-      <button class="aa-draw-btn evl" onclick="aaExportEvl()">&#11015; Export EVL &nbsp;<span style="opacity:.65;font-size:.9em">(freehand + polylines)</span></button>
-      <button class="aa-draw-btn evr" onclick="aaExportEvr()">&#11015; Export EVR &nbsp;<span style="opacity:.65;font-size:.9em">(regions)</span></button>
-      <button class="aa-draw-btn clr" onclick="aaClearDraw()">&#128465; Clear all</button>
     </div>
     <div class="aa-draw-hint">
-      <b>Tip:</b> tools appear in the plot toolbar above the echogram &mdash; switch freely between draw, zoom&nbsp;&#x1F50D; and pan&nbsp;&#x270B;.<br>
-      Drag any vertex with the <b>Edit</b> tool to adjust; shift-click a vertex to delete it.<br>
-      EVL / EVR files use Echoview line/region format and open directly in Echoview.
+      Switch freely between draw, zoom &#128269; and pan &#128075; in the toolbar above the echogram.<br>
+      Drag a vertex with the <b>Edit</b> tool to reposition; shift-click to delete.<br>
+      Export collects annotations from <b>all tabs</b>. EVL/EVR open directly in Echoview.
     </div>
   </div>
-</div>
-"""
-    return pn.pane.HTML(html, sizing_mode="stretch_width")
+</div>"""
+
+    return pn.Column(
+        pn.pane.HTML(legend_html, sizing_mode="stretch_width"),
+        pn.Row(
+            pn.pane.Bokeh(evl_btn),
+            pn.pane.Bokeh(evr_btn),
+            pn.pane.Bokeh(clr_btn),
+            sizing_mode="stretch_width",
+        ),
+        sizing_mode="stretch_width",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1127,26 +991,18 @@ def _plot_echogram(
     flip_y: bool = True,
     show_hover: bool = True,
     show_crosshair: bool = True,
-    draw_idx: int = 0,
-    show_draw: bool = True,
+    fh_src=None,
+    ln_src=None,
+    rg_src=None,
 ):
     da = da.rename(var)
-
     clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
 
     common_kw = dict(
-        x=x_name,
-        y=y_name,
-        cmap=cmap,
-        clim=clim,
-        responsive=True,
-        min_width=min_width,
-        height=height,
-        colorbar=True,
-        toolbar=toolbar,
-        title=title,
-        xlabel=_x_label(x_name),
-        ylabel=_y_label(y_name),
+        x=x_name, y=y_name, cmap=cmap, clim=clim,
+        responsive=True, min_width=min_width, height=height,
+        colorbar=True, toolbar=toolbar, title=title,
+        xlabel=_x_label(x_name), ylabel=_y_label(y_name),
     )
 
     try:
@@ -1177,17 +1033,16 @@ def _plot_echogram(
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
 
-    # Combined hook: stretch_width + drawing tools
-    _draw_idx = draw_idx
-    _add_draw = show_draw
+    # Capture sources in closure — hook fires later when Bokeh renders
+    _fh, _ln, _rg = fh_src, ln_src, rg_src
 
     def _combined_hook(bokeh_plot, element):
         bokeh_plot.state.sizing_mode = "stretch_width"
-        if _add_draw:
+        if _fh is not None:
             try:
-                _apply_draw_tools(bokeh_plot.state, _draw_idx)
+                _apply_draw_renderers(bokeh_plot.state, _fh, _ln, _rg)
             except Exception as exc:
-                logger.warning(f"Drawing tools unavailable: {exc}")
+                logger.warning(f"Drawing tools could not be attached: {exc}")
 
     plot = plot.opts(
         opts.QuadMesh(hooks=[_combined_hook]),
@@ -1230,9 +1085,9 @@ def _build_single_plot(
     flip_y: bool = True,
     show_hover: bool = True,
     show_crosshair: bool = True,
-    draw_idx: int = 0,
     show_draw: bool = True,
 ):
+    """Returns (plot, fh_srcs, ln_srcs, rg_srcs)."""
     da = ds[var]
     chan_dim = "channel" if "channel" in da.dims else None
     freq_dim = "frequency_nominal" if "frequency_nominal" in da.dims else None
@@ -1277,14 +1132,23 @@ def _build_single_plot(
             label = f"frequency={_coord_to_str(f_val)}"
 
     da = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
-    return _plot_echogram(
+
+    fh_src = ln_src = rg_src = None
+    if show_draw:
+        fh_src, ln_src, rg_src = _make_draw_sources(0)
+
+    plot = _plot_echogram(
         da=da, var=var, x_name=x_name, y_name=y_name,
         title=f"{var} \u2022 {label}", cmap=cmap, vmin=vmin, vmax=vmax,
-        min_width=min_width, height=height, toolbar=toolbar,
-        pin_div=pin_div, flip_y=flip_y,
-        show_hover=show_hover, show_crosshair=show_crosshair,
-        draw_idx=draw_idx, show_draw=show_draw,
+        min_width=min_width, height=height, toolbar=toolbar, pin_div=pin_div,
+        flip_y=flip_y, show_hover=show_hover, show_crosshair=show_crosshair,
+        fh_src=fh_src, ln_src=ln_src, rg_src=rg_src,
     )
+
+    fh_srcs = [fh_src] if fh_src is not None else []
+    ln_srcs = [ln_src] if ln_src is not None else []
+    rg_srcs = [rg_src] if rg_src is not None else []
+    return plot, fh_srcs, ln_srcs, rg_srcs
 
 
 def _build_all_tabs(
@@ -1308,7 +1172,11 @@ def _build_all_tabs(
     show_crosshair: bool = True,
     show_draw: bool = True,
 ):
+    """Returns (widget, fh_srcs, ln_srcs, rg_srcs)."""
     da = ds[var]
+    all_fh: list = []
+    all_ln: list = []
+    all_rg: list = []
 
     if "channel" in da.dims:
         chan_dim = "channel"
@@ -1333,31 +1201,43 @@ def _build_all_tabs(
             da2 = da.isel({chan_dim: ci})
             da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
 
+            fh_src = ln_src = rg_src = None
+            if show_draw:
+                fh_src, ln_src, rg_src = _make_draw_sources(ci)
+                all_fh.append(fh_src)
+                all_ln.append(ln_src)
+                all_rg.append(rg_src)
+
             plot = _plot_echogram(
                 da=da2, var=var, x_name=x_name, y_name=y_name,
                 title=f"{var} \u2022 {label}", cmap=cmap, vmin=vmin, vmax=vmax,
-                min_width=min_width, height=height, toolbar=toolbar,
-                pin_div=pin_div, flip_y=flip_y,
-                show_hover=show_hover, show_crosshair=show_crosshair,
-                draw_idx=ci, show_draw=show_draw,
+                min_width=min_width, height=height, toolbar=toolbar, pin_div=pin_div,
+                flip_y=flip_y, show_hover=show_hover, show_crosshair=show_crosshair,
+                fh_src=fh_src, ln_src=ln_src, rg_src=rg_src,
             )
             tabs.append((label, plot))
 
-        return pn.Tabs(*tabs, sizing_mode="stretch_width", dynamic=False)
+        return pn.Tabs(*tabs, sizing_mode="stretch_width", dynamic=False), all_fh, all_ln, all_rg
 
     # Fallback — no channel dim
+    fh_src = ln_src = rg_src = None
+    if show_draw:
+        fh_src, ln_src, rg_src = _make_draw_sources(0)
+        all_fh, all_ln, all_rg = [fh_src], [ln_src], [rg_src]
+
     da2 = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
     plot = _plot_echogram(
         da=da2, var=var, x_name=x_name, y_name=y_name, title=var,
         cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
         toolbar=toolbar, pin_div=pin_div, flip_y=flip_y,
         show_hover=show_hover, show_crosshair=show_crosshair,
-        draw_idx=0, show_draw=show_draw,
+        fh_src=fh_src, ln_src=ln_src, rg_src=rg_src,
     )
-    return pn.Column(
+    body = pn.Column(
         pn.pane.Markdown("No channel dimension detected; plotting a single array."),
         plot, sizing_mode="stretch_width",
     )
+    return body, all_fh, all_ln, all_rg
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1436,6 +1316,7 @@ def _render_layout(
             logger.info(f"Y-axis '{y_name}' not in depth/range list \u2192 keeping default orientation.")
 
     min_width = max(width, 100)
+    x_is_time = "time" in x_name.lower()
 
     from bokeh.models import Div as BokehDiv
     pin_div = BokehDiv(
@@ -1452,23 +1333,21 @@ def _render_layout(
     header = _build_header(ds, var, x_name, y_name, flip_y)
 
     if all_plots:
-        body = _build_all_tabs(
+        body, fh_srcs, ln_srcs, rg_srcs = _build_all_tabs(
             ds=ds, var=var, x_name=x_name, y_name=y_name, group_by=group_by,
             cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
             toolbar=toolbar, decimate=decimate, ymin=ymin, ymax=ymax,
             pin_div=pin_div, flip_y=flip_y,
-            show_hover=show_hover, show_crosshair=show_crosshair,
-            show_draw=show_draw,
+            show_hover=show_hover, show_crosshair=show_crosshair, show_draw=show_draw,
         )
     else:
-        body = _build_single_plot(
+        body, fh_srcs, ln_srcs, rg_srcs = _build_single_plot(
             ds=ds, var=var, x_name=x_name, y_name=y_name,
             frequency=frequency, channel=channel,
             cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
             toolbar=toolbar, decimate=decimate, ymin=ymin, ymax=ymax,
             pin_div=pin_div, flip_y=flip_y,
-            show_hover=show_hover, show_crosshair=show_crosshair,
-            draw_idx=0, show_draw=show_draw,
+            show_hover=show_hover, show_crosshair=show_crosshair, show_draw=show_draw,
         )
 
     plot_inner: list = []
@@ -1480,9 +1359,9 @@ def _render_layout(
 
     parts: list = [header, plot_section]
 
-    if show_draw:
+    if show_draw and fh_srcs:
         parts.append(pn.Spacer(height=6))
-        parts.append(_build_annotation_panel())
+        parts.append(_build_draw_controls(fh_srcs, ln_srcs, rg_srcs, x_is_time))
 
     if show_log:
         parts.append(pn.Spacer(height=8))
