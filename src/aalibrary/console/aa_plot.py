@@ -728,6 +728,10 @@ def _plot_echogram(
     if flip_y:
         plot = plot.opts(invert_yaxis=True)
 
+    # Wrap in a HoloViews pane with stretch_width so the Bokeh figure
+    # fills the same container as the data summary panel — they stay in sync.
+    plot = pn.pane.HoloViews(plot, sizing_mode="stretch_width")
+
     extra_tools = []
     try:
         hover, crosshair, tap = _build_interaction_tools(var, x_name, y_name, pin_div)
@@ -744,14 +748,6 @@ def _plot_echogram(
             opts.QuadMesh(tools=extra_tools, active_tools=["wheel_zoom"]),
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
-
-    # Force Bokeh sizing_mode to stretch_width so the rendered figure
-    # fills the Panel column container — this is what keeps the plot
-    # exactly the same width as the data summary panel at all screen sizes.
-    plot = plot.opts(
-        opts.QuadMesh(sizing_mode="stretch_width"),
-        opts.Image(sizing_mode="stretch_width"),
-    )
 
     return plot
 
