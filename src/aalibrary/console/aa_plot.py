@@ -13,6 +13,8 @@ Goals:
 - No matplotlib. Output is standalone HTML.
 - Print absolute HTML path to stdout for downstream chaining.
 - Keep stdout clean except for final path (logs go to stderr via loguru).
+- Drawing tools (freehand, polyline, region polygon) overlay the echogram;
+  annotations export to EVL (lines) or EVR (regions) Echoview-compatible files.
 """
 
 from __future__ import annotations
@@ -86,6 +88,9 @@ Appearance:
   --no-crosshair            Disable crosshair cursor.
   --no-cmap-picker          Disable the interactive colormap picker in the HTML.
   --no-log                  Disable the copyable data-summary log panel.
+
+Drawing & annotation:
+  --no-draw                 Disable the freehand/polyline/region drawing tools.
 
 Subsetting / performance:
   --decimate INT            Take every Nth sample along x-axis (default: 1).
@@ -305,9 +310,6 @@ _CLIPBOARD_SVG = (
 )
 
 # Robust clipboard JS.
-# Uses json.dumps for safe string encoding (handles newlines, quotes, unicode).
-# Tries Clipboard API first; falls back to textarea+execCommand which works
-# on plain HTTP, GCP Jupyter, and any non-secure context.
 _COPY_JS_TEMPLATE = """\
 (function(btn) {{
     var text = {text_json};
@@ -360,7 +362,6 @@ def _build_data_log(
     sections: list[str] = []
     sections.append(f'<div class="aa-sidebar-title">{_CLIPBOARD_SVG} Data Summary</div>')
 
-    # Source
     src = ds.encoding.get("source", "(in-memory)")
     src_short = Path(src).name if src != "(in-memory)" else src
     sec = '<div class="aa-section"><div class="aa-section-head">Source</div>'
@@ -371,7 +372,6 @@ def _build_data_log(
     sec += '</div>'
     sections.append(sec)
 
-    # Metadata
     attrs = ds.attrs
     interesting_keys = [
         ("sonar_model", "sonar"), ("survey_name", "survey"), ("title", "title"),
@@ -385,7 +385,6 @@ def _build_data_log(
         sec += "".join(attr_rows) + '</div>'
         sections.append(sec)
 
-    # Dimensions
     da = ds[var]
     sec = '<div class="aa-section"><div class="aa-section-head">Dimensions</div>'
     for d, s in da.sizes.items():
@@ -393,7 +392,6 @@ def _build_data_log(
     sec += '</div>'
     sections.append(sec)
 
-    # Coord ranges
     range_rows = []
     for cname in da.dims:
         if cname in ds.coords:
@@ -413,7 +411,6 @@ def _build_data_log(
         sec += "".join(range_rows) + '</div>'
         sections.append(sec)
 
-    # Channels
     chan_dim = "channel" if "channel" in da.dims else None
     f_on_chan = None
     if chan_dim:
@@ -451,7 +448,6 @@ def _build_data_log(
         sec += '</div>'
         sections.append(sec)
 
-    # Statistics
     finite = np.array([])
     sec = f'<div class="aa-section"><div class="aa-section-head">{var} Statistics</div>'
     try:
@@ -475,7 +471,6 @@ def _build_data_log(
     sec += '</div>'
     sections.append(sec)
 
-    # All variables
     sec = '<div class="aa-section"><div class="aa-section-head">All Variables</div>'
     for dv in ds.data_vars:
         shape_str = ", ".join(f"{s}" for s in ds[dv].shape)
@@ -483,7 +478,6 @@ def _build_data_log(
     sec += '</div>'
     sections.append(sec)
 
-    # Plain-text for clipboard
     plain_lines: list[str] = []
     plain_lines.append(f"aa-plot Data Summary — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     plain_lines.append(f"File: {ds.encoding.get('source', '(in-memory)')}")
@@ -513,7 +507,6 @@ def _build_data_log(
     except Exception:
         pass
 
-    # json.dumps produces a safe JS string literal with all escaping handled
     text_json = json.dumps("\n".join(plain_lines))
     copy_js = _COPY_JS_TEMPLATE.format(text_json=text_json)
     copy_btn = f'<button class="aa-copy-btn" onclick="{copy_js.strip()}">Copy to clipboard</button>'
@@ -601,27 +594,12 @@ def _build_cmap_picker(default_cmap: str) -> pn.pane.Bokeh:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
-    """
-    Returns (hover_tool, crosshair_tool, tap_tool).
-
-    Hover fix:
-      hvplot names the Bokeh ColumnDataSource column after da.name, so we use
-      f"@{var}" rather than the generic "@image" which always rendered as '???'.
-      We also call da.rename(var) before plotting to guarantee the name is set.
-
-    Tap / click-to-pin:
-      Clicking anywhere on the echogram updates a shared Bokeh Div below the
-      plot with the exact ping-time (or x-value) and range/depth. Simple,
-      zero-server, works in fully static embedded HTML.
-    """
     from bokeh.models import HoverTool, CrosshairTool, TapTool, CustomJS
 
     x_is_time = "time" in x_name.lower()
     y_lbl = _y_label(y_name)
     x_lbl = _x_label(x_name)
 
-    # --- Hover ---------------------------------------------------------------
-    # @{var} matches the column name hvplot puts in the ColumnDataSource.
     hover = HoverTool(
         tooltips=[
             (var,  f"@{var}{{0.3f}} dB"),
@@ -632,10 +610,8 @@ def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
         mode="mouse",
     )
 
-    # --- Crosshair -----------------------------------------------------------
     crosshair = CrosshairTool(line_color="#ffffff", line_alpha=0.5, line_width=1)
 
-    # --- Tap / pin -----------------------------------------------------------
     tap_js = """
     if (!cb_data || !cb_data.geometries || cb_data.geometries.length === 0) return;
     var pt = cb_data.geometries[0];
@@ -671,6 +647,365 @@ def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+#  DRAWING TOOLS  (freehand · polyline · region polygon)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_DRAW_CSS = """\
+<style>
+.aa-draw-wrap {
+    border-radius: 8px;
+    font-family: 'Menlo','Consolas','DejaVu Sans Mono',monospace;
+    font-size: 0.80em;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    overflow: hidden;
+}
+.aa-draw-title {
+    background: linear-gradient(135deg,#f0fdf4 0%,#f8fafc 100%);
+    color: #166534;
+    padding: 9px 14px;
+    font-weight: 700;
+    font-size: 1.0em;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #bbf7d0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.aa-draw-body { padding: 10px 14px 12px 14px; }
+.aa-draw-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+.aa-draw-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #475569;
+    font-size: 0.92em;
+}
+.aa-swatch-freehand {
+    width: 26px; height: 3px;
+    background: #FFD700;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.aa-swatch-poly {
+    width: 26px; height: 0;
+    border-top: 2px dashed #00FFFF;
+    flex-shrink: 0;
+}
+.aa-swatch-region {
+    width: 20px; height: 12px;
+    background: rgba(68,153,255,0.35);
+    border: 2px solid #4499FF;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.aa-draw-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 8px;
+}
+.aa-draw-btn {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    color: #475569;
+    padding: 5px 13px;
+    cursor: pointer;
+    font-size: 0.91em;
+    font-family: inherit;
+    transition: all 0.14s;
+    white-space: nowrap;
+}
+.aa-draw-btn:hover { background:#e2e8f0; color:#1e293b; border-color:#94a3b8; }
+.aa-draw-btn.evl  { border-color:#00BBCC; color:#0369a1; }
+.aa-draw-btn.evl:hover  { background:#e0f2fe; border-color:#0284c7; }
+.aa-draw-btn.evr  { border-color:#818CF8; color:#4338ca; }
+.aa-draw-btn.evr:hover  { background:#eef2ff; border-color:#6366f1; }
+.aa-draw-btn.clr  { border-color:#FCA5A5; color:#be123c; }
+.aa-draw-btn.clr:hover  { background:#fff1f2; border-color:#fb7185; }
+.aa-draw-hint {
+    color: #94a3b8;
+    font-size: 0.82em;
+    margin-top: 9px;
+    line-height: 1.55;
+}
+</style>
+"""
+
+# Shared JS helpers embedded once in the panel <script> block.
+_DRAW_JS_HELPERS = """\
+<script>
+(function(W){
+  W._aaGetModels = function() {
+    var out = [];
+    try {
+      var docs = window.Bokeh && Bokeh.documents;
+      if (!docs || !docs.length) return out;
+      var m = docs[0]._all_models;
+      if (!m) return out;
+      if (typeof m.forEach === 'function') { m.forEach(function(v){ if(v) out.push(v); }); }
+      else { for (var k in m) { if (m.hasOwnProperty(k)) out.push(m[k]); } }
+    } catch(e) { console.warn('aa-plot getModels:', e); }
+    return out;
+  };
+
+  W._aaMsToEvl = function(ms) {
+    var d = new Date(ms);
+    var p2 = function(n){ return String(n).padStart(2,'0'); };
+    var p3 = function(n){ return String(n).padStart(3,'0'); };
+    var date = String(d.getUTCFullYear()) + p2(d.getUTCMonth()+1) + p2(d.getUTCDate());
+    var time = p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + '.' + p3(d.getUTCMilliseconds()) + '0';
+    return date + ' ' + time;
+  };
+
+  W._aaIsTime = function(xs) {
+    if (!xs || !xs.length) return false;
+    var v = xs[0]; if (Array.isArray(v)) v = v[0];
+    return typeof v === 'number' && v > 1e12;
+  };
+
+  W._aaXStr = function(x, isTime) {
+    return isTime ? _aaMsToEvl(x) : x.toFixed(6);
+  };
+
+  // Collect sources whose names start with prefix, return arrays of {xs,ys}
+  W._aaCollect = function(prefix) {
+    var result = [];
+    _aaGetModels().forEach(function(m) {
+      if (m.name && m.name.indexOf(prefix) === 0 && m.data && m.data.xs) {
+        for (var i = 0; i < m.data.xs.length; i++) {
+          result.push({ xs: m.data.xs[i], ys: m.data.ys[i] });
+        }
+      }
+    });
+    return result;
+  };
+
+  W._aaDownload = function(content, filename) {
+    var blob = new Blob([content], {type: 'text/plain'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  };
+
+  // Export EVL — collects from aa_freehand_* and aa_lines_* sources
+  // Format: Echoview Line File (EVBD 3)
+  // Each drawn stroke / polyline becomes one named EVL line.
+  W.aaExportEvl = function() {
+    var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
+    // Filter out empty segments
+    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+    if (!segs.length) {
+      alert('No lines drawn yet.\\nActivate the Freehand (\\u270F) or Polyline (\\u26AA) tool in the echogram toolbar, draw some lines, then export.');
+      return;
+    }
+    var isTime = _aaIsTime(segs[0].xs);
+    var rows = ['EVBD 3 9.0.120.30842', String(segs.length)];
+    segs.forEach(function(seg, li) {
+      rows.push('aa-plot line ' + (li + 1));
+      rows.push('-10000.0000 0 0');
+      rows.push(String(seg.xs.length));
+      for (var i = 0; i < seg.xs.length; i++) {
+        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
+      }
+    });
+    _aaDownload(rows.join('\\n'), 'aa_lines.evl');
+  };
+
+  // Export EVR — collects from aa_regions_* sources
+  // Format: Echoview Region File (EVBD 3)
+  // Each drawn polygon becomes one EVR region (type 1 = analysis).
+  W.aaExportEvr = function() {
+    var segs = _aaCollect('aa_regions_');
+    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+    if (!segs.length) {
+      alert('No regions drawn yet.\\nActivate the Region (\\u25A1) tool in the echogram toolbar, draw some polygons, then export.');
+      return;
+    }
+    var isTime = _aaIsTime(segs[0].xs);
+    var rows = ['EVBD 3 9.0.120.30842', String(segs.length) + ' 4'];
+    segs.forEach(function(seg, ri) {
+      rows.push('Region ' + (ri + 1));
+      rows.push('');          // notes
+      rows.push('');          // detection settings
+      rows.push('1');         // region type: 1 = analysis
+      rows.push(String(seg.xs.length));
+      for (var i = 0; i < seg.xs.length; i++) {
+        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
+      }
+    });
+    _aaDownload(rows.join('\\n'), 'aa_regions.evr');
+  };
+
+  // Clear all drawing layers
+  W.aaClearDraw = function() {
+    if (!confirm('Clear all drawn lines and regions?')) return;
+    _aaGetModels().forEach(function(m) {
+      if (!m.name) return;
+      var pfx = m.name;
+      if (pfx.indexOf('aa_freehand_') === 0 ||
+          pfx.indexOf('aa_lines_') === 0 ||
+          pfx.indexOf('aa_regions_') === 0) {
+        try {
+          m.data = { xs: [], ys: [] };
+          if (m.change) m.change.emit();
+        } catch(e) {}
+      }
+    });
+  };
+})(window);
+</script>
+"""
+
+
+def _apply_draw_tools(fig, draw_idx: int) -> None:
+    """
+    Inject three drawing layers + tools onto an existing Bokeh figure.
+
+    Layers
+    ------
+    aa_freehand_{i}  MultiLine  gold  #FFD700   FreehandDrawTool
+    aa_lines_{i}     MultiLine  cyan  #00FFFF   PolyDrawTool  (double-click to finish)
+    aa_regions_{i}   Patches    blue  #4499FF   PolyDrawTool  (double-click to close)
+
+    PolyEditTool is also added so drawn geometry can be edited (shift-click vertex to delete).
+    Sources are named so the JS export helpers can find them across all tabs.
+    """
+    from bokeh.models import (
+        FreehandDrawTool, PolyDrawTool, PolyEditTool,
+        ColumnDataSource,
+    )
+
+    # ── Freehand (gold) — exports as EVL ──────────────────────────────────
+    fh_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_freehand_{draw_idx}")
+    fh_rend = fig.multi_line(
+        "xs", "ys", source=fh_src,
+        line_color="#FFD700", line_width=2.0, line_alpha=0.92,
+        line_cap="round", line_join="round",
+    )
+    freehand_tool = FreehandDrawTool(renderers=[fh_rend], num_objects=0)
+    freehand_tool.description = "Freehand line (→ EVL)"
+
+    # ── Polyline segments (cyan dashed) — exports as EVL ─────────────────
+    ln_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_lines_{draw_idx}")
+    ln_rend = fig.multi_line(
+        "xs", "ys", source=ln_src,
+        line_color="#00FFFF", line_width=2.0, line_alpha=0.92,
+        line_dash=[8, 4],
+    )
+    line_tool = PolyDrawTool(renderers=[ln_rend], num_objects=0)
+    line_tool.description = "Polyline segments (→ EVL, dbl-click to finish)"
+
+    # ── Region polygons (blue translucent) — exports as EVR ───────────────
+    rg_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_regions_{draw_idx}")
+    rg_rend = fig.patches(
+        "xs", "ys", source=rg_src,
+        fill_color="#4499FF", fill_alpha=0.18,
+        line_color="#4499FF", line_width=2.0, line_alpha=0.92,
+    )
+    region_tool = PolyDrawTool(renderers=[rg_rend], num_objects=0)
+    region_tool.description = "Region polygon (→ EVR, dbl-click to close)"
+
+    # ── Vertex editor — lets you drag / delete vertices after drawing ──────
+    try:
+        vtx_src = ColumnDataSource(data={"x": [], "y": []})
+        vtx_rend = fig.circle(
+            "x", "y", source=vtx_src,
+            size=9, color="white", fill_alpha=0.85,
+            line_color="#64748b", line_width=1.2,
+        )
+        edit_tool = PolyEditTool(
+            renderers=[ln_rend, rg_rend],
+            vertex_renderer=vtx_rend,
+        )
+        edit_tool.description = "Edit vertices (shift-click to delete)"
+        fig.add_tools(freehand_tool, line_tool, region_tool, edit_tool)
+    except Exception as exc:
+        logger.debug(f"PolyEditTool unavailable ({exc}); skipping vertex editor.")
+        fig.add_tools(freehand_tool, line_tool, region_tool)
+
+
+def _build_annotation_panel() -> pn.pane.HTML:
+    """
+    Build the annotation controls pane — consistent with the sidebar style.
+
+    The panel is purely HTML + a <script> block defining JS helpers and
+    download functions.  No server required; works in the static embedded HTML.
+
+    EVL format notes
+    ----------------
+    EVBD 3 9.0.120.30842
+    <n_lines>
+    <line_name>
+    -10000.0000 0 0          (bad_data_value  status  editable)
+    <n_points>
+    YYYYMMDD HHMMSS.ssss     depth_m          (tab-separated)
+    ...
+
+    EVR format notes
+    ----------------
+    EVBD 3 9.0.120.30842
+    <n_regions> 4
+    <region_name>
+                             (notes — blank)
+                             (detection_settings — blank)
+    1                        (region type: 1=analysis)
+    <n_points>
+    YYYYMMDD HHMMSS.ssss     depth_m
+    ...
+    """
+    pencil_svg = (
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
+        'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
+        '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
+        '</svg>'
+    )
+
+    html = f"""{_DRAW_CSS}
+{_DRAW_JS_HELPERS}
+<div class="aa-draw-wrap">
+  <div class="aa-draw-title">{pencil_svg} Annotation Tools</div>
+  <div class="aa-draw-body">
+    <div class="aa-draw-legend">
+      <div class="aa-draw-legend-item">
+        <div class="aa-swatch-freehand"></div>
+        <span><b>Freehand</b> &mdash; activate ✏ in toolbar, draw freely</span>
+      </div>
+      <div class="aa-draw-legend-item">
+        <div class="aa-swatch-poly"></div>
+        <span><b>Polyline</b> &mdash; activate ⬤ in toolbar, click points, dbl-click to finish</span>
+      </div>
+      <div class="aa-draw-legend-item">
+        <div class="aa-swatch-region"></div>
+        <span><b>Region</b> &mdash; activate ▭ in toolbar, click vertices, dbl-click to close</span>
+      </div>
+    </div>
+    <div class="aa-draw-btns">
+      <button class="aa-draw-btn evl" onclick="aaExportEvl()">&#11015; Export EVL &nbsp;<span style="opacity:.65;font-size:.9em">(freehand + polylines)</span></button>
+      <button class="aa-draw-btn evr" onclick="aaExportEvr()">&#11015; Export EVR &nbsp;<span style="opacity:.65;font-size:.9em">(regions)</span></button>
+      <button class="aa-draw-btn clr" onclick="aaClearDraw()">&#128465; Clear all</button>
+    </div>
+    <div class="aa-draw-hint">
+      <b>Tip:</b> tools appear in the plot toolbar above the echogram &mdash; switch freely between draw, zoom&nbsp;&#x1F50D; and pan&nbsp;&#x270B;.<br>
+      Drag any vertex with the <b>Edit</b> tool to adjust; shift-click a vertex to delete it.<br>
+      EVL / EVR files use Echoview line/region format and open directly in Echoview.
+    </div>
+  </div>
+</div>
+"""
+    return pn.pane.HTML(html, sizing_mode="stretch_width")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 #  PLOT CONSTRUCTION
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -690,18 +1025,13 @@ def _plot_echogram(
     flip_y: bool = True,
     show_hover: bool = True,
     show_crosshair: bool = True,
+    draw_idx: int = 0,
+    show_draw: bool = True,
 ):
-    # Rename so hvplot uses var as the ColumnDataSource column name —
-    # this is the root fix for hover showing '???' instead of values.
     da = da.rename(var)
 
     clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
 
-    # responsive=True + min_width makes the plot a true stretch_width element
-    # so it fills exactly the same container as the data summary panel below,
-    # keeping them always in sync.  The colorbar is protected by also passing
-    # min_width as a Bokeh-level opt after plotting so Bokeh reserves enough
-    # total space (frame + axes + colorbar) before allowing any shrinkage.
     common_kw = dict(
         x=x_name,
         y=y_name,
@@ -735,7 +1065,7 @@ def _plot_echogram(
             extra_tools.append(hover)
         if show_crosshair:
             extra_tools.append(crosshair)
-        extra_tools.append(tap)  # click-to-pin always on
+        extra_tools.append(tap)
     except Exception as exc:
         logger.debug(f"Could not build interaction tools: {exc}")
 
@@ -745,15 +1075,21 @@ def _plot_echogram(
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
 
-    # Hook sets sizing_mode directly on the Bokeh figure object — the only
-    # reliable way to make the rendered canvas stretch_width to match the
-    # data summary panel below it.
-    def _stretch_hook(bokeh_plot, element):
+    # Combined hook: stretch_width + drawing tools
+    _draw_idx = draw_idx
+    _add_draw = show_draw
+
+    def _combined_hook(bokeh_plot, element):
         bokeh_plot.state.sizing_mode = "stretch_width"
+        if _add_draw:
+            try:
+                _apply_draw_tools(bokeh_plot.state, _draw_idx)
+            except Exception as exc:
+                logger.warning(f"Drawing tools unavailable: {exc}")
 
     plot = plot.opts(
-        opts.QuadMesh(hooks=[_stretch_hook]),
-        opts.Image(hooks=[_stretch_hook]),
+        opts.QuadMesh(hooks=[_combined_hook]),
+        opts.Image(hooks=[_combined_hook]),
     )
 
     return plot
@@ -792,6 +1128,8 @@ def _build_single_plot(
     flip_y: bool = True,
     show_hover: bool = True,
     show_crosshair: bool = True,
+    draw_idx: int = 0,
+    show_draw: bool = True,
 ):
     da = ds[var]
     chan_dim = "channel" if "channel" in da.dims else None
@@ -843,6 +1181,7 @@ def _build_single_plot(
         min_width=min_width, height=height, toolbar=toolbar,
         pin_div=pin_div, flip_y=flip_y,
         show_hover=show_hover, show_crosshair=show_crosshair,
+        draw_idx=draw_idx, show_draw=show_draw,
     )
 
 
@@ -865,6 +1204,7 @@ def _build_all_tabs(
     flip_y: bool = True,
     show_hover: bool = True,
     show_crosshair: bool = True,
+    show_draw: bool = True,
 ):
     da = ds[var]
 
@@ -897,6 +1237,7 @@ def _build_all_tabs(
                 min_width=min_width, height=height, toolbar=toolbar,
                 pin_div=pin_div, flip_y=flip_y,
                 show_hover=show_hover, show_crosshair=show_crosshair,
+                draw_idx=ci, show_draw=show_draw,
             )
             tabs.append((label, plot))
 
@@ -909,6 +1250,7 @@ def _build_all_tabs(
         cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
         toolbar=toolbar, pin_div=pin_div, flip_y=flip_y,
         show_hover=show_hover, show_crosshair=show_crosshair,
+        draw_idx=0, show_draw=show_draw,
     )
     return pn.Column(
         pn.pane.Markdown("No channel dimension detected; plotting a single array."),
@@ -942,7 +1284,8 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
         + "\n".join(meta_lines) + "\n\n"
         "<span style='color:#777; font-size:0.85em;'>"
         "Scroll to zoom \u00b7 Shift+drag to pan \u00b7 Click to pin coordinates \u00b7 "
-        "Hover for values \u00b7 Colormap picker below"
+        "Hover for values \u00b7 Colormap picker below \u00b7 "
+        "Drawing tools in plot toolbar"
         "</span>"
     )
     return pn.pane.Markdown(md, sizing_mode="stretch_width")
@@ -975,6 +1318,7 @@ def _render_layout(
     show_crosshair: bool = True,
     show_cmap_picker: bool = True,
     show_log: bool = True,
+    show_draw: bool = True,
 ) -> pn.viewable.Viewable:
     x_name, y_name = _detect_axes(ds)
     if x_override:
@@ -991,7 +1335,6 @@ def _render_layout(
 
     min_width = max(width, 100)
 
-    # Shared click-pin Div — all plots (including tabs) write to this one element
     from bokeh.models import Div as BokehDiv
     pin_div = BokehDiv(
         text=(
@@ -1013,6 +1356,7 @@ def _render_layout(
             toolbar=toolbar, decimate=decimate, ymin=ymin, ymax=ymax,
             pin_div=pin_div, flip_y=flip_y,
             show_hover=show_hover, show_crosshair=show_crosshair,
+            show_draw=show_draw,
         )
     else:
         body = _build_single_plot(
@@ -1022,10 +1366,9 @@ def _render_layout(
             toolbar=toolbar, decimate=decimate, ymin=ymin, ymax=ymax,
             pin_div=pin_div, flip_y=flip_y,
             show_hover=show_hover, show_crosshair=show_crosshair,
+            draw_idx=0, show_draw=show_draw,
         )
 
-    # Wrap cmap picker + plot + pin bar in a stretch_width Column so the plot
-    # always occupies exactly the same horizontal space as the data summary panel.
     plot_inner: list = []
     if show_cmap_picker:
         plot_inner.append(_build_cmap_picker(cmap))
@@ -1033,8 +1376,11 @@ def _render_layout(
     plot_inner += [body, pin_pane]
     plot_section = pn.Column(*plot_inner, sizing_mode="stretch_width")
 
-    # Layout order: header → [cmap picker + plot + pin bar] → data summary
     parts: list = [header, plot_section]
+
+    if show_draw:
+        parts.append(pn.Spacer(height=6))
+        parts.append(_build_annotation_panel())
 
     if show_log:
         parts.append(pn.Spacer(height=8))
@@ -1081,6 +1427,8 @@ def main() -> None:
     p.add_argument("--no-crosshair", action="store_true")
     p.add_argument("--no-cmap-picker", action="store_true")
     p.add_argument("--no-log", action="store_true")
+    p.add_argument("--no-draw", action="store_true",
+                   help="Disable freehand/polyline/region drawing tools.")
     p.add_argument("--decimate", type=int, default=1)
     p.add_argument("--ymin", type=float, default=None)
     p.add_argument("--ymax", type=float, default=None)
@@ -1140,6 +1488,7 @@ def main() -> None:
             show_crosshair=not args.no_crosshair,
             show_cmap_picker=not args.no_cmap_picker,
             show_log=not args.no_log,
+            show_draw=not args.no_draw,
         )
 
         args.output_path.parent.mkdir(parents=True, exist_ok=True)
