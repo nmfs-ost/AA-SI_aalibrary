@@ -697,17 +697,18 @@ def _plot_echogram(
 
     clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
 
-    # min_width is applied to the *frame* (data area) via frame_min_width so
-    # the colorbar lives outside that budget and is never clipped when the
-    # window is narrow.  responsive=True + frame_min_width lets the plot
-    # stretch/shrink exactly like the data summary panel.
+    # responsive=True + min_width makes the plot a true stretch_width element
+    # so it fills exactly the same container as the data summary panel below,
+    # keeping them always in sync.  The colorbar is protected by also passing
+    # min_width as a Bokeh-level opt after plotting so Bokeh reserves enough
+    # total space (frame + axes + colorbar) before allowing any shrinkage.
     common_kw = dict(
         x=x_name,
         y=y_name,
         cmap=cmap,
         clim=clim,
         responsive=True,
-        frame_width=min_width,   # sets the data-area width; colorbar added on top
+        min_width=min_width,
         height=height,
         colorbar=True,
         toolbar=toolbar,
@@ -743,6 +744,14 @@ def _plot_echogram(
             opts.QuadMesh(tools=extra_tools, active_tools=["wheel_zoom"]),
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
+
+    # Force Bokeh sizing_mode to stretch_width so the rendered figure
+    # fills the Panel column container — this is what keeps the plot
+    # exactly the same width as the data summary panel at all screen sizes.
+    plot = plot.opts(
+        opts.QuadMesh(sizing_mode="stretch_width"),
+        opts.Image(sizing_mode="stretch_width"),
+    )
 
     return plot
 
