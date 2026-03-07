@@ -899,8 +899,8 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
     ln_rend = fig.multi_line(
         "xs", "ys", source=ln_src,
         line_color="#00FFFF", line_width=2.0, line_alpha=0.92,
-        line_dash=[8, 4],
     )
+    ln_rend.glyph.line_dash = [8, 4]
     line_tool = PolyDrawTool(renderers=[ln_rend], num_objects=0)
     line_tool.description = "Polyline segments (→ EVL, dbl-click to finish)"
 
