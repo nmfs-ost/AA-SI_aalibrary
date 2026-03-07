@@ -745,9 +745,18 @@ def _plot_echogram(
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
 
-    # Wrap after all opts are applied — pn.pane.HoloViews is the correct
-    # layer for sizing_mode; the plot fills the same container as the data panel.
-    return pn.pane.HoloViews(plot, sizing_mode="stretch_width")
+    # Hook sets sizing_mode directly on the Bokeh figure object — the only
+    # reliable way to make the rendered canvas stretch_width to match the
+    # data summary panel below it.
+    def _stretch_hook(bokeh_plot, element):
+        bokeh_plot.state.sizing_mode = "stretch_width"
+
+    plot = plot.opts(
+        opts.QuadMesh(hooks=[_stretch_hook]),
+        opts.Image(hooks=[_stretch_hook]),
+    )
+
+    return plot
 
 
 def _prep_da(
