@@ -846,6 +846,22 @@ def _build_single_plot(
     )
 
 
+def _short_tab_label(ch_str: str, f_on_chan, chan_dim: str, ci: int) -> str:
+    """Return a short tab label: prefer '120 kHz' style, fall back to truncated channel id."""
+    if f_on_chan is not None:
+        try:
+            fv_num = float(f_on_chan.isel({chan_dim: ci}).values.item()
+                           if hasattr(f_on_chan.isel({chan_dim: ci}).values, 'item')
+                           else f_on_chan.isel({chan_dim: ci}).values)
+            return f"{fv_num / 1000:.0f} kHz" if fv_num >= 1000 else f"{fv_num:.0f} Hz"
+        except Exception:
+            pass
+    # Fallback: last segment after last space or dash, max 12 chars
+    short = ch_str.strip().split()[-1] if ' ' in ch_str else ch_str
+    short = short.split('-')[-1] if '-' in short else short
+    return short[-12:] if len(short) > 12 else short
+
+
 def _build_all_tabs(
     ds: xr.Dataset,
     var: str,
@@ -883,10 +899,7 @@ def _build_all_tabs(
         tabs = []
         for ci in range(ccoord.size):
             c_val = ccoord.isel({chan_dim: ci}).values
-            label = _coord_to_str(c_val)
-            if f_on_chan is not None:
-                f_val = f_on_chan.isel({chan_dim: ci}).values
-                label = f"{_coord_to_str(c_val)} \u2022 {_coord_to_str(f_val)} Hz"
+            label = _short_tab_label(_coord_to_str(c_val), f_on_chan, chan_dim, ci)
 
             da2 = da.isel({chan_dim: ci})
             da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
@@ -920,32 +933,52 @@ def _build_all_tabs(
 #  HEADER
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool) -> pn.pane.Markdown:
+def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool) -> pn.pane.HTML:
     source = ds.encoding.get("source", "(in-memory)")
-    dim_info = " \u00d7 ".join(f"{d}={s}" for d, s in ds[var].sizes.items())
+    dim_info = " × ".join(f"{d}={s}" for d, s in ds[var].sizes.items())
     attrs = ds.attrs
     sonar_model = attrs.get("sonar_model", attrs.get("keywords", ""))
     survey_name = attrs.get("survey_name", attrs.get("title", ""))
-
-    meta_lines = []
-    if survey_name:
-        meta_lines.append(f"- **survey:** `{survey_name}`")
-    if sonar_model:
-        meta_lines.append(f"- **sonar:** `{sonar_model}`")
-
     orient_note = "y-axis inverted (surface at top)" if flip_y else "y-axis normal"
-    md = (
-        f"### aa-plot echogram\n"
-        f"- **file:** `{source}`\n"
-        f"- **var:** `{var}` \u00a0 ({dim_info})\n"
-        f"- **x:** `{x_name}`  \u2022  **y:** `{y_name}` \u00a0 *({orient_note})*\n"
-        + "\n".join(meta_lines) + "\n\n"
-        "<span style='color:#777; font-size:0.85em;'>"
-        "Scroll to zoom \u00b7 Shift+drag to pan \u00b7 Click to pin coordinates \u00b7 "
-        "Hover for values \u00b7 Colormap picker below"
-        "</span>"
+
+    def kv(key, val, em=False):
+        colour = "#0369a1" if em else "#334155"
+        return (
+            f'<div style="display:flex;justify-content:space-between;padding:1px 0;">' +
+            f'<span style="color:#94a3b8;white-space:nowrap;padding-right:8px;">{key}</span>' +
+            f'<span style="color:{colour};text-align:right;font-family:Menlo,Consolas,monospace;font-size:0.9em;">{val}</span>' +
+            '</div>'
+        )
+
+    rows = kv("file", Path(source).name if source != "(in-memory)" else source)
+    rows += kv("var", var, em=True)
+    rows += kv("dims", dim_info)
+    rows += kv("x", x_name)
+    rows += kv("y", f"{y_name} ↕ inverted" if flip_y else y_name)
+    if survey_name:
+        rows += kv("survey", str(survey_name))
+    if sonar_model:
+        rows += kv("sonar", str(sonar_model))
+
+    hint = "Scroll to zoom · Shift+drag to pan · Hover for values"
+
+    html = (
+        '<style>' +
+        '.aa-header{background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;' +
+        'font-family:Menlo,Consolas,DejaVu Sans Mono,monospace;font-size:0.78em;color:#1e293b;}' +
+        '.aa-header-title{background:linear-gradient(135deg,#e0f2fe 0%,#f0f9ff 100%);' +
+        'color:#0369a1;padding:8px 14px;font-weight:700;font-size:1.05em;letter-spacing:0.04em;' +
+        'border-radius:8px 8px 0 0;border-bottom:1px solid #bae6fd;}' +
+        '.aa-header-body{padding:6px 14px 4px 14px;}' +
+        '.aa-header-hint{padding:4px 14px 8px 14px;color:#94a3b8;font-size:0.88em;}' +
+        '</style>' +
+        '<div class="aa-header">' +
+        '<div class="aa-header-title">aa-plot echogram</div>' +
+        f'<div class="aa-header-body">{rows}</div>' +
+        f'<div class="aa-header-hint">{hint}</div>' +
+        '</div>'
     )
-    return pn.pane.Markdown(md, sizing_mode="stretch_width")
+    return pn.pane.HTML(html, sizing_mode="stretch_width")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
