@@ -975,7 +975,7 @@ def _render_layout(
         else:
             logger.info(f"Y-axis '{y_name}' not in depth/range list \u2192 keeping default orientation.")
 
-    min_width = max(width, 400)
+    min_width = max(width, 200)
 
     # Shared click-pin Div — all plots (including tabs) write to this one element
     from bokeh.models import Div as BokehDiv
@@ -1010,12 +1010,14 @@ def _render_layout(
             show_hover=show_hover, show_crosshair=show_crosshair,
         )
 
-    # Layout order: header → plot → pin bar → colormap picker → data summary
-    parts: list = [header, body, pin_pane]
+    # Layout order: header → colormap picker → plot → pin bar → data summary
+    parts: list = [header]
 
     if show_cmap_picker:
-        parts.append(pn.Spacer(height=4))
+        parts.append(pn.Spacer(height=2))
         parts.append(_build_cmap_picker(cmap))
+
+    parts += [pn.Spacer(height=2), body, pin_pane]
 
     if show_log:
         parts.append(pn.Spacer(height=8))
@@ -1053,8 +1055,8 @@ def main() -> None:
     p.add_argument("--vmin", type=float, default=None)
     p.add_argument("--vmax", type=float, default=None)
     p.add_argument("--cmap", type=str, default="inferno")
-    p.add_argument("--width", type=int, default=800,
-                   help="Minimum plot width in px; stretches responsively (default: 800).")
+    p.add_argument("--width", type=int, default=500,
+                   help="Minimum plot width in px; stretches responsively (default: 500).")
     p.add_argument("--height", type=int, default=450)
     p.add_argument("--toolbar", type=str, default="above",
                    choices=["above", "below", "left", "right", "disable"])
