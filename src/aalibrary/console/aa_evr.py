@@ -868,11 +868,11 @@ def main() -> int:
     # ══════════════════════════════════════════════════════════════
     if not args.evr:
         try:
-            from aa_evr_draw import run_drawing_mode
+            from aalibrary.utils.region_draw import run_drawing_mode
         except ImportError as exc:
             logger.error(
-                f"Could not import aa_evr_draw (drawing mode): {exc}\n"
-                "Ensure aa_evr_draw.py is in the same directory as aa_evr.py, "
+                f"Could not import region_draw (drawing mode): {exc}\n"
+                "Ensure region_draw.py is in the same directory as aa_evr.py, "
                 "or on PYTHONPATH."
             )
             return 2
