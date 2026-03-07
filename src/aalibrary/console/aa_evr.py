@@ -15,6 +15,20 @@ Core behavior:
 - Loads all EVRs and unions all regions across them.
 - Applies union mask to all variables containing (time_dim, depth_dim): outside -> NaN.
 
+Drawing mode (--evr omitted):
+- Launched when --evr is NOT provided.
+- Reads one NC path from stdin (or positional arg).
+- Opens an interactive Bokeh browser app showing the echogram.
+- User draws freehand ROI polygons directly on the echogram.
+- On save, produces:
+    1. An .evr file (--name, default: <stem>_regions.evr).
+    2. A masked NetCDF (_evr.nc) with only drawn regions kept.
+- Output NC path is emitted to stdout for downstream piping.
+
+  Example:
+    cat D20191001-T003423_Sv_depth.nc | aa-evr --name my_school.evr
+    cat D20191001-T003423_Sv_depth.nc | aa-evr --name school.evr | aa-plot --all
+
 Known fixes in this version:
   1. Zero-region crash: when echoregions returns mask_3d with region_id dimension of
      size 0 (no polygons overlap the echogram time window), .max("region_id") previously
@@ -59,12 +73,23 @@ def print_help() -> None:
 aa-evr — apply Echoview region(s) (.evr) to an echogram NetCDF (.nc/.netcdf4)
 
 USAGE
+  # Apply existing EVR file(s):
   aa-sv input.raw | aa-depth | aa-evr --evr regions/*.evr | aa-plot --all
   aa-sv input.raw | aa-depth | aa-evl --evl bottom.evl | aa-evr --evr school.evr | aa-plot --all
   aa-evr input.nc --evr a.evr b.evr
 
-REQUIRED
-  --evr EVR [EVR ...]     One or more .evr paths after a single --evr.
+  # Draw new regions interactively (--evr omitted):
+  cat input.nc | aa-evr --name my_school.evr
+  cat input.nc | aa-evr --name my_school.evr | aa-plot --all
+
+MODES
+  EVR mode (--evr provided)   Apply existing .evr file(s) to echogram.
+  Draw mode (--evr omitted)   Open an interactive Bokeh browser app to draw
+                              freehand ROI regions directly on the echogram.
+                              Saves both a new .evr and a masked .nc.
+
+REQUIRED (EVR mode only)
+  --evr EVR [EVR ...]     One or more .evr paths.
 
 INPUT
   INPUT_PATH [INPUT_PATH ...]
@@ -76,7 +101,13 @@ OUTPUT
   --suffix TEXT           Output suffix appended to input stem (default: _evr).
   --overwrite             Overwrite output files.
 
-MASKING
+DRAWING MODE OPTIONS
+  --name TEXT             EVR output filename (default: <input_stem>_regions.evr).
+                          May include or omit the .evr extension.
+  --port INT              Port for the Bokeh drawing server (default: 5006;
+                          auto-increments if occupied).
+
+MASKING (both modes)
   --var NAME              Variable to mask (default: Sv).
   --time-dim NAME         Time dimension name (default: infer ping_time else time).
   --depth-dim NAME        Depth dimension name (default: infer depth, range_sample,
@@ -96,6 +127,9 @@ EXAMPLES
     | aa-evl --evl seafloor.evl --depth-offset -5.0 \\
     | aa-evr --evr d20090916_t124739-t132105.evr --overwrite \\
     | aa-plot --all
+
+  # Draw new regions interactively, then plot:
+  cat D20191001-T003423_Sv_depth.nc | aa-evr --name school_regions.evr | aa-plot --all
 
 NOTE
   If the EVR polygon time range does not fully overlap the echogram ping_time range
@@ -747,20 +781,41 @@ def main() -> int:
         return 0
 
     parser = argparse.ArgumentParser(
-        description="Mask echogram NetCDF (.nc) using Echoview EVR region files.",
+        description=(
+            "Mask echogram NetCDF (.nc) using Echoview EVR region files, "
+            "or draw new regions interactively (omit --evr)."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "input_paths", nargs="*", type=Path,
         help="Input .nc/.netcdf4 paths (or read from stdin).",
     )
+
+    # ── EVR mode ──
     parser.add_argument(
-        "--evr", required=True, nargs="+", type=Path, metavar="EVR",
-        help="One or more .evr paths.",
+        "--evr", required=False, default=None, nargs="+", type=Path, metavar="EVR",
+        help="One or more .evr paths (omit to enter interactive drawing mode).",
+    )
+
+    # ── Drawing mode ──
+    parser.add_argument(
+        "--name", type=str, default=None, dest="name",
+        help=(
+            "Drawing mode: EVR output filename "
+            "(default: <input_stem>_regions.evr).  "
+            "May include or omit the .evr extension."
+        ),
     )
     parser.add_argument(
+        "--port", type=int, default=5006,
+        help="Drawing mode: Bokeh server port (default: 5006; auto-increments if busy).",
+    )
+
+    # ── Shared output options ──
+    parser.add_argument(
         "-o", "--output-path", dest="output_path", type=Path,
-        help="Output path (only valid for a single input file).",
+        help="Output path (only valid for a single input file, EVR mode only).",
     )
     parser.add_argument(
         "--out-dir", type=Path,
@@ -768,12 +823,14 @@ def main() -> int:
     )
     parser.add_argument(
         "--suffix", type=str, default="_evr",
-        help="Suffix appended to output stem (default: _evr).",
+        help="Suffix appended to output stem (default: _evr, EVR mode only).",
     )
     parser.add_argument(
         "--overwrite", action="store_true",
         help="Overwrite existing output files.",
     )
+
+    # ── Masking options (shared) ──
     parser.add_argument(
         "--var", type=str, default="Sv",
         help="Variable to mask (default: Sv).",
@@ -792,11 +849,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--write-mask", action="store_true",
-        help="Write 'region_mask' variable to output NetCDF.",
+        help="Write 'region_mask' variable to output NetCDF (EVR mode only).",
     )
     parser.add_argument(
         "--fail-empty", action="store_true",
-        help="Exit non-zero if union mask is empty.",
+        help="Exit non-zero if union mask is empty (EVR mode only).",
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -806,6 +863,73 @@ def main() -> int:
 
     _configure_logging(args.debug)
 
+    # ══════════════════════════════════════════════════════════════
+    # Route: DRAWING MODE  (--evr not provided)
+    # ══════════════════════════════════════════════════════════════
+    if not args.evr:
+        try:
+            from aa_evr_draw import run_drawing_mode
+        except ImportError as exc:
+            logger.error(
+                f"Could not import aa_evr_draw (drawing mode): {exc}\n"
+                "Ensure aa_evr_draw.py is in the same directory as aa_evr.py, "
+                "or on PYTHONPATH."
+            )
+            return 2
+
+        input_paths = list(_iter_input_paths(args.input_paths))
+        if not input_paths:
+            logger.error(
+                "Drawing mode requires one input NC path "
+                "(positional argument or piped via stdin)."
+            )
+            return 1
+        if len(input_paths) > 1:
+            logger.warning(
+                f"Drawing mode processes one file at a time; "
+                f"using first input: {input_paths[0]}"
+            )
+
+        nc_path = input_paths[0].expanduser().resolve()
+        if not nc_path.exists():
+            logger.error(f"Input file not found: {nc_path}")
+            return 1
+
+        evr_name = args.name or (nc_path.with_suffix("").name + "_regions.evr")
+        out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
+
+        if args.debug:
+            logger.debug(
+                f"\naa-evr drawing mode args:\n"
+                f"  nc_path={nc_path}\n"
+                f"  evr_name={evr_name}\n"
+                f"  out_dir={out_dir}\n"
+                f"  var={args.var}, port={args.port}"
+            )
+
+        result = run_drawing_mode(
+            nc_path=nc_path,
+            evr_name=evr_name,
+            out_dir=out_dir,
+            var=args.var,
+            time_dim=args.time_dim,
+            depth_dim=args.depth_dim,
+            channel_index=args.channel_index,
+            overwrite=args.overwrite,
+            port=args.port,
+            debug=args.debug,
+        )
+
+        if result:
+            logger.success("Piping saved .nc path to stdout ⟶")
+            print(str(result))
+            return 0
+        else:
+            return 1
+
+    # ══════════════════════════════════════════════════════════════
+    # Route: EVR MODE  (--evr provided)
+    # ══════════════════════════════════════════════════════════════
     input_paths = list(_iter_input_paths(args.input_paths))
     if not input_paths:
         logger.error("No input paths provided (positional or via stdin).")
