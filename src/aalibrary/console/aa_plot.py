@@ -728,10 +728,6 @@ def _plot_echogram(
     if flip_y:
         plot = plot.opts(invert_yaxis=True)
 
-    # Wrap in a HoloViews pane with stretch_width so the Bokeh figure
-    # fills the same container as the data summary panel — they stay in sync.
-    plot = pn.pane.HoloViews(plot, sizing_mode="stretch_width")
-
     extra_tools = []
     try:
         hover, crosshair, tap = _build_interaction_tools(var, x_name, y_name, pin_div)
@@ -749,7 +745,9 @@ def _plot_echogram(
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
 
-    return plot
+    # Wrap after all opts are applied — pn.pane.HoloViews is the correct
+    # layer for sizing_mode; the plot fills the same container as the data panel.
+    return pn.pane.HoloViews(plot, sizing_mode="stretch_width")
 
 
 def _prep_da(
