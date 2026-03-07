@@ -224,28 +224,28 @@ def _x_label(x_name: str) -> str:
 _SIDEBAR_CSS = """\
 <style>
 .aa-sidebar {
-    background: #111827;
-    border: 1px solid #1e293b;
     border-radius: 8px;
     font-family: 'Menlo', 'Consolas', 'DejaVu Sans Mono', monospace;
     font-size: 0.78em;
-    color: #cbd5e1;
+    color: #1e293b;
     overflow-y: auto;
     overflow-x: hidden;
     width: 100%;
     user-select: text;
     cursor: text;
     line-height: 1.6;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
 }
 .aa-sidebar-title {
-    background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
-    color: #38bdf8;
+    background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
+    color: #0369a1;
     padding: 10px 14px;
     font-weight: 700;
     font-size: 1.05em;
     letter-spacing: 0.04em;
     border-radius: 8px 8px 0 0;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid #bae6fd;
     user-select: none;
     display: flex;
     align-items: center;
@@ -260,29 +260,29 @@ _SIDEBAR_CSS = """\
     box-sizing: border-box;
 }
 .aa-section-head {
-    color: #94a3b8;
+    color: #475569;
     font-weight: 600;
     font-size: 0.9em;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid #e2e8f0;
     padding-bottom: 4px;
     margin-bottom: 5px;
 }
 .aa-row { display: flex; justify-content: space-between; padding: 1px 0; }
-.aa-key { color: #64748b; white-space: nowrap; padding-right: 8px; }
-.aa-val { color: #e2e8f0; text-align: right; word-break: break-all; }
-.aa-val-em { color: #38bdf8; text-align: right; font-weight: 600; }
+.aa-key { color: #94a3b8; white-space: nowrap; padding-right: 8px; }
+.aa-val { color: #334155; text-align: right; word-break: break-all; }
+.aa-val-em { color: #0369a1; text-align: right; font-weight: 600; }
 .aa-chan-row { padding: 1px 0; display: flex; gap: 6px; }
-.aa-chan-idx { color: #475569; min-width: 24px; }
-.aa-chan-name { color: #e2e8f0; }
-.aa-chan-freq { color: #818cf8; margin-left: auto; }
-.aa-divider { border: none; border-top: 1px solid #1e293b; margin: 4px 0; }
+.aa-chan-idx { color: #94a3b8; min-width: 24px; }
+.aa-chan-name { color: #1e293b; }
+.aa-chan-freq { color: #6366f1; margin-left: auto; }
+.aa-divider { border: none; border-top: 1px solid #e2e8f0; margin: 4px 0; }
 .aa-copy-btn {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
     border-radius: 5px;
-    color: #94a3b8;
+    color: #475569;
     padding: 5px 12px;
     margin: 8px 14px 10px 14px;
     cursor: pointer;
@@ -292,7 +292,7 @@ _SIDEBAR_CSS = """\
     max-width: 220px;
     text-align: center;
 }
-.aa-copy-btn:hover { background: #334155; color: #e2e8f0; border-color: #475569; }
+.aa-copy-btn:hover { background: #e2e8f0; color: #1e293b; border-color: #94a3b8; }
 </style>
 """
 
@@ -1010,14 +1010,17 @@ def _render_layout(
             show_hover=show_hover, show_crosshair=show_crosshair,
         )
 
-    # Layout order: header → colormap picker → plot → pin bar → data summary
-    parts: list = [header]
-
+    # Wrap cmap picker + plot + pin bar in a stretch_width Column so the plot
+    # always occupies exactly the same horizontal space as the data summary panel.
+    plot_inner: list = []
     if show_cmap_picker:
-        parts.append(pn.Spacer(height=2))
-        parts.append(_build_cmap_picker(cmap))
+        plot_inner.append(_build_cmap_picker(cmap))
+        plot_inner.append(pn.Spacer(height=2))
+    plot_inner += [body, pin_pane]
+    plot_section = pn.Column(*plot_inner, sizing_mode="stretch_width")
 
-    parts += [pn.Spacer(height=2), body, pin_pane]
+    # Layout order: header → [cmap picker + plot + pin bar] → data summary
+    parts: list = [header, plot_section]
 
     if show_log:
         parts.append(pn.Spacer(height=8))
