@@ -789,11 +789,113 @@ _DRAW_JS_HELPERS = """\
   };
 
   W._aaDownload = function(content, filename) {
-    var blob = new Blob([content], {type: 'text/plain'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+    // Strategy 1: data: URI anchor click — works in most iframe contexts
+    // (unlike blob: URLs which are blocked by GCP / JupyterLab sandbox).
+    try {
+      var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+      var a = document.createElement('a');
+      a.href = uri;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Give the browser a moment; if nothing happened we fall through
+      // (we can't detect failure synchronously, so we just return here —
+      //  the user will see the modal if they click again after nothing downloaded).
+      return;
+    } catch(e1) { /* fall through */ }
+
+    // Strategy 2: open data: URI in a new tab — user can File > Save As
+    try {
+      var uri2 = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+      var w = window.open(uri2, '_blank');
+      if (w) {
+        w.document && w.document.title && (w.document.title = filename);
+        return;
+      }
+    } catch(e2) { /* fall through */ }
+
+    // Strategy 3: modal textarea — always works; user copies the text manually.
+    // Styled to match the aa-plot sidebar palette.
+    var overlay = document.createElement('div');
+    overlay.style.cssText = [
+      'position:fixed','top:0','left:0','width:100%','height:100%',
+      'background:rgba(15,23,42,0.72)','z-index:99999',
+      'display:flex','align-items:center','justify-content:center'
+    ].join(';');
+
+    var box = document.createElement('div');
+    box.style.cssText = [
+      'background:#f8fafc','border:1px solid #cbd5e1','border-radius:10px',
+      'padding:18px 20px','max-width:720px','width:92%','max-height:80vh',
+      'display:flex','flex-direction:column','gap:10px',
+      'font-family:Menlo,Consolas,DejaVu Sans Mono,monospace','font-size:0.82em'
+    ].join(';');
+
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;color:#0369a1;font-size:1.05em;';
+    title.textContent = '\u26a0\ufe0f Download blocked \u2014 copy text below (' + filename + ')';
+
+    var hint = document.createElement('div');
+    hint.style.cssText = 'color:#64748b;font-size:0.92em;';
+    hint.textContent = 'Your browser or environment blocked the download (sandboxed iframe). Select all and copy, then paste into a plain .txt file and rename to ' + filename + '.';
+
+    var ta = document.createElement('textarea');
+    ta.value = content;
+    ta.style.cssText = [
+      'width:100%','min-height:220px','resize:vertical',
+      'background:#0f172a','color:#e2e8f0',
+      'border:1px solid #334155','border-radius:6px',
+      'padding:8px 10px','font-family:inherit','font-size:1em',
+      'box-sizing:border-box'
+    ].join(';');
+    ta.readOnly = false;
+    ta.spellcheck = false;
+
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;';
+
+    var copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy to clipboard';
+    copyBtn.style.cssText = [
+      'background:#e0f2fe','border:1px solid #7dd3fc','border-radius:5px',
+      'color:#0369a1','padding:5px 14px','cursor:pointer','font-family:inherit'
+    ].join(';');
+    copyBtn.onclick = function() {
+      ta.select();
+      try {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(content).then(function(){
+            copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
+            setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
+          });
+        } else {
+          document.execCommand('copy');
+          copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
+          setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
+        }
+      } catch(e) { copyBtn.textContent = 'Copy failed'; }
+    };
+
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = [
+      'background:#f1f5f9','border:1px solid #cbd5e1','border-radius:5px',
+      'color:#475569','padding:5px 14px','cursor:pointer','font-family:inherit'
+    ].join(';');
+    closeBtn.onclick = function() { document.body.removeChild(overlay); };
+    overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
+
+    btnRow.appendChild(copyBtn);
+    btnRow.appendChild(closeBtn);
+    box.appendChild(title);
+    box.appendChild(hint);
+    box.appendChild(ta);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    setTimeout(function(){ ta.select(); }, 80);
   };
 
   // Export EVL — collects from aa_freehand_* and aa_lines_* sources
