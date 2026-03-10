@@ -16,7 +16,6 @@ if __package__ is None or __package__ == "":
     from cloud_utils import (
         bq_query_to_pandas,
         setup_gbq_client_objs,
-        create_s3_objs,
     )
     from ncei_utils import download_single_file_from_aws
     from helpers import normalize_ship_name
@@ -24,7 +23,6 @@ else:
     from aalibrary.utils.cloud_utils import (
         bq_query_to_pandas,
         setup_gbq_client_objs,
-        create_s3_objs,
     )
     from aalibrary.utils.ncei_utils import download_single_file_from_aws
     from aalibrary.utils.helpers import (
