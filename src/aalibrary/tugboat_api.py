@@ -5,6 +5,7 @@ import json
 import urllib
 import requests
 import warnings
+
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 from dotenv import load_dotenv
@@ -188,7 +189,11 @@ class TugboatAPI:
             submission_payload = json.load(f)
 
         response = requests.post(
-            url, headers=self.headers, json=submission_payload, timeout=10,verify=False,
+            url,
+            headers=self.headers,
+            json=submission_payload,
+            timeout=10,
+            verify=False,
         )
         # Checking the response status code
         if response.status_code == 201:  # 201 Created for successful POST
@@ -235,7 +240,9 @@ class TugboatAPI:
         page = 1
         all_submissions = []
         while True:
-            url = urllib.parse.urljoin(self.tugboat_api_url, f"submissions?page={page}")
+            url = urllib.parse.urljoin(
+                self.tugboat_api_url, f"submissions?page={page}"
+            )
             submissions = self._get_request_as_json(url)["items"]
             if submissions == []:
                 break
@@ -266,7 +273,9 @@ class TugboatAPI:
         page = 1
         all_jobs = []
         while True:
-            url = urllib.parse.urljoin(self.tugboat_api_url, f"jobs?page={page}")
+            url = urllib.parse.urljoin(
+                self.tugboat_api_url, f"jobs?page={page}"
+            )
             jobs = self._get_request_as_json(url)["items"]
             if jobs == []:
                 break
@@ -288,7 +297,9 @@ class TugboatAPI:
         page = 1
         all_people = []
         while True:
-            url = urllib.parse.urljoin(self.tugboat_api_url, f"people?page={page}")
+            url = urllib.parse.urljoin(
+                self.tugboat_api_url, f"people?page={page}"
+            )
             people = self._get_request_as_json(url)["items"]
             if people == []:
                 break
@@ -310,6 +321,20 @@ class TugboatAPI:
         url = urllib.parse.urljoin(
             self.tugboat_api_url,
             f"people?email={urllib.parse.quote(email)}",
+        )
+        resp = self._get_request_as_json(url)
+        if resp["totalItems"] == 0:
+            return None
+        else:
+            return resp["items"]
+
+    def search_people_by_name(self, name: str) -> dict:
+        """Searches for people by name in the Tugboat API.
+        NOTE: Make sure the name matches exactly (case-sensitive) with the name
+        in the Tugboat database, otherwise it will not return the person."""
+        url = urllib.parse.urljoin(
+            self.tugboat_api_url,
+            f"people?name={urllib.parse.quote(name)}",
         )
         resp = self._get_request_as_json(url)
         if resp["totalItems"] == 0:
@@ -350,7 +375,9 @@ class TugboatAPI:
         page = 1
         all_organizations = []
         while True:
-            url = urllib.parse.urljoin(self.tugboat_api_url, f"organizations?page={page}")
+            url = urllib.parse.urljoin(
+                self.tugboat_api_url, f"organizations?page={page}"
+            )
             organizations = self._get_request_as_json(url)["items"]
             if organizations == []:
                 break
@@ -371,7 +398,9 @@ class TugboatAPI:
         page = 1
         all_platforms = []
         while True:
-            url = urllib.parse.urljoin(self.tugboat_api_url, f"platforms?page={page}")
+            url = urllib.parse.urljoin(
+                self.tugboat_api_url, f"platforms?page={page}"
+            )
             platforms = self._get_request_as_json(url)["items"]
             if platforms == []:
                 break
@@ -404,7 +433,9 @@ class TugboatAPI:
         page = 1
         all_instruments = []
         while True:
-            url = urllib.parse.urljoin(self.tugboat_api_url, f"instruments?page={page}")
+            url = urllib.parse.urljoin(
+                self.tugboat_api_url, f"instruments?page={page}"
+            )
             instruments = self._get_request_as_json(url)["items"]
             if instruments == []:
                 break
@@ -425,7 +456,9 @@ class TugboatAPI:
         page = 1
         all_sea_areas = []
         while True:
-            url = urllib.parse.urljoin(self.tugboat_api_url, f"sea-areas?page={page}")
+            url = urllib.parse.urljoin(
+                self.tugboat_api_url, f"sea-areas?page={page}"
+            )
             sea_areas = self._get_request_as_json(url)["items"]
             if sea_areas == []:
                 break
@@ -443,6 +476,7 @@ if __name__ == "__main__":
     # print(tb_api.get_all_organizations())
     # print(tb_api.get_organization_by_id("151"))
     print(tb_api.check_connection())
+    print(tb_api.search_people_by_name("Hannan Khan"))
 
     # print(tb_api.get_all_instruments())
     # print(tb_api.get_all_platforms())
