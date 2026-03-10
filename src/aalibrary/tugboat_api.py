@@ -102,6 +102,23 @@ class TugboatAPI:
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"Error during GET request: {e}")
+            raise requests.exceptions.RequestException
+
+    ############################################################### CONNECTION
+    def check_connection(self) -> bool:
+        """Fetches a sea area by its ID from the Tugboat API to test the
+        connection.
+
+        Returns:
+            bool: True if the connection is successful, False otherwise.
+        """
+        # Fetch the sea area with the specified ID (using 51 as an example)
+        url = urllib.parse.urljoin(self.tugboat_api_url, "sea-areas/51")
+        try:
+            self._get_request_as_json(url)
+            return True
+        except requests.exceptions.RequestException:
+            return False
 
     ############################################################### SUBMISSIONS
     def create_empty_submission_file(
@@ -425,14 +442,15 @@ if __name__ == "__main__":
     # )
     # print(tb_api.get_all_organizations())
     # print(tb_api.get_organization_by_id("151"))
+    print(tb_api.check_connection())
 
-    print(tb_api.get_all_instruments())
-    print(tb_api.get_all_platforms())
-    print(tb_api.get_all_people())
-    print(tb_api.get_all_sea_areas())
-    print(tb_api.get_all_submissions())
-    print(tb_api.get_all_jobs())
-    print(tb_api.get_all_organizations())
+    # print(tb_api.get_all_instruments())
+    # print(tb_api.get_all_platforms())
+    # print(tb_api.get_all_people())
+    # print(tb_api.get_all_sea_areas())
+    # print(tb_api.get_all_submissions())
+    # print(tb_api.get_all_jobs())
+    # print(tb_api.get_all_organizations())
     # print(tb_api.get_platform_by_id("51"))
     # print(tb_api.get_all_platforms())
     # print(tb_api.get_all_instruments())
