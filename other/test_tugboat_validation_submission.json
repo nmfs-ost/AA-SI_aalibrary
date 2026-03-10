@@ -1,0 +1,36 @@
+{
+  "type": "WCSD",
+  "cruiseId": "HB2401",
+  "platform": "Henry B. Bigelow (HB)",
+  "departurePort": "Newport, US RI",
+  "departureDate": "2024-02-15",
+  "arrivalPort": "Newport, US RI",
+  "arrivalDate": "2024-02-22",
+  "seaArea": "",
+  "datasetTitle": "Ecosystem Monitoring",
+  "datasetPurpose": "Monitor and map the distribution and abundance of zooplankton along the continental shelf and monitor the physical environment.",
+  "datasetDescription": "The Ecosystem Monitoring (aka Ecomon) survery uses bongo and CTD sampling to monitor and map the distribution of zooplankton, krill and smaller organisms) and the physical environment. The survey has been conducted four times per year (although fewer times in recent years) in each season on the continental shelf from Cape Hatteras, NC to the Canadian waters of New Brunswick and Nova Scotia. Acoustic data are occasionally collected. Marine mammal and bird observations have been collected in the past.",
+  "sources": [
+    "NEFSC"
+  ],
+  "funders": [
+    "NEFSC"
+  ],
+  "scientists": [
+    "Chris Melrose"
+  ],
+  "projects": [
+    "Ecosystem Monitoring"
+  ],
+  "dataSubmitter": "Michael Jech",
+  "instrumentShortName": "EM302",
+  "datasetType": "Raw",
+  "ancillaryDataDetails": "comments about the ancillary data",
+  "ancillaryDataURI": "gs://example-bucket/example-cruise/ancillary",
+  "dataURI": "gs://example-bucket/example-cruise/example-package/example-instrument",
+  "calibrationState": "CALIBRATED_W_CALIBRATION_DATA",
+  "calibrationDate": "2024-03-05",
+  "calFileURI": "gs://example-bucket/example-cruise/example-package/calibration/cal_file.txt",
+  "calReportURI": "gs://example-bucket/example-cruise/example-package/calibration/cal_report.txt",
+  "documentsURI": "gs://example-bucket/example-cruise/docs"
+}
