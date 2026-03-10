@@ -80,3 +80,6 @@ aa-detect-seafloor = "aalibrary.console.aa_detect_seafloor:main"
 aa-get = "aalibrary.console.aa_get:main"
 aa-fetch = "aalibrary.console.aa_fetch:main"
 aa-refresh = "aalibrary.console.aa_refresh:main"
+
+aa-evr = "aalibrary.console.aa_evr:main"
+aa-evl = "aalibrary.console.aa_evl:main"

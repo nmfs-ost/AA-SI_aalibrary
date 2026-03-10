@@ -109,8 +109,6 @@ pn.panel(plot).servable()
     with output_path.open("w") as f:
         nbf.write(nb, f)
 
-# Usage
-write_panel_notebook(Path("panel_demo.ipynb"))
 
 def print_help():
     help_text = """

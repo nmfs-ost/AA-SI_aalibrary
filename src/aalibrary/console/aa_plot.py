@@ -1,167 +1,173 @@
 #!/usr/bin/env python3
 """
-aa-plot — Interactive echogram plotting for Echopype/xarray datasets (HTML output)
+aa-plot — Interactive echogram plotting (HTML) for Echopype/xarray NetCDF datasets
 
-Design goals:
-- Accept .nc path from argv *or* stdin (pipeline-friendly).
-- Work on xarray Dataset/DataArray; default variable 'Sv' if present.
-- Select a single frequency/channel or render **all** in tabbed UI.
-- Stylish, interactive HTML (hvPlot + Panel); no matplotlib.
-- Sensible defaults with explicit options for vmin/vmax, cmap, decimation, etc.
-- Always writes to disk; prints absolute path to stdout for chaining.
-
-Example:
-    aa-plot data.nc --var Sv --all --vmin -90 --vmax -40 --cmap fire -o plots/echogram.html
+Goals:
+- Accept .nc path from argv OR stdin (pipeline-friendly).
+- Plot a variable (default: Sv if present).
+- Plot ALL channels and/or frequencies in a tabbed UI (Panel + hvPlot).
+  * If Sv has a 'channel' dimension, tabs are per-channel (labels include
+    frequency_nominal if present as a coord on channel).
+  * If Sv has a 'frequency_nominal' dimension, tabs are per-frequency.
+  * If BOTH are dimensions, tabs are nested: frequency -> channel, or channel -> frequency.
+- No matplotlib. Output is standalone HTML.
+- Print absolute HTML path to stdout for downstream chaining.
+- Keep stdout clean except for final path (logs go to stderr via loguru).
+- Drawing tools (freehand, polyline, region polygon) overlay the echogram;
+  annotations export to EVL (lines) or EVR (regions) Echoview-compatible files.
 """
 
-import io
-from contextlib import redirect_stdout
-import argparse
-import sys
-from pathlib import Path
-from typing import Optional, List, Tuple
+from __future__ import annotations
 
+import argparse
+import io
+import json
+import sys
+from contextlib import redirect_stdout, redirect_stderr
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Tuple, Any
+
+import numpy as np
 import xarray as xr
 from loguru import logger
 
-# Interactive stack (no matplotlib)
-import hvplot.xarray  # noqa: F401 (registers hvplot accessors)
+import holoviews as hv
+from holoviews import opts
+import hvplot.xarray  # noqa: F401
 import panel as pn
 
-pn.extension("tabulator")  # safe to load; enables richer tables if used
+pn.extension()
+
+# ---------------------------------------------------------------------------
+# Y-axis names that represent "depth / range" and should be drawn top-down
+# ---------------------------------------------------------------------------
+_DEPTH_RANGE_NAMES = frozenset({
+    "echo_range", "range", "range_meter", "range_sample",
+    "depth", "range_bin", "distance", "range_m",
+})
+
+_CMAP_OPTIONS = [
+    "inferno", "viridis", "plasma", "magma", "cividis",
+    "turbo", "coolwarm", "gray", "RdYlBu_r", "Spectral_r",
+]
 
 
-# ---------------------------
-# Helpers
-# ---------------------------
+def print_help() -> None:
+    help_text = r"""
+Usage: aa-plot [OPTIONS] [INPUT_PATH]
+
+Arguments:
+  INPUT_PATH                Path to a NetCDF file (.nc). Optional; if omitted,
+                            reads a single path token from stdin.
+
+Core selection:
+  --var VAR                 Variable to plot (default: Sv if present, else first data_var).
+  --all                     Plot all channels/frequencies as tabs.
+  --frequency FLOAT         Select single nominal frequency (Hz) (nearest match).
+  --channel NAME            Select single channel by name (exact match preferred).
+  --group-by {auto,channel,freq}
+                            When --all and both channel+freq dimensions are available:
+                              auto   -> frequency outer tabs, channel inner tabs
+                              channel-> channel outer tabs, frequency inner tabs
+                              freq   -> frequency outer tabs, channel inner tabs
+
+Axes:
+  --x NAME                  Override x-axis dim/coord (default: auto-detect).
+  --y NAME                  Override y-axis dim/coord (default: auto-detect).
+  --no-flip                 Disable automatic y-axis inversion for range/depth axes.
+
+Appearance:
+  --vmin FLOAT              Lower color limit.
+  --vmax FLOAT              Upper color limit.
+  --cmap NAME               Initial colormap name (default: inferno).
+  --width INT               Minimum plot width in px; stretches beyond this (default: 800).
+  --height INT              Plot height (default: 450).
+  --toolbar STR             Toolbar: above/below/left/right/disable (default: above).
+  --no-hover                Disable hover tooltip overlay.
+  --no-crosshair            Disable crosshair cursor.
+  --no-cmap-picker          Disable the interactive colormap picker in the HTML.
+  --no-log                  Disable the copyable data-summary log panel.
+
+Drawing & annotation:
+  --no-draw                 Disable the freehand/polyline/region drawing tools.
+
+Subsetting / performance:
+  --decimate INT            Take every Nth sample along x-axis (default: 1).
+  --ymin FLOAT              Crop lower y-limit.
+  --ymax FLOAT              Crop upper y-limit.
+
+Output:
+  -o, --output_path PATH    Output HTML path (default: <stem>_plot.html).
+  --no-overwrite            Fail if output already exists.
+  --quiet                   Suppress info logs; still prints final path.
+  -h, --help                Show this help and exit.
+"""
+    print(help_text.strip())
+
+
+def _configure_logging(quiet: bool) -> None:
+    logger.remove()
+    if quiet:
+        logger.add(sys.stderr, level="WARNING", backtrace=False, diagnose=False)
+    else:
+        logger.add(sys.stderr, level="INFO", backtrace=True, diagnose=False)
+
+
+def _read_input_path_from_stdin() -> Optional[str]:
+    if sys.stdin.isatty():
+        return None
+    token = sys.stdin.readline().strip()
+    return token or None
+
+
+def _coord_to_str(val: Any) -> str:
+    try:
+        if hasattr(val, "item"):
+            val = val.item()
+    except Exception:
+        pass
+    if isinstance(val, bytes):
+        try:
+            return val.decode("utf-8", errors="replace")
+        except Exception:
+            return repr(val)
+    return str(val)
+
+
+def _detect_axis(ds: xr.Dataset, candidates: Tuple[str, ...], fallback_index: int) -> str:
+    for c in candidates:
+        if c in ds.dims or c in ds.coords:
+            return c
+    dims = list(ds.dims)
+    if dims:
+        return dims[min(fallback_index, len(dims) - 1)]
+    raise ValueError("Dataset has no dimensions; cannot detect axes.")
+
 
 def _detect_axes(ds: xr.Dataset) -> Tuple[str, str]:
-    """
-    Heuristic to find the horizontal (time/ping) and vertical (range) axes.
-    Returns (x_name, y_name).
-    """
-    # Candidates for time/ping axis
-    for cand in ("ping_time", "time", "ping", "profile_time"):
-        if cand in ds.dims or cand in ds.coords:
-            x_name = cand
-            break
-    else:
-        # Fallback to the first dimension
-        x_name = list(ds.dims)[0]
-
-    # Candidates for range axis
-    for cand in ("echo_range", "range", "range_meter", "range_sample"):
-        if cand in ds.dims or cand in ds.coords:
-            y_name = cand
-            break
-    else:
-        # Fallback to second dimension if it exists
-        dims = list(ds.dims)
-        y_name = dims[1] if len(dims) > 1 else dims[0]
-
+    x_name = _detect_axis(ds, ("ping_time", "time", "ping", "profile_time"), fallback_index=0)
+    y_name = _detect_axis(ds, ("echo_range", "range", "range_meter", "range_sample", "depth"), fallback_index=1)
     return x_name, y_name
 
 
-def _detect_freq_dims(ds: xr.Dataset) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Returns a tuple (freq_dim, chan_dim). One or both may be None.
-    - freq_dim typically 'frequency_nominal'
-    - chan_dim typically 'channel'
-    """
-    freq_dim = "frequency_nominal" if "frequency_nominal" in ds.dims or "frequency_nominal" in ds.coords else None
-    chan_dim = "channel" if "channel" in ds.dims or "channel" in ds.coords else None
-    return freq_dim, chan_dim
+def _should_flip_y(y_name: str) -> bool:
+    return y_name.lower() in _DEPTH_RANGE_NAMES
 
 
 def _ensure_variable(ds: xr.Dataset, var: Optional[str]) -> str:
-    """
-    Decide which variable to plot. Priority:
-      1) user-specified --var
-      2) 'Sv' if present
-      3) first data_var
-    """
     if var:
         if var not in ds.data_vars:
-            raise ValueError(f"Variable '{var}' not found in dataset.")
+            raise ValueError(f"Variable '{var}' not found. Available: {list(ds.data_vars)}")
         return var
     if "Sv" in ds.data_vars:
         return "Sv"
-    # pick first data_var
     if len(ds.data_vars) == 0:
         raise ValueError("No data variables found to plot.")
     return list(ds.data_vars)[0]
 
 
-def _subset_frequency(ds: xr.Dataset, var: str,
-                      freq_dim: Optional[str],
-                      chan_dim: Optional[str],
-                      frequency: Optional[float],
-                      channel: Optional[str],
-                      all_plots: bool) -> List[Tuple[str, xr.DataArray]]:
-    """
-    Produce a list of (label, DataArray) to plot.
-    - If all_plots: return one entry per frequency/channel (tabs).
-    - Else: select a single frequency or channel if specified; otherwise default to first.
-    """
-    da = ds[var]
-
-    # Build per-slice list
-    slices = []
-
-    # If there is a frequency dimension
-    if freq_dim and freq_dim in da.dims:
-        coord = ds[freq_dim]
-        if all_plots:
-            for i in range(coord.size):
-                val = float(coord.isel({freq_dim: i}).values)
-                label = f"{freq_dim}={val:g} Hz" if val > 1000 else f"{freq_dim}={val}"
-                slices.append((label, da.isel({freq_dim: i})))
-        else:
-            if frequency is not None:
-                # pick nearest frequency
-                idx = int(abs(coord - frequency).argmin().item())
-                val = float(coord.isel({freq_dim: idx}).values)
-                label = f"{freq_dim}~{val:g} Hz"
-                slices.append((label, da.isel({freq_dim: idx})))
-            else:
-                # default: first
-                val = float(coord.isel({freq_dim: 0}).values)
-                label = f"{freq_dim}={val:g} Hz"
-                slices.append((label, da.isel({freq_dim: 0})))
-
-    # If there is a channel dimension (and either no freq_dim, or also present)
-    if chan_dim and chan_dim in da.dims:
-        coord = ds[chan_dim]
-        if all_plots:
-            for i in range(coord.size):
-                val = coord.isel({chan_dim: i}).values
-                label = f"{chan_dim}={str(val)}"
-                slices.append((label, da.isel({chan_dim: i})))
-        else:
-            if channel is not None:
-                # try exact match; fallback to first
-                if channel in coord.values:
-                    idx = int((coord == channel).argmax().item())
-                else:
-                    idx = 0
-                val = coord.isel({chan_dim: idx}).values
-                label = f"{chan_dim}={str(val)}"
-                slices.append((label, da.isel({chan_dim: idx})))
-            elif not freq_dim:
-                # default to first channel if no freq selection made
-                val = coord.isel({chan_dim: 0}).values
-                label = f"{chan_dim}={str(val)}"
-                slices.append((label, da.isel({chan_dim: 0})))
-
-    # If neither frequency nor channel dimension exists, just return the DA as-is
-    if not slices:
-        slices.append((var, da))
-
-    return slices
-
-
 def _downsample_da(da: xr.DataArray, x_name: str, step: int) -> xr.DataArray:
-    """Downsample by taking every Nth along the x-axis (e.g., pings)."""
     if step <= 1:
         return da
     if x_name not in da.dims:
@@ -170,232 +176,1438 @@ def _downsample_da(da: xr.DataArray, x_name: str, step: int) -> xr.DataArray:
 
 
 def _apply_ylim(da: xr.DataArray, y_name: str, ymin: Optional[float], ymax: Optional[float]) -> xr.DataArray:
-    """Crop the y-axis (typically range) to [ymin, ymax] if provided."""
-    if y_name not in da.coords:
+    if ymin is None and ymax is None:
         return da
-    rng = da[y_name]
-    # Handle numeric meters vs. sample index gracefully
-    lo = ymin if ymin is not None else float(rng.min())
-    hi = ymax if ymax is not None else float(rng.max())
-    try:
-        return da.sel({y_name: slice(lo, hi)})
-    except Exception:
-        # if not label-based, fallback to index-based slice by nearest index
-        return da.isel({y_name: slice(int((rng >= lo).argmax()), int((rng <= hi)[::-1].argmax()))})
-
-
-# ---------------------------
-# Main plotting function
-# ---------------------------
-
-def _build_panel(ds: xr.Dataset, var: str, vmin: Optional[float], vmax: Optional[float],
-                 cmap: str, decimate: int, ymin: Optional[float], ymax: Optional[float],
-                 width: int, height: int, toolbar: str,
-                 frequency: Optional[float], channel: Optional[str], all_plots: bool):
-    """Create a Panel layout (tabs or single plot) of echograms using hvPlot."""
-    x_name, y_name = _detect_axes(ds)
-    freq_dim, chan_dim = _detect_freq_dims(ds)
-
-    items = []
-    for label, da in _subset_frequency(ds, var, freq_dim, chan_dim, frequency, channel, all_plots):
-        # decimate along x and crop y if requested
-        da2 = _downsample_da(da, x_name=x_name, step=decimate)
-        da2 = _apply_ylim(da2, y_name=y_name, ymin=ymin, ymax=ymax)
-
-        # Build an image-like plot (quadmesh handles irregular axes; image is faster for regular grid)
-        # We try hvplot.image first; if it fails (non-uniform coords), fallback to quadmesh.
+    if y_name in da.coords:
+        coord = da[y_name]
+        lo = ymin if ymin is not None else float(coord.min())
+        hi = ymax if ymax is not None else float(coord.max())
         try:
-            plot = da2.hvplot.image(x=x_name, y=y_name, cmap=cmap, clim=(vmin, vmax),
-                                     rasterize=False, width=width, height=height,
-                                     colorbar=True, toolbar=toolbar, title=f"{var} • {label}")
+            return da.sel({y_name: slice(lo, hi)})
         except Exception:
-            plot = da2.hvplot.quadmesh(x=x_name, y=y_name, cmap=cmap, clim=(vmin, vmax),
-                                       width=width, height=height, colorbar=True,
-                                       toolbar=toolbar, title=f"{var} • {label}")
-        items.append((label, plot))
-
-    if len(items) == 1:
-        # single pane layout with a light header
-        header = pn.pane.Markdown(f"### {var} echogram  \n**x:** {x_name}  •  **y:** {y_name}", sizing_mode="stretch_width")
-        return pn.Column(header, items[0][1], sizing_mode="stretch_both")
-    else:
-        tabs = pn.Tabs(*items, sizing_mode="stretch_both")
-        header = pn.pane.Markdown(f"### {var} echograms (tabbed)  \n**x:** {x_name}  •  **y:** {y_name}", sizing_mode="stretch_width")
-        return pn.Column(header, tabs, sizing_mode="stretch_both")
+            return da
+    return da
 
 
-# ---------------------------
-# CLI
-# ---------------------------
+def _nearest_index(coord: xr.DataArray, target: float) -> int:
+    return int(abs(coord - target).argmin().item())
 
-def print_help():
-    help_text = r"""
-Usage: aa-plot [OPTIONS] [INPUT_PATH]
 
-Arguments:
-  INPUT_PATH                Path to a NetCDF file (.nc) with an echogram variable
-                            (default variable: 'Sv'). Optional; if omitted, a single
-                            path token may be read from stdin (piping model).
+def _get_freq_coord_for_channel(ds: xr.Dataset, chan_dim: str) -> Optional[xr.DataArray]:
+    if "frequency_nominal" not in ds:
+        return None
+    try:
+        f = ds["frequency_nominal"]
+        if chan_dim in f.dims:
+            return f
+    except Exception:
+        return None
+    return None
 
-Core selection:
-  --var VAR                 Data variable to plot (default: Sv).
-  --all                     Plot all channels/frequencies as tabs.
-  --frequency FLOAT         Select a single nominal frequency (Hz) (nearest match).
-  --channel NAME            Select a single channel by name.
 
-Appearance:
-  --vmin FLOAT              Lower color limit (e.g., -90).
-  --vmax FLOAT              Upper color limit (e.g., -40).
-  --cmap NAME               Colormap name (e.g., 'fire','inferno','viridis'; default: 'inferno').
-  --width INT               Plot width  (default: 1200).
-  --height INT              Plot height (default: 450).
-  --toolbar STR             Toolbar mode: 'above','below','left','right','disable' (default: 'above').
+def _y_label(y_name: str) -> str:
+    nice = {
+        "echo_range": "Range (m)", "range": "Range (m)",
+        "range_meter": "Range (m)", "range_m": "Range (m)",
+        "depth": "Depth (m)", "range_sample": "Range sample", "range_bin": "Range bin",
+    }
+    return nice.get(y_name, y_name)
 
-Subsetting / performance:
-  --decimate INT            Take every Nth sample along x-axis (pings) to speed up (default: 1).
-  --ymin FLOAT              Crop lower y-limit (e.g., 0).
-  --ymax FLOAT              Crop upper y-limit (e.g., 500).
 
-Output:
-  -o, --output_path PATH    Output HTML path (default: <stem>_plot.html).
-  --no-overwrite            Fail if output already exists.
-  --quiet                   Suppress info logs; still prints final path.
-  -h, --help                Show this help and exit.
+def _x_label(x_name: str) -> str:
+    nice = {
+        "ping_time": "Ping time", "time": "Time",
+        "ping": "Ping #", "profile_time": "Profile time",
+    }
+    return nice.get(x_name, x_name)
 
-Notes:
-  • This tool writes an interactive HTML file (Bokeh) and prints its absolute path.
-  • Pipes pass filenames (not bytes). Example:
-        aa-nc raw.raw --sonar_model EK60 | aa-sv | aa-clean | aa-plot --all
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  DATA SUMMARY PANEL
+# ═══════════════════════════════════════════════════════════════════════════
+
+_SIDEBAR_CSS = """\
+<style>
+.aa-sidebar {
+    border-radius: 8px;
+    font-family: 'Menlo', 'Consolas', 'DejaVu Sans Mono', monospace;
+    font-size: 0.78em;
+    color: #1e293b;
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: 100%;
+    user-select: text;
+    cursor: text;
+    line-height: 1.6;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+}
+.aa-sidebar-title {
+    background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
+    color: #0369a1;
+    padding: 10px 14px;
+    font-weight: 700;
+    font-size: 1.05em;
+    letter-spacing: 0.04em;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid #bae6fd;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.aa-sidebar-title svg { flex-shrink: 0; }
+.aa-sections-grid { display: flex; flex-wrap: wrap; gap: 0; }
+.aa-section {
+    padding: 8px 14px 4px 14px;
+    min-width: 260px;
+    flex: 1 1 260px;
+    box-sizing: border-box;
+}
+.aa-section-head {
+    color: #475569;
+    font-weight: 600;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4px;
+    margin-bottom: 5px;
+}
+.aa-row { display: flex; justify-content: space-between; padding: 1px 0; }
+.aa-key { color: #94a3b8; white-space: nowrap; padding-right: 8px; }
+.aa-val { color: #334155; text-align: right; word-break: break-all; }
+.aa-val-em { color: #0369a1; text-align: right; font-weight: 600; }
+.aa-chan-row { padding: 1px 0; display: flex; gap: 6px; }
+.aa-chan-idx { color: #94a3b8; min-width: 24px; }
+.aa-chan-name { color: #1e293b; }
+.aa-chan-freq { color: #6366f1; margin-left: auto; }
+.aa-divider { border: none; border-top: 1px solid #e2e8f0; margin: 4px 0; }
+.aa-copy-btn {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    color: #475569;
+    padding: 5px 12px;
+    margin: 8px 14px 10px 14px;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-family: inherit;
+    transition: all 0.15s;
+    max-width: 220px;
+    text-align: center;
+}
+.aa-copy-btn:hover { background: #e2e8f0; color: #1e293b; border-color: #94a3b8; }
+</style>
 """
-    print(help_text)
+
+_CLIPBOARD_SVG = (
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" '
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'
+    '</svg>'
+)
+
+# Robust clipboard JS.
+_COPY_JS_TEMPLATE = """\
+(function(btn) {{
+    var text = {text_json};
+    function onSuccess() {{
+        var orig = btn.innerText;
+        btn.innerText = 'Copied!';
+        btn.style.color = '#34d399';
+        setTimeout(function() {{ btn.innerText = orig; btn.style.color = ''; }}, 1800);
+    }}
+    function onFail() {{
+        var orig = btn.innerText;
+        btn.innerText = 'Copy failed \u2014 select manually';
+        btn.style.color = '#f87171';
+        setTimeout(function() {{ btn.innerText = orig; btn.style.color = ''; }}, 2500);
+    }}
+    function fallbackCopy(t) {{
+        var ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try {{
+            var ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            ok ? onSuccess() : onFail();
+        }} catch(e) {{ document.body.removeChild(ta); onFail(); }}
+    }}
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {{
+        navigator.clipboard.writeText(text).then(onSuccess, function() {{ fallbackCopy(text); }});
+    }} else {{
+        fallbackCopy(text);
+    }}
+}})(this);
+"""
 
 
-def _add_basic_attrs(ds: xr.Dataset) -> None:
-    """Replace None attrs with strings to avoid NetCDF writer issues if we ever save DS."""
-    for k, v in list(ds.attrs.items()):
-        if v is None:
-            ds.attrs[k] = "NA"
-    for var in ds.data_vars:
-        for kk, vv in list(ds[var].attrs.items()):
-            if vv is None:
-                ds[var].attrs[kk] = "NA"
+def _html_row(key: str, val: str, em: bool = False) -> str:
+    cls = "aa-val-em" if em else "aa-val"
+    val = val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f'<div class="aa-row"><span class="aa-key">{key}</span><span class="{cls}">{val}</span></div>'
 
 
-def main():
-    # stdin behavior for your suite
+def _build_data_log(
+    ds: xr.Dataset,
+    var: str,
+    x_name: str,
+    y_name: str,
+    flip_y: bool,
+) -> pn.pane.HTML:
+    sections: list[str] = []
+    sections.append(f'<div class="aa-sidebar-title">{_CLIPBOARD_SVG} Data Summary</div>')
+
+    src = ds.encoding.get("source", "(in-memory)")
+    src_short = Path(src).name if src != "(in-memory)" else src
+    sec = '<div class="aa-section"><div class="aa-section-head">Source</div>'
+    sec += _html_row("file", src_short)
+    sec += _html_row("variable", var, em=True)
+    sec += _html_row("x-axis", x_name)
+    sec += _html_row("y-axis", f"{y_name} \u2195 inverted" if flip_y else y_name)
+    sec += '</div>'
+    sections.append(sec)
+
+    attrs = ds.attrs
+    interesting_keys = [
+        ("sonar_model", "sonar"), ("survey_name", "survey"), ("title", "title"),
+        ("institution", "institution"), ("platform_name", "platform"),
+        ("instrument_type", "instrument"), ("date_created", "created"),
+        ("time_coverage_start", "time start"), ("time_coverage_end", "time end"),
+    ]
+    attr_rows = [_html_row(lbl, str(attrs[ak])) for ak, lbl in interesting_keys if ak in attrs and attrs[ak]]
+    if attr_rows:
+        sec = '<div class="aa-section"><div class="aa-section-head">Metadata</div>'
+        sec += "".join(attr_rows) + '</div>'
+        sections.append(sec)
+
+    da = ds[var]
+    sec = '<div class="aa-section"><div class="aa-section-head">Dimensions</div>'
+    for d, s in da.sizes.items():
+        sec += _html_row(d, f"{s:,}")
+    sec += '</div>'
+    sections.append(sec)
+
+    range_rows = []
+    for cname in da.dims:
+        if cname in ds.coords:
+            c = ds[cname]
+            try:
+                cmin = _coord_to_str(c.min().values)
+                cmax = _coord_to_str(c.max().values)
+                if len(cmin) > 26:
+                    cmin = cmin[:19]
+                if len(cmax) > 26:
+                    cmax = cmax[:19]
+                range_rows.append(_html_row(cname, f"{cmin} \u2192 {cmax}"))
+            except Exception:
+                range_rows.append(_html_row(cname, "(n/a)"))
+    if range_rows:
+        sec = '<div class="aa-section"><div class="aa-section-head">Coord Ranges</div>'
+        sec += "".join(range_rows) + '</div>'
+        sections.append(sec)
+
+    chan_dim = "channel" if "channel" in da.dims else None
+    f_on_chan = None
+    if chan_dim:
+        ccoord = ds[chan_dim]
+        for loc in (ds.data_vars, ds.coords):
+            if "frequency_nominal" in loc:
+                f = ds["frequency_nominal"]
+                if chan_dim in f.dims:
+                    f_on_chan = f
+                    break
+
+        sec = '<div class="aa-section"><div class="aa-section-head">Channels</div>'
+        for ci in range(ccoord.size):
+            ch_str = _coord_to_str(ccoord.isel({chan_dim: ci}).values)
+            if len(ch_str) > 30:
+                ch_str = "\u2026" + ch_str[-28:]
+            freq_html = ""
+            if f_on_chan is not None:
+                fv = f_on_chan.isel({chan_dim: ci}).values
+                try:
+                    fv_num = float(fv)
+                    freq_html = (
+                        f'<span class="aa-chan-freq">{fv_num / 1000:.0f} kHz</span>'
+                        if fv_num >= 1000
+                        else f'<span class="aa-chan-freq">{fv_num:.0f} Hz</span>'
+                    )
+                except Exception:
+                    freq_html = f'<span class="aa-chan-freq">{_coord_to_str(fv)}</span>'
+            sec += (
+                f'<div class="aa-chan-row">'
+                f'<span class="aa-chan-idx">[{ci}]</span>'
+                f'<span class="aa-chan-name">{ch_str}</span>'
+                f'{freq_html}</div>'
+            )
+        sec += '</div>'
+        sections.append(sec)
+
+    finite = np.array([])
+    sec = f'<div class="aa-section"><div class="aa-section-head">{var} Statistics</div>'
+    try:
+        vals = da.values
+        finite = vals[np.isfinite(vals)]
+        total = vals.size
+        nan_count = total - finite.size
+        sec += _html_row("samples", f"{total:,}")
+        sec += _html_row("NaN / Inf", f"{nan_count:,} ({100 * nan_count / max(total, 1):.1f}%)")
+        if finite.size > 0:
+            sec += '<hr class="aa-divider"/>'
+            sec += _html_row("min", f"{finite.min():.2f}", em=True)
+            sec += _html_row("max", f"{finite.max():.2f}", em=True)
+            sec += _html_row("mean", f"{finite.mean():.2f}")
+            sec += _html_row("std", f"{finite.std():.2f}")
+            sec += '<hr class="aa-divider"/>'
+            for q in (5, 25, 50, 75, 95):
+                sec += _html_row(f"P{q}", f"{np.percentile(finite, q):.2f}")
+    except Exception as exc:
+        sec += _html_row("error", str(exc))
+    sec += '</div>'
+    sections.append(sec)
+
+    sec = '<div class="aa-section"><div class="aa-section-head">All Variables</div>'
+    for dv in ds.data_vars:
+        shape_str = ", ".join(f"{s}" for s in ds[dv].shape)
+        sec += _html_row(dv, f"({shape_str})")
+    sec += '</div>'
+    sections.append(sec)
+
+    plain_lines: list[str] = []
+    plain_lines.append(f"aa-plot Data Summary — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    plain_lines.append(f"File: {ds.encoding.get('source', '(in-memory)')}")
+    plain_lines.append(f"Variable: {var}  |  X: {x_name}  |  Y: {y_name} {'(inverted)' if flip_y else ''}")
+    plain_lines.append("")
+    for d, s in da.sizes.items():
+        plain_lines.append(f"  {d}: {s}")
+    if chan_dim:
+        plain_lines.append("")
+        ccoord = ds[chan_dim]
+        for ci in range(ccoord.size):
+            ch_str = _coord_to_str(ccoord.isel({chan_dim: ci}).values)
+            freq_part = ""
+            if f_on_chan is not None:
+                fv = f_on_chan.isel({chan_dim: ci}).values
+                freq_part = f"  ({_coord_to_str(fv)} Hz)"
+            plain_lines.append(f"  [{ci}] {ch_str}{freq_part}")
+    try:
+        if finite.size > 0:
+            plain_lines.append("")
+            plain_lines.append(
+                f"  {var}: min={finite.min():.4f}  max={finite.max():.4f}  "
+                f"mean={finite.mean():.4f}  std={finite.std():.4f}"
+            )
+            pcts = {q: np.percentile(finite, q) for q in (5, 25, 50, 75, 95)}
+            plain_lines.append("  Percentiles: " + "  ".join(f"P{q}={v:.4f}" for q, v in pcts.items()))
+    except Exception:
+        pass
+
+    text_json = json.dumps("\n".join(plain_lines))
+    copy_js = _COPY_JS_TEMPLATE.format(text_json=text_json)
+    copy_btn = f'<button class="aa-copy-btn" onclick="{copy_js.strip()}">Copy to clipboard</button>'
+
+    html = (
+        f'{_SIDEBAR_CSS}<div class="aa-sidebar">'
+        + sections[0]
+        + '<div class="aa-sections-grid">'
+        + "".join(sections[1:])
+        + '</div>'
+        + copy_btn
+        + '</div>'
+    )
+    return pn.pane.HTML(html, sizing_mode="stretch_width")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  COLORMAP PICKER
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _get_bokeh_palette(name: str, n: int = 256) -> list[str]:
+    from bokeh.palettes import all_palettes
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        cmap = plt.get_cmap(name, n)
+        return [
+            "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
+            for r, g, b, _ in (cmap(i) for i in range(n))
+        ]
+    except Exception:
+        pass
+    if name in all_palettes:
+        biggest = max(all_palettes[name].keys())
+        return list(all_palettes[name][biggest])
+    from bokeh.palettes import Inferno256
+    return list(Inferno256)
+
+
+def _build_cmap_picker(default_cmap: str) -> pn.pane.Bokeh:
+    from bokeh.models import CustomJS, Select as BokehSelect
+
+    palette_map: dict[str, list[str]] = {cm: _get_bokeh_palette(cm, 256) for cm in _CMAP_OPTIONS}
+    palettes_json = json.dumps(palette_map)
+
+    js_code = """
+    var palettes = JSON.parse(palettes_json);
+    var pal = palettes[cb_obj.value];
+    if (!pal) return;
+    function applyPalette(model, palette) {
+        if (!model) return;
+        if (model.palette !== undefined) { model.palette = palette; if (model.change) model.change.emit(); }
+        if (model.color_mapper && model.color_mapper.palette !== undefined) {
+            model.color_mapper.palette = palette;
+            if (model.color_mapper.change) model.color_mapper.change.emit();
+        }
+    }
+    try {
+        var doc = Bokeh.documents[0];
+        var models = doc._all_models;
+        if (models) {
+            var iter = (typeof models.forEach === 'function')
+                ? function(fn){ models.forEach(fn); }
+                : (typeof models.values === 'function')
+                    ? function(fn){ for (var m of models.values()) fn(m); }
+                    : function(fn){ for (var k in models) fn(models[k]); };
+            iter(function(m) { applyPalette(m, pal); });
+        }
+    } catch(e) { console.warn('aa-plot cmap picker:', e); }
+    """
+
+    select = BokehSelect(
+        title="Colormap",
+        value=default_cmap if default_cmap in _CMAP_OPTIONS else _CMAP_OPTIONS[0],
+        options=_CMAP_OPTIONS,
+        width=180,
+    )
+    select.js_on_change("value", CustomJS(args={"palettes_json": palettes_json}, code=js_code))
+    return pn.pane.Bokeh(select, sizing_mode="fixed")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  HOVER + CROSSHAIR + TAP (click-to-pin)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
+    from bokeh.models import HoverTool, CrosshairTool, TapTool, CustomJS
+
+    x_is_time = "time" in x_name.lower()
+    y_lbl = _y_label(y_name)
+    x_lbl = _x_label(x_name)
+
+    hover = HoverTool(
+        tooltips=[
+            (var,  f"@{var}{{0.3f}} dB"),
+            (x_lbl, "$x{%F %T}" if x_is_time else "$x{0.4f}"),
+            (y_lbl, "$y{0.2f} m"),
+        ],
+        formatters={"$x": "datetime" if x_is_time else "numeral"},
+        mode="mouse",
+    )
+
+    crosshair = CrosshairTool(line_color="#ffffff", line_alpha=0.5, line_width=1)
+
+    tap_js = """
+    if (!cb_data || !cb_data.geometries || cb_data.geometries.length === 0) return;
+    var pt = cb_data.geometries[0];
+    var x = pt.x, y = pt.y;
+    var xStr;
+    if (x_is_time) {
+        var d = new Date(x);
+        xStr = d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    } else {
+        xStr = x.toFixed(4);
+    }
+    pin_div.text = (
+        '<div style="font-family:monospace;font-size:0.82em;padding:6px 12px;'
+        + 'background:#0f172a;border:1px solid #1e3a5f;border-radius:5px;display:inline-block;">'
+        + '<span style="color:#38bdf8;font-weight:700;">&#128205; Pinned</span>'
+        + '&nbsp;&nbsp;'
+        + '<span style="color:#64748b;">' + x_lbl + ':</span> '
+        + '<span style="color:#e2e8f0;">' + xStr + '</span>'
+        + '&nbsp;&nbsp;&middot;&nbsp;&nbsp;'
+        + '<span style="color:#64748b;">' + y_lbl + ':</span> '
+        + '<span style="color:#e2e8f0;">' + y.toFixed(2) + '</span>'
+        + '</div>'
+    );
+    """
+    tap = TapTool(
+        callback=CustomJS(
+            args={"pin_div": pin_div, "x_is_time": x_is_time, "x_lbl": x_lbl, "y_lbl": y_lbl},
+            code=tap_js,
+        )
+    )
+
+    return hover, crosshair, tap
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  DRAWING TOOLS  (freehand · polyline · region polygon)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_DRAW_CSS = """\
+<style>
+.aa-draw-wrap {
+    border-radius: 8px;
+    font-family: 'Menlo','Consolas','DejaVu Sans Mono',monospace;
+    font-size: 0.80em;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    overflow: hidden;
+}
+.aa-draw-title {
+    background: linear-gradient(135deg,#f0fdf4 0%,#f8fafc 100%);
+    color: #166534;
+    padding: 9px 14px;
+    font-weight: 700;
+    font-size: 1.0em;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #bbf7d0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.aa-draw-body { padding: 10px 14px 12px 14px; }
+.aa-draw-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+.aa-draw-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #475569;
+    font-size: 0.92em;
+}
+.aa-swatch-freehand {
+    width: 26px; height: 3px;
+    background: #FFD700;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.aa-swatch-poly {
+    width: 26px; height: 0;
+    border-top: 2px dashed #00FFFF;
+    flex-shrink: 0;
+}
+.aa-swatch-region {
+    width: 20px; height: 12px;
+    background: rgba(68,153,255,0.35);
+    border: 2px solid #4499FF;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.aa-draw-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 8px;
+}
+.aa-draw-btn {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    color: #475569;
+    padding: 5px 13px;
+    cursor: pointer;
+    font-size: 0.91em;
+    font-family: inherit;
+    transition: all 0.14s;
+    white-space: nowrap;
+}
+.aa-draw-btn:hover { background:#e2e8f0; color:#1e293b; border-color:#94a3b8; }
+.aa-draw-btn.evl  { border-color:#00BBCC; color:#0369a1; }
+.aa-draw-btn.evl:hover  { background:#e0f2fe; border-color:#0284c7; }
+.aa-draw-btn.evr  { border-color:#818CF8; color:#4338ca; }
+.aa-draw-btn.evr:hover  { background:#eef2ff; border-color:#6366f1; }
+.aa-draw-btn.clr  { border-color:#FCA5A5; color:#be123c; }
+.aa-draw-btn.clr:hover  { background:#fff1f2; border-color:#fb7185; }
+.aa-draw-hint {
+    color: #94a3b8;
+    font-size: 0.82em;
+    margin-top: 9px;
+    line-height: 1.55;
+}
+</style>
+"""
+
+# Shared JS helpers embedded once in the panel <script> block.
+_DRAW_JS_HELPERS = """\
+<script>
+(function(W){
+  W._aaGetModels = function() {
+    var out = [];
+    try {
+      var docs = window.Bokeh && Bokeh.documents;
+      if (!docs || !docs.length) return out;
+      var m = docs[0]._all_models;
+      if (!m) return out;
+      if (typeof m.forEach === 'function') { m.forEach(function(v){ if(v) out.push(v); }); }
+      else { for (var k in m) { if (m.hasOwnProperty(k)) out.push(m[k]); } }
+    } catch(e) { console.warn('aa-plot getModels:', e); }
+    return out;
+  };
+
+  W._aaMsToEvl = function(ms) {
+    var d = new Date(ms);
+    var p2 = function(n){ return String(n).padStart(2,'0'); };
+    var p3 = function(n){ return String(n).padStart(3,'0'); };
+    var date = String(d.getUTCFullYear()) + p2(d.getUTCMonth()+1) + p2(d.getUTCDate());
+    var time = p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + '.' + p3(d.getUTCMilliseconds()) + '0';
+    return date + ' ' + time;
+  };
+
+  W._aaIsTime = function(xs) {
+    if (!xs || !xs.length) return false;
+    var v = xs[0]; if (Array.isArray(v)) v = v[0];
+    return typeof v === 'number' && v > 1e12;
+  };
+
+  W._aaXStr = function(x, isTime) {
+    return isTime ? _aaMsToEvl(x) : x.toFixed(6);
+  };
+
+  // Collect sources whose names start with prefix, return arrays of {xs,ys}
+  W._aaCollect = function(prefix) {
+    var result = [];
+    _aaGetModels().forEach(function(m) {
+      if (m.name && m.name.indexOf(prefix) === 0 && m.data && m.data.xs) {
+        for (var i = 0; i < m.data.xs.length; i++) {
+          result.push({ xs: m.data.xs[i], ys: m.data.ys[i] });
+        }
+      }
+    });
+    return result;
+  };
+
+  W._aaDownload = function(content, filename) {
+    // Strategy 1: data: URI anchor click — works in most iframe contexts
+    // (unlike blob: URLs which are blocked by GCP / JupyterLab sandbox).
+    try {
+      var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+      var a = document.createElement('a');
+      a.href = uri;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Give the browser a moment; if nothing happened we fall through
+      // (we can't detect failure synchronously, so we just return here —
+      //  the user will see the modal if they click again after nothing downloaded).
+      return;
+    } catch(e1) { /* fall through */ }
+
+    // Strategy 2: open data: URI in a new tab — user can File > Save As
+    try {
+      var uri2 = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+      var w = window.open(uri2, '_blank');
+      if (w) {
+        w.document && w.document.title && (w.document.title = filename);
+        return;
+      }
+    } catch(e2) { /* fall through */ }
+
+    // Strategy 3: modal textarea — always works; user copies the text manually.
+    // Styled to match the aa-plot sidebar palette.
+    var overlay = document.createElement('div');
+    overlay.style.cssText = [
+      'position:fixed','top:0','left:0','width:100%','height:100%',
+      'background:rgba(15,23,42,0.72)','z-index:99999',
+      'display:flex','align-items:center','justify-content:center'
+    ].join(';');
+
+    var box = document.createElement('div');
+    box.style.cssText = [
+      'background:#f8fafc','border:1px solid #cbd5e1','border-radius:10px',
+      'padding:18px 20px','max-width:720px','width:92%','max-height:80vh',
+      'display:flex','flex-direction:column','gap:10px',
+      'font-family:Menlo,Consolas,DejaVu Sans Mono,monospace','font-size:0.82em'
+    ].join(';');
+
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;color:#0369a1;font-size:1.05em;';
+    title.textContent = '\u26a0\ufe0f Download blocked \u2014 copy text below (' + filename + ')';
+
+    var hint = document.createElement('div');
+    hint.style.cssText = 'color:#64748b;font-size:0.92em;';
+    hint.textContent = 'Your browser or environment blocked the download (sandboxed iframe). Select all and copy, then paste into a plain .txt file and rename to ' + filename + '.';
+
+    var ta = document.createElement('textarea');
+    ta.value = content;
+    ta.style.cssText = [
+      'width:100%','min-height:220px','resize:vertical',
+      'background:#0f172a','color:#e2e8f0',
+      'border:1px solid #334155','border-radius:6px',
+      'padding:8px 10px','font-family:inherit','font-size:1em',
+      'box-sizing:border-box'
+    ].join(';');
+    ta.readOnly = false;
+    ta.spellcheck = false;
+
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;';
+
+    var copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy to clipboard';
+    copyBtn.style.cssText = [
+      'background:#e0f2fe','border:1px solid #7dd3fc','border-radius:5px',
+      'color:#0369a1','padding:5px 14px','cursor:pointer','font-family:inherit'
+    ].join(';');
+    copyBtn.onclick = function() {
+      ta.select();
+      try {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(content).then(function(){
+            copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
+            setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
+          });
+        } else {
+          document.execCommand('copy');
+          copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
+          setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
+        }
+      } catch(e) { copyBtn.textContent = 'Copy failed'; }
+    };
+
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = [
+      'background:#f1f5f9','border:1px solid #cbd5e1','border-radius:5px',
+      'color:#475569','padding:5px 14px','cursor:pointer','font-family:inherit'
+    ].join(';');
+    closeBtn.onclick = function() { document.body.removeChild(overlay); };
+    overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
+
+    btnRow.appendChild(copyBtn);
+    btnRow.appendChild(closeBtn);
+    box.appendChild(title);
+    box.appendChild(hint);
+    box.appendChild(ta);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    setTimeout(function(){ ta.select(); }, 80);
+  };
+
+  // Export EVL — collects from aa_freehand_* and aa_lines_* sources
+  // Format: Echoview Line File (EVBD 3)
+  // Each drawn stroke / polyline becomes one named EVL line.
+  W.aaExportEvl = function() {
+    var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
+    // Filter out empty segments
+    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+    if (!segs.length) {
+      alert('No lines drawn yet.\\nActivate the Freehand (\\u270F) or Polyline (\\u26AA) tool in the echogram toolbar, draw some lines, then export.');
+      return;
+    }
+    var isTime = _aaIsTime(segs[0].xs);
+    var rows = ['EVBD 3 9.0.120.30842', String(segs.length)];
+    segs.forEach(function(seg, li) {
+      rows.push('aa-plot line ' + (li + 1));
+      rows.push('-10000.0000 0 0');
+      rows.push(String(seg.xs.length));
+      for (var i = 0; i < seg.xs.length; i++) {
+        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
+      }
+    });
+    _aaDownload(rows.join('\\n'), 'aa_lines.evl');
+  };
+
+  // Export EVR — collects from aa_regions_* sources
+  // Format: Echoview Region File (EVBD 3)
+  // Each drawn polygon becomes one EVR region (type 1 = analysis).
+  W.aaExportEvr = function() {
+    var segs = _aaCollect('aa_regions_');
+    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+    if (!segs.length) {
+      alert('No regions drawn yet.\\nActivate the Region (\\u25A1) tool in the echogram toolbar, draw some polygons, then export.');
+      return;
+    }
+    var isTime = _aaIsTime(segs[0].xs);
+    var rows = ['EVBD 3 9.0.120.30842', String(segs.length) + ' 4'];
+    segs.forEach(function(seg, ri) {
+      rows.push('Region ' + (ri + 1));
+      rows.push('');          // notes
+      rows.push('');          // detection settings
+      rows.push('1');         // region type: 1 = analysis
+      rows.push(String(seg.xs.length));
+      for (var i = 0; i < seg.xs.length; i++) {
+        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
+      }
+    });
+    _aaDownload(rows.join('\\n'), 'aa_regions.evr');
+  };
+
+  // Clear all drawing layers
+  W.aaClearDraw = function() {
+    if (!confirm('Clear all drawn lines and regions?')) return;
+    _aaGetModels().forEach(function(m) {
+      if (!m.name) return;
+      var pfx = m.name;
+      if (pfx.indexOf('aa_freehand_') === 0 ||
+          pfx.indexOf('aa_lines_') === 0 ||
+          pfx.indexOf('aa_regions_') === 0) {
+        try {
+          m.data = { xs: [], ys: [] };
+          if (m.change) m.change.emit();
+        } catch(e) {}
+      }
+    });
+  };
+})(window);
+</script>
+"""
+
+
+def _apply_draw_tools(fig, draw_idx: int) -> None:
+    """
+    Inject three drawing layers + tools onto an existing Bokeh figure.
+
+    Layers
+    ------
+    aa_freehand_{i}  MultiLine  gold  #FFD700   FreehandDrawTool
+    aa_lines_{i}     MultiLine  cyan  #00FFFF   PolyDrawTool  (double-click to finish)
+    aa_regions_{i}   Patches    blue  #4499FF   PolyDrawTool  (double-click to close)
+
+    PolyEditTool is also added so drawn geometry can be edited (shift-click vertex to delete).
+    Sources are named so the JS export helpers can find them across all tabs.
+    """
+    from bokeh.models import (
+        FreehandDrawTool, PolyDrawTool, PolyEditTool,
+        ColumnDataSource,
+    )
+
+    # ── Freehand (gold) — exports as EVL ──────────────────────────────────
+    fh_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_freehand_{draw_idx}")
+    fh_rend = fig.multi_line(
+        "xs", "ys", source=fh_src,
+        line_color="#FFD700", line_width=2.0, line_alpha=0.92,
+        line_cap="round", line_join="round",
+    )
+    freehand_tool = FreehandDrawTool(renderers=[fh_rend], num_objects=0)
+    freehand_tool.description = "Freehand line (→ EVL)"
+
+    # ── Polyline segments (cyan dashed) — exports as EVL ─────────────────
+    ln_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_lines_{draw_idx}")
+    ln_rend = fig.multi_line(
+        "xs", "ys", source=ln_src,
+        line_color="#00FFFF", line_width=2.0, line_alpha=0.92,
+    )
+    ln_rend.glyph.line_dash = [8, 4]
+    line_tool = PolyDrawTool(renderers=[ln_rend], num_objects=0)
+    line_tool.description = "Polyline segments (→ EVL, dbl-click to finish)"
+
+    # ── Region polygons (blue translucent) — exports as EVR ───────────────
+    rg_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_regions_{draw_idx}")
+    rg_rend = fig.patches(
+        "xs", "ys", source=rg_src,
+        fill_color="#4499FF", fill_alpha=0.18,
+        line_color="#4499FF", line_width=2.0, line_alpha=0.92,
+    )
+    region_tool = PolyDrawTool(renderers=[rg_rend], num_objects=0)
+    region_tool.description = "Region polygon (→ EVR, dbl-click to close)"
+
+    # ── Vertex editor — lets you drag / delete vertices after drawing ──────
+    try:
+        vtx_src = ColumnDataSource(data={"x": [], "y": []})
+        vtx_rend = fig.circle(
+            "x", "y", source=vtx_src,
+            size=9, color="white", fill_alpha=0.85,
+            line_color="#64748b", line_width=1.2,
+        )
+        edit_tool = PolyEditTool(
+            renderers=[ln_rend, rg_rend],
+            vertex_renderer=vtx_rend,
+        )
+        edit_tool.description = "Edit vertices (shift-click to delete)"
+        fig.add_tools(freehand_tool, line_tool, region_tool, edit_tool)
+    except Exception as exc:
+        logger.debug(f"PolyEditTool unavailable ({exc}); skipping vertex editor.")
+        fig.add_tools(freehand_tool, line_tool, region_tool)
+
+
+def _build_annotation_panel() -> pn.pane.HTML:
+    """
+    Build the annotation controls pane — consistent with the sidebar style.
+
+    The panel is purely HTML + a <script> block defining JS helpers and
+    download functions.  No server required; works in the static embedded HTML.
+
+    EVL format notes
+    ----------------
+    EVBD 3 9.0.120.30842
+    <n_lines>
+    <line_name>
+    -10000.0000 0 0          (bad_data_value  status  editable)
+    <n_points>
+    YYYYMMDD HHMMSS.ssss     depth_m          (tab-separated)
+    ...
+
+    EVR format notes
+    ----------------
+    EVBD 3 9.0.120.30842
+    <n_regions> 4
+    <region_name>
+                             (notes — blank)
+                             (detection_settings — blank)
+    1                        (region type: 1=analysis)
+    <n_points>
+    YYYYMMDD HHMMSS.ssss     depth_m
+    ...
+    """
+    pencil_svg = (
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
+        'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
+        '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
+        '</svg>'
+    )
+
+    html = f"""{_DRAW_CSS}
+{_DRAW_JS_HELPERS}
+<div class="aa-draw-wrap">
+  <div class="aa-draw-title">{pencil_svg} Annotation Tools</div>
+  <div class="aa-draw-body">
+    <div class="aa-draw-legend">
+      <div class="aa-draw-legend-item">
+        <div class="aa-swatch-freehand"></div>
+        <span><b>Freehand</b> &mdash; activate ✏ in toolbar, draw freely</span>
+      </div>
+      <div class="aa-draw-legend-item">
+        <div class="aa-swatch-poly"></div>
+        <span><b>Polyline</b> &mdash; activate ⬤ in toolbar, click points, dbl-click to finish</span>
+      </div>
+      <div class="aa-draw-legend-item">
+        <div class="aa-swatch-region"></div>
+        <span><b>Region</b> &mdash; activate ▭ in toolbar, click vertices, dbl-click to close</span>
+      </div>
+    </div>
+    <div class="aa-draw-btns">
+      <button class="aa-draw-btn evl" onclick="aaExportEvl()">&#11015; Export EVL &nbsp;<span style="opacity:.65;font-size:.9em">(freehand + polylines)</span></button>
+      <button class="aa-draw-btn evr" onclick="aaExportEvr()">&#11015; Export EVR &nbsp;<span style="opacity:.65;font-size:.9em">(regions)</span></button>
+      <button class="aa-draw-btn clr" onclick="aaClearDraw()">&#128465; Clear all</button>
+    </div>
+    <div class="aa-draw-hint">
+      <b>Tip:</b> tools appear in the plot toolbar above the echogram &mdash; switch freely between draw, zoom&nbsp;&#x1F50D; and pan&nbsp;&#x270B;.<br>
+      Drag any vertex with the <b>Edit</b> tool to adjust; shift-click a vertex to delete it.<br>
+      EVL / EVR files use Echoview line/region format and open directly in Echoview.
+    </div>
+  </div>
+</div>
+"""
+    return pn.pane.HTML(html, sizing_mode="stretch_width")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PLOT CONSTRUCTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _plot_echogram(
+    da: xr.DataArray,
+    var: str,
+    x_name: str,
+    y_name: str,
+    title: str,
+    cmap: str,
+    vmin: Optional[float],
+    vmax: Optional[float],
+    min_width: int,
+    height: int,
+    toolbar: str,
+    pin_div,
+    flip_y: bool = True,
+    show_hover: bool = True,
+    show_crosshair: bool = True,
+    draw_idx: int = 0,
+    show_draw: bool = True,
+):
+    da = da.rename(var)
+
+    clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
+
+    common_kw = dict(
+        x=x_name,
+        y=y_name,
+        cmap=cmap,
+        clim=clim,
+        responsive=True,
+        min_width=min_width,
+        height=height,
+        colorbar=True,
+        toolbar=toolbar,
+        title=title,
+        xlabel=_x_label(x_name),
+        ylabel=_y_label(y_name),
+    )
+
+    try:
+        plot = da.hvplot.quadmesh(**common_kw)
+    except Exception:
+        try:
+            plot = da.hvplot.image(**common_kw)
+        except Exception:
+            plot = da.hvplot(**common_kw)
+
+    if flip_y:
+        plot = plot.opts(invert_yaxis=True)
+
+    extra_tools = []
+    try:
+        hover, crosshair, tap = _build_interaction_tools(var, x_name, y_name, pin_div)
+        if show_hover:
+            extra_tools.append(hover)
+        if show_crosshair:
+            extra_tools.append(crosshair)
+        extra_tools.append(tap)
+    except Exception as exc:
+        logger.debug(f"Could not build interaction tools: {exc}")
+
+    if extra_tools:
+        plot = plot.opts(
+            opts.QuadMesh(tools=extra_tools, active_tools=["wheel_zoom"]),
+            opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
+        )
+
+    # Combined hook: stretch_width + drawing tools
+    _draw_idx = draw_idx
+    _add_draw = show_draw
+
+    def _combined_hook(bokeh_plot, element):
+        bokeh_plot.state.sizing_mode = "stretch_width"
+        if _add_draw:
+            try:
+                _apply_draw_tools(bokeh_plot.state, _draw_idx)
+            except Exception as exc:
+                logger.warning(f"Drawing tools unavailable: {exc}")
+
+    plot = plot.opts(
+        opts.QuadMesh(hooks=[_combined_hook]),
+        opts.Image(hooks=[_combined_hook]),
+    )
+
+    return plot
+
+
+def _prep_da(
+    da: xr.DataArray,
+    x_name: str,
+    y_name: str,
+    decimate: int,
+    ymin: Optional[float],
+    ymax: Optional[float],
+) -> xr.DataArray:
+    da = _downsample_da(da, x_name=x_name, step=decimate)
+    da = _apply_ylim(da, y_name=y_name, ymin=ymin, ymax=ymax)
+    return da
+
+
+def _build_single_plot(
+    ds: xr.Dataset,
+    var: str,
+    x_name: str,
+    y_name: str,
+    frequency: Optional[float],
+    channel: Optional[str],
+    cmap: str,
+    vmin: Optional[float],
+    vmax: Optional[float],
+    min_width: int,
+    height: int,
+    toolbar: str,
+    decimate: int,
+    ymin: Optional[float],
+    ymax: Optional[float],
+    pin_div,
+    flip_y: bool = True,
+    show_hover: bool = True,
+    show_crosshair: bool = True,
+    draw_idx: int = 0,
+    show_draw: bool = True,
+):
+    da = ds[var]
+    chan_dim = "channel" if "channel" in da.dims else None
+    freq_dim = "frequency_nominal" if "frequency_nominal" in da.dims else None
+    label = var
+
+    if channel is not None and chan_dim is not None:
+        coord = ds[chan_dim]
+        vals = [_coord_to_str(v) for v in coord.values]
+        idx = vals.index(channel) if channel in vals else 0
+        da = da.isel({chan_dim: idx})
+        ch_val = coord.isel({chan_dim: idx}).values
+        label = _coord_to_str(ch_val)
+        fcoord = _get_freq_coord_for_channel(ds, chan_dim)
+        if fcoord is not None:
+            f_val = fcoord.isel({chan_dim: idx}).values
+            label = f"{_coord_to_str(ch_val)} \u2022 {_coord_to_str(f_val)} Hz"
+    elif frequency is not None and freq_dim is not None:
+        fcoord = ds[freq_dim]
+        idx = _nearest_index(fcoord, frequency)
+        da = da.isel({freq_dim: idx})
+        label = f"frequency={_coord_to_str(fcoord.isel({freq_dim: idx}).values)}"
+    elif frequency is not None and chan_dim is not None:
+        fcoord = _get_freq_coord_for_channel(ds, chan_dim)
+        if fcoord is not None:
+            idx = _nearest_index(fcoord, frequency)
+            da = da.isel({chan_dim: idx})
+            ch_val = ds[chan_dim].isel({chan_dim: idx}).values
+            f_val = fcoord.isel({chan_dim: idx}).values
+            label = f"{_coord_to_str(ch_val)} \u2022 {_coord_to_str(f_val)} Hz"
+    else:
+        if chan_dim is not None:
+            da = da.isel({chan_dim: 0})
+            ch_val = ds[chan_dim].isel({chan_dim: 0}).values
+            label = _coord_to_str(ch_val)
+            fcoord = _get_freq_coord_for_channel(ds, chan_dim)
+            if fcoord is not None:
+                f_val = fcoord.isel({chan_dim: 0}).values
+                label = f"{_coord_to_str(ch_val)} \u2022 {_coord_to_str(f_val)} Hz"
+        elif freq_dim is not None:
+            da = da.isel({freq_dim: 0})
+            f_val = ds[freq_dim].isel({freq_dim: 0}).values
+            label = f"frequency={_coord_to_str(f_val)}"
+
+    da = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
+    return _plot_echogram(
+        da=da, var=var, x_name=x_name, y_name=y_name,
+        title=f"{var} \u2022 {label}", cmap=cmap, vmin=vmin, vmax=vmax,
+        min_width=min_width, height=height, toolbar=toolbar,
+        pin_div=pin_div, flip_y=flip_y,
+        show_hover=show_hover, show_crosshair=show_crosshair,
+        draw_idx=draw_idx, show_draw=show_draw,
+    )
+
+
+def _build_all_tabs(
+    ds: xr.Dataset,
+    var: str,
+    x_name: str,
+    y_name: str,
+    group_by: str,
+    cmap: str,
+    vmin: Optional[float],
+    vmax: Optional[float],
+    min_width: int,
+    height: int,
+    toolbar: str,
+    decimate: int,
+    ymin: Optional[float],
+    ymax: Optional[float],
+    pin_div,
+    flip_y: bool = True,
+    show_hover: bool = True,
+    show_crosshair: bool = True,
+    show_draw: bool = True,
+):
+    da = ds[var]
+
+    if "channel" in da.dims:
+        chan_dim = "channel"
+        ccoord = ds[chan_dim]
+
+        f_on_chan = None
+        for loc in (ds.data_vars, ds.coords):
+            if "frequency_nominal" in loc:
+                f = ds["frequency_nominal"]
+                if chan_dim in f.dims:
+                    f_on_chan = f
+                    break
+
+        tabs = []
+        for ci in range(ccoord.size):
+            c_val = ccoord.isel({chan_dim: ci}).values
+            label = _coord_to_str(c_val)
+            if f_on_chan is not None:
+                f_val = f_on_chan.isel({chan_dim: ci}).values
+                label = f"{_coord_to_str(c_val)} \u2022 {_coord_to_str(f_val)} Hz"
+
+            da2 = da.isel({chan_dim: ci})
+            da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
+
+            plot = _plot_echogram(
+                da=da2, var=var, x_name=x_name, y_name=y_name,
+                title=f"{var} \u2022 {label}", cmap=cmap, vmin=vmin, vmax=vmax,
+                min_width=min_width, height=height, toolbar=toolbar,
+                pin_div=pin_div, flip_y=flip_y,
+                show_hover=show_hover, show_crosshair=show_crosshair,
+                draw_idx=ci, show_draw=show_draw,
+            )
+            tabs.append((label, plot))
+
+        return pn.Tabs(*tabs, sizing_mode="stretch_width", dynamic=False)
+
+    # Fallback — no channel dim
+    da2 = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
+    plot = _plot_echogram(
+        da=da2, var=var, x_name=x_name, y_name=y_name, title=var,
+        cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
+        toolbar=toolbar, pin_div=pin_div, flip_y=flip_y,
+        show_hover=show_hover, show_crosshair=show_crosshair,
+        draw_idx=0, show_draw=show_draw,
+    )
+    return pn.Column(
+        pn.pane.Markdown("No channel dimension detected; plotting a single array."),
+        plot, sizing_mode="stretch_width",
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  HEADER
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool) -> pn.pane.Markdown:
+    source = ds.encoding.get("source", "(in-memory)")
+    dim_info = " \u00d7 ".join(f"{d}={s}" for d, s in ds[var].sizes.items())
+    attrs = ds.attrs
+    sonar_model = attrs.get("sonar_model", attrs.get("keywords", ""))
+    survey_name = attrs.get("survey_name", attrs.get("title", ""))
+
+    meta_lines = []
+    if survey_name:
+        meta_lines.append(f"- **survey:** `{survey_name}`")
+    if sonar_model:
+        meta_lines.append(f"- **sonar:** `{sonar_model}`")
+
+    orient_note = "y-axis inverted (surface at top)" if flip_y else "y-axis normal"
+    md = (
+        f"### aa-plot echogram\n"
+        f"- **file:** `{source}`\n"
+        f"- **var:** `{var}` \u00a0 ({dim_info})\n"
+        f"- **x:** `{x_name}`  \u2022  **y:** `{y_name}` \u00a0 *({orient_note})*\n"
+        + "\n".join(meta_lines) + "\n\n"
+        "<span style='color:#777; font-size:0.85em;'>"
+        "Scroll to zoom \u00b7 Shift+drag to pan \u00b7 Click to pin coordinates \u00b7 "
+        "Hover for values \u00b7 Colormap picker below \u00b7 "
+        "Drawing tools in plot toolbar"
+        "</span>"
+    )
+    return pn.pane.Markdown(md, sizing_mode="stretch_width")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  LAYOUT ASSEMBLY
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _render_layout(
+    ds: xr.Dataset,
+    var: str,
+    all_plots: bool,
+    group_by: str,
+    frequency: Optional[float],
+    channel: Optional[str],
+    x_override: Optional[str],
+    y_override: Optional[str],
+    vmin: Optional[float],
+    vmax: Optional[float],
+    cmap: str,
+    decimate: int,
+    ymin: Optional[float],
+    ymax: Optional[float],
+    width: int,
+    height: int,
+    toolbar: str,
+    flip_y: bool = True,
+    show_hover: bool = True,
+    show_crosshair: bool = True,
+    show_cmap_picker: bool = True,
+    show_log: bool = True,
+    show_draw: bool = True,
+) -> pn.viewable.Viewable:
+    x_name, y_name = _detect_axes(ds)
+    if x_override:
+        x_name = x_override
+    if y_override:
+        y_name = y_override
+
+    if flip_y:
+        flip_y = _should_flip_y(y_name)
+        if flip_y:
+            logger.info(f"Y-axis '{y_name}' recognised as range/depth \u2192 inverting (surface at top).")
+        else:
+            logger.info(f"Y-axis '{y_name}' not in depth/range list \u2192 keeping default orientation.")
+
+    min_width = max(width, 100)
+
+    from bokeh.models import Div as BokehDiv
+    pin_div = BokehDiv(
+        text=(
+            '<div style="font-family:monospace;font-size:0.82em;padding:5px 10px;'
+            'color:#475569;font-style:italic;">'
+            '\U0001f4cd Click the plot to pin coordinates'
+            '</div>'
+        ),
+        sizing_mode="stretch_width",
+    )
+    pin_pane = pn.pane.Bokeh(pin_div, sizing_mode="stretch_width")
+
+    header = _build_header(ds, var, x_name, y_name, flip_y)
+
+    if all_plots:
+        body = _build_all_tabs(
+            ds=ds, var=var, x_name=x_name, y_name=y_name, group_by=group_by,
+            cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
+            toolbar=toolbar, decimate=decimate, ymin=ymin, ymax=ymax,
+            pin_div=pin_div, flip_y=flip_y,
+            show_hover=show_hover, show_crosshair=show_crosshair,
+            show_draw=show_draw,
+        )
+    else:
+        body = _build_single_plot(
+            ds=ds, var=var, x_name=x_name, y_name=y_name,
+            frequency=frequency, channel=channel,
+            cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
+            toolbar=toolbar, decimate=decimate, ymin=ymin, ymax=ymax,
+            pin_div=pin_div, flip_y=flip_y,
+            show_hover=show_hover, show_crosshair=show_crosshair,
+            draw_idx=0, show_draw=show_draw,
+        )
+
+    plot_inner: list = []
+    if show_cmap_picker:
+        plot_inner.append(_build_cmap_picker(cmap))
+        plot_inner.append(pn.Spacer(height=2))
+    plot_inner += [body, pin_pane]
+    plot_section = pn.Column(*plot_inner, sizing_mode="stretch_width")
+
+    parts: list = [header, plot_section]
+
+    if show_draw:
+        parts.append(pn.Spacer(height=6))
+        parts.append(_build_annotation_panel())
+
+    if show_log:
+        parts.append(pn.Spacer(height=8))
+        parts.append(_build_data_log(ds, var, x_name, y_name, flip_y))
+
+    return pn.Column(*parts, sizing_mode="stretch_width")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  CLI
+# ═══════════════════════════════════════════════════════════════════════════
+
+def main() -> None:
     if len(sys.argv) == 1:
-        if not sys.stdin.isatty():
-            token = sys.stdin.readline().strip()
-            if token:
-                sys.argv.append(token)
+        token = _read_input_path_from_stdin()
+        if token:
+            sys.argv.append(token)
         else:
             print_help()
-            sys.exit(0)
+            raise SystemExit(0)
 
-    p = argparse.ArgumentParser(description="Interactive echogram plotting (hvPlot + Panel).", add_help=False)
-    p.add_argument("input_path", type=Path, nargs="?", help="Path to a NetCDF file (.nc).")
-
-    # selection
-    p.add_argument("--var", dest="var", default=None, help="Variable to plot (default: Sv).")
-    p.add_argument("--all", action="store_true", help="Plot all channels/frequencies in tabs.")
-    p.add_argument("--frequency", type=float, default=None, help="Select nominal frequency (Hz).")
-    p.add_argument("--channel", type=str, default=None, help="Select a channel by name.")
-
-    # appearance
-    p.add_argument("--vmin", type=float, default=None, help="Lower color limit.")
-    p.add_argument("--vmax", type=float, default=None, help="Upper color limit.")
-    p.add_argument("--cmap", type=str, default="inferno", help="Colormap name (default: inferno).")
-    p.add_argument("--width", type=int, default=1200, help="Plot width (px).")
-    p.add_argument("--height", type=int, default=450, help="Plot height (px).")
-    p.add_argument("--toolbar", type=str, default="above", choices=["above","below","left","right","disable"],
-                   help="Toolbar placement (default: above).")
-
-    # subsetting / perf
-    p.add_argument("--decimate", type=int, default=1, help="Keep every Nth ping/time sample (default: 1).")
-    p.add_argument("--ymin", type=float, default=None, help="Y-axis min (range/depth).")
-    p.add_argument("--ymax", type=float, default=None, help="Y-axis max (range/depth).")
-
-    # output & behavior
-    p.add_argument("-o", "--output_path", type=Path, default=None, help="Output HTML path (default: <stem>_plot.html).")
-    p.add_argument("--no-overwrite", action="store_true", help="Do not overwrite an existing output file.")
-    p.add_argument("--quiet", action="store_true", help="Reduce logs; still prints final path.")
-    p.add_argument("-h", "--help", action="store_true", help="Show this help and exit.")
+    p = argparse.ArgumentParser(
+        description="Interactive echogram plotting (hvPlot + Panel) -> standalone HTML",
+        add_help=False,
+    )
+    p.add_argument("input_path", type=Path, nargs="?")
+    p.add_argument("--var", default=None)
+    p.add_argument("--all", action="store_true")
+    p.add_argument("--frequency", type=float, default=None)
+    p.add_argument("--channel", type=str, default=None)
+    p.add_argument("--group-by", type=str, default="auto", choices=["auto", "channel", "freq"])
+    p.add_argument("--x", dest="x_override", type=str, default=None)
+    p.add_argument("--y", dest="y_override", type=str, default=None)
+    p.add_argument("--no-flip", action="store_true")
+    p.add_argument("--vmin", type=float, default=None)
+    p.add_argument("--vmax", type=float, default=None)
+    p.add_argument("--cmap", type=str, default="inferno")
+    p.add_argument("--width", type=int, default=250,
+                   help="Minimum plot width in px; stretches responsively (default: 250).")
+    p.add_argument("--height", type=int, default=450)
+    p.add_argument("--toolbar", type=str, default="above",
+                   choices=["above", "below", "left", "right", "disable"])
+    p.add_argument("--no-hover", action="store_true")
+    p.add_argument("--no-crosshair", action="store_true")
+    p.add_argument("--no-cmap-picker", action="store_true")
+    p.add_argument("--no-log", action="store_true")
+    p.add_argument("--no-draw", action="store_true",
+                   help="Disable freehand/polyline/region drawing tools.")
+    p.add_argument("--decimate", type=int, default=1)
+    p.add_argument("--ymin", type=float, default=None)
+    p.add_argument("--ymax", type=float, default=None)
+    p.add_argument("-o", "--output_path", type=Path, default=None)
+    p.add_argument("--no-overwrite", action="store_true")
+    p.add_argument("--quiet", action="store_true")
+    p.add_argument("-h", "--help", action="store_true")
 
     args = p.parse_args()
 
     if args.help:
         print_help()
-        sys.exit(0)
+        raise SystemExit(0)
 
-    # resolve input path
+    _configure_logging(args.quiet)
+
     if args.input_path is None:
-        args.input_path = Path(sys.stdin.readline().strip())
-        if not args.quiet:
-            logger.info(f"Read input path from stdin: {args.input_path}")
+        token = _read_input_path_from_stdin()
+        if not token:
+            logger.error("No INPUT_PATH provided and no stdin token available.")
+            raise SystemExit(2)
+        args.input_path = Path(token)
+        logger.info(f"Read input path from stdin: {args.input_path}")
 
     if not args.input_path.exists():
-        logger.error(f"File '{args.input_path}' does not exist.")
-        sys.exit(1)
+        logger.error(f"Input file does not exist: {args.input_path}")
+        raise SystemExit(1)
 
-    # resolve output path
     if args.output_path is None:
         args.output_path = args.input_path.with_stem(args.input_path.stem + "_plot").with_suffix(".html")
 
     if args.output_path.exists() and args.no_overwrite:
-        logger.error(f"Output file '{args.output_path}' exists and --no-overwrite was set.")
-        sys.exit(1)
+        logger.error(f"Output exists and --no-overwrite set: {args.output_path}")
+        raise SystemExit(1)
 
-    # guard option conflicts
     if args.all and (args.frequency is not None or args.channel is not None):
         logger.error("Use either --all OR a specific --frequency/--channel (not both).")
-        sys.exit(1)
+        raise SystemExit(2)
 
     try:
-        # Load dataset quietly to keep stdout clean for downstream pipes.
-        f = io.StringIO()
-        with redirect_stdout(f):
+        buf = io.StringIO()
+        with redirect_stdout(buf), redirect_stderr(buf):
             ds = xr.open_dataset(args.input_path)
 
+        ds.encoding["source"] = str(args.input_path)
         var = _ensure_variable(ds, args.var)
+        logger.info(f"Plotting var='{var}' from {args.input_path.name}")
 
-        if not args.quiet:
-            logger.info(f"Building echogram(s) for variable '{var}' ...")
-
-        layout = _build_panel(
-            ds=ds,
-            var=var,
-            vmin=args.vmin,
-            vmax=args.vmax,
-            cmap=args.cmap,
-            decimate=args.decimate,
-            ymin=args.ymin,
-            ymax=args.ymax,
-            width=args.width,
-            height=args.height,
-            toolbar=args.toolbar,
-            frequency=args.frequency,
-            channel=args.channel,
-            all_plots=args.all,
+        layout = _render_layout(
+            ds=ds, var=var, all_plots=args.all, group_by=args.group_by,
+            frequency=args.frequency, channel=args.channel,
+            x_override=args.x_override, y_override=args.y_override,
+            vmin=args.vmin, vmax=args.vmax, cmap=args.cmap,
+            decimate=args.decimate, ymin=args.ymin, ymax=args.ymax,
+            width=args.width, height=args.height, toolbar=args.toolbar,
+            flip_y=not args.no_flip, show_hover=not args.no_hover,
+            show_crosshair=not args.no_crosshair,
+            show_cmap_picker=not args.no_cmap_picker,
+            show_log=not args.no_log,
+            show_draw=not args.no_draw,
         )
 
-        # Ensure output directory exists
         args.output_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving HTML: {args.output_path}")
+        pn.io.save.save(
+            layout,
+            filename=str(args.output_path),
+            embed=True,
+            resources="inline",
+            title="aa-plot echogram",
+        )
 
-        # Save to standalone HTML (inline resources for portability)
-        if not args.quiet:
-            logger.info(f"Saving interactive HTML to {args.output_path} ...")
-
-        pn.io.save.save(layout, filename=str(args.output_path), embed=True, resources="inline", title="aa-plot echogram")
-
-        # Emit absolute path for piping
         print(args.output_path.resolve())
 
-        if not args.quiet:
-            logger.info("aa-plot complete.")
-
     except Exception as e:
-        logger.exception(f"Error during plotting: {e}")
-        sys.exit(1)
+        logger.exception(f"aa-plot failed: {e}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
