@@ -18,7 +18,6 @@ download_raw_file_from_ncei(file_name="2107RL_CW-D20210813-T220732.raw",
                             ship_name="Reuben_Lasker",
                             survey_name="RL2107",
                             echosounder="EK80",
-                            data_source="NCEI",
                             file_download_directory=".",
                             upload_to_gcp=True,   # Set to True if you want to upload the raw file to gcp
                             debug=False)
