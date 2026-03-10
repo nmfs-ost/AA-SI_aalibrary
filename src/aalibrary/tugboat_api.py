@@ -3,12 +3,12 @@
 import os
 import json
 import urllib
-import requests
 import warnings
+import requests
+from dotenv import load_dotenv
 
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
-from dotenv import load_dotenv
 
 # For pytests-sake
 # if __package__ is None or __package__ == "":
