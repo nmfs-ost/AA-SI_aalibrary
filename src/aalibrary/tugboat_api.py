@@ -105,6 +105,69 @@ class TugboatAPI:
             print(f"Error during GET request: {e}")
             raise requests.exceptions.RequestException
 
+    def _post_request_as_json(self, url: str, payload: dict) -> dict:
+        """Helper function to make a POST request and return the response as
+        JSON.
+
+        Args:
+            url (str): The URL to make the POST request to.
+            payload (dict): The JSON payload for the POST request.
+
+        Returns:
+            dict: The response from the POST request as a JSON dictionary."""
+        try:
+            response = requests.post(
+                url,
+                headers=self.headers,
+                json=payload,
+                timeout=10,
+                verify=False,
+            )
+            # Raise an HTTPError for bad responses(4xx or 5xx)
+            response.raise_for_status()
+            print("POST request successful!")
+            print("Response JSON:")
+            print(response.json())
+            return response.json()
+        except Exception as e:
+            print(
+                f"POST request failed with status code: {response.status_code}"
+            )
+            print(response.text)
+            raise requests.exceptions.RequestException from e
+
+    def _put_request_as_json(self, url: str, payload: dict) -> dict:
+        """Helper function to make a PUT request and return the response as
+        JSON.
+
+        Args:
+            url (str): The URL to make the PUT request to.
+            payload (dict): The JSON payload for the PUT request.
+
+        Returns:
+            dict: The response from the PUT request as a JSON dictionary."""
+
+        try:
+            response = requests.put(
+                url,
+                headers=self.headers,
+                json=payload,
+                timeout=10,
+                verify=False,
+            )
+            # Raise an HTTPError for bad responses(4xx or 5xx)
+            response.raise_for_status()
+            print("PUT request successful!")
+            print("Response JSON:")
+            print(response.json())
+            return response.json()
+        except Exception as e:
+            print(
+                f"PUT request failed with status code: {response.status_code}"
+            )
+            print(response.text)
+            raise requests.exceptions.RequestException from e
+
     ############################################################### CONNECTION
     def check_connection(self) -> bool:
         """Fetches a sea area by its ID from the Tugboat API to test the
@@ -188,23 +251,7 @@ class TugboatAPI:
         with open(submission_json_file_path, "r", encoding="utf-8") as f:
             submission_payload = json.load(f)
 
-        response = requests.post(
-            url,
-            headers=self.headers,
-            json=submission_payload,
-            timeout=10,
-            verify=False,
-        )
-        # Checking the response status code
-        if response.status_code == 201:  # 201 Created for successful POST
-            print("POST request successful!")
-            print("Response JSON:")
-            print(response.json())
-        else:
-            print(
-                f"POST request failed with status code: {response.status_code}"
-            )
-            print(response.text)
+        return self._post_request_as_json(url, submission_payload)
 
     def resubmit_submission(
         self, submission_id: str, submission_json_file_path: str = ""
@@ -313,8 +360,30 @@ class TugboatAPI:
         return self._get_request_as_json(url)
 
     def update_person_by_id(self, person_id: str, person_json: dict) -> dict:
-        """Updates a person by their ID in the Tugboat API."""
-        # TODO: Implement function to update person by ID in the Tugboat API.
+        """Updates a person by their ID in the Tugboat API.
+
+        Args:
+            person_id (str): The id of the person you are trying to update.
+            person_json (dict): The JSON payload containing the updated person
+                information.
+                Example:
+                    {
+                        "name": "John Smith",
+                        "position": "Water Column Data Manager",
+                        "organization": "NESDIS;NCEI",
+                        "street": "NOAA;NCEI, 325 Broadway",
+                        "city": "Boulder",
+                        "state": "CO",
+                        "zip": "80305",
+                        "country": "USA"
+                    }
+
+        Returns:
+            dict: The response from the Tugboat API after updating the person.
+        """
+        url = urllib.parse.urljoin(self.tugboat_api_url, f"people/{person_id}")
+
+        return self._put_request_as_json(url, person_json)
 
     def search_people_by_email(self, email: str) -> dict:
         """Searches for people by email in the Tugboat API."""
@@ -342,25 +411,34 @@ class TugboatAPI:
         else:
             return resp["items"]
 
-    def post_new_person(self, person_json: dict):
-        """Posts a new person to the Tugboat API."""
+    def post_new_person(self, person_json: dict) -> dict:
+        """Posts a new person to the Tugboat API.
+
+        Args:
+            person_json (dict): The dictionary containing the person's
+                information.
+                Example:
+                    {
+                        "name": "John Smith",
+                        "position": "Water Column Data Manager",
+                        "organization": "NESDIS;NCEI",
+                        "street": "NOAA;NCEI, 325 Broadway",
+                        "city": "Boulder",
+                        "state": "CO",
+                        "zip": "80305",
+                        "country": "USA"
+                    }
+
+        Returns:
+            dict: The response from the Tugboat API after creating the person.
+                This includes the ID of the newly created person, which can be
+                used for future reference.
+        """
 
         # Create the URL for the person endpoint
         url = urllib.parse.urljoin(self.tugboat_api_url, "people")
 
-        response = requests.post(
-            url, headers=self.headers, json=person_json, timeout=10
-        )
-        # Checking the response status code
-        if response.status_code == 201:  # 201 Created for successful POST
-            print("POST request successful!")
-            print("Response JSON:")
-            print(response.json())
-        else:
-            print(
-                f"POST request failed with status code: {response.status_code}"
-            )
-            print(response.text)
+        return self._post_request_as_json(url, person_json)
 
     ############################################################# ORGANIZATIONS
     def get_organization_by_id(self, organization_id: str) -> dict:
@@ -385,6 +463,34 @@ class TugboatAPI:
             page += 1
         return all_organizations
 
+    def post_new_organization(self, organization_json: dict) -> dict:
+        """Posts a new organization to the Tugboat API.
+
+        Args:
+            organization_json (dict): The dictionary containing the
+                organization's information.
+                Example:
+                    {
+                        "name": "NOAA AFSC",
+                        "street": "7600 Sand Point Way N.E., Building 4",
+                        "city": "Seattle",
+                        "state": "WA",
+                        "zip": "98115",
+                        "country": "USA",
+                        "phone": "206-526-4000"
+                    }
+
+        Returns:
+            dict: The response from the Tugboat API after creating the
+                organization. This includes the ID of the newly created
+                organization, which can be used for future reference.
+        """
+
+        # Create the URL for the organization endpoint
+        url = urllib.parse.urljoin(self.tugboat_api_url, "organizations")
+
+        return self._post_request_as_json(url, organization_json)
+
     ################################################################# PLATFORMS
     def get_platform_by_id(self, platform_id: str) -> dict:
         """Fetches a platform by its ID from the Tugboat API."""
@@ -407,6 +513,28 @@ class TugboatAPI:
             all_platforms.extend(platforms)
             page += 1
         return all_platforms
+
+    def post_new_platform(self, platform_json: dict) -> dict:
+        """Posts a new platform to the Tugboat API.
+
+        Args:
+            platform_json (dict): The dictionary containing the
+                platform's information.
+                Example:
+                    {
+                        "name": "Towed array",
+                    }
+
+        Returns:
+            dict: The response from the Tugboat API after creating the
+                platform. This includes the ID of the newly created
+                platform, which can be used for future reference.
+        """
+
+        # Create the URL for the platform endpoint
+        url = urllib.parse.urljoin(self.tugboat_api_url, "platforms")
+
+        return self._post_request_as_json(url, platform_json)
 
     ############################################################### INSTRUMENTS
     def get_instrument_by_id(self, instrument_id: str) -> dict:
@@ -443,6 +571,30 @@ class TugboatAPI:
             page += 1
         return all_instruments
 
+    def post_new_instrument(self, instrument_json: dict) -> dict:
+        """Posts a new instrument to the Tugboat API.
+
+        Args:
+            instrument_json (dict): The dictionary containing the instrument's
+                information.
+                Example:
+                    {
+                        "instrument": "Kongsberg EM122",
+                        "shortName": "EM122",
+                        "extensions": "[wcd, kmwcd]"
+                    }
+
+        Returns:
+            dict: The response from the Tugboat API after creating the
+                instrument. This includes the ID of the newly created
+                instrument, which can be used for future reference.
+        """
+
+        # Create the URL for the instrument endpoint
+        url = urllib.parse.urljoin(self.tugboat_api_url, "instruments")
+
+        return self._post_request_as_json(url, instrument_json)
+
     ################################################################# SEA AREAS
     def get_sea_area_by_id(self, sea_area_id: str) -> dict:
         """Fetches a sea area by its ID from the Tugboat API."""
@@ -466,22 +618,54 @@ class TugboatAPI:
             page += 1
         return all_sea_areas
 
+    def post_new_sea_area(self, sea_area_json: dict) -> dict:
+        """Posts a new sea area to the Tugboat API.
+
+        Args:
+            sea_area_json (dict): The dictionary containing the sea area's
+                information.
+                Example:
+                    {
+                        "name": "North Pacific Ocean"
+                    }
+
+        Returns:
+            dict: The response from the Tugboat API after creating the
+                sea area. This includes the ID of the newly created
+                sea area, which can be used for future reference.
+        """
+
+        # Create the URL for the sea area endpoint
+        url = urllib.parse.urljoin(self.tugboat_api_url, "sea-areas")
+
+        return self._post_request_as_json(url, sea_area_json)
+
 
 if __name__ == "__main__":
     tb_api = TugboatAPI()
+    print(tb_api.check_connection())
     # tb_api.create_empty_submission_file(
     #     file_download_directory=".",
     #     file_name="tugboat_test_submission.json",
     # )
     # print(tb_api.get_all_organizations())
     # print(tb_api.get_organization_by_id("151"))
-    print(tb_api.check_connection())
-    print(tb_api.search_people_by_name("Hannan Khan"))
+    # print(tb_api.search_people_by_name("Hannan Khan"))
+    # print("\n\n\n")
+    # tb_api.post_new_person(
+    #     person_json={
+    #         "name": "Elias Capriles",
+    #         "email": "elias.capriles@noaa.gov",
+    #         "position": "Data Analyst Scientist",
+    #     }
+    # )
+    # print(tb_api.search_people_by_name("Elias Capriles"))
+    # print(tb_api.get_all_people())
 
     # print(tb_api.get_all_instruments())
     # print(tb_api.get_all_platforms())
     # print(tb_api.get_all_people())
-    # print(tb_api.get_all_sea_areas())
+    print(tb_api.get_all_sea_areas())
     # print(tb_api.get_all_submissions())
     # print(tb_api.get_all_jobs())
     # print(tb_api.get_all_organizations())
