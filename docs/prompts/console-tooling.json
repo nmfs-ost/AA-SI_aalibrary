@@ -1,0 +1,1956 @@
+[
+  {
+    "tool": "aa-absorption",
+    "category": "Utilities (Seawater)",
+    "purpose": "Compute seawater absorption (dB/m) using Echopype.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": [
+      {
+        "flags": "--frequency",
+        "help": "Frequency in Hz, or comma-separated list.",
+        "required": true
+      },
+      {
+        "flags": "--temperature",
+        "help": "Temperature in °C (default: 27).",
+        "type": "float",
+        "default": "27.0"
+      },
+      {
+        "flags": "--salinity",
+        "help": "Salinity in PSU (default: 35).",
+        "type": "float",
+        "default": "35.0"
+      },
+      {
+        "flags": "--pressure",
+        "help": "Pressure in dbar (default: 10).",
+        "type": "float",
+        "default": "10.0"
+      },
+      {
+        "flags": "--pH",
+        "help": "pH of seawater (default: 8.1).",
+        "type": "float",
+        "default": "8.1"
+      },
+      {
+        "flags": "--formula-source",
+        "help": "Formula source (default: AM).",
+        "choices": [
+          "AM",
+          "FG",
+          "AZFP"
+        ],
+        "default": "AM"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Optional NetCDF output path.",
+        "type": "Path"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Print only numeric result(s).",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-absorption [OPTIONS]\n\nOptions:\n  --frequency FLOAT_OR_LIST  Frequency in Hz (e.g., 38000) or comma-separated list (e.g., 38000,120000). Required.\n  --temperature FLOAT         Temperature in °C. Default: 27\n  --salinity FLOAT            Salinity in PSU. Default: 35\n  --pressure FLOAT            Pressure in dbar. Default: 10\n  --pH FLOAT                  pH of seawater. Default: 8.1\n  --formula-source STR        Formula source: 'AM', 'FG', or 'AZFP'. Default: AM\n  -o, --output_path PATH      Optional NetCDF output path (default: none).\n  --quiet                     Print only numeric values (or array).\n  -h, --help                  Show this help message and exit.\n\nDescription:\n  Computes seawater absorption in dB/m for given frequency(ies) and parameters."
+  },
+  {
+    "tool": "aa-abundance",
+    "category": "Metrics",
+    "purpose": "Compute Echopype metrics.abundance.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_abundance"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF Dataset containing 'echo_range' (typically from calibrated Sv).",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output NetCDF path (default: <stem>_abundance.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--range-label",
+        "help": "Name of the range DataArray (default: echo_range).",
+        "default": "echo_range"
+      },
+      {
+        "flags": "--try-calibrate",
+        "help": "If 'echo_range' missing, attempt to compute Sv to obtain it.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Reduce logs; print only final path.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-abundance [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to a NetCDF file (.nc) containing a calibrated\n                               Dataset with 'echo_range'. Optional; defaults to\n                               reading one token from stdin.\n\nOptions:\n  -o, --output_path PATH       Output NetCDF path (default: <stem>_abundance.nc).\n  --range-label STR            Name of the DataArray holding range (default: echo_range).\n  --try-calibrate              If 'echo_range' is missing, try to open as converted\n                               EchoData and compute Sv to obtain it.\n  --no-overwrite               Do not overwrite an existing output file.\n  --quiet                      Print only the output path (or suppress extras).\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Computes the Echopype abundance metric along the range axis and writes it to NetCDF."
+  },
+  {
+    "tool": "aa-aggregation",
+    "category": "Metrics",
+    "purpose": "Compute Echopype metrics.aggregation.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_aggregation"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF Dataset containing 'echo_range' (typically from calibrated Sv).",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output NetCDF path (default: <stem>_aggregation.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--range-label",
+        "help": "Name of the range DataArray (default: echo_range).",
+        "default": "echo_range"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Reduce logs; print only final path.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-aggregation [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to a NetCDF file (.nc) containing a calibrated\n                               Dataset with 'echo_range'. Optional; defaults to\n                               reading one token from stdin.\n\nOptions:\n  -o, --output_path PATH       Output NetCDF path (default: <stem>_aggregation.nc).\n  --range-label STR            Name of the DataArray holding range (default: echo_range).\n  --no-overwrite               Do not overwrite an existing output file.\n  --quiet                      Print only the output path (or suppress extras).\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Computes the Echopype aggregation metric of backscatter along the range axis."
+  },
+  {
+    "tool": "aa-attenuated",
+    "category": "Cleaning & Masking",
+    "purpose": "Creates a boolean mask marking likely attenuated-signal pings based on comparisons across neighboring ping blocks between two depth limits. Optionally applies the mask to Sv to produce a cleaned Sv dataset.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_attenuated_mask"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing Sv (preferred) or a converted file that can be calibrated to Sv.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for the mask NetCDF (default: <stem>_attenuated_mask.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--apply",
+        "help": "Also write Sv cleaned by the attenuated-signal mask to <stem>_attenuated_cleaned.nc.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--upper-limit-sl",
+        "help": "Upper limit of deep scattering layer line, e.g., '400.0m' (default: 400.0m).",
+        "default": "400.0m"
+      },
+      {
+        "flags": "--lower-limit-sl",
+        "help": "Lower limit of deep scattering layer line, e.g., '500.0m' (default: 500.0m).",
+        "default": "500.0m"
+      },
+      {
+        "flags": "--num-side-pings",
+        "help": "Number of side pings for comparison block (default: 15).",
+        "type": "int",
+        "default": "15"
+      },
+      {
+        "flags": "--attenuation-threshold",
+        "help": "Attenuation threshold above local context, e.g., '8.0dB' (default: 8.0dB).",
+        "default": "8.0dB"
+      },
+      {
+        "flags": "--range-var",
+        "help": "Range/depth variable name (default: depth).",
+        "default": "depth"
+      }
+    ],
+    "full_help": "Usage: aa-attenuated [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to the calibrated .nc (NetCDF) file\n                               containing Sv (preferred), or a converted\n                               Echopype file that can be calibrated to Sv.\n                               Optional. Defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH       Where to write the attenuated-signal mask (NetCDF).\n                               Default: <stem>_attenuated_mask.nc\n  --apply                      Also apply the mask to Sv and write a cleaned\n                               Sv file (suffix: _attenuated_cleaned.nc).\n\n  # mask_attenuated_signal parameters\n  --upper-limit-sl STR         Upper limit of deep scattering layer line, e.g. '400.0m'.\n                               Default: 400.0m\n  --lower-limit-sl STR         Lower limit of deep scattering layer line, e.g. '500.0m'.\n                               Default: 500.0m\n  --num-side-pings INT         Pings on each side defining the comparison block.\n                               Default: 15\n  --attenuation-threshold STR  Threshold above local context, e.g. '8.0dB'.\n                               Default: 8.0dB\n  --range-var STR              Name of the range/depth coordinate (e.g., 'depth').\n                               Default: depth\n\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Creates a boolean mask marking likely attenuated-signal pings based on\n  comparisons across neighboring ping blocks between two depth limits.\n  Optionally applies the mask to Sv to produce a cleaned Sv dataset.\n\nExamples:\n  aa-attenuated data.nc --upper-limit-sl 350m --lower-limit-sl 480m --num-side-pings 17\n  aa-attenuated data.nc --apply -o out_mask.nc"
+  },
+  {
+    "tool": "aa-center-of-mass",
+    "category": "Metrics",
+    "purpose": "Compute Echopype metrics.center_of_mass (COM).",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_com"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF Dataset containing 'echo_range' (typically from calibrated Sv).",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output NetCDF path (default: <stem>_com.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--range-label",
+        "help": "Name of the range DataArray (default: echo_range).",
+        "default": "echo_range"
+      },
+      {
+        "flags": "--try-calibrate",
+        "help": "If 'echo_range' missing, attempt to compute Sv to obtain it.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Reduce logs; print only final path.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-center-of-mass [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to a NetCDF file (.nc) containing a calibrated\n                               Dataset with 'echo_range'. Optional; defaults to\n                               reading one token from stdin.\n\nOptions:\n  -o, --output_path PATH       Output NetCDF path (default: <stem>_com.nc).\n  --range-label STR            Name of the DataArray holding range (default: echo_range).\n  --try-calibrate              If 'echo_range' is missing, try to open as converted\n                               EchoData and compute Sv to obtain it.\n  --no-overwrite               Do not overwrite an existing output file.\n  --quiet                      Print only the output path (or suppress extras).\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Computes the center of mass (depth-weighted mean) of backscatter along range.\n  Units: meters (same units as the provided range axis)."
+  },
+  {
+    "tool": "aa-clean",
+    "category": "Cleaning & Masking",
+    "purpose": "This tool processes .netcdf4 files with Echopype and removes background noise using ping-based and range-based thresholds.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_clean",
+      "accepted_extensions": [
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
+        "type": "Path"
+      },
+      {
+        "flags": "--ping_num",
+        "help": "Number of pings to use for background noise removal.",
+        "type": "int",
+        "default": "20"
+      },
+      {
+        "flags": "--range_sample_num",
+        "help": "Number of range samples to use for background noise removal.",
+        "type": "int",
+        "default": "20"
+      },
+      {
+        "flags": "--background_noise_max",
+        "help": "Optional maximum background noise value.",
+        "type": "str"
+      },
+      {
+        "flags": "--snr_threshold",
+        "help": "SNR threshold in dB (default: 3.0).",
+        "type": "float",
+        "default": "3.0"
+      }
+    ],
+    "full_help": "Usage: aa-clean [OPTIONS] [INPUT_PATH]\n\nArguments:\nINPUT_PATH                  Path to the .netcdf4 file.\n                            Optional. Defaults to stdin if not provided.\n\nOptions:\n-o, --output_path           Path to save processed output.\n                            Default: overwrites .nc files or creates a new .nc for RAW.\n--ping_num                  Number of pings to use for background noise removal.\n                            Default: 20\n--range_sample_num          Number of range samples to use for background noise removal.\n                            Default: 20\n--background_noise_max      Optional maximum background noise value.\n                            Default: None\n--snr_threshold             SNR threshold in dB.\n                            Default: 3.0\n\nDescription:\nThis tool processes .netcdf4 files with Echopype and removes\nbackground noise using ping-based and range-based thresholds.\n\nExample:\naa-clean /path/to/input.nc --ping_num 50 --range_sample_num 200 \\\n        --snr_threshold 5.0 -o /path/to/output.nc"
+  },
+  {
+    "tool": "aa-coerce-time",
+    "category": "QC & Time",
+    "purpose": "Detects and fixes local backward jumps in a datetime coordinate by enforcing a monotonically increasing series (forward-only time).",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_timefix"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing the time coordinate to fix.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output NetCDF path (default: <stem>_timefix.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--time-name",
+        "help": "Name of the time coordinate to coerce (default: ping_time).",
+        "default": "ping_time"
+      },
+      {
+        "flags": "--win-len",
+        "help": "Local window length for inferring next ping time (default: 100).",
+        "type": "int",
+        "default": "100"
+      },
+      {
+        "flags": "--report",
+        "help": "Print whether time reversals exist before/after.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-coerce-time [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to a NetCDF file (.nc) whose time coordinate\n                               may contain local reversals. Optional; defaults to\n                               reading a single token from stdin.\n\nOptions:\n  -o, --output_path PATH       Output NetCDF path (default: <stem>_timefix.nc).\n  --time-name STR              Name of the time coordinate to coerce (default: ping_time).\n  --win-len INT                Local window length used to infer the next ping time\n                               when a reversal is detected (default: 100).\n  --report                     Print a short report on time reversals before/after.\n  --no-overwrite               Do not overwrite an existing output file.\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Detects and fixes local backward jumps in a datetime coordinate by enforcing\n  a monotonically increasing series (forward-only time).\n\nExample:\n  aa-coerce-time pingdata.nc --time-name ping_time --win-len 120 --report -o pingdata_timefix.nc"
+  },
+  {
+    "tool": "aa-crop",
+    "category": "Uncategorized",
+    "purpose": "Convert RAW files to NetCDF using Echopype, remove background noise, and save back.",
+    "io": {
+      "stdin": "positional arg only",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "accepted_extensions": [
+        ".raw",
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed output. Defaults to input_path with '_processed.nc' suffix.",
+        "type": "Path"
+      },
+      {
+        "flags": "--ping_num",
+        "help": "Number of pings to use for background noise removal.",
+        "type": "int",
+        "required": true
+      },
+      {
+        "flags": "--range_sample_num",
+        "help": "Number of range samples to use for background noise removal.",
+        "type": "int",
+        "required": true
+      },
+      {
+        "flags": "--background_noise_max",
+        "help": "Optional maximum background noise value.",
+        "type": "str"
+      },
+      {
+        "flags": "--snr_threshold",
+        "help": "SNR threshold in dB (default: 3.0).",
+        "type": "float",
+        "default": "3.0"
+      }
+    ]
+  },
+  {
+    "tool": "aa-depth",
+    "category": "Calibration & Core Derivatives",
+    "purpose": "Process .raw or .netcdf4 files with Echopype and remove background noise.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_depth",
+      "accepted_extensions": [
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
+        "type": "Path"
+      },
+      {
+        "flags": "--depth-offset",
+        "help": "Offset along depth to account for transducer position in water (default: 0).",
+        "type": "float",
+        "default": "0.0"
+      },
+      {
+        "flags": "--tilt",
+        "help": "Transducer tilt angle in degrees (default: 0).",
+        "type": "float",
+        "default": "0.0"
+      },
+      {
+        "flags": "--downward",
+        "help": "Flag: if provided, transducers point downward (default: True). Use --no-downward to set False.",
+        "default": "True",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-downward",
+        "action": "store_false"
+      }
+    ],
+    "full_help": "Options:\nINPUT_PATH                  Path to the .raw or .netcdf4 file. (Required)\n-o, --output_path           Path to save processed output.\n                            Default: overwrites .nc files or creates a new .nc for RAW.\n--variable                  Variable to add to the output dataset (e.g., depth, location, splitbeam_angle).\n\nDescription:\n\n\nExample:"
+  },
+  {
+    "tool": "aa-detect-seafloor",
+    "category": "Cleaning & Masking",
+    "purpose": "Detect the seafloor (bottom line) using Echopype’s detect_seafloor dispatcher.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_seafloor"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to NetCDF containing Sv (preferred) or a converted file to calibrate.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for bottom line NetCDF (default: <stem>_seafloor.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite existing outputs.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Suppress logs; print only primary output path.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--method",
+        "help": "Seafloor detection method key (e.g., 'basic', 'blackwell').",
+        "required": true
+      },
+      {
+        "flags": "--param",
+        "help": "Additional method parameters as key=value pairs."
+      },
+      {
+        "flags": "--emit-mask",
+        "help": "Also compute/save a 2D mask (True = below bottom).",
+        "action": "store_true"
+      },
+      {
+        "flags": "--range-label",
+        "help": "Range/depth variable name used to build mask (default: echo_range).",
+        "default": "echo_range"
+      },
+      {
+        "flags": "--apply",
+        "help": "Apply the bottom mask to Sv and write cleaned Sv.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-detect-seafloor [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to a calibrated Sv NetCDF (.nc), or a converted\n                               Echopype file that can be calibrated. Optional; defaults\n                               to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH       Where to write the bottom line (NetCDF).\n                               Default: <stem>_seafloor.nc\n\n  --method STR                 Seafloor detection method (dispatcher key), e.g. 'basic', 'blackwell'. (required)\n  --param KEY=VAL [...]        Parameters for the chosen method as key=value pairs.\n                               Values are safely parsed (int/float/bool/None) when possible;\n                               strings like '10m' remain strings.\n\n  --emit-mask                  Also compute and save a 2D boolean mask of samples **below** the bottom line\n                               to <stem>_seafloor_mask.nc (True = below bottom).\n  --range-label STR            Name of range/depth variable used to build the mask (default: echo_range).\n  --apply                      Apply the bottom mask to Sv and write cleaned Sv to <stem>_seafloor_cleaned.nc.\n  --no-overwrite               Do not overwrite existing outputs.\n  --quiet                      Suppress logs; print only primary output path.\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Dispatches to `detect_seafloor(ds, method, params)` and returns a 1-D bottom line (per ping).\n  With --emit-mask, builds a 2D mask by comparing range to the bottom line (True below bottom).\n  With --apply, applies the mask to Sv using echopype.mask.apply_mask."
+  },
+  {
+    "tool": "aa-detect-shoal",
+    "category": "Cleaning & Masking",
+    "purpose": "Detect shoals in Sv using Echopype’s detect_shoal dispatcher.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_detect_shoal_mask"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing Sv (preferred) or a converted file to calibrate.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for the shoal mask NetCDF (default: <stem>_detect_shoal_mask.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--apply",
+        "help": "Also write Sv cleaned by the shoal mask to <stem>_detect_shoal_cleaned.nc.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Suppress logs; print only output path.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--method",
+        "help": "Shoal detection method name (dispatcher key), e.g., 'echoview', 'weill'.",
+        "required": true
+      },
+      {
+        "flags": "--param",
+        "help": "Additional method parameters as key=value pairs."
+      }
+    ],
+    "full_help": "Usage: aa-detect-shoal [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                 Path to a calibrated Sv NetCDF (.nc), or a converted\n                             Echopype file that can be calibrated. Optional; defaults\n                             to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH     Where to write the shoal mask (NetCDF).\n                             Default: <stem>_detect_shoal_mask.nc\n  --apply                    Also apply the mask to Sv and write cleaned Sv to\n                             <stem>_detect_shoal_cleaned.nc\n\n  # detect_shoal parameters\n  --method STR               Shoal detection method (dispatcher key), e.g. 'echoview' or 'weill'. (required)\n  --param KEY=VAL [...]      Parameters for the chosen method as key=value pairs.\n                             Values are safely parsed (int/float/bool/None) when possible;\n                             strings like '10m' or '12.0dB' remain strings.\n\n  --no-overwrite             Do not overwrite an existing output file.\n  --quiet                    Suppress logs; print only the final output path.\n  -h, --help                 Show this help message and exit.\n\nDescription:\n  Dispatches shoal detection to the chosen method via Echopype’s\n  `detect_shoal(ds, method, params)` and returns a 2D boolean mask\n  (True = inside shoal). Optionally applies the mask to Sv and writes a\n  cleaned Sv file."
+  },
+  {
+    "tool": "aa-detect-transient",
+    "category": "Cleaning & Masking",
+    "purpose": "Dispatches transient-noise detection to a selected method via Echopype’s `detect_transient(ds, method, params)` and returns a boolean mask. Optionally applies the mask to Sv to produce a cleaned Sv dataset.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_detect_transient_mask"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing Sv (preferred) or a converted file that can be calibrated to Sv.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for the mask NetCDF (default: <stem>_detect_transient_mask.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--apply",
+        "help": "Also write Sv cleaned by the transient mask to <stem>_detect_transient_cleaned.nc.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--method",
+        "help": "Transient detection method name (dispatcher key).",
+        "required": true
+      },
+      {
+        "flags": "--param",
+        "help": "Additional method parameters as key=value pairs (e.g., depth_bin=10m transient_noise_threshold=12.0dB)."
+      },
+      {
+        "flags": "--range-var",
+        "help": "Range/depth variable name (default: depth).",
+        "default": "depth"
+      }
+    ],
+    "full_help": "Usage: aa-detect-transient [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                 Path to a calibrated Sv NetCDF (.nc), or a\n                             converted Echopype file that can be calibrated.\n                             Optional. Defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH     Where to write the transient-noise mask (NetCDF).\n                             Default: <stem>_detect_transient_mask.nc\n  --apply                    Also apply the mask to Sv and write a cleaned\n                             Sv file (suffix: _detect_transient_cleaned.nc).\n\n  # detect_transient parameters\n  --method STR               Transient detection method name (dispatcher key).\n                             (e.g., 'pooling', 'percentile', etc.—see docs)\n  --param KEY=VAL [...]      Parameters for the chosen method as key=value pairs.\n                             Values are safely parsed (int/float/bool/str).\n\n  --range-var STR            Name of the range/depth coordinate (if your method\n                             expects it in params, you can also pass via --param).\n                             Default: depth\n\n  -h, --help                 Show this help message and exit.\n\nDescription:\n  Dispatches transient-noise detection to a selected method via Echopype’s\n  `detect_transient(ds, method, params)` and returns a boolean mask. Optionally\n  applies the mask to Sv to produce a cleaned Sv dataset.\n\nExamples:\n  aa-detect-transient data.nc --method pooling --param depth_bin=10m num_side_pings=25 transient_noise_threshold=12.0dB\n  aa-detect-transient data.nc --apply -o out_mask.nc --method percentile --param percentile=99.5 window=21"
+  },
+  {
+    "tool": "aa-dispersion",
+    "category": "Metrics",
+    "purpose": "Compute dispersion (inertia) of backscatter using Echopype.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_dispersion"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file (.nc) dataset with Sv and echo_range.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output NetCDF path (default: <stem>_dispersion.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--range-label",
+        "help": "Name of the range coordinate/variable (default: echo_range).",
+        "default": "echo_range"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Suppress logs; print only output path.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-dispersion [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                  Path to a NetCDF file (.nc) containing a calibrated\n                              Dataset with an `echo_range` (or similar) coordinate.\n                              Optional; defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path          Path to write the resulting dispersion (NetCDF).\n                              Default: <stem>_dispersion.nc\n  --range-label STR          Name of the range variable/coordinate (default: echo_range).\n  --no-overwrite             Do not overwrite an existing output file.\n  --quiet                    Print only the output path (suppress logs).\n\nDescription:\n  Computes the inertia of the backscatter distribution (i.e., dispersion/spread)\n  using Echopype’s metrics.dispersion. The returned quantity has units m⁻²."
+  },
+  {
+    "tool": "aa-evenness",
+    "category": "Metrics",
+    "purpose": "Compute Echopype metrics.evenness (Equivalent Area, EA).",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_evenness"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF Dataset containing 'echo_range' (typically from calibrated Sv).",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output NetCDF path (default: <stem>_evenness.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--range-label",
+        "help": "Name of the range DataArray (default: echo_range).",
+        "default": "echo_range"
+      },
+      {
+        "flags": "--try-calibrate",
+        "help": "If 'echo_range' missing, attempt to compute Sv to obtain it.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Reduce logs; print only final path.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-evenness [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to a NetCDF file (.nc) containing a calibrated\n                               Dataset with 'echo_range'. Optional; defaults to\n                               reading one token from stdin.\n\nOptions:\n  -o, --output_path PATH       Output NetCDF path (default: <stem>_evenness.nc).\n  --range-label STR            Name of the DataArray holding range (default: echo_range).\n  --try-calibrate              If 'echo_range' is missing, attempt to open as converted\n                               EchoData and compute Sv to obtain it.\n  --no-overwrite               Do not overwrite an existing output file.\n  --quiet                      Print only the output path (or suppress extras).\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Computes the Equivalent Area (EA) metric from Echopype (units: meters)."
+  },
+  {
+    "tool": "aa-evl",
+    "category": "Annotation Export",
+    "purpose": "Mask echogram NetCDF (.nc) using Echoview EVL line files.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": [
+      {
+        "flags": "input_paths",
+        "help": "Input .nc/.netcdf4 paths (or read from stdin).",
+        "type": "Path"
+      },
+      {
+        "flags": "--evl",
+        "help": "One or more .evl paths.",
+        "type": "Path",
+        "required": true
+      },
+      {
+        "flags": "-o | --output-path",
+        "help": "Output path (only valid for a single input file).",
+        "type": "Path"
+      },
+      {
+        "flags": "--out-dir",
+        "help": "Output directory (for pipelines / multiple inputs).",
+        "type": "Path"
+      },
+      {
+        "flags": "--suffix",
+        "help": "Suffix appended to output stem (default: _evl).",
+        "type": "str",
+        "default": "_evl"
+      },
+      {
+        "flags": "--overwrite",
+        "help": "Overwrite existing output files.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--keep",
+        "help": "Which side of the line to KEEP (default: above).  'above' keeps shallower data (masks seafloor/bottom).  'below' keeps deeper data (masks surface).  'between' requires exactly 2 EVL files.",
+        "choices": [
+          "above",
+          "below",
+          "between"
+        ],
+        "default": "above"
+      },
+      {
+        "flags": "--depth-offset",
+        "help": "Shift the composite line by this many metres before masking.  Negative = shift line up (shallower boundary).  Default: 0.0.",
+        "type": "float",
+        "default": "0.0"
+      },
+      {
+        "flags": "--var",
+        "help": "Variable to mask (default: Sv).",
+        "type": "str",
+        "default": "Sv"
+      },
+      {
+        "flags": "--time-dim",
+        "help": "Time dimension name (default: auto-detect).",
+        "type": "str"
+      },
+      {
+        "flags": "--depth-dim",
+        "help": "Depth dimension name (default: auto-detect).",
+        "type": "str"
+      },
+      {
+        "flags": "--channel-index",
+        "help": "Channel index for metre-depth resolution (default: 0).",
+        "type": "int",
+        "default": "0"
+      },
+      {
+        "flags": "--write-line",
+        "help": "Write interpolated composite line as 'evl_line_depth' in output.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--fail-empty",
+        "help": "Exit non-zero if the line mask keeps zero cells.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--debug",
+        "help": "Verbose diagnostics to stderr.",
+        "action": "store_true"
+      }
+    ]
+  },
+  {
+    "tool": "aa-evr",
+    "category": "Annotation Export",
+    "purpose": "Mask echogram NetCDF (.nc) using Echoview EVR region files, or draw new regions interactively (omit --evr).",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": [
+      {
+        "flags": "input_paths",
+        "help": "Input .nc/.netcdf4 paths (or read from stdin).",
+        "type": "Path"
+      },
+      {
+        "flags": "--evr",
+        "help": "One or more .evr paths (omit to enter interactive drawing mode).",
+        "type": "Path"
+      },
+      {
+        "flags": "--name",
+        "help": "Drawing mode: EVR output filename (default: <input_stem>_regions.evr).  May include or omit the .evr extension.",
+        "type": "str"
+      },
+      {
+        "flags": "--port",
+        "help": "Drawing mode: Bokeh server port (default: 5006; auto-increments if busy).",
+        "type": "int",
+        "default": "5006"
+      },
+      {
+        "flags": "-o | --output-path",
+        "help": "Output path (only valid for a single input file, EVR mode only).",
+        "type": "Path"
+      },
+      {
+        "flags": "--out-dir",
+        "help": "Output directory (for pipelines / multiple inputs).",
+        "type": "Path"
+      },
+      {
+        "flags": "--suffix",
+        "help": "Suffix appended to output stem (default: _evr, EVR mode only).",
+        "type": "str",
+        "default": "_evr"
+      },
+      {
+        "flags": "--overwrite",
+        "help": "Overwrite existing output files.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--var",
+        "help": "Variable to mask (default: Sv).",
+        "type": "str",
+        "default": "Sv"
+      },
+      {
+        "flags": "--time-dim",
+        "help": "Time dimension name (default: auto-detect).",
+        "type": "str"
+      },
+      {
+        "flags": "--depth-dim",
+        "help": "Depth dimension name (default: auto-detect).",
+        "type": "str"
+      },
+      {
+        "flags": "--channel-index",
+        "help": "Channel index for mask building (default: 0).",
+        "type": "int",
+        "default": "0"
+      },
+      {
+        "flags": "--write-mask",
+        "help": "Write 'region_mask' variable to output NetCDF (EVR mode only).",
+        "action": "store_true"
+      },
+      {
+        "flags": "--fail-empty",
+        "help": "Exit non-zero if union mask is empty (EVR mode only).",
+        "action": "store_true"
+      },
+      {
+        "flags": "--debug",
+        "help": "Verbose diagnostics to stderr.",
+        "action": "store_true"
+      }
+    ]
+  },
+  {
+    "tool": "aa-fetch",
+    "category": "Discovery & Helpers",
+    "purpose": "Execute aa-fetch YAML job (no stdout output).",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": [
+      {
+        "flags": "yaml_path",
+        "help": "Path to YAML file. Optional. If omitted, reads one line from stdin. Use '-' to force stdin.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_root",
+        "help": "Parent directory where download directory will be created (default: CWD).",
+        "type": "Path"
+      },
+      {
+        "flags": "-n | --download_dir_name",
+        "help": "Download directory name under output_root (default: aa_fetch_<timestamp>).",
+        "type": "str"
+      }
+    ],
+    "full_help": "aa-fetch — Execute a YAML-driven multi-fetch job (no stdout output)\n\nWHAT THIS TOOL DOES\n  • Reads a YAML file that describes one or more fetch \"requests\"\n  • Parses it using aalibrary.utils.multi_fetch_yaml_parser\n  • Executes the fetch workflow (network / database / download work)\n  • Creates a download directory for this run\n  • Logs progress and errors to stderr (via loguru)\n  • IMPORTANT: This tool DOES NOT print anything to stdout on success.\n\nWHY THERE IS NO STDOUT\n  aa-fetch is an \"action\" tool. It is designed to execute work and log to stderr.\n  This keeps stdout clean for other tools in the ecosystem and avoids breaking pipes.\n\nHOW YAML_PATH IS PROVIDED\n  (A) Positional argument:\n      aa-fetch /path/to/fetch_request.yaml\n\n  (B) Piped into stdin (one line):\n      echo /path/to/fetch_request.yaml | aa-fetch\n\n  Notes:\n    • If YAML_PATH is omitted and stdin is NOT piped, aa-fetch prints this help and exits.\n    • When reading from stdin, aa-fetch reads exactly ONE line and strips whitespace.\n\nDOWNLOAD DIRECTORY CONTROLS (ONLY TWO FLAGS)\n  -o, --output_root PATH\n      Default: current working directory (CWD)\n\n  -n, --download_dir_name NAME\n      Default: aa_fetch_<YYYYMMDD_HHMMSS>\n\nPIPELINE EXAMPLES\n  aa-get -n request.yaml | aa-fetch\n  aa-fetch ./request.yaml\n  aa-fetch -o ./downloads -n run_001 ./request.yaml\n\nTROUBLESHOOTING\n  • \"File does not exist\" — check the YAML path or your pipeline output.\n  • Auth errors — ensure your environment credentials are set."
+  },
+  {
+    "tool": "aa-find",
+    "category": "Discovery & Helpers",
+    "purpose": "AA-Find: A console application to search and download acoustics data from",
+    "io": {
+      "type": "interactive_tui",
+      "note": "Not pipeable. Launches an interactive menu."
+    },
+    "args": []
+  },
+  {
+    "tool": "aa-freqdiff",
+    "category": "Cleaning & Masking",
+    "purpose": "Computes a boolean mask of Sv data where one frequency minus another meets a user-specified threshold/difference. Useful for identifying scatterers with different frequency responses (for example krill).",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_freqdiff"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to dataset (NetCDF or Zarr) containing Sv with channel/frequency_nominal.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for mask NetCDF (default: <stem>_freqdiff.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--freqABEq",
+        "help": "Expression for differencing by frequency, e.g. '\"38.0kHz\" - \"120.0kHz\">=10.0dB'."
+      },
+      {
+        "flags": "--chanABEq",
+        "help": "Expression for differencing by channel names, e.g. '\"chan1\" - \"chan2\"<-5dB'."
+      },
+      {
+        "flags": "--quiet",
+        "help": "Suppress informational logging; only print output path.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-freqdiff [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                Path to a NetCDF/Zarr file (or dataset) containing\n                           Sv with a `channel` dimension and `frequency_nominal`, or\n                           a conversion output. Optional — defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH    Where to write the mask NetCDF (default: <stem>_freqdiff.nc).\n  --freqABEq STR            Frequency differencing expression, e.g. '\"38.0kHz\" - \"120.0kHz\">=10.0dB'.\n  --chanABEq STR            Channel-based differencing expression, e.g. '\"chan1\" - \"chan2\"<-5dB'.\n  --quiet                   Suppress logger info, only print output path.\n  -h, --help                Show this help message and exit.\n\nDescription:\n  Computes a boolean mask of Sv data where one frequency minus another\n  meets a user-specified threshold/difference. Useful for identifying\n  scatterers with different frequency responses (for example krill).\n\nExamples:\n  aa-freqdiff data.nc --freqABEq '\"38.0kHz\" - \"120.0kHz\">=12.0dB' -o out_mask.nc\n  aa-freqdiff data.nc --chanABEq '\"chan1\" - \"chan2\"<-5dB'"
+  },
+  {
+    "tool": "aa-get",
+    "category": "Discovery & Helpers",
+    "purpose": "aa-get",
+    "io": {
+      "type": "interactive_tui",
+      "note": "Not pipeable. Launches an interactive menu."
+    },
+    "args": [
+      {
+        "flags": "-h | --help",
+        "help": "Show help and exit.",
+        "action": "store_true"
+      },
+      {
+        "flags": "output_dir_pos",
+        "help": "Optional directory to save into. Use '-' to read directory from stdin."
+      },
+      {
+        "flags": "-d | --output_dir",
+        "help": "Directory to save into (overrides positional OUTPUT_DIR).",
+        "type": "str"
+      },
+      {
+        "flags": "-n | --file_name",
+        "help": "Output filename (default: fetch_request_<timestamp>.yaml).",
+        "type": "str"
+      }
+    ],
+    "full_help": "aa-get — Interactive YAML schedule builder (prints saved YAML path)\n\nWHAT THIS TOOL DOES\n  • Launches an interactive terminal UI (InquirerPy) to build a fetch schedule YAML\n  • Saves the YAML to disk in a consistent schema\n  • Prints ONLY the saved YAML path to stdout as the final line (pipeline-friendly)\n\nWHY IT PRINTS A PATH TO STDOUT\n  aa-get is designed to feed downstream tools by emitting the YAML file path.\n  The primary intended downstream consumer is:\n\n      aa-fetch\n\n  This enables a clean two-step pipeline:\n      (1) aa-get builds the YAML\n      (2) aa-fetch consumes the YAML and performs the download/execution\n\nHOW TO USE WITH aa-fetch (RECOMMENDED)\n  Build the YAML interactively, then immediately execute it:\n\n      aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001\n      aa-get | aa-fetch (Barebones, defaults to CWD and timestamped filename)\n\n  Notes:\n    • During the interactive UI, aa-get may render UI output to your terminal.\n    • The FINAL line written to stdout is the YAML file path.\n    • aa-fetch reads that single path from stdin and executes the job.\n\nUSAGE\n  aa-get [OPTIONS] [OUTPUT_DIR]\n\nARGUMENTS\n  OUTPUT_DIR\n      Optional directory to save into.\n      Defaults to the current working directory.\n\n      Special value:\n        -   Read OUTPUT_DIR from stdin (one line). Useful if you want to pipe an\n            output directory into aa-get explicitly:\n              echo /tmp/schedules | aa-get -n request.yaml -\n\nOPTIONS\n  -d, --output_dir PATH\n      Directory to save into (overrides positional OUTPUT_DIR).\n      Default: current working directory (CWD)\n\n  -n, --file_name NAME\n      Output filename. Adds .yaml if missing.\n      Default: fetch_request_<YYYYMMDD_HHMMSS>.yaml\n\n  -h, --help\n      Show this help and exit.\n\nEXAMPLES\n  1) Save into CWD with a timestamped filename:\n      aa-get\n\n  2) Save into a directory via positional OUTPUT_DIR:\n      aa-get ./schedules\n\n  3) Save into a directory via flag, with an explicit filename:\n      aa-get -d ./schedules -n test.yaml\n\n  4) Recommended end-to-end pipeline (build → execute):\n      aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001\n      aa-get | aa-fetch (Barebones, defaults to CWD and timestamped filename)"
+  },
+  {
+    "tool": "aa-help",
+    "category": "Discovery & Helpers",
+    "purpose": "",
+    "io": {
+      "stdin": "positional arg only",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": [],
+    "full_help": "================================================================================\n Active Acoustics Console Suite — Field Guide & Piping Playbook\n================================================================================\n\n(For details on any one tool:  <tool> --help)\n\nThis suite is designed for **pipeline-style** work. Each tool:\n  • **Reads** a single NetCDF path (\".nc\") either as a positional arg or from **stdin**.\n  • **Writes** a new NetCDF file to disk (never just to stdout).\n  • **Prints** the absolute path of its primary output to **stdout** so the next tool\n    can pick it up. This means our “pipes” pass **filenames**, not raw data.\n\nPIPING MODEL (IMPORTANT)\n------------------------\n1) Chain tools with pipes; each tool emits one path, which becomes the next tool’s input:\n     aa-nc RAW.raw --sonar_model EK60 \\\n       | aa-sv \\\n       | aa-clean \\\n       | aa-mvbs\n\n2) You can capture intermediate outputs explicitly:\n     CLEAN=$( aa-nc RAW.raw --sonar_model EK60 | aa-sv | aa-clean )\n     aa-mvbs \"$CLEAN\"\n\n3) If you need to fan out to multiple tools, use `tee` and subshells:\n     NC=$( aa-nc RAW.raw --sonar_model EK60 )\n     ( aa-sv   \"$NC\" | aa-clean | aa-nasc   ) &\n     ( aa-sv   \"$NC\" | aa-clean | aa-mvbs   ) &\n     wait\n\nOUTPUT NAMING & ON-DISK BEHAVIOR\n--------------------------------\n• If you don’t pass -o/--output_path, tools create sensible defaults by **suffixing**\n  the input stem (e.g., “input.nc” → “input_clean.nc”, “input_mvbs.nc”, etc.).\n• Tools **always write NetCDF to disk**, then emit the resulting path to stdout.\n• Most tools accept stdin. If you run a tool with no args and no stdin, it prints\n  a friendly help page and exits.\n\n-------------------------------------------------------------------------------\n TOOL INDEX (A–Z by category)\n-------------------------------------------------------------------------------\n\nINGEST & CONVERSION\n  aa-raw             : Manage raw-file logistics (download/upload/metadata helpers).\n  aa-nc              : Convert RAW → NetCDF (choose sonar model, etc.).\n  aa-swap-freq       : Swap 'channel' dimension with 'frequency_nominal'.\n\nCALIBRATION & CORE DERIVATIVES\n  aa-sv              : Compute calibrated Sv and write Sv dataset.\n  aa-ts              : Compute target strength (TS) dataset.\n  aa-depth           : Add depth coordinate(s) (if applicable to your stack).\n  aa-location        : Add geographic location (lat/lon) from EchoData into Sv.\n  aa-splitbeam-angle : Add alongship/athwartship split-beam angles to Sv.\n\nCLEANING & MASKING\n  aa-clean           : Remove background noise (ping/range windows, SNR threshold).\n  aa-impulse         : Mask impulse noise.\n  aa-transient       : Mask transient noise.\n  aa-attenuated      : Mask attenuated signal.\n  aa-detect-transient: Detect transient noise (dispatcher; emits mask; optional apply).\n  aa-detect-shoal    : Detect shoals (dispatcher; emits mask; optional apply).\n  aa-detect-seafloor : Detect seafloor bottom line; optional bottom mask & apply.\n  aa-freqdiff        : Frequency differencing mask (e.g., “38kHz − 120kHz ≥ 12 dB”).\n  aa-min             : (Your existing minimal/masking helper, if present.)\n  aa-mask            : (If present in your stack; generic masking helper.)\n\nGRIDDING & SUMMARIES\n  aa-mvbs            : Compute MVBS (physical bins).\n  aa-mvbs-index      : Compute MVBS using index binning (range_sample / ping).\n  aa-nasc            : Compute NASC (integral of Sv over range & distance).\n\nQC (TIME CONSISTENCY & REPORTS)\n  aa-exist-reversed  : Check if a time coord (e.g., ping_time) has reversals.\n  aa-coerce-time     : Force time to be strictly increasing (repairs reversals).\n  aa-show            : Quick inspect / summarize (if present in your stack).\n  aa-plot            : Plot/visual QC (if present).\n\nMETRICS (Echopype metrics.* over echo_range)\n  aa-abundance       : Abundance metric.\n  aa-aggregation     : Aggregation metric.\n  aa-center-of-mass  : Center of mass (COM).\n  aa-dispersion      : Dispersion (inertia).\n  aa-evenness        : Evenness (Equivalent Area, EA).\n\nUTILITIES (Seawater & acoustics)\n  aa-sound-speed     : Seawater sound speed (m/s) via Echopype UWA utils.\n  aa-absorption      : Seawater absorption (dB/m) vs frequency & conditions.\n\nDISCOVERY, HELPERS & SETUP\n  aa-find            : Find datasets / convenience discovery.\n  aa-help            : Print this reference and tool tips.\n  aa-setup           : Prepare AA-SI environments (e.g., GCP Workstations).\n  aa-test            : Self-tests / sanity checks for the suite.\n\n-------------------------------------------------------------------------------\n EXAMPLES — PRACTICAL PIPELINES\n-------------------------------------------------------------------------------\n\n1) RAW → NC → Sv → Clean → MVBS\n   (One-liner with sensible defaults; no intermediate filenames required.)\n     aa-nc cruise.raw --sonar_model EK60 \\\n       | aa-sv \\\n       | aa-clean \\\n       | aa-mvbs\n\n   Resulting files (typical):\n     cruise.nc               # from aa-nc\n     cruise_sv.nc            # from aa-sv\n     cruise_sv_clean.nc      # from aa-clean\n     cruise_sv_clean_mvbs.nc # from aa-mvbs\n   The **last line printed** to your terminal is the path to the MVBS file.\n\n2) Add geolocation, angles, and NASC\n     SV=$( aa-nc raw.raw --sonar_model EK80 | aa-sv )\n     LOC=$( aa-location \"$SV\" )\n     ANG=$( aa-splitbeam-angle \"$LOC\" --waveform-mode BB --encode-mode complex )\n     aa-nasc \"$ANG\" --range-bin 20m --dist-bin 0.5nmi\n\n3) Frequency differencing followed by shoal detection and masked Sv export\n     SV=$( aa-nc file.raw --sonar_model EK80 | aa-sv | aa-clean )\n     MASK=$( aa-freqdiff \"$SV\" --freqABEq '\"38.0kHz\" - \"120.0kHz\">=12.0dB' )\n     aa-detect-shoal \"$SV\" --method echoview --param threshold= -60dB min_len=5 \\\n       --apply  # writes *_detect_shoal_cleaned.nc\n\n4) Time QC & repair, then MVBS\n     NC=$( aa-nc raw.raw --sonar_model EK60 )\n     REV=$( aa-exist-reversed \"$NC\" --time-name ping_time )\n     [ \"$REV\" = \"True\" ] && NC=$( aa-coerce-time \"$NC\" --time-name ping_time )\n     aa-mvbs \"$NC\" --range-bin 10m --dist-bin 1nmi\n\n-------------------------------------------------------------------------------\n TIPS & GOTCHAS\n-------------------------------------------------------------------------------\n• Our “pipes” pass **filenames** (paths), not bytes. Every tool writes a file, then\n  prints the new path. That keeps memory usage tiny and makes workflows restartable.\n• If your path contains spaces, **quote it**:  aa-mvbs \"My Cruise 2024.nc\"\n• Need the final path in a shell variable?  OUT=$( aa-clean input.nc )\n• Want absolute paths for downstream tools? That’s what we print by default.\n• Overwrite behavior:\n    – With no -o: new files are created with suffixed stems.\n    – With -o path: the tool will write to that exact path (and still print it).\n• Most cleaning/detection tools support **--apply** to emit a cleaned Sv file in\n  addition to their mask/line product.\n\n================================================================================"
+  },
+  {
+    "tool": "aa-impulse",
+    "category": "Cleaning & Masking",
+    "purpose": "Creates a boolean mask marking likely impulse-noise “flecks” using a ping-wise two-sided comparison in depth-binned windows. Optionally applies the mask to Sv to produce a cleaned Sv dataset.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_impulse_mask"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing Sv (preferred) or a converted file that can be calibrated to Sv.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for the mask NetCDF (default: <stem>_impulse_mask.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--apply",
+        "help": "Also write Sv cleaned by the impulse mask to <stem>_impulse_cleaned.nc.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--depth-bin",
+        "help": "Depth bin size, e.g., '5m' (default: 5m).",
+        "default": "5m"
+      },
+      {
+        "flags": "--num-side-pings",
+        "help": "Number of side pings for two-sided comparison (default: 2).",
+        "type": "int",
+        "default": "2"
+      },
+      {
+        "flags": "--impulse-threshold",
+        "help": "Impulse threshold above local context, e.g. '10.0dB' (default: 10.0dB).",
+        "default": "10.0dB"
+      },
+      {
+        "flags": "--range-var",
+        "help": "Range/depth variable name (default: depth).",
+        "default": "depth"
+      },
+      {
+        "flags": "--use-index-binning",
+        "help": "Use index-based binning rather than physical bin sizes.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-impulse [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                 Path to the calibrated .nc (NetCDF) file\n                             containing Sv (preferred), or a converted\n                             Echopype file that can be calibrated to Sv.\n                             Optional. Defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH     Where to write the impulse-noise mask (NetCDF).\n                             Default: <stem>_impulse_mask.nc\n  --apply                    Also apply the mask to Sv and write a cleaned\n                             Sv file (suffix: _impulse_cleaned.nc).\n  --depth-bin STR            Vertical bin size for comparison, e.g. '5m'.\n                             Default: 5m\n  --num-side-pings INT       Pings on each side for two-sided comparison.\n                             Default: 2\n  --impulse-threshold STR    Threshold in dB above local context, e.g. '10.0dB'.\n                             Default: 10.0dB\n  --range-var STR            Name of the range/depth coordinate (e.g., 'depth').\n                             Default: depth\n  --use-index-binning        Use index-based binning instead of physical units.\n  -h, --help                 Show this help message and exit.\n\nDescription:\n  Creates a boolean mask marking likely impulse-noise “flecks” using a\n  ping-wise two-sided comparison in depth-binned windows.\n  Optionally applies the mask to Sv to produce a cleaned Sv dataset.\n\nExamples:\n  aa-impulse data.nc --depth-bin 5m --num-side-pings 3 --impulse-threshold 12dB\n  aa-impulse data.nc --apply -o out_mask.nc"
+  },
+  {
+    "tool": "aa-location",
+    "category": "Calibration & Core Derivatives",
+    "purpose": "Interpolates geographic location (latitude, longitude) from the platform navigation stream in the original file to the acoustic ping_time of the Sv dataset, and writes the result to NetCDF.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_loc"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to an Sv NetCDF (.nc) or compatible Dataset file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output NetCDF path (default: <stem>_loc.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--echodata",
+        "help": "Path to EchoData source (raw/converted NetCDF/Zarr) containing Platform/NMEA.",
+        "type": "Path"
+      },
+      {
+        "flags": "--datagram-type",
+        "help": "Optional datagram type hint for selecting nav records."
+      },
+      {
+        "flags": "--nmea-sentence",
+        "help": "Optional NMEA sentence (e.g., 'GGA')."
+      }
+    ],
+    "full_help": "Usage: aa-location [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to an Sv NetCDF (.nc), or another Dataset\n                               that has ping_time and can accept location.\n                               Optional. Defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH       Where to write the output NetCDF with lat/lon.\n                               Default: <stem>_loc.nc\n  --echodata PATH              Path to an EchoData source (raw/converted file or\n                               Zarr/NetCDF) that contains Platform/NMEA groups\n                               for interpolation. (Required if INPUT lacks these.)\n  --datagram-type STR          (Optional) Instrument/datagram type hint used by\n                               add_location to select nav source.\n  --nmea-sentence STR          (Optional) Specific NMEA sentence to use (e.g. 'GGA').\n\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Interpolates geographic location (latitude, longitude) from the platform\n  navigation stream in the original file to the acoustic ping_time of the\n  Sv dataset, and writes the result to NetCDF.\n\nExamples:\n  aa-location sv.nc --echodata rawfile.raw\n  aa-location sv.nc --echodata cruise.zarr --nmea-sentence GGA -o sv_loc.nc"
+  },
+  {
+    "tool": "aa-min",
+    "category": "Cleaning & Masking",
+    "purpose": "Create an impulse-noise mask using echopype.clean.mask_impulse_noise.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "accepted_extensions": [
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed output.",
+        "type": "Path"
+      },
+      {
+        "flags": "--depth_bin",
+        "help": "Downsampling bin size along vertical range variable (default: 5m).",
+        "type": "str",
+        "default": "5m"
+      },
+      {
+        "flags": "--num_side_pings",
+        "help": "Number of side pings for two-sided comparison (default: 2).",
+        "type": "int",
+        "default": "2"
+      },
+      {
+        "flags": "--impulse_noise_threshold",
+        "help": "Impulse noise threshold, as a string with units (default: \"10.0dB\").",
+        "type": "str",
+        "default": "10.0dB"
+      },
+      {
+        "flags": "--range_var",
+        "help": "Vertical axis range variable: \"depth\" or \"echo_range\" (default: depth).",
+        "type": "str",
+        "choices": [
+          "depth",
+          "echo_range"
+        ],
+        "default": "depth"
+      },
+      {
+        "flags": "--use_index_binning",
+        "help": "Use index-based binning for speed (default: False).",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-min [OPTIONS] [INPUT_PATH]\n\nArguments:\nINPUT_PATH                  Path to the .netcdf4 file.\n                            Optional. Defaults to stdin if not provided.\n\nOptions:\n-o, --output_path           Path to save processed output (NetCDF).\n                            Default: input file with \"_mask\" appended to stem.\n\n--depth_bin                 Downsampling vertical bin size (default: 5m)\n--num_side_pings            Number of side pings for two-sided comparison (default: 2)\n--impulse_noise_threshold   Threshold (dB) for impulse detection (default: \"10.0dB\")\n--range_var                 Range coordinate: \"depth\" or \"echo_range\" (default: depth)\n--use_index_binning         Use index-based binning for speed (default: False)\n\nExample:\naa-min /path/to/input.nc --depth_bin 5m --num_side_pings 3         --impulse_noise_threshold \"12.0dB\" -o /path/to/output_mask.nc"
+  },
+  {
+    "tool": "aa-mvbs",
+    "category": "Gridding & Summaries",
+    "purpose": "This tool computes MVBS (Mean Volume Backscattering Strength) from .raw or .netcdf4 files using Echopype. Data are binned along range and ping_time dimensions with configurable methods.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_mvbs",
+      "accepted_extensions": [
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed MVBS output. Default overwrites input .nc with MVBS group or creates a new .nc.",
+        "type": "Path"
+      },
+      {
+        "flags": "--range_var",
+        "help": "Range coordinate to bin over (default: echo_range).",
+        "type": "str",
+        "choices": [
+          "echo_range",
+          "depth"
+        ],
+        "default": "echo_range"
+      },
+      {
+        "flags": "--range_bin",
+        "help": "Bin size along range dimension (default: 20m).",
+        "type": "str",
+        "default": "20m"
+      },
+      {
+        "flags": "--ping_time_bin",
+        "help": "Bin size along ping_time dimension (default: 20s).",
+        "type": "str",
+        "default": "20s"
+      },
+      {
+        "flags": "--method",
+        "help": "Computation method for binning (default: map-reduce).",
+        "type": "str",
+        "choices": [
+          "map-reduce",
+          "coarsen",
+          "block"
+        ],
+        "default": "map-reduce"
+      },
+      {
+        "flags": "--reindex",
+        "help": "If set, reindex the result to match uniform bin edges (default: False).",
+        "action": "store_true"
+      },
+      {
+        "flags": "--skipna",
+        "help": "Skip NaN values when averaging (default: True).",
+        "action": "store_true"
+      },
+      {
+        "flags": "--fill_value",
+        "help": "Fill value for empty bins (default: NaN).",
+        "type": "float"
+      },
+      {
+        "flags": "--closed",
+        "help": "Which side of bins are closed (default: left).",
+        "type": "str",
+        "choices": [
+          "left",
+          "right"
+        ],
+        "default": "left"
+      },
+      {
+        "flags": "--range_var_max",
+        "help": "Optional maximum value for range_var (default: None).",
+        "type": "str"
+      },
+      {
+        "flags": "--flox_kwargs",
+        "help": "Optional advanced arguments for flox (format: key=value)."
+      }
+    ],
+    "full_help": "Usage: aa-mvbs [OPTIONS] [INPUT_PATH]\n\nArguments:\nINPUT_PATH                  Path to the .netcdf4 file.\n                            Optional. Defaults to stdin if not provided.\n\nOptions:\n-o, --output_path           Path to save processed MVBS output.\n                            Default: overwrites input .nc with MVBS group\n                            or creates a new .nc.\n\n--range_var                 Range coordinate to bin over.\n                            Choices: echo_range, depth\n                            Default: echo_range\n--range_bin                 Bin size along range dimension.\n                            Default: 20m\n--ping_time_bin             Bin size along ping_time dimension.\n                            Default: 20s\n--method                    Computation method for binning.\n                            Choices: map-reduce, coarsen, block\n                            Default: map-reduce\n--reindex                   Reindex result to match uniform bin edges.\n                            Default: False\n--skipna                    Skip NaN values when averaging.\n                            Default: True\n--fill_value                Fill value for empty bins.\n                            Default: NaN\n--closed                    Which side of bins are closed.\n                            Choices: left, right\n                            Default: left\n--range_var_max             Optional maximum value for range_var.\n                            Default: None\n--flox_kwargs               Optional advanced arguments for flox.\n                            Format: key=value\n\nDescription:\nThis tool computes MVBS (Mean Volume Backscattering Strength) from\n.raw or .netcdf4 files using Echopype. Data are binned along\nrange and ping_time dimensions with configurable methods.\n\nExample:\naa-mvbs /path/to/input.nc --range_var depth --range_bin 50m \\\n        --ping_time_bin 60s --method coarsen -o /path/to/output.nc"
+  },
+  {
+    "tool": "aa-mvbs-index",
+    "category": "Gridding & Summaries",
+    "purpose": "Computes Mean Volume Backscattering Strength (MVBS) by binning along the index-based axes (range_sample and ping number). This differs from physical-unit binning (meters/seconds) done by compute_MVBS.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_mvbs_index"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing Sv (preferred) or a converted file that can be calibrated to Sv.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for the MVBS NetCDF (default: <stem>_mvbs_index.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--range-sample-num",
+        "help": "Number of samples per bin along range_sample (default: 100).",
+        "type": "int",
+        "default": "100"
+      },
+      {
+        "flags": "--ping-num",
+        "help": "Number of pings per bin (default: 100).",
+        "type": "int",
+        "default": "100"
+      }
+    ],
+    "full_help": "Usage: aa-mvbs-index [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to the calibrated Sv NetCDF (.nc),\n                               or a converted Echopype file that can be calibrated.\n                               Optional. Defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH       Where to write the MVBS dataset (NetCDF).\n                               Default: <stem>_mvbs_index.nc\n\n  --range-sample-num INT       Number of samples along 'range_sample' per bin.\n                               Default: 100\n  --ping-num INT               Number of pings per bin along ping axis.\n                               Default: 100\n\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Computes Mean Volume Backscattering Strength (MVBS) by binning along\n  the index-based axes (range_sample and ping number). This differs from\n  physical-unit binning (meters/seconds) done by compute_MVBS.\n\nExamples:\n  aa-mvbs-index data.nc --range-sample-num 30 --ping-num 5\n  aa-mvbs-index data.nc -o mvbs_idx.nc"
+  },
+  {
+    "tool": "aa-nasc",
+    "category": "Gridding & Summaries",
+    "purpose": "This tool computes NASC (Nautical Area Scattering Coefficient) from .raw or .netcdf4 files with Echopype. NASC integrates Sv (volume backscattering strength) across range and distance bins, producing standardized measures for biomass estimation and comparison.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_nasc",
+      "accepted_extensions": [
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed nasc output. Default overwrites input .nc with nasc group or creates a new .nc.",
+        "type": "Path"
+      },
+      {
+        "flags": "--range-bin",
+        "help": "Depth bin size in meters (default: 10m)",
+        "default": "10m"
+      },
+      {
+        "flags": "--dist-bin",
+        "help": "Horizontal distance bin size in nautical miles (default: 0.5nmi)",
+        "default": "0.5nmi"
+      },
+      {
+        "flags": "--method",
+        "help": "Flox reduction strategy (default: map-reduce)",
+        "default": "map-reduce"
+      },
+      {
+        "flags": "--skipna",
+        "help": "Skip NaN values in mean (default: enabled)",
+        "default": "True",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-skipna",
+        "help": "Include NaN values in mean calculations",
+        "action": "store_false"
+      },
+      {
+        "flags": "--closed",
+        "help": "Which side of the bin interval is closed (default: left)",
+        "choices": [
+          "left",
+          "right"
+        ],
+        "default": "left"
+      },
+      {
+        "flags": "--flox-kwargs",
+        "help": "Additional flox kwargs as key=value pairs",
+        "type": "parse_flox_kwargs"
+      }
+    ],
+    "full_help": "Usage: aa-nasc [OPTIONS] [INPUT_PATH]\n\nArguments:\nINPUT_PATH                  Path to the .netcdf4 file.\n                            Optional. Defaults to stdin if not provided.\n\nOptions:\n-o, --output_path           Path to save processed NASC output.\n                            Default: overwrites input .nc with NASC group\n                            or creates a new .nc.\n\n--range-bin                 Depth bin size in meters.\n                            Default: 10m\n--dist-bin                  Horizontal distance bin size in nautical miles.\n                            Default: 0.5nmi\n--method                    Flox reduction strategy for binning.\n                            Default: map-reduce\n--skipna                    Skip NaN values when averaging.\n                            Default: enabled\n--no-skipna                 Include NaN values in mean calculations.\n--closed                    Which side of the bin interval is closed.\n                            Choices: left, right\n                            Default: left\n--flox-kwargs               Additional flox arguments as key=value pairs.\n                            Example: --flox-kwargs min_count=5\n\nDescription:\nThis tool computes NASC (Nautical Area Scattering Coefficient) from\n.raw or .netcdf4 files with Echopype. NASC integrates Sv (volume\nbackscattering strength) across range and distance bins, producing\nstandardized measures for biomass estimation and comparison.\n\nExample:\naa-nasc /path/to/input.nc --range-bin 20m --dist-bin 1nmi \\\n        --method map-reduce -o /path/to/output.nc"
+  },
+  {
+    "tool": "aa-nc",
+    "category": "Ingest & Conversion",
+    "purpose": "This tool calculates Sv (volume backscattering strength) from a .raw file using Echopype. The output is always a NetCDF (.nc) file containing the computed Sv values. A new .nc file is created for the output; the input .raw file is never overwritten.",
+    "io": {
+      "stdin": "positional arg only",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "accepted_extensions": [
+        ".raw"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
+        "type": "Path"
+      },
+      {
+        "flags": "--sonar_model",
+        "help": "Sonar model number (e.g., EK60, EK80, etc.).",
+        "type": "str",
+        "required": true
+      }
+    ],
+    "full_help": "Usage: aa-nc [OPTIONS] INPUT_PATH\n\nArguments:\nINPUT_PATH                 Path to the input .raw file. (Required)\n\nOptions:\n-o, --output_path           Path to save processed Sv output (.nc file).\n                            Default: creates a new .nc from the input .raw.\n\n--sonar_model               Sonar model number (required).\n                            Example: EK60, EK80, etc.\n\nDescription:\nThis tool calculates Sv (volume backscattering strength) from a\n.raw file using Echopype. The output is always a NetCDF (.nc) file\ncontaining the computed Sv values. A new .nc file is created for the\noutput; the input .raw file is never overwritten.\n\nExample:\naa-nc /path/to/input.raw --sonar_model EK60 -o /path/to/output.nc"
+  },
+  {
+    "tool": "aa-noise-est",
+    "category": "Cleaning & Masking",
+    "purpose": "Estimates background noise by computing mean calibrated power from windows of pings and range samples. Writes a NetCDF containing a single variable \"Sv_noise\".",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_noise"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing Sv (preferred) or a converted file that can be calibrated to Sv.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for the noise NetCDF (default: <stem>_noise.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--ping-num",
+        "help": "Number of pings to obtain noise estimates (default: 20).",
+        "type": "int",
+        "default": "20"
+      },
+      {
+        "flags": "--range-sample-num",
+        "help": "Number of range samples per estimate window (default: 20).",
+        "type": "int",
+        "default": "20"
+      },
+      {
+        "flags": "--background-noise-max",
+        "help": "Upper limit for background noise in dB, e.g. '-120.0dB' (default: None)."
+      }
+    ],
+    "full_help": "Usage: aa-noise-est [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to the calibrated .nc (NetCDF) file\n                               containing Sv (preferred), or a converted\n                               Echopype file that can be calibrated to Sv.\n                               Optional. Defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH       Where to write the background-noise estimate (NetCDF).\n                               Default: <stem>_noise.nc\n\n  --ping-num INT               Number of pings used to obtain noise estimates.\n                               Default: 20\n  --range-sample-num INT       Number of samples along the range axis for each estimate.\n                               Default: 20\n  --background-noise-max STR   Upper limit for background noise (dB), e.g. '−125.0dB'.\n                               Default: None\n\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Estimates background noise by computing mean calibrated power from\n  windows of pings and range samples. Writes a NetCDF containing a single\n  variable \"Sv_noise\".\n\nExamples:\n  aa-noise-est data.nc --ping-num 50 --range-sample-num 200 --background-noise-max -120.0dB\n  aa-noise-est data.nc -o cruise01_legA_noise.nc"
+  },
+  {
+    "tool": "aa-plot",
+    "category": "QC & Inspection",
+    "purpose": "Interactive echogram plotting (hvPlot + Panel) -> standalone HTML",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_plot"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "type": "Path"
+      },
+      {
+        "flags": "--var"
+      },
+      {
+        "flags": "--all",
+        "action": "store_true"
+      },
+      {
+        "flags": "--frequency",
+        "type": "float"
+      },
+      {
+        "flags": "--channel",
+        "type": "str"
+      },
+      {
+        "flags": "--group-by",
+        "type": "str",
+        "choices": [
+          "auto",
+          "channel",
+          "freq"
+        ],
+        "default": "auto"
+      },
+      {
+        "flags": "--x",
+        "type": "str"
+      },
+      {
+        "flags": "--y",
+        "type": "str"
+      },
+      {
+        "flags": "--no-flip",
+        "action": "store_true"
+      },
+      {
+        "flags": "--vmin",
+        "type": "float"
+      },
+      {
+        "flags": "--vmax",
+        "type": "float"
+      },
+      {
+        "flags": "--cmap",
+        "type": "str",
+        "default": "inferno"
+      },
+      {
+        "flags": "--width",
+        "help": "Minimum plot width in px; stretches responsively (default: 250).",
+        "type": "int",
+        "default": "250"
+      },
+      {
+        "flags": "--height",
+        "type": "int",
+        "default": "450"
+      },
+      {
+        "flags": "--toolbar",
+        "type": "str",
+        "choices": [
+          "above",
+          "below",
+          "left",
+          "right",
+          "disable"
+        ],
+        "default": "above"
+      },
+      {
+        "flags": "--no-hover",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-crosshair",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-cmap-picker",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-log",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-draw",
+        "help": "Disable freehand/polyline/region drawing tools.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--decimate",
+        "type": "int",
+        "default": "1"
+      },
+      {
+        "flags": "--ymin",
+        "type": "float"
+      },
+      {
+        "flags": "--ymax",
+        "type": "float"
+      },
+      {
+        "flags": "-o | --output_path",
+        "type": "Path"
+      },
+      {
+        "flags": "--no-overwrite",
+        "action": "store_true"
+      },
+      {
+        "flags": "--quiet",
+        "action": "store_true"
+      },
+      {
+        "flags": "-h | --help",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-plot [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                Path to a NetCDF file (.nc). Optional; if omitted,\n                            reads a single path token from stdin.\n\nCore selection:\n  --var VAR                 Variable to plot (default: Sv if present, else first data_var).\n  --all                     Plot all channels/frequencies as tabs.\n  --frequency FLOAT         Select single nominal frequency (Hz) (nearest match).\n  --channel NAME            Select single channel by name (exact match preferred).\n  --group-by {auto,channel,freq}\n                            When --all and both channel+freq dimensions are available:\n                              auto   -> frequency outer tabs, channel inner tabs\n                              channel-> channel outer tabs, frequency inner tabs\n                              freq   -> frequency outer tabs, channel inner tabs\n\nAxes:\n  --x NAME                  Override x-axis dim/coord (default: auto-detect).\n  --y NAME                  Override y-axis dim/coord (default: auto-detect).\n  --no-flip                 Disable automatic y-axis inversion for range/depth axes.\n\nAppearance:\n  --vmin FLOAT              Lower color limit.\n  --vmax FLOAT              Upper color limit.\n  --cmap NAME               Initial colormap name (default: inferno).\n  --width INT               Minimum plot width in px; stretches beyond this (default: 800).\n  --height INT              Plot height (default: 450).\n  --toolbar STR             Toolbar: above/below/left/right/disable (default: above).\n  --no-hover                Disable hover tooltip overlay.\n  --no-crosshair            Disable crosshair cursor.\n  --no-cmap-picker          Disable the interactive colormap picker in the HTML.\n  --no-log                  Disable the copyable data-summary log panel.\n\nDrawing & annotation:\n  --no-draw                 Disable the freehand/polyline/region drawing tools.\n\nSubsetting / performance:\n  --decimate INT            Take every Nth sample along x-axis (default: 1).\n  --ymin FLOAT              Crop lower y-limit.\n  --ymax FLOAT              Crop upper y-limit.\n\nOutput:\n  -o, --output_path PATH    Output HTML path (default: <stem>_plot.html).\n  --no-overwrite            Fail if output already exists.\n  --quiet                   Suppress info logs; still prints final path.\n  -h, --help                Show this help and exit."
+  },
+  {
+    "tool": "aa-raw",
+    "category": "Ingest & Conversion",
+    "purpose": "This tool downloads a raw file from Azure based on the specified ship, survey, and sonar model. Optionally, the file can be uploaded to GCP after download. Useful for automating access to remote acoustic data.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": [
+      {
+        "flags": "--file_name",
+        "help": "Name of the file to download.",
+        "required": true
+      },
+      {
+        "flags": "--file_type",
+        "help": "Type of the file.",
+        "default": "raw"
+      },
+      {
+        "flags": "--ship_name",
+        "help": "Name of the ship.",
+        "required": true
+      },
+      {
+        "flags": "--survey_name",
+        "help": "Name of the survey.",
+        "required": true
+      },
+      {
+        "flags": "--sonar_model",
+        "help": "Type of echosounder.",
+        "required": true
+      },
+      {
+        "flags": "--file_download_directory",
+        "help": "Directory to download the file.",
+        "default": "."
+      },
+      {
+        "flags": "--upload_to_gcp",
+        "help": "Flag to upload the file to GCP.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--debug",
+        "help": "Enable debug mode.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-raw [OPTIONS]\n\nOptions:\n--file_name                 Name of the file to download. (Required)\n--file_type                 Type of the file. Default: raw\n--ship_name                 Name of the ship. (Required)\n--survey_name               Name of the survey. (Required)\n--sonar_model               Type of echosounder. (Required)\n--data_source               Source of the data. Default: NCEI\n--file_download_directory   Directory to download the file. Default: current directory (.)\n--upload_to_gcp             Flag to upload the downloaded file to GCP.\n--debug                     Enable debug mode for verbose output.\n\nDescription:\nThis tool downloads a raw file from Azure based on the specified\nship, survey, and sonar model. Optionally, the file can be uploaded\nto GCP after download. Useful for automating access to remote\nacoustic data.\n\nExample:\naa-raw --file_name D20190804-T113723.raw --ship_name Henry_B._Bigelow \\\n       --survey_name HB1907 --sonar_model EK60 \\\n       --file_download_directory Henry_B._Bigelow_HB1907_EK60_NCEI"
+  },
+  {
+    "tool": "aa-refresh",
+    "category": "Discovery & Helpers",
+    "purpose": "",
+    "io": {
+      "stdin": "positional arg only",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": []
+  },
+  {
+    "tool": "aa-setup",
+    "category": "Discovery & Helpers",
+    "purpose": "",
+    "io": {
+      "stdin": "positional arg only",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": [],
+    "full_help": "Usage: aa-setup\n\nDescription:\nReinstalls the startup script for the AA-SI GPCSetup environment on a Google Cloud VM."
+  },
+  {
+    "tool": "aa-show",
+    "category": "QC & Inspection",
+    "purpose": "Reveals data within nc files.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "human-readable output",
+      "disk_write": true,
+      "accepted_extensions": [
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      }
+    ],
+    "full_help": "Options:\nINPUT_PATH                  Path to the .raw or .netcdf4 file. (Required)\n-o, --output_path           Path to save processed output.\n                            Default: overwrites .nc files or creates a new .nc for RAW.\n\nDescription:\n\n\nExample:"
+  },
+  {
+    "tool": "aa-sound-speed",
+    "category": "Utilities (Seawater)",
+    "purpose": "Computes seawater sound speed in m/s using Echopype’s utilities. If an output path is provided, writes a small NetCDF with a scalar variable 'sound_speed' and the input parameters as attributes.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": [
+      {
+        "flags": "--temperature",
+        "help": "Temperature in deg C (default: 27).",
+        "type": "float",
+        "default": "27.0"
+      },
+      {
+        "flags": "--salinity",
+        "help": "Salinity in PSU/ppt (default: 35).",
+        "type": "float",
+        "default": "35.0"
+      },
+      {
+        "flags": "--pressure",
+        "help": "Pressure in dbar (default: 10).",
+        "type": "float",
+        "default": "10.0"
+      },
+      {
+        "flags": "--formula-source",
+        "help": "Formula source (default: Mackenzie).",
+        "choices": [
+          "Mackenzie",
+          "AZFP"
+        ],
+        "default": "Mackenzie"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Optional NetCDF output path (default: none).",
+        "type": "Path"
+      },
+      {
+        "flags": "--quiet",
+        "help": "Print only the numeric value.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-sound-speed [OPTIONS]\n\nOptions:\n  --temperature FLOAT     Temperature in deg C (default: 27)\n  --salinity FLOAT        Salinity in PSU / ppt (default: 35)\n  --pressure FLOAT        Pressure in dbar (default: 10)\n  --formula-source STR    'Mackenzie' (default) or 'AZFP'\n  -o, --output_path PATH  Optional NetCDF output (default: none)\n  --quiet                 Print only the numeric value\n  -h, --help              Show this help message and exit\n\nDescription:\n  Computes seawater sound speed in m/s using Echopype’s utilities.\n  If an output path is provided, writes a small NetCDF with a scalar\n  variable 'sound_speed' and the input parameters as attributes.\n\nExamples:\n  aa-sound-speed --temperature 10 --salinity 33 --pressure 5\n  aa-sound-speed --temperature 2 --salinity 35 --pressure 1000 --formula-source Mackenzie -o ssp.nc"
+  },
+  {
+    "tool": "aa-splitbeam-angle",
+    "category": "Calibration & Core Derivatives",
+    "purpose": "Add split-beam angles (alongship/athwartship) to an Sv dataset.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_splitbeam_angle"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to an Sv NetCDF (.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output NetCDF path (default: <stem>_splitbeam_angle.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--echodata",
+        "help": "Path to EchoData source (raw/converted) containing Sonar/Beam_group*.",
+        "type": "Path"
+      },
+      {
+        "flags": "--waveform-mode",
+        "help": "Transmit waveform mode: CW (narrowband) or BB (broadband).",
+        "choices": [
+          "CW",
+          "BB"
+        ],
+        "required": true
+      },
+      {
+        "flags": "--encode-mode",
+        "help": "Return echo encoding type: complex or power.",
+        "choices": [
+          "complex",
+          "power"
+        ],
+        "required": true
+      },
+      {
+        "flags": "--pulse-compression",
+        "help": "Use pulse compression (valid only for BB + complex).",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-splitbeam-angle [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to an Sv NetCDF (.nc). Optional; if omitted,\n                               a path token may be read from stdin.\n\nOptions:\n  -o, --output_path PATH       Output NetCDF path (default: <stem>_splitbeam_angle.nc).\n  --echodata PATH              Path to EchoData source (raw/converted) that holds\n                               Sonar/Beam_group* data required for angle computation.\n                               If not provided, defaults to INPUT_PATH.\n  --waveform-mode {CW,BB}      Transmit waveform mode: CW (narrowband) or BB (broadband).\n                               Required.\n  --encode-mode {complex,power}  Return echo encoding type: 'complex' or 'power'.\n                               Required. ('power' only valid with CW.)\n  --pulse-compression          Use pulse compression (valid only for BB + complex).\n  --no-overwrite               Do not overwrite an existing output file.\n\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Computes alongship and athwartship split-beam angles and adds them to the Sv dataset.\n  Requires the associated raw or converted file containing beam group and transducer data."
+  },
+  {
+    "tool": "aa-sv",
+    "category": "Calibration & Core Derivatives",
+    "purpose": "This tool computes Sv (volume backscattering strength) from .raw or .netcdf4 files with Echopype. It includes optional plotting and EK80-specific waveform/encoding configuration.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_Sv",
+      "accepted_extensions": [
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
+        "type": "Path"
+      },
+      {
+        "flags": "--plot",
+        "help": "Optional argument with an optional value",
+        "type": "str"
+      },
+      {
+        "flags": "--waveform_mode",
+        "help": "For EK80 Echosounders: Optional argument to specify the waveform mode",
+        "type": "str",
+        "choices": [
+          "CW",
+          "BB",
+          "FM"
+        ],
+        "default": "CW"
+      },
+      {
+        "flags": "--encode_mode",
+        "help": "For EK80 Echosounders: Optional argument with an optional value",
+        "type": "str",
+        "choices": [
+          "complex",
+          "power"
+        ],
+        "default": "complex"
+      }
+    ],
+    "full_help": "Usage: aa-sv [OPTIONS] [INPUT_PATH]\n\nArguments:\nINPUT_PATH                 Path to the .raw or .netcdf4 file.\n                            Optional. Defaults to stdin if not provided.\n\nOptions:\n-o, --output_path           Path to save processed output.\n                            Default: overwrites .nc files or creates a new .nc for RAW.\n\n--plot [VALUE]              Generate plots of the processed data.\n                            Optional argument with optional value.\n                            If provided without a value, defaults to 'Sv'.\n                            Example: --plot or --plot TS\n                            Default: None\n\n--waveform_mode             For EK80 echosounders: specify waveform mode.\n                            Choices: CW, BB, FM\n                            Default: CW\n\n--encode_mode               For EK80 echosounders: specify encoding mode.\n                            Choices: complex, power\n                            Default: complex\n\nDescription:\nThis tool computes Sv (volume backscattering strength) from .raw or\n.netcdf4 files with Echopype. It includes optional plotting and\nEK80-specific waveform/encoding configuration.\n\nExample:\naa-sv /path/to/input.nc --waveform_mode FM --encode_mode power \\\n      --plot Sv -o /path/to/output.nc"
+  },
+  {
+    "tool": "aa-swap-freq",
+    "category": "Ingest & Conversion",
+    "purpose": "Swap 'channel' dimension with 'frequency_nominal' so frequency becomes the primary dimension.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_freqswap"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing 'channel' and 'frequency_nominal'.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for the swapped NetCDF (default: <stem>_freqswap.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--check-unique",
+        "help": "Fail early if duplicate frequency_nominal values exist.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--no-overwrite",
+        "help": "Do not overwrite an existing output file.",
+        "action": "store_true"
+      }
+    ],
+    "full_help": "Usage: aa-swap-freq [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                   Path to a NetCDF file (.nc) with a 'channel' dimension\n                               and a 'frequency_nominal' variable/coordinate.\n                               Optional. Defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH       Where to write the swapped dataset (NetCDF).\n                               Default: <stem>_freqswap.nc\n  --check-unique               Fail early if duplicate frequency_nominal values exist.\n  --no-overwrite               Do not overwrite an existing output file.\n\n  -h, --help                   Show this help message and exit.\n\nDescription:\n  Replaces the 'channel' dimension with the 'frequency_nominal' coordinate so that\n  data are indexed by nominal transducer frequency (e.g., 18000., 38000., 120000.).\n  Operation requires unique frequencies."
+  },
+  {
+    "tool": "aa-test",
+    "category": "Discovery & Helpers",
+    "purpose": "",
+    "io": {
+      "stdin": "positional arg only",
+      "stdout": "human-readable output",
+      "disk_write": true
+    },
+    "args": []
+  },
+  {
+    "tool": "aa-transient",
+    "category": "Cleaning & Masking",
+    "purpose": "Creates a boolean mask marking likely transient-noise events using a pooling comparison in depth-binned windows. Optionally applies the mask to Sv to produce a cleaned Sv dataset.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_transient_mask"
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to a NetCDF file containing Sv (preferred) or a converted file that can be calibrated to Sv.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Output path for the mask NetCDF (default: <stem>_transient_mask.nc).",
+        "type": "Path"
+      },
+      {
+        "flags": "--apply",
+        "help": "Also write Sv cleaned by the transient mask to <stem>_transient_cleaned.nc.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--func",
+        "help": "Pooling function (default: nanmean).",
+        "default": "nanmean"
+      },
+      {
+        "flags": "--depth-bin",
+        "help": "Depth bin size, e.g., '10m' (default: 10m).",
+        "default": "10m"
+      },
+      {
+        "flags": "--num-side-pings",
+        "help": "Number of side pings for pooling window (default: 25).",
+        "type": "int",
+        "default": "25"
+      },
+      {
+        "flags": "--exclude-above",
+        "help": "Exclude depths shallower than this (default: 250.0m).",
+        "default": "250.0m"
+      },
+      {
+        "flags": "--transient-threshold",
+        "help": "Transient threshold above local context, e.g., '12.0dB' (default: 12.0dB).",
+        "default": "12.0dB"
+      },
+      {
+        "flags": "--range-var",
+        "help": "Range/depth variable name (default: depth).",
+        "default": "depth"
+      },
+      {
+        "flags": "--use-index-binning",
+        "help": "Use index-based binning rather than physical bin sizes.",
+        "action": "store_true"
+      },
+      {
+        "flags": "--chunk",
+        "help": "Optional chunk sizes as key=value pairs (e.g., ping_time=256 depth=512).",
+        "type": "str"
+      }
+    ],
+    "full_help": "Usage: aa-transient [OPTIONS] [INPUT_PATH]\n\nArguments:\n  INPUT_PATH                 Path to the calibrated .nc (NetCDF) file\n                             containing Sv (preferred), or a converted\n                             Echopype file that can be calibrated to Sv.\n                             Optional. Defaults to stdin if not provided.\n\nOptions:\n  -o, --output_path PATH     Where to write the transient-noise mask (NetCDF).\n                             Default: <stem>_transient_mask.nc\n  --apply                    Also apply the mask to Sv and write a cleaned\n                             Sv file (suffix: _transient_cleaned.nc).\n\n  # mask_transient_noise parameters\n  --func STR                 Pooling function ('nanmean', 'nanmedian', etc.).\n                             Default: nanmean\n  --depth-bin STR            Vertical bin size, e.g. '10m'. Default: 10m\n  --num-side-pings INT       Pings on each side for pooling window.\n                             Default: 25\n  --exclude-above STR        Exclude depths shallower than this (e.g. '250.0m').\n                             Default: 250.0m\n  --transient-threshold STR  Threshold in dB above local context, e.g. '12.0dB'.\n                             Default: 12.0dB\n  --range-var STR            Name of the range/depth coordinate (e.g., 'depth').\n                             Default: depth\n  --use-index-binning        Use index-based binning instead of physical units.\n  --chunk KEY=VAL [...]      Optional chunk sizes as key=value pairs (e.g., ping_time=256 depth=512).\n\n  -h, --help                 Show this help message and exit.\n\nDescription:\n  Creates a boolean mask marking likely transient-noise events using a pooling\n  comparison in depth-binned windows. Optionally applies the mask to Sv to\n  produce a cleaned Sv dataset.\n\nExamples:\n  aa-transient data.nc --depth-bin 10m --num-side-pings 21 --transient-threshold 14.0dB\n  aa-transient data.nc --apply -o out_mask.nc"
+  },
+  {
+    "tool": "aa-ts",
+    "category": "Calibration & Core Derivatives",
+    "purpose": "This tool processes .raw or .netcdf4 files with Echopype and removes background noise using ping-based and range-based thresholds.",
+    "io": {
+      "stdin": "file path (.nc) from positional arg or stdin",
+      "stdout": "absolute path of output .nc file",
+      "disk_write": true,
+      "output_suffix": "_ts",
+      "accepted_extensions": [
+        ".netcdf4",
+        ".nc"
+      ]
+    },
+    "args": [
+      {
+        "flags": "input_path",
+        "help": "Path to the .raw or .netcdf4 file.",
+        "type": "Path"
+      },
+      {
+        "flags": "-o | --output_path",
+        "help": "Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
+        "type": "Path"
+      },
+      {
+        "flags": "--env-param",
+        "help": "Environmental parameter(s) as key=value (e.g. sound_speed=1500)",
+        "type": "parse_env_params"
+      },
+      {
+        "flags": "--cal-param",
+        "help": "Calibration parameter(s) as key=value (e.g. gain_correction=1.0)",
+        "type": "parse_cal_params"
+      }
+    ],
+    "full_help": "Usage: aa-ts [OPTIONS] [INPUT_PATH]\n\nArguments:\nINPUT_PATH                 Path to the .raw or .netcdf4 file. (Optional, defaults to stdin)\n\nOptions:\n-o, --output_path           Path to save processed output.\n                            Default: overwrites .nc files or creates a new .nc for RAW.\n\nDescription:\nThis tool processes .raw or .netcdf4 files with Echopype and removes\nbackground noise using ping-based and range-based thresholds.\n\nExample:\naa-clean /path/to/input.raw --ping_num 50 --range_sample_num 200 \\\n        --snr_threshold 5.0 -o /path/to/output.nc"
+  }
+]
