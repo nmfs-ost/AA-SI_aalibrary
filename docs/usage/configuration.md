@@ -6,12 +6,12 @@ You can take a look at all of the default configs within code in the function si
 
 ## GCP Environment Configuration
 
-The default environment in AALibrary is the dev environment, `ggn-nmfs-aa-dev-1`. To switch to the prod environment, you can use the following code before making other function calls:
+The default environment in AALibrary is the prod environment, `ggn-nmfs-aa-prod-1`. To switch to the dev environment, you can use the following code before making other function calls:
 
 ```python
 from aalibrary import config
 
-config.use_gcp_prod()
+config.use_gcp_dev()
 ```
 
 ### Using Custom Environments/Buckets in GCP
