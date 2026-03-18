@@ -1,4 +1,5 @@
-"""This file contains functions that have to do with metadata."""
+"""This file contains functions that have to do with the metadata DB that
+resides in BigQuery."""
 
 import sys
 from datetime import datetime, timezone, timedelta
@@ -8,6 +9,7 @@ import platform
 import json
 
 import boto3
+from google.cloud import bigquery
 import numpy as np
 import pandas as pd
 
@@ -424,6 +426,71 @@ def get_metadata_in_df_format():
     """Retrieves the metadata associated with all objects in GCP in DataFrame
     format."""
     # TODO:
+
+
+def get_deletion_datetime_of_file(
+    file_name: str = "", gcp_project_id: str = "ggn-nmfs-aa-dev-1"
+) -> datetime:
+    """Gets the DELETION_DATETIME of a file. Returns a datetime object.
+
+    Args:
+        file_name (str, optional): The file name. Defaults to "".
+        gcp_project_id (str, optional): The GCP project ID.
+            Defaults to "ggn-nmfs-aa-dev-1".
+    Returns:
+        datetime: The DELETION_DATETIME of the file as a datetime object.
+    """
+
+    query = f"""SELECT DELETION_DATETIME
+    FROM `{gcp_project_id}.metadata.aalibrary_file_metadata`
+    WHERE FILE_NAME = '{file_name}'"""
+    gcp_bq_client = bigquery.Client(location="US")
+    job = gcp_bq_client.query(query)
+    file_deletion_datetime = (
+        job.result().to_dataframe()["DELETION_DATETIME"].tolist()[0]
+    )
+    file_deletion_datetime = str(file_deletion_datetime)
+    file_deletion_datetime = datetime.strptime(
+        file_deletion_datetime, "%Y-%m-%d %H:%M:%S"
+    )
+    return file_deletion_datetime
+
+
+def delay_file_deletion(
+    file_name: str = "",
+    days: int = 0,
+    gcp_project_id: str = "ggn-nmfs-aa-dev-1",
+):
+    """Delays a file's DELETION_DATETIME by the number of days specified.
+
+    Args:
+        file_name (str, optional): The unique file name. Defaults to "".
+        days (int, optional): The number of days by which to delay the file'
+            execution. Defaults to 0.
+        gcp_project_id (str, optional): The GCP project ID.
+            Defaults to "ggn-nmfs-aa-dev-1".
+    """
+    # Get the file deletion datetime.
+    file_deletion_datetime = get_deletion_datetime_of_file(
+        file_name=file_name, gcp_project_id=gcp_project_id
+    )
+    # Extend it by the number of days specified.
+    file_deletion_datetime = file_deletion_datetime + timedelta(days=days)
+
+    query = f"""UPDATE `{gcp_project_id}.metadata.aalibrary_file_metadata`
+    SET DELETION_DATETIME = CAST("{str(file_deletion_datetime)}" AS DATETIME)
+    WHERE FILE_NAME = '{file_name}' """
+    gcp_bq_client = bigquery.Client(location="US")
+    try:
+        job = gcp_bq_client.query(query)
+        job.result()
+        print(
+            f"File DELETION_DATETIME delayed by {days} day(s) to"
+            f" {file_deletion_datetime}"
+        )
+    except Exception as e:
+        print(f"Could not update DELETION_DATETIME due to:\n{e}")
+        return
 
 
 if __name__ == "__main__":
