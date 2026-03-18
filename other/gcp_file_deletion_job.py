@@ -8,6 +8,9 @@ command below:
 0 0 * * 1 python gcp_file_deletion_job.py
 """
 
+# pylint: disable=W1201,W1203
+
+
 import sys
 import os
 from typing import List
