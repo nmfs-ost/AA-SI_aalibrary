@@ -1,7 +1,7 @@
 # Conversions
 
 !!! note "NOTE: Default GCP Environment"
-    By default, `aalibrary` uses the dev GCP project and bucket. If you would like to switch to the prod environment, simply call aalibrary.config.use_gcp_prod() before running your functions. If you would like to use a custom environment, follow the instructions outlined [here](../usage/configuration.md#gcp-environment-configuration).
+    By default, `aalibrary` uses the prod GCP project and bucket. If you would like to switch to the dev environment, simply call aalibrary.config.use_gcp_dev() before running your functions. If you would like to use a custom environment, follow the instructions outlined [here](../usage/configuration.md#gcp-environment-configuration).
 
 ## Converting A Raw Into Netcdf
 

@@ -5,13 +5,12 @@ This library provides also provides advanced methods for interacting with the GC
 
 ## Default GCP Environment in `AALibrary`
 
-The default environment in AALibrary is the dev environment, `ggn-nmfs-aa-dev-1`. To switch to the prod environment, or another custom environment or bucket, please follow the docs [here](../usage/configuration.md#gcp-environment-configuration).
+The default environment in AALibrary is the prod environment, `ggn-nmfs-aa-prod-1`. To switch to the dev environment, or another custom environment or bucket, please follow the docs [here](../usage/configuration.md#gcp-environment-configuration).
 
 ## Current Environments (aka ‘Projects’) in GCP
 
 * ggn-nmfs-aa-dev-1:
     * Used for development purposes for AALibrary.
-    * Good for testing.
     * All data exists in one storage bucket.
     * NOTE: NOT a stable environment. Data gets deleted often.
     * No workstations available.
