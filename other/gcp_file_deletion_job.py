@@ -112,6 +112,8 @@ if __name__ == "__main__":
     #         file_name="2107RL_CW-D20210916-T165047.raw"
     #     )
     # )
-    delay_file_deletion(file_name="2107RL_CW-D20210916-T165047.raw", days=1)
-    # uris = get_files_ready_to_be_deleted()
-    # delete_files_from_storage(uris=uris)
+    # delay_file_deletion(file_name="2107RL_CW-D20210916-T165047.raw", days=1)
+
+    ### Standard execution of the file deletion job. ###
+    uris = get_files_ready_to_be_deleted()
+    delete_files_from_storage(uris=uris)
