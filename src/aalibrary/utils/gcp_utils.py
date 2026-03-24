@@ -407,6 +407,37 @@ def copy_folder_within_gcs(
         print(f"\n\tCopied '{blob.name}' to '{new_blob.name}'")
 
 
+def move_object_between_buckets(
+    bucket_name, blob_name, destination_bucket_name, destination_blob_name
+):
+    """Moves a blob/object from one bucket to another.
+
+    Args:
+        bucket_name (str): The name of the source bucket.
+        blob_name (str): The name of the blob/object to move.
+        destination_bucket_name (str): The name of the destination bucket.
+        destination_blob_name (str): The name of the blob/object in the
+            destination bucket.
+
+    Returns:
+        None
+    """
+    storage_client = storage.Client()
+    source_bucket = storage_client.bucket(bucket_name)
+    source_blob = source_bucket.blob(blob_name)
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+
+    # Copy the object and delete the original
+    source_bucket.copy_blob(
+        source_blob, destination_bucket, destination_blob_name
+    )
+    source_blob.delete()
+    print(
+        f"Moved {blob_name} to `{destination_bucket_name}/"
+        f"{destination_blob_name}`"
+    )
+
+
 def get_num_objects_in_blob(
     gcp_bucket_name: str = "",
     folder_prefix: str = "",
@@ -450,8 +481,15 @@ if __name__ == "__main__":
     # )
     # print(all_rl2107_echos)
 
-    rename_gcs_folder(
-        gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
-        old_folder_prefix="other/deletable/RL2107/EK80_renamed/",
-        new_folder_prefix="other/deletable/RL2107/EK80/",
+    # rename_gcs_folder(
+    #     gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
+    #     old_folder_prefix="other/deletable/RL2107/EK80_renamed/",
+    #     new_folder_prefix="other/deletable/RL2107/EK80/",
+    # )
+
+    move_object_between_buckets(
+        bucket_name="ggn-nmfs-aa-dev-1-data",
+        blob_name="TEST/D20090405-T112857.nc",
+        destination_bucket_name="ggn-nmfs-aa-prod-1-data",
+        destination_blob_name="TEST/D20090405-T112857.nc"
     )
