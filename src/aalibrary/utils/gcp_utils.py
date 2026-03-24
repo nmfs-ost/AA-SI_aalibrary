@@ -407,6 +407,38 @@ def copy_folder_within_gcs(
         print(f"\n\tCopied '{blob.name}' to '{new_blob.name}'")
 
 
+def copy_object_between_buckets(
+    bucket_name, blob_name, destination_bucket_name, destination_blob_name
+):
+    """Copies a blob/object from one bucket to another.
+
+    Args:
+        bucket_name (str): The name of the source bucket.
+        blob_name (str): The name of the blob/object to copy.
+            Ex. "TEST/conversions/D20090405-T112857.nc"
+        destination_bucket_name (str): The name of the destination bucket.
+        destination_blob_name (str): The name of the blob/object in the
+            destination bucket.
+            Ex. "TEST/conversions/D20090405-T112857.nc"
+
+    Returns:
+        None
+    """
+    storage_client = storage.Client()
+    source_bucket = storage_client.bucket(bucket_name)
+    source_blob = source_bucket.blob(blob_name)
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+
+    # Copy the object and delete the original
+    source_bucket.copy_blob(
+        source_blob, destination_bucket, destination_blob_name
+    )
+    print(
+        f"Copied {blob_name} to `{destination_bucket_name}/"
+        f"{destination_blob_name}`"
+    )
+
+
 def move_object_between_buckets(
     bucket_name, blob_name, destination_bucket_name, destination_blob_name
 ):
@@ -415,9 +447,11 @@ def move_object_between_buckets(
     Args:
         bucket_name (str): The name of the source bucket.
         blob_name (str): The name of the blob/object to move.
+            Ex. "TEST/conversions/D20090405-T112857.nc"
         destination_bucket_name (str): The name of the destination bucket.
         destination_blob_name (str): The name of the blob/object in the
             destination bucket.
+            Ex. "TEST/conversions/D20090405-T112857.nc"
 
     Returns:
         None
@@ -491,5 +525,5 @@ if __name__ == "__main__":
         bucket_name="ggn-nmfs-aa-dev-1-data",
         blob_name="TEST/D20090405-T112857.nc",
         destination_bucket_name="ggn-nmfs-aa-prod-1-data",
-        destination_blob_name="TEST/D20090405-T112857.nc"
+        destination_blob_name="TEST/D20090405-T112857.nc",
     )
