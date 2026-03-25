@@ -443,6 +443,7 @@ def move_object_between_buckets(
     bucket_name, blob_name, destination_bucket_name, destination_blob_name
 ):
     """Moves a blob/object from one bucket to another.
+    NOTE: Deletes the original blob after copying to the new bucket.
 
     Args:
         bucket_name (str): The name of the source bucket.
