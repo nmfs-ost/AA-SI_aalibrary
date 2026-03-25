@@ -374,8 +374,8 @@ def get_all_file_names_from_survey_in_storage_bucket(
         all_file_names = [
             file_name.split("/")[-1] for file_name in all_file_names
         ]
-    else:
-        return all_file_names
+
+    return all_file_names
 
 
 def get_all_raw_file_names_from_survey_in_storage_bucket(): ...
@@ -777,6 +777,6 @@ if __name__ == "__main__":
             survey_name="RL2107",
             project_id="ggn-nmfs-aa-dev-1",
             gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
-            return_full_paths=True,
+            return_full_paths=False,
         )
     )
