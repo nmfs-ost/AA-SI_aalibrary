@@ -584,7 +584,7 @@ def bq_query_to_pandas(client: bigquery.Client = None, query: str = ""):
 
 
 def list_all_objects_in_gcp_bucket_location(
-    location: str = "", gcp_bucket: storage.Client.bucket = None
+    location: str = "", bucket_name: str = None
 ) -> List[str]:
     """Gets all of the files within a GCP storage bucket location.
 
@@ -592,13 +592,15 @@ def list_all_objects_in_gcp_bucket_location(
         location (str, optional): The location to search for files. Defaults
             to "".
             Ex. "NCEI/Reuben_Lasker/RL2107"
-        gcp_bucket (storage.Client.bucket, optional): The gcp bucket to use.
+        bucket_name (str, optional): The name of the GCP storage bucket to use.
             Defaults to None.
 
     Returns:
         List[str]: A list of strings containing all URIs for each file in the
             bucket.
     """
+    storage_client = storage.Client()
+    gcp_bucket = storage_client.bucket(bucket_name)
 
     all_blobs_in_this_location = []
     for blob in gcp_bucket.list_blobs(prefix=location):
