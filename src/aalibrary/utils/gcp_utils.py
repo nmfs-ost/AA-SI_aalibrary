@@ -568,7 +568,7 @@ def copy_folder_between_buckets(
         gcp_bucket_name=source_bucket_name, folder_prefix=source_folder_prefix
     )
 
-    for blob in tqdm(blobs, desc="Copying GCS objects", total=len_blobs):
+    for blob in tqdm(blobs, desc="Copying GCS Objects", total=len_blobs):
         # Construct the new blob name
         new_blob_name = (
             destination_folder_prefix + blob.name[len(source_folder_prefix) :]
@@ -581,6 +581,64 @@ def copy_folder_between_buckets(
 
         print(
             f"\n\tCopied '{blob.name}' from bucket '{source_bucket_name}' "
+            f"to '{new_blob.name}' in bucket '{destination_bucket_name}'"
+        )
+
+
+def move_folder_between_buckets(
+    source_bucket_name: str = "",
+    source_folder_prefix: str = "",
+    destination_bucket_name: str = "",
+    destination_folder_prefix: str = "",
+) -> None:
+    """Moves all objects under a given source_folder_prefix from one bucket to
+    another destination_folder_prefix.
+    NOTE: Deletes the original blobs after copying to the new bucket.
+
+    Args:
+        source_bucket_name (str, optional): The name of the source bucket.
+            Defaults to "".
+        source_folder_prefix (str, optional): The folder prefix to move from the
+            source bucket.
+            Ex. "TEST/conversions/"
+            Defaults to "".
+        destination_bucket_name (str, optional): The name of the destination
+            bucket. Defaults to "".
+        destination_folder_prefix (str, optional): The folder prefix to move to
+            in the destination bucket.
+            Ex. "TEST/conversions/"
+            Defaults to "".
+
+    Returns:
+        None
+    """
+
+    storage_client = storage.Client()
+    source_bucket = storage_client.bucket(source_bucket_name)
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+
+    # List all blobs (objects) with the source folder prefix
+    blobs = source_bucket.list_blobs(prefix=source_folder_prefix)
+    len_blobs = get_num_objects_in_blob(
+        gcp_bucket_name=source_bucket_name, folder_prefix=source_folder_prefix
+    )
+
+    for blob in tqdm(blobs, desc="Moving GCS Objects", total=len_blobs):
+        # Construct the new blob name
+        new_blob_name = (
+            destination_folder_prefix + blob.name[len(source_folder_prefix) :]
+        )
+
+        # Copy the blob to the new bucket and name
+        new_blob = source_bucket.copy_blob(
+            blob, destination_bucket, new_name=new_blob_name
+        )
+
+        # Delete the original blob
+        blob.delete()
+
+        print(
+            f"\n\tMoved '{blob.name}' from bucket '{source_bucket_name}' "
             f"to '{new_blob.name}' in bucket '{destination_bucket_name}'"
         )
 
@@ -641,14 +699,9 @@ if __name__ == "__main__":
     #     destination_blob_name="TEST/D20090405-T112857.nc",
     # )
 
-    # copy_folder_between_buckets(
-    #     source_bucket_name="ggn-nmfs-aa-dev-1-data",
-    #     source_folder_prefix="TEST/Reuben_Lasker/",
-    #     destination_bucket_name="ggn-nmfs-aa-prod-1-data",
-    #     destination_folder_prefix="TEST/Reuben_Lasker/",
-    # )
-    print(
-        get_all_echosounders_that_exist_in_storage_bucket(
-            return_full_paths=True
-        )
+    move_folder_between_buckets(
+        source_bucket_name="ggn-nmfs-aa-prod-1-data",
+        source_folder_prefix="TEST/Reuben_Lasker/",
+        destination_bucket_name="ggn-nmfs-aa-dev-1-data",
+        destination_folder_prefix="TEST/Reuben_Lasker/",
     )
