@@ -5,6 +5,7 @@
 *.tar
 *.netCDF4
 *.nc
+logs/
 
 # For python files
 **/__pycache__/**
