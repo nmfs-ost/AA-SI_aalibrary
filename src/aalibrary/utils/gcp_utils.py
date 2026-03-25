@@ -1,7 +1,9 @@
 """This file contains code pertaining to auxiliary functions related to parsing
 through our google storage bucket."""
 
-from typing import List
+from typing import List, Union
+from random import randint
+from difflib import get_close_matches
 
 from google.cloud import storage
 from tqdm import tqdm
@@ -378,28 +380,366 @@ def get_all_file_names_from_survey_in_storage_bucket(
     return all_file_names
 
 
-def get_all_raw_file_names_from_survey_in_storage_bucket(): ...
+def get_all_raw_file_names_from_survey_in_storage_bucket(
+    ship_name: str = "",
+    survey_name: str = "",
+    project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    gcp_bucket: storage.Client.bucket = None,
+    return_full_paths: bool = False,
+) -> List[str]:
+    """Gets all of the raw file names from a survey in a GCP storage bucket.
+
+    Args:
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Will get normalized to GCP standards. Defaults to None.
+        survey_name (str, optional): The survey name/identifier.
+            Defaults to "".
+        project_id (str, optional): The GCP project ID that the storage bucket
+            resides in.
+            Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The GCP storage bucket name.
+            Defaults to "ggn-nmfs-aa-dev-1-data".
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name`. Defaults to None.
+        return_full_paths (bool, optional): Whether or not you want a full
+            path from bucket root to the subdirectory returned. Set to false
+            if you only want the survey names listed. Defaults to False.
+
+    Returns:
+        List[str]: A list of strings containing all the raw file names that
+            exist in this survey in the storage bucket.
+    """
+
+    all_file_names = get_all_file_names_from_survey_in_storage_bucket(
+        ship_name=ship_name,
+        survey_name=survey_name,
+        project_id=project_id,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_bucket=gcp_bucket,
+        return_full_paths=return_full_paths,
+    )
+
+    raw_file_names = []
+    for file_name in all_file_names:
+        if file_name.lower().endswith(".raw"):
+            raw_file_names.append(file_name)
+
+    return raw_file_names
 
 
-def get_random_raw_file_from_storage_bucket(): ...
+def get_random_raw_file_from_storage_bucket(
+    project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    gcp_bucket: storage.Client.bucket = None,
+) -> List[str]:
+    """Creates a test raw file using parameters from GCP. This is used for
+    testing purposes only. Retries automatically if an error occurs.
+
+    Args:
+        project_id (str, optional): The GCP project ID that the storage bucket
+            resides in.
+            Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The GCP storage bucket name.
+            Defaults to "ggn-nmfs-aa-dev-1-data".
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name`. Defaults to None.
+
+    Returns:
+        List[str]: A list object with strings denoting each parameter required
+            for creating a raw file object.
+            Ex. [
+                random_ship_name,
+                random_survey_name,
+                random_echosounder,
+                random_raw_file,
+            ]
+    """
+
+    if gcp_bucket is None:
+        _, _, gcp_bucket = setup_gcp_storage_objs(
+            project_id=project_id, gcp_bucket_name=gcp_bucket_name
+        )
+
+    try:
+        # Get all of the ship names
+        all_ship_names = get_all_ship_names_in_gcp_bucket(
+            project_id=project_id,
+            gcp_bucket_name=gcp_bucket_name,
+            gcp_bucket=gcp_bucket,
+            return_full_paths=False,
+        )
+        random_ship_name = all_ship_names[randint(0, len(all_ship_names) - 1)]
+        # Get all of the surveys for this ship
+        all_surveys_for_this_ship = (
+            get_all_survey_names_from_a_ship_in_storage_bucket(
+                ship_name=random_ship_name,
+                project_id=project_id,
+                gcp_bucket_name=gcp_bucket_name,
+                gcp_bucket=gcp_bucket,
+                return_full_paths=False,
+            )
+        )
+        random_survey_name = all_surveys_for_this_ship[
+            randint(0, len(all_surveys_for_this_ship) - 1)
+        ]
+        # Get all of the echosounders in this survey
+        all_echosounders_for_this_survey = (
+            get_all_echosounders_in_a_survey_in_storage_bucket(
+                ship_name=random_ship_name,
+                survey_name=random_survey_name,
+                project_id=project_id,
+                gcp_bucket_name=gcp_bucket_name,
+                gcp_bucket=gcp_bucket,
+                return_full_paths=False,
+            )
+        )
+        random_echosounder = all_echosounders_for_this_survey[
+            randint(0, len(all_echosounders_for_this_survey) - 1)
+        ]
+        # Get all of the raw files in this echosounder
+        all_raw_files_in_survey = (
+            get_all_raw_file_names_from_survey_in_storage_bucket(
+                ship_name=random_ship_name,
+                survey_name=random_survey_name,
+                project_id=project_id,
+                gcp_bucket_name=gcp_bucket_name,
+                gcp_bucket=gcp_bucket,
+                return_full_paths=True,
+            )
+        )
+        # Filter out raw files that are from this echosounder.
+        all_raw_files_in_survey = [
+            raw_file
+            for raw_file in all_raw_files_in_survey
+            if random_echosounder in raw_file
+        ]
+        # Shorten filtered raw files to just the file name.
+        all_raw_files_in_survey = [
+            file_name.split("/")[-1] for file_name in all_raw_files_in_survey
+        ]
+        random_raw_file = all_raw_files_in_survey[
+            randint(0, len(all_raw_files_in_survey) - 1)
+        ]
+
+        return [
+            random_ship_name,
+            random_survey_name,
+            random_echosounder,
+            random_raw_file,
+        ]
+    except Exception:
+        return get_random_raw_file_from_storage_bucket(
+            project_id=project_id,
+            gcp_bucket_name=gcp_bucket_name,
+            gcp_bucket=gcp_bucket,
+        )
 
 
 def get_echosounder_from_raw_file_in_storage_bucket(): ...
 
 
-def check_if_tugboat_metadata_json_exists_in_survey(): ...
+def check_if_tugboat_metadata_json_exists_in_survey(
+    ship_name: str = "",
+    survey_name: str = "",
+    project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    gcp_bucket: storage.Client.bucket = None,
+) -> Union[str, None]:
+    """Checks whether a Tugboat metadata JSON file exists within a survey.
+    Returns the file's GCP URI or None if it does not exist.
+
+    Args:
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Will get normalized. Defaults to None.
+        survey_name (str, optional): The survey name exactly as it is in GCP.
+            NOTE: Must be spelled exactly.
+            Defaults to "".
+        project_id (str, optional): The GCP project ID that the storage bucket
+            resides in.
+            Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The GCP storage bucket name.
+            Defaults to "ggn-nmfs-aa-dev-1-data".
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name`. Defaults to None.
+
+    Returns:
+        Union[str, None]: Returns the file's GCP URI or None if it does not
+            exist.
+    """
+
+    all_files_in_survey = get_all_file_names_from_survey_in_storage_bucket(
+        ship_name=ship_name,
+        survey_name=survey_name,
+        project_id=project_id,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_bucket=gcp_bucket,
+        return_full_paths=True,
+    )
+
+    metadata_json_files = []
+
+    for file_name in all_files_in_survey:
+        if file_name.lower().endswith("metadata.json"):
+            metadata_json_files.append(file_name)
+
+    return metadata_json_files if metadata_json_files else None
 
 
-def get_closest_gcp_formatted_ship_name(): ...
+def get_closest_gcp_formatted_ship_name(
+    ship_name: str = "",
+    project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    gcp_bucket: storage.Client.bucket = None,
+) -> Union[str, None]:
+    """All of GCP's ship names are normalized. This function returns the
+    closest match of the ship names that exist in GCP.
+
+    Args:
+        ship_name (str, optional): The ship name to search the closest match
+            for.
+            Defaults to "".
+        project_id (str, optional): The GCP project ID that the storage bucket
+            resides in.
+            Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The GCP storage bucket name.
+            Defaults to "ggn-nmfs-aa-dev-1-data".
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name`. Defaults to None.
+
+    Returns:
+        Union[str, None]: The closest match GCP formatted ship name or None,
+            if none matched.
+    """
+    if gcp_bucket is None:
+        _, _, gcp_bucket = setup_gcp_storage_objs(
+            project_id=project_id, gcp_bucket_name=gcp_bucket_name
+        )
+
+    all_ship_names = get_all_ship_names_in_gcp_bucket(
+        project_id=project_id,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_bucket=gcp_bucket,
+        return_full_paths=False,
+    )
+
+    close_matches = get_close_matches(
+        ship_name, all_ship_names, n=3, cutoff=0.85
+    )
+    if len(close_matches) >= 1:
+        return close_matches[0]
+    else:
+        return None
 
 
-def get_all_metadata_files_in_survey_in_storage_bucket(): ...
+def get_all_metadata_files_in_survey_in_storage_bucket(
+    ship_name: str = "",
+    survey_name: str = "",
+    project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    gcp_bucket: storage.Client.bucket = None,
+) -> Union[str, None]:
+    """Gets all of the files that exist within a metadata folder for a survey.
+    Returns the files' GCP URIs or None if it does not exist.
+
+    Args:
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Will get normalized. Defaults to None.
+        survey_name (str, optional): The survey name exactly as it is in GCP.
+            NOTE: Must be spelled exactly.
+            Defaults to "".
+        project_id (str, optional): The GCP project ID that the storage bucket
+            resides in.
+            Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The GCP storage bucket name.
+            Defaults to "ggn-nmfs-aa-dev-1-data".
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name`. Defaults to None.
+
+    Returns:
+        Union[str, None]: Returns the file's GCP URI or None if it does not
+            exist.
+    """
+
+    all_files_in_survey = get_all_file_names_from_survey_in_storage_bucket(
+        ship_name=ship_name,
+        survey_name=survey_name,
+        project_id=project_id,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_bucket=gcp_bucket,
+        return_full_paths=True,
+    )
+
+    metadata_files = []
+
+    for file_name in all_files_in_survey:
+        # If the file exists in the metadata folder.
+        if "/metadata/" in file_name.lower():
+            metadata_files.append(file_name)
+
+    return metadata_files if metadata_files else None
 
 
 def check_if_cruise_exists_fully_in_storage_bucket(): ...
 
 
-def get_netcdf_files_from_survey(): ...
+def get_netcdf_files_from_survey(
+    ship_name: str = "",
+    survey_name: str = "",
+    project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    gcp_bucket: storage.Client.bucket = None,
+) -> Union[str, None]:
+    """Gets all of the files that exist within a netcdf folder for a survey.
+    Returns the files' GCP URIs or None if it does not exist.
+
+    Args:
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Will get normalized. Defaults to None.
+        survey_name (str, optional): The survey name exactly as it is in GCP.
+            NOTE: Must be spelled exactly.
+            Defaults to "".
+        project_id (str, optional): The GCP project ID that the storage bucket
+            resides in.
+            Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The GCP storage bucket name.
+            Defaults to "ggn-nmfs-aa-dev-1-data".
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name`. Defaults to None.
+
+    Returns:
+        Union[str, None]: Returns the files' GCP URIs or None if it does not
+            exist.
+    """
+    all_files_in_survey = get_all_file_names_from_survey_in_storage_bucket(
+        ship_name=ship_name,
+        survey_name=survey_name,
+        project_id=project_id,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_bucket=gcp_bucket,
+        return_full_paths=True,
+    )
+
+    netcdf_files = []
+
+    for file_name in all_files_in_survey:
+        # If the file exists in the metadata folder.
+        if "/netcdf/" in file_name.lower():
+            netcdf_files.append(file_name)
+
+    return netcdf_files if netcdf_files else None
 
 
 def rename_gcs_folder(
@@ -609,8 +949,8 @@ def copy_folder_between_buckets(
     Args:
         source_bucket_name (str, optional): The name of the source bucket.
             Defaults to "".
-        source_folder_prefix (str, optional): The folder prefix to copy from the
-            source bucket.
+        source_folder_prefix (str, optional): The folder prefix to copy from
+            the source bucket.
             Ex. "TEST/conversions/"
             Defaults to "".
         destination_bucket_name (str, optional): The name of the destination
@@ -664,8 +1004,8 @@ def move_folder_between_buckets(
     Args:
         source_bucket_name (str, optional): The name of the source bucket.
             Defaults to "".
-        source_folder_prefix (str, optional): The folder prefix to move from the
-            source bucket.
+        source_folder_prefix (str, optional): The folder prefix to move from
+            the source bucket.
             Ex. "TEST/conversions/"
             Defaults to "".
         destination_bucket_name (str, optional): The name of the destination
@@ -716,8 +1056,11 @@ def get_num_objects_in_blob(
     """Gets the number of objects in a given folder prefix in a GCS bucket.
 
     Args:
-        gcp_bucket_name (str, optional): The GCP bucket where the folder resides. Defaults to "".
-        folder_prefix (str, optional): The folder prefix to count objects in. Defaults to "".
+        gcp_bucket_name (str, optional): The GCP bucket where the folder
+            resides.
+            Defaults to "".
+        folder_prefix (str, optional): The folder prefix to count objects in.
+            Defaults to "".
 
     Returns:
         int: The number of objects in the specified folder prefix.
@@ -771,12 +1114,20 @@ if __name__ == "__main__":
     #     destination_bucket_name="ggn-nmfs-aa-dev-1-data",
     #     destination_folder_prefix="TEST/Reuben_Lasker/",
     # )
+    # print(
+    #     get_all_raw_file_names_from_survey_in_storage_bucket(
+    #         ship_name="Reuben Lasker",
+    #         survey_name="RL2107",
+    #         project_id="ggn-nmfs-aa-dev-1",
+    #         gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
+    #         return_full_paths=True,
+    #     )
+    # )
+
+    # print(get_random_raw_file_from_storage_bucket())
+
     print(
-        get_all_file_names_from_survey_in_storage_bucket(
-            ship_name="Reuben Lasker",
-            survey_name="RL2107",
-            project_id="ggn-nmfs-aa-dev-1",
-            gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
-            return_full_paths=False,
+        check_if_tugboat_metadata_json_exists_in_survey(
+            ship_name="bigelowe", survey_name="RL2107"
         )
     )
