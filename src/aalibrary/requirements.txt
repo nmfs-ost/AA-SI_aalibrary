@@ -22,7 +22,7 @@ azure-storage-file-datalake>=12.7.0
 zarr==2.8.3
 inquirerpy
 loguru
-numcodecs==0.15.1
+numcodecs==0.15.1; python_version>="3.11"
 mkdocs
 mkdocs-material
 mkdocstrings-python
