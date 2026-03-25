@@ -248,7 +248,65 @@ def get_all_echosounders_in_a_survey_in_storage_bucket(
     return list(all_echosounders)
 
 
-def get_all_echosounders_that_exist_in_storage_bucket(): ...
+def get_all_echosounders_that_exist_in_storage_bucket(
+    project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    gcp_bucket: storage.Client.bucket = None,
+    return_full_paths: bool = False,
+) -> List[str]:
+    """Gets all of the echosounders that exist in the storage bucket.
+
+    Args:
+        project_id (str, optional): The GCP project ID that the storage bucket
+            resides in.
+            Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The GCP storage bucket name.
+            Defaults to "ggn-nmfs-aa-dev-1-data".
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name`. Defaults to None.
+        return_full_paths (bool, optional): Whether or not you want a full
+            path from bucket root to the subdirectory returned. Set to false
+            if you only want the survey names listed. Defaults to False.
+
+    Returns:
+        List[str]: A list of strings containing the echosounder names that
+            exist in the storage bucket.
+    """
+    if gcp_bucket is None:
+        _, _, gcp_bucket = setup_gcp_storage_objs(
+            project_id=project_id, gcp_bucket_name=gcp_bucket_name
+        )
+
+    all_survey_prefixes = get_all_surveys_in_storage_bucket(
+        project_id=project_id,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_bucket=gcp_bucket,
+        return_full_paths=True,
+    )
+    all_echosounders = set()
+    for survey_prefix in all_survey_prefixes:
+        # Get echosounders from each survey prefix
+        survey_echosounders = list_all_folders_in_gcp_bucket_location(
+            location=survey_prefix,
+            gcp_bucket=gcp_bucket,
+            return_full_paths=return_full_paths,
+        )
+        all_echosounders.update(survey_echosounders)
+
+    # Filter out any folder that is not an echosounder.
+    all_echosounders_filtered = []
+    for folder_name in list(all_echosounders):
+        if (
+            ("calibration" not in folder_name.lower())
+            and ("metadata" not in folder_name.lower())
+            and ("json" not in folder_name.lower())
+            and ("doc" not in folder_name.lower())
+        ):
+            all_echosounders_filtered.append(folder_name)
+
+    return all_echosounders_filtered
 
 
 def get_all_file_names_from_survey_in_storage_bucket(): ...
@@ -583,9 +641,14 @@ if __name__ == "__main__":
     #     destination_blob_name="TEST/D20090405-T112857.nc",
     # )
 
-    copy_folder_between_buckets(
-        source_bucket_name="ggn-nmfs-aa-dev-1-data",
-        source_folder_prefix="TEST/Reuben_Lasker/",
-        destination_bucket_name="ggn-nmfs-aa-prod-1-data",
-        destination_folder_prefix="TEST/Reuben_Lasker/"
+    # copy_folder_between_buckets(
+    #     source_bucket_name="ggn-nmfs-aa-dev-1-data",
+    #     source_folder_prefix="TEST/Reuben_Lasker/",
+    #     destination_bucket_name="ggn-nmfs-aa-prod-1-data",
+    #     destination_folder_prefix="TEST/Reuben_Lasker/",
+    # )
+    print(
+        get_all_echosounders_that_exist_in_storage_bucket(
+            return_full_paths=True
+        )
     )
