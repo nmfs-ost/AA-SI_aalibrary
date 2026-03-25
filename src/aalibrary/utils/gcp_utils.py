@@ -473,6 +473,60 @@ def move_object_between_buckets(
     )
 
 
+def copy_folder_between_buckets(
+    source_bucket_name: str = "",
+    source_folder_prefix: str = "",
+    destination_bucket_name: str = "",
+    destination_folder_prefix: str = "",
+) -> None:
+    """Copies all objects under a given source_folder_prefix from one bucket to
+    another destination_folder_prefix.
+
+    Args:
+        source_bucket_name (str, optional): The name of the source bucket.
+            Defaults to "".
+        source_folder_prefix (str, optional): The folder prefix to copy from the
+            source bucket.
+            Ex. "TEST/conversions/"
+            Defaults to "".
+        destination_bucket_name (str, optional): The name of the destination
+            bucket. Defaults to "".
+        destination_folder_prefix (str, optional): The folder prefix to copy to
+            in the destination bucket.
+            Ex. "TEST/conversions/"
+            Defaults to "".
+
+    Returns:
+        None
+    """
+
+    storage_client = storage.Client()
+    source_bucket = storage_client.bucket(source_bucket_name)
+    destination_bucket = storage_client.bucket(destination_bucket_name)
+
+    # List all blobs (objects) with the source folder prefix
+    blobs = source_bucket.list_blobs(prefix=source_folder_prefix)
+    len_blobs = get_num_objects_in_blob(
+        gcp_bucket_name=source_bucket_name, folder_prefix=source_folder_prefix
+    )
+
+    for blob in tqdm(blobs, desc="Copying GCS objects", total=len_blobs):
+        # Construct the new blob name
+        new_blob_name = (
+            destination_folder_prefix + blob.name[len(source_folder_prefix) :]
+        )
+
+        # Copy the blob to the new bucket and name
+        new_blob = source_bucket.copy_blob(
+            blob, destination_bucket, new_name=new_blob_name
+        )
+
+        print(
+            f"\n\tCopied '{blob.name}' from bucket '{source_bucket_name}' "
+            f"to '{new_blob.name}' in bucket '{destination_bucket_name}'"
+        )
+
+
 def get_num_objects_in_blob(
     gcp_bucket_name: str = "",
     folder_prefix: str = "",
@@ -522,9 +576,16 @@ if __name__ == "__main__":
     #     new_folder_prefix="other/deletable/RL2107/EK80/",
     # )
 
-    move_object_between_buckets(
-        bucket_name="ggn-nmfs-aa-dev-1-data",
-        blob_name="TEST/D20090405-T112857.nc",
+    # move_object_between_buckets(
+    #     bucket_name="ggn-nmfs-aa-dev-1-data",
+    #     blob_name="TEST/D20090405-T112857.nc",
+    #     destination_bucket_name="ggn-nmfs-aa-prod-1-data",
+    #     destination_blob_name="TEST/D20090405-T112857.nc",
+    # )
+
+    copy_folder_between_buckets(
+        source_bucket_name="ggn-nmfs-aa-dev-1-data",
+        source_folder_prefix="TEST/Reuben_Lasker/",
         destination_bucket_name="ggn-nmfs-aa-prod-1-data",
-        destination_blob_name="TEST/D20090405-T112857.nc",
+        destination_folder_prefix="TEST/Reuben_Lasker/"
     )
