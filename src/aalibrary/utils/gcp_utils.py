@@ -12,12 +12,14 @@ if __package__ is None or __package__ == "":
     from cloud_utils import (
         setup_gcp_storage_objs,
         list_all_folders_in_gcp_bucket_location,
+        list_all_objects_in_gcp_bucket_location,
     )
     from helpers import normalize_ship_name
 else:
     from aalibrary.utils.cloud_utils import (
         setup_gcp_storage_objs,
         list_all_folders_in_gcp_bucket_location,
+        list_all_objects_in_gcp_bucket_location,
     )
     from aalibrary.utils.helpers import normalize_ship_name
 
@@ -309,7 +311,71 @@ def get_all_echosounders_that_exist_in_storage_bucket(
     return all_echosounders_filtered
 
 
-def get_all_file_names_from_survey_in_storage_bucket(): ...
+def get_all_file_names_from_survey_in_storage_bucket(
+    ship_name: str = "",
+    survey_name: str = "",
+    project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_bucket_name: str = "ggn-nmfs-aa-dev-1-data",
+    gcp_bucket: storage.Client.bucket = None,
+    return_full_paths: bool = False,
+) -> List[str]:
+    """Gets all of the file names from a survey in a GCP storage bucket.
+
+    Args:
+        ship_name (str, optional): The ship's name you want to get all surveys
+            from. Will get normalized to GCP standards. Defaults to None.
+        survey_name (str, optional): The survey name/identifier.
+            Defaults to "".
+        project_id (str, optional): The GCP project ID that the storage bucket
+            resides in.
+            Defaults to "ggn-nmfs-aa-dev-1".
+        gcp_bucket_name (str, optional): The GCP storage bucket name.
+            Defaults to "ggn-nmfs-aa-dev-1-data".
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name`. Defaults to None.
+        return_full_paths (bool, optional): Whether or not you want a full
+            path from bucket root to the subdirectory returned. Set to false
+            if you only want the survey names listed. Defaults to False.
+
+    Returns:
+        List[str]: A list of strings containing all the file names that exist
+        in this survey in the storage bucket.
+    """
+
+    if gcp_bucket is None:
+        _, _, gcp_bucket = setup_gcp_storage_objs(
+            project_id=project_id, gcp_bucket_name=gcp_bucket_name
+        )
+
+    # Normalize the ship name.
+    ship_name = normalize_ship_name(ship_name=ship_name)
+    # Search all possible directories for ship surveys
+    prefixes = [
+        f"HDD/{ship_name}/{survey_name}/",
+        f"NCEI/{ship_name}/{survey_name}/",
+        f"OMAO/{ship_name}/{survey_name}/",
+        f"TEST/{ship_name}/{survey_name}/",
+    ]
+
+    all_file_names = []
+    for prefix in prefixes:
+        file_names = list_all_objects_in_gcp_bucket_location(
+            location=prefix,
+            bucket_name=gcp_bucket_name,
+        )
+        all_file_names.extend(file_names)
+
+    all_file_names = list(set(all_file_names))
+
+    if not return_full_paths:
+        # Return file names only.
+        all_file_names = [
+            file_name.split("/")[-1] for file_name in all_file_names
+        ]
+    else:
+        return all_file_names
 
 
 def get_all_raw_file_names_from_survey_in_storage_bucket(): ...
@@ -699,9 +765,18 @@ if __name__ == "__main__":
     #     destination_blob_name="TEST/D20090405-T112857.nc",
     # )
 
-    move_folder_between_buckets(
-        source_bucket_name="ggn-nmfs-aa-prod-1-data",
-        source_folder_prefix="TEST/Reuben_Lasker/",
-        destination_bucket_name="ggn-nmfs-aa-dev-1-data",
-        destination_folder_prefix="TEST/Reuben_Lasker/",
+    # move_folder_between_buckets(
+    #     source_bucket_name="ggn-nmfs-aa-prod-1-data",
+    #     source_folder_prefix="TEST/Reuben_Lasker/",
+    #     destination_bucket_name="ggn-nmfs-aa-dev-1-data",
+    #     destination_folder_prefix="TEST/Reuben_Lasker/",
+    # )
+    print(
+        get_all_file_names_from_survey_in_storage_bucket(
+            ship_name="Reuben Lasker",
+            survey_name="RL2107",
+            project_id="ggn-nmfs-aa-dev-1",
+            gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
+            return_full_paths=True,
+        )
     )
