@@ -90,7 +90,6 @@ class TestBusinessUseCases:
             ship_name=self.rf.ship_name,
             survey_name=self.rf.survey_name,
             echosounder=self.rf.echosounder,
-            data_source=self.rf.data_source,
             file_download_directory=self.rf.file_download_directory,
             upload_to_gcp=False,
             debug=self.rf.debug,

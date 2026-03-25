@@ -93,7 +93,6 @@ class TestNCEIIngestion:
 
         ingestion.download_raw_file(
             file_name=self.file_name,
-            file_type=self.file_type,
             ship_name=self.ship_name,
             survey_name=self.survey_name,
             echosounder=self.echosounder,
@@ -119,7 +118,6 @@ class TestNCEIIngestion:
 
         ingestion.download_raw_file(
             file_name=self.file_name,
-            file_type=self.file_type,
             ship_name=self.ship_name,
             survey_name=self.survey_name,
             echosounder=self.echosounder,

@@ -317,7 +317,6 @@ def convert_raw_to_netcdf(
         # exists in any of the data sources, and fetching it.
         download_raw_file(
             file_name=rf.file_name,
-            file_type=rf.file_type,
             ship_name=rf.ship_name,
             survey_name=rf.survey_name,
             echosounder=rf.echosounder,
