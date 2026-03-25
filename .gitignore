@@ -5,6 +5,7 @@
 *.tar
 *.netCDF4
 *.nc
+*.csv
 logs/
 
 # For python files
