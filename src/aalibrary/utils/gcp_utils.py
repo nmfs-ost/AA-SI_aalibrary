@@ -770,7 +770,7 @@ def rename_gcs_folder(
     if not new_folder_prefix.endswith("/"):
         new_folder_prefix += "/"
 
-    len_blobs = get_num_objects_in_blob(
+    len_blobs = get_num_objects_in_folder(
         gcp_bucket_name=gcp_bucket_name, folder_prefix=old_folder_prefix
     )
     blobs = bucket.list_blobs(prefix=old_folder_prefix)
@@ -809,7 +809,7 @@ def move_folder_in_gcs(
 
     # List all blobs (objects) with the source prefix
     blobs = bucket.list_blobs(prefix=source_prefix)
-    len_blobs = get_num_objects_in_blob(
+    len_blobs = get_num_objects_in_folder(
         gcp_bucket_name=gcp_bucket_name, folder_prefix=source_prefix
     )
 
@@ -856,7 +856,7 @@ def copy_folder_within_gcs(
 
     # List all blobs (objects) with the source prefix
     blobs = bucket.list_blobs(prefix=source_prefix)
-    len_blobs = get_num_objects_in_blob(
+    len_blobs = get_num_objects_in_folder(
         gcp_bucket_name=gcp_bucket_name, folder_prefix=source_prefix
     )
 
@@ -970,7 +970,7 @@ def copy_folder_between_buckets(
 
     # List all blobs (objects) with the source folder prefix
     blobs = source_bucket.list_blobs(prefix=source_folder_prefix)
-    len_blobs = get_num_objects_in_blob(
+    len_blobs = get_num_objects_in_folder(
         gcp_bucket_name=source_bucket_name, folder_prefix=source_folder_prefix
     )
 
@@ -1025,7 +1025,7 @@ def move_folder_between_buckets(
 
     # List all blobs (objects) with the source folder prefix
     blobs = source_bucket.list_blobs(prefix=source_folder_prefix)
-    len_blobs = get_num_objects_in_blob(
+    len_blobs = get_num_objects_in_folder(
         gcp_bucket_name=source_bucket_name, folder_prefix=source_folder_prefix
     )
 
@@ -1049,7 +1049,7 @@ def move_folder_between_buckets(
         )
 
 
-def get_num_objects_in_blob(
+def get_num_objects_in_folder(
     gcp_bucket_name: str = "",
     folder_prefix: str = "",
 ) -> int:
