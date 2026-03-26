@@ -73,8 +73,9 @@ def delete_files_from_storage(
             file_deletion_errors += 1
             files_with_errors.append(uri)
     logging.info(f"Files with errors:\n{files_with_errors}")
+    logging.info(f"Files deleted: {files_deleted}")
     logging.info(
-        f"{files_deleted} Files Deleted With {file_deletion_errors} Errors."
+        f"{len(files_deleted)} Files Deleted With {file_deletion_errors} Errors."
     )
 
 
