@@ -784,7 +784,7 @@ def rename_gcs_folder(
         print(f"\n\tRenamed {blob.name} to {new_blob.name}")
 
 
-def move_folder_in_gcs(
+def move_folder_contents_within_gcs_bucket(
     gcp_bucket_name: str = "",
     source_prefix: str = "",
     destination_prefix: str = "",
@@ -813,6 +813,8 @@ def move_folder_in_gcs(
         gcp_bucket_name=gcp_bucket_name, folder_prefix=source_prefix
     )
 
+    status_msgs = []
+
     for blob in tqdm(
         blobs,
         desc="Moving GCS objects",
@@ -828,10 +830,13 @@ def move_folder_in_gcs(
         # Delete the original blob
         blob.delete()
 
-        print(f"\n\tMoved '{blob.name}' to '{new_blob.name}'")
+        status_msgs.append(f"\n\tMoved '{blob.name}' to '{new_blob.name}'")
+    
+    for msg in status_msgs:
+        print(msg)
 
 
-def copy_folder_within_gcs(
+def copy_folder_contents_within_gcs_bucket(
     gcp_bucket_name: str = "",
     source_prefix: str = "",
     destination_prefix: str = "",
@@ -860,6 +865,8 @@ def copy_folder_within_gcs(
         gcp_bucket_name=gcp_bucket_name, folder_prefix=source_prefix
     )
 
+    status_msgs = []
+
     for blob in tqdm(blobs, desc="Copying GCS objects", total=len_blobs):
         # Construct the new blob name
         # This removes the source_prefix and adds the destination_prefix
@@ -868,13 +875,16 @@ def copy_folder_within_gcs(
         # Copy the blob to the new name
         new_blob = bucket.copy_blob(blob, bucket, new_name=new_blob_name)
 
-        print(f"\n\tCopied '{blob.name}' to '{new_blob.name}'")
+        status_msgs.append(f"\n\tCopied '{blob.name}' to '{new_blob.name}'")
+
+    for msg in status_msgs:
+        print(msg)
 
 
 def copy_object_between_buckets(
     bucket_name, blob_name, destination_bucket_name, destination_blob_name
 ):
-    """Copies a blob/object from one bucket to another.
+    """Copies a blob/object from one bucket to another bucket.
 
     Args:
         bucket_name (str): The name of the source bucket.
@@ -937,14 +947,14 @@ def move_object_between_buckets(
     )
 
 
-def copy_folder_between_buckets(
+def copy_folder_contents_between_buckets(
     source_bucket_name: str = "",
     source_folder_prefix: str = "",
     destination_bucket_name: str = "",
     destination_folder_prefix: str = "",
 ) -> None:
     """Copies all objects under a given source_folder_prefix from one bucket to
-    another destination_folder_prefix.
+    another bucket under the destination_folder_prefix.
 
     Args:
         source_bucket_name (str, optional): The name of the source bucket.
@@ -957,7 +967,7 @@ def copy_folder_between_buckets(
             bucket. Defaults to "".
         destination_folder_prefix (str, optional): The folder prefix to copy to
             in the destination bucket.
-            Ex. "TEST/conversions/"
+            Ex. "TEST/conversions/backup/"
             Defaults to "".
 
     Returns:
@@ -974,6 +984,8 @@ def copy_folder_between_buckets(
         gcp_bucket_name=source_bucket_name, folder_prefix=source_folder_prefix
     )
 
+    status_msgs = []
+
     for blob in tqdm(blobs, desc="Copying GCS Objects", total=len_blobs):
         # Construct the new blob name
         new_blob_name = (
@@ -985,20 +997,23 @@ def copy_folder_between_buckets(
             blob, destination_bucket, new_name=new_blob_name
         )
 
-        print(
+        status_msgs.append(
             f"\n\tCopied '{blob.name}' from bucket '{source_bucket_name}' "
             f"to '{new_blob.name}' in bucket '{destination_bucket_name}'"
         )
 
+    for msg in status_msgs:
+        print(msg)
 
-def move_folder_between_buckets(
+
+def move_folder_contents_between_buckets(
     source_bucket_name: str = "",
     source_folder_prefix: str = "",
     destination_bucket_name: str = "",
     destination_folder_prefix: str = "",
 ) -> None:
     """Moves all objects under a given source_folder_prefix from one bucket to
-    another destination_folder_prefix.
+    another bucket in the destination_folder_prefix.
     NOTE: Deletes the original blobs after copying to the new bucket.
 
     Args:
@@ -1012,7 +1027,7 @@ def move_folder_between_buckets(
             bucket. Defaults to "".
         destination_folder_prefix (str, optional): The folder prefix to move to
             in the destination bucket.
-            Ex. "TEST/conversions/"
+            Ex. "TEST/conversions/backup/"
             Defaults to "".
 
     Returns:
@@ -1028,6 +1043,8 @@ def move_folder_between_buckets(
     len_blobs = get_num_objects_in_folder(
         gcp_bucket_name=source_bucket_name, folder_prefix=source_folder_prefix
     )
+
+    status_msgs = []
 
     for blob in tqdm(blobs, desc="Moving GCS Objects", total=len_blobs):
         # Construct the new blob name
@@ -1043,10 +1060,13 @@ def move_folder_between_buckets(
         # Delete the original blob
         blob.delete()
 
-        print(
+        status_msgs.append(
             f"\n\tMoved '{blob.name}' from bucket '{source_bucket_name}' "
             f"to '{new_blob.name}' in bucket '{destination_bucket_name}'"
         )
+
+    for msg in status_msgs:
+        print(msg)
 
 
 def get_num_objects_in_folder(
