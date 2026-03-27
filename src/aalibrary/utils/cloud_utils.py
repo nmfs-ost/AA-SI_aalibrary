@@ -19,7 +19,7 @@ from aalibrary.utils.helpers import (
 
 
 def setup_gbq_client_objs(
-    location: str = "US", project_id: str = None
+    location: str = "US", project_id: str = None, verbose: bool = False
 ) -> Tuple[bigquery.Client, gcsfs.GCSFileSystem]:
     """Sets up Google Big Query client objects used to execute queries and
     such.
@@ -32,6 +32,8 @@ def setup_gbq_client_objs(
             belongs to. Defaults to os.environ["AALIBRARY_GCP_PROJECT_ID"]
             which is "ggn-nmfs-aa-dev-1" by default but can be changed via
             `aalibrary.config.use_gcp_prod()`.
+        verbose (bool, optional): Whether or not to notify the user of the
+            bucket being created via print statement.
 
     Returns:
         Tuple: The big query client object, along with an object for the Google
@@ -44,12 +46,14 @@ def setup_gbq_client_objs(
 
     gcp_gcs_file_system = gcsfs.GCSFileSystem(project=project_id)
 
+    if verbose:
+        print(f"Using GCP Project `{project_id}`")
+
     return gcp_bq_client, gcp_gcs_file_system
 
 
 def setup_gcp_storage_objs(
-    project_id: str = None,
-    gcp_bucket_name: str = None,
+    project_id: str = None, gcp_bucket_name: str = None, verbose: bool = False
 ) -> Tuple[storage.Client, str, storage.Client.bucket]:
     """Sets up Google Cloud Platform storage objects for use in accessing and
     modifying storage buckets.
@@ -63,6 +67,8 @@ def setup_gcp_storage_objs(
             to access. Defaults to os.environ["AALIBRARY_GCP_BUCKET_NAME"]
             which is "ggn-nmfs-aa-dev-1-data" by default but can be changed via
             `aalibrary.config.use_gcp_prod()`.
+        verbose (bool, optional): Whether or not to notify the user of the
+            bucket being created via print statement.
 
     Returns:
         Tuple[storage.Client, str, storage.Client.bucket]: The storage client,
@@ -78,6 +84,12 @@ def setup_gcp_storage_objs(
     gcp_stor_client = storage.Client(project=project_id)
 
     gcp_bucket = gcp_stor_client.bucket(gcp_bucket_name)
+
+    if verbose:
+        print(
+            f"Using GCP Project `{project_id}` and "
+            f"GCP Storage Bucket `{gcp_bucket_name}`"
+        )
 
     return (gcp_stor_client, gcp_bucket_name, gcp_bucket)
 
@@ -420,7 +432,9 @@ def check_if_folder_exists_in_s3(
     """
 
     objects_with_prefix = list(
-        s3_resource.Bucket(bucket_name).objects.limit(count=1).filter(Prefix=prefix)
+        s3_resource.Bucket(bucket_name)
+        .objects.limit(count=1)
+        .filter(Prefix=prefix)
     )
     return len(objects_with_prefix) > 0
 
@@ -773,5 +787,8 @@ if __name__ == "__main__":
     #         file_path="ggn-nmfs-aa-dev-1-data/NCEI/Reuben_Lasker/RL2107/EK80/data/netcdf/",
     #     )
     # )
-    print(check_if_folder_exists_in_s3(prefix="data/raw/Reuben_Lasker/",
-                                 s3_resource=s3_resource))
+    print(
+        check_if_folder_exists_in_s3(
+            prefix="data/raw/Reuben_Lasker/", s3_resource=s3_resource
+        )
+    )
