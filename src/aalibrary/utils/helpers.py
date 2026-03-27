@@ -223,10 +223,15 @@ def parse_correct_gcp_storage_bucket_location(
     data_source: str = "",
     is_metadata: bool = False,
     is_survey_metadata: bool = False,
+    is_calibration_file: bool = False,
+    is_auxiliary_file: bool = False,
     debug: bool = False,
 ) -> str:
     """Calculates the correct gcp storage location based on data source, file
     type, and if the file is metadata or not.
+    NOTE: Make sure that only one of the following params is set to True, or
+        that all are set to False:
+        [is_metadata,is_survey_metadata,is_calibration_file,is_auxiliary_file]
 
     Args:
         file_name (str, optional): The file name (includes extension).
@@ -248,6 +253,12 @@ def parse_correct_gcp_storage_bucket_location(
         is_survey_metadata (bool, optional): Whether or not the file is a
             metadata file associated with a survey. The files are stored at
             the survey level, in the `metadata/` folder. Defaults to False.
+        is_calibration_file (bool, optional): Whether of not the file is a
+            calibration file. These files are stored within their own
+            `calibration/` sub-directory within the survey.
+        is_auxiliary_file (bool, optional): Whether or not the file is an
+            auxiliary file associated with the survey. These files can be of
+            any extension. And do not necessarily have to be data files.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
 
@@ -255,13 +266,17 @@ def parse_correct_gcp_storage_bucket_location(
         str: The correctly parsed GCP storage bucket location.
     """
 
+    # Use XOR operator to assert that only one of these values is True.
+    # [is_metadata,is_survey_metadata,is_calibration_file,is_auxiliary_file]
     assert (
-        (is_metadata and is_survey_metadata is False)
-        or (is_metadata is False and is_survey_metadata)
-        or (is_metadata is False and is_survey_metadata is False)
+        is_metadata
+        ^ is_survey_metadata
+        ^ is_calibration_file
+        ^ is_auxiliary_file
     ), (
-        "Please make sure that only one of `is_metadata` and"
-        " `is_survey_metadata` is True. Or you can set both to False."
+        "Make sure that only one of the following params is set to True:\n"
+        "[is_metadata,is_survey_metadata,is_calibration_file,is_auxiliary_file]"
+        "\nor that all are set to false."
     )
 
     # Creating the correct upload location
@@ -273,6 +288,7 @@ def parse_correct_gcp_storage_bucket_location(
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
         )
+        # TODO: what are the exact file extensions for metadata files?
         # Figure out if its a raw or idx file (belongs in raw folder)
         if file_type.lower() in config.RAW_DATA_FILE_TYPES:
             gcp_storage_bucket_location = (
@@ -282,6 +298,14 @@ def parse_correct_gcp_storage_bucket_location(
             gcp_storage_bucket_location = (
                 gcp_storage_bucket_location + f"netcdf/{file_name}.json"
             )
+    elif is_calibration_file:
+        gcp_storage_bucket_location = (
+            f"{data_source}/{ship_name}/{survey_name}/calibration/{file_name}"
+        )
+    elif is_auxiliary_file:
+        gcp_storage_bucket_location = (
+            f"{data_source}/{ship_name}/{survey_name}/auxiliary/{file_name}"
+        )
     else:
         # Figure out if its a raw or idx file (belongs in raw folder)
         if file_type.lower() in config.RAW_DATA_FILE_TYPES:
