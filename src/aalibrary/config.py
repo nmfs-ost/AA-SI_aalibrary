@@ -2,9 +2,10 @@
 such.
 Also contains functions for setting environment variables to use different GCP
 resources."""
-from loguru import logger
 import sys
 import os
+
+from loguru import logger
 
 logger.remove()  # remove default handler so you're explicit
 logger.add(sys.stderr, level="INFO")
