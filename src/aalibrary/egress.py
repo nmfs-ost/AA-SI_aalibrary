@@ -82,8 +82,9 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
             "LOCAL DIRECTORY TO UPLOAD:"
             f" {local_echosounder_directory_to_upload}"
         )
-    # Make sure GCP bucket is setup
-    assert gcp_bucket is not None, "Please provide a gcp_bucket object."
+    # Make sure GCP bucket is setup with default values if None specified.
+    if gcp_bucket is None:
+        _, _, gcp_bucket = cloud_utils.setup_gcp_storage_objs(verbose=True)
 
     # Check (glob) for raw and idx files.
     print("CHECKING DIRECTORY FOR RAW, IDX, BOT, AND NETCDF FILES...")
@@ -263,8 +264,9 @@ def upload_folder_as_is_to_gcp(
 
     # normalize the path
     local_folder_path = os.path.normpath(local_folder_path)
-    # Make sure GCP bucket is setup
-    assert gcp_bucket is not None, "Please provide a gcp_bucket object."
+    # Make sure GCP bucket is setup with default values if None specified.
+    if gcp_bucket is None:
+        _, _, gcp_bucket = cloud_utils.setup_gcp_storage_objs(verbose=True)
 
     file_info = {}
     for root, _, files in os.walk(local_folder_path):
