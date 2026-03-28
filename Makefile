@@ -35,7 +35,7 @@ pytest: uninstall-editable install-editable
 	python -m pytest .
 
 mkdocs: install-editable
-	mkdocs serve
+	mkdocs serve --livereload
 
 mkdocs-publish: install-editable
 	echo "Make sure you are in the main branch when executing. Changes get automatically published to the Github Pages Site."
