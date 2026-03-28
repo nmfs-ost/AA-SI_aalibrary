@@ -8,7 +8,7 @@ import warnings
 from . import utils
 from . import config
 
-__version__ = "1.0.0"
+__version__ = "1.2.0"
 
 logging.basicConfig(
     level=logging.DEBUG,

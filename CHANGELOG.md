@@ -7,6 +7,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0]
+
+This version is the first version released after AALibrary has gone live to production. Now, the default environment for use with AALibrary is prod, `ggn-nmfs-aa-prod-1`. After about a year and a half, AALibrary is finally ready to help deliver insights in the real world!
+
+### Added
+
+- Updates to Tugboat API code following Tugboat enhancements. Now we provide more POST requests, the ability to search for people, and more!
+- Updates to Tugboat Validation code based on Tugboat enhancements.
+- Function to disable `Cloud SDK` warnings.
+- Video tutorials to docs.
+- New NCEI cache update script to make searching for NCEI files easier using `ncei_cache_utils`.
+- TQDM progress bar to `gcp_utils` functions.
+- Even more `gcp_utils` functions!
+- Initial implementation of the multi-fetch algorithm. Now we can fetch specific files based on numerous parameters including time-windows!
+- We have gone live with AAlibrary!!!
+- The `prod` GCP environment is now the default environment of AALibrary. The `dev` environment is reserved for development and testing.
+- AALibrary now uses environment variables and `config.use_gcp_dev()` & `config.use_gcp_prod()` functions to switch between environments automatically. No - more need to create and specify a GCP bucket each time!
+- New console tool: `aa-refresh` to handle un/re-installs of AALibrary.
+- Updates to docs.
+
+### Fixed
+
+- Issue with metadata upload for netcdf files in `conversion`.
+- Error with normalization and returning full paths in `ncei_utils`.
+- Numerous errors with `download_raw_file_from_azure`.
+- Issues with code examples in docs not working.
+- Runtime error with `daily_ncei_cache` script.
+- Errors with specific Python versioning being required for certain, less-necessary packages.
+
+### Changed
+
+- Updates to params in new version of tugboat submission for wcsd.
+- Moved `__version__` to `__init__`.
+- Examples in docs since AALibrary now uses the `prod` environment as default.
+
 ## [1.0.0]
 
 This version is the first version released after User Acceptance Testing. There are numerous updates, and features included in this version. The list noted below is not exhaustive. Thank you to everyone who participated and helped in the UAT program!
