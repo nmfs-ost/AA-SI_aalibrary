@@ -2,6 +2,9 @@
 
 AALibrary comes equipped with Tugboat integration so you can focus on the analysis of data, and let Tugboat take care of the archival process.
 
+!!! note "NOTE: Metadata UI"
+    A metadata UI website is currently under development. This webpage will be updated to provide a link once deployment is complete.
+
 ## Tugboat Archival Process Using AALibrary
 
 You can archive cruise files that have been uploaded to our Google Cloud Storage (via AALibrary or other means) to Tugboat using the following method.
