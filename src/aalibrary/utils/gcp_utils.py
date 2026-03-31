@@ -779,14 +779,18 @@ def rename_gcs_folder(
     )
     blobs = bucket.list_blobs(prefix=old_folder_prefix)
 
+    renamed_blobs_msgs = []
+
     for blob in tqdm(blobs, desc="Renaming GCS objects", total=len_blobs):
         # Construct the new blob name
         new_blob_name = new_folder_prefix + blob.name[len(old_folder_prefix) :]
 
         # Rename the blob
         new_blob = bucket.rename_blob(blob, new_blob_name)
-        print(f"\n\tRenamed {blob.name} to {new_blob.name}")
+        renamed_blobs_msgs.append(f"\tRenamed {blob.name} to {new_blob.name}")
 
+    for msg in renamed_blobs_msgs:
+        print(msg)
 
 def move_folder_contents_within_gcs_bucket(
     gcp_bucket_name: str = "",
