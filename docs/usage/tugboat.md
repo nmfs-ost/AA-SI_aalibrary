@@ -88,7 +88,7 @@ upload_file_to_gcp_bucket(
     bucket = gcp_bucket,
     blob_file_path = gcp_storage_bucket_location,
     local_file_path = "./tugboat_test_submission.json,
-    debug: bool = True,
+    debug = True,
 )
 ```
 
