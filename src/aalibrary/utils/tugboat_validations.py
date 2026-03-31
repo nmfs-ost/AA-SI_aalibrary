@@ -74,6 +74,8 @@ class TugboatValidator:
                     f"`{self.submission_json_file_path}`."
                 )
 
+    # TODO: Validate project exists in Tugboat.
+
     def validate_missing_required_fields(self):
         """Validates that all required fields are not present in the
         submission."""
