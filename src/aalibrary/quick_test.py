@@ -78,7 +78,6 @@ def start():
         print("NCEI DOWNLOAD TEST...", end="")
         ingestion.download_raw_file(
             file_name=file_name,
-            file_type=file_type,
             ship_name=ship_name,
             survey_name=survey_name,
             echosounder=echosounder,
