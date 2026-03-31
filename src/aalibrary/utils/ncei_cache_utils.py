@@ -742,7 +742,7 @@ def get_random_raw_file_from_ncei_cache_with_search_param(
 
     random_raw_file_query = f"""SELECT ship_name, survey_name,
         echosounder_name, file_name
-        FROM `ggn-nmfs-aa-dev-1.metadata.ncei_cache`
+        FROM `metadata.ncei_cache`
         WHERE s3_object_key LIKE '%{search_param}%'
         AND file_type = 'raw'
         ORDER BY RAND()
