@@ -95,9 +95,9 @@ def setup_gcp_storage_objs(
 
 
 def upload_file_to_gcp_bucket(
-    bucket: storage.Client.bucket,
-    blob_file_path: str,
-    local_file_path: str,
+    bucket: storage.Client.bucket = None,
+    blob_file_path: str = "",
+    local_file_path: str = "",
     debug: bool = False,
 ):
     """Uploads a file to the blob storage bucket.
