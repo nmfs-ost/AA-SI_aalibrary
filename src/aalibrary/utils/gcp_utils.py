@@ -761,6 +761,10 @@ def rename_gcs_folder(
             Defaults to "".
     """
 
+    assert gcp_bucket_name != "", "Please provide a GCP bucket name."
+    assert old_folder_prefix != "", "Please provide the old folder prefix."
+    assert new_folder_prefix != "", "Please provide the new folder prefix."
+
     storage_client = storage.Client()
     bucket = storage_client.bucket(gcp_bucket_name)
 
