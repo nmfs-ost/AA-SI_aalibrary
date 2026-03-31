@@ -2,6 +2,7 @@
 such.
 Also contains functions for setting environment variables to use different GCP
 resources."""
+
 import sys
 import os
 
@@ -9,6 +10,11 @@ from loguru import logger
 
 logger.remove()  # remove default handler so you're explicit
 logger.add(sys.stderr, level="INFO")
+
+GCP_DEV_PROJECT_ID = "ggn-nmfs-aa-dev-1"
+GCP_PROD_PROJECT_ID = "ggn-nmfs-aa-prod-1"
+GCP_DEV_BUCKET_NAME = "ggn-nmfs-aa-dev-1-data"
+GCP_PROD_BUCKET_NAME = "ggn-nmfs-aa-prod-1-data"
 
 RAW_DATA_FILE_TYPES = ["raw", "idx", "bot"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
@@ -65,16 +71,13 @@ VALID_DATA_SOURCES = ["NCEI", "OMAO", "HDD", "TEST"]
 
 def use_gcp_dev():
     """Sets environment variables to use GCP development resources."""
-    os.environ["AALIBRARY_GCP_PROJECT_ID"] = "ggn-nmfs-aa-dev-1"
-    os.environ["AALIBRARY_GCP_BUCKET_NAME"] = "ggn-nmfs-aa-dev-1-data"
+    os.environ["AALIBRARY_GCP_PROJECT_ID"] = GCP_DEV_PROJECT_ID
+    os.environ["AALIBRARY_GCP_BUCKET_NAME"] = GCP_DEV_BUCKET_NAME
     logger.debug("You are now using the GCP Dev environment.")
 
 
 def use_gcp_prod():
     """Sets environment variables to use GCP production resources."""
-    os.environ["AALIBRARY_GCP_PROJECT_ID"] = "ggn-nmfs-aa-prod-1"
-    os.environ["AALIBRARY_GCP_BUCKET_NAME"] = "ggn-nmfs-aa-prod-1-data"
-    logger.debug(
-        "You are now using the GCP Prod environment. Remember to switch back"
-        " to the Dev environment when you are done!"
-    )
+    os.environ["AALIBRARY_GCP_PROJECT_ID"] = GCP_PROD_PROJECT_ID
+    os.environ["AALIBRARY_GCP_BUCKET_NAME"] = GCP_PROD_BUCKET_NAME
+    logger.debug("You are now using the GCP Prod environment.")
