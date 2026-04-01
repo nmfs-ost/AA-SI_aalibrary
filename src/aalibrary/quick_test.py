@@ -65,7 +65,6 @@ def start():
 
     # FUNCTIONAL TEST: download a raw file
     file_name = "2107RL_CW-D20210916-T165047.raw"
-    file_type = "raw"
     ship_name = "Reuben_Lasker"
     survey_name = "RL2107"
     echosounder = "EK80"
@@ -127,8 +126,8 @@ def init_test_folder(test_folder_name: str = "test_data_dir"):
         ship_name="Reuben_Lasker",
         survey_name="RL2107",
         echosounder="EK80",
-        data_source="TEST",
         file_download_directory=test_folder_directory,
+        upload_to_gcp=False,
         debug=False,
     )
     ingestion.download_raw_file_from_ncei(
@@ -137,8 +136,8 @@ def init_test_folder(test_folder_name: str = "test_data_dir"):
         ship_name="Reuben_Lasker",
         survey_name="RL2107",
         echosounder="EK80",
-        data_source="TEST",
         file_download_directory=test_folder_directory,
+        upload_to_gcp=False,
         debug=False,
     )
     ingestion.download_raw_file_from_ncei(
@@ -147,8 +146,8 @@ def init_test_folder(test_folder_name: str = "test_data_dir"):
         ship_name="Reuben_Lasker",
         survey_name="RL2107",
         echosounder="EK80",
-        data_source="TEST",
         file_download_directory=test_folder_directory,
+        upload_to_gcp=False,
         debug=False,
     )
     ingestion.download_raw_file_from_ncei(
@@ -157,7 +156,7 @@ def init_test_folder(test_folder_name: str = "test_data_dir"):
         ship_name="Reuben_Lasker",
         survey_name="RL2107",
         echosounder="EK80",
-        data_source="TEST",
+        upload_to_gcp=False,
         file_download_directory=test_folder_directory,
         debug=False,
     )
