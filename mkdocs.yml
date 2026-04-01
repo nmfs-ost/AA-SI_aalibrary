@@ -41,6 +41,7 @@ nav:
     - "Scripts": usage/scripts.md
     - "Tugboat": usage/tugboat.md
   - "Documentation":
+    - "Console Tools": documentation/console_tools.md
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
     - "RawFile": documentation/raw_file.md
