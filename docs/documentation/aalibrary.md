@@ -2,13 +2,13 @@
 
 ::: aalibrary
     options:
-      members:
+      <!-- members:
         - config
         - ices_ship_names
         - ingestion
         - conversion
         - metadata
-        - queries
+        - queries -->
       show_root_heading: false
       show_source: true
       heading_level: 2
