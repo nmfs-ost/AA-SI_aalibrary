@@ -45,6 +45,7 @@ nav:
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
     - "RawFile": documentation/raw_file.md
+    - "Tugboat API": documentation/tugboat_api.md
     - "GCP Overview": documentation/gcp_overview.md
   - "Troubleshooting": troubleshooting/troubleshooting.md
   - "About":
