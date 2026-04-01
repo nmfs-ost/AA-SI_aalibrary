@@ -81,3 +81,13 @@ def use_gcp_prod():
     os.environ["AALIBRARY_GCP_PROJECT_ID"] = GCP_PROD_PROJECT_ID
     os.environ["AALIBRARY_GCP_BUCKET_NAME"] = GCP_PROD_BUCKET_NAME
     logger.debug("You are now using the GCP Prod environment.")
+
+
+def get_current_gcp_project_id():
+    """Returns the current GCP project ID being used."""
+    return os.getenv("AALIBRARY_GCP_PROJECT_ID")
+
+
+def get_current_gcp_bucket_name():
+    """Returns the current GCP bucket name being used."""
+    return os.getenv("AALIBRARY_GCP_BUCKET_NAME")
