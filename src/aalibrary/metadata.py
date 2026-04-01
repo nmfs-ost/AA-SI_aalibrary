@@ -19,16 +19,18 @@ import echopype
 if __package__ is None or __package__ == "":
     # uses current directory visibility
     import utils
+    from raw_file import RawFile
+    import config
 
     # from utils import nc_reader
     from utils.ncei_utils import (
         check_if_tugboat_metadata_json_exists_in_survey,
     )
-    from raw_file import RawFile
 else:
     # uses current package visibility
     from aalibrary import utils
     from aalibrary.raw_file import RawFile
+    from aalibrary import config
 
     # from aalibrary.utils import nc_reader
     from aalibrary.utils.ncei_utils import (
@@ -221,7 +223,7 @@ def create_and_upload_metadata_df_for_raw(
     # Upload to GCP BigQuery
     metadata_df.to_gbq(
         destination_table="metadata.aalibrary_file_metadata",
-        project_id="ggn-nmfs-aa-dev-1",
+        project_id=config.get_current_gcp_project_id(),
         if_exists="append",
     )
 
@@ -250,7 +252,7 @@ def create_and_upload_metadata_df_for_netcdf(
     # Upload to GCP BigQuery
     metadata_df.to_gbq(
         destination_table="metadata.aalibrary_netcdf_metadata",
-        project_id="ggn-nmfs-aa-dev-1",
+        project_id=config.get_current_gcp_project_id(),
         if_exists="append",
     )
 
@@ -373,7 +375,7 @@ def _parse_and_upload_ncei_survey_level_metadata(
     # Upload to GCP BigQuery
     ncei_survey_level_metadata_df.to_gbq(
         destination_table="metadata.ncei_cruise_metadata",
-        project_id="ggn-nmfs-aa-dev-1",
+        project_id=config.get_current_gcp_project_id(),
         if_exists="append",
     )
 
@@ -417,7 +419,7 @@ def _parse_and_upload_ncei_persons_metadata(file_json: dict):
     # Upload to GCP BigQuery
     ncei_survey_persons_df.to_gbq(
         destination_table="metadata.ncei_persons",
-        project_id="ggn-nmfs-aa-dev-1",
+        project_id=config.get_current_gcp_project_id(),
         if_exists="append",
     )
 
@@ -429,14 +431,15 @@ def get_metadata_in_df_format():
 
 
 def get_deletion_datetime_of_file(
-    file_name: str = "", gcp_project_id: str = "ggn-nmfs-aa-dev-1"
+    file_name: str = "", gcp_project_id: str = config.get_current_gcp_project_id()
 ) -> datetime:
     """Gets the DELETION_DATETIME of a file. Returns a datetime object.
 
     Args:
         file_name (str, optional): The file name. Defaults to "".
         gcp_project_id (str, optional): The GCP project ID.
-            Defaults to "ggn-nmfs-aa-dev-1".
+            Defaults to the current GCP project ID obtained through the config
+            module.
     Returns:
         datetime: The DELETION_DATETIME of the file as a datetime object.
     """
@@ -459,7 +462,7 @@ def get_deletion_datetime_of_file(
 def delay_file_deletion(
     file_name: str = "",
     days: int = 0,
-    gcp_project_id: str = "ggn-nmfs-aa-dev-1",
+    gcp_project_id: str = config.get_current_gcp_project_id(),
 ):
     """Delays a file's DELETION_DATETIME by the number of days specified.
 
@@ -468,7 +471,8 @@ def delay_file_deletion(
         days (int, optional): The number of days by which to delay the file'
             execution. Defaults to 0.
         gcp_project_id (str, optional): The GCP project ID.
-            Defaults to "ggn-nmfs-aa-dev-1".
+            Defaults to the current GCP project ID obtained through the config
+            module.
     """
     # Get the file deletion datetime.
     file_deletion_datetime = get_deletion_datetime_of_file(
