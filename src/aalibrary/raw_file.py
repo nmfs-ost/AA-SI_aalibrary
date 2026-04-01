@@ -27,7 +27,34 @@ else:
 
 
 class RawFile:
-    """A class used to represent a raw file, from given parameters."""
+    """A class used to represent a raw file, from given parameters.
+
+    Args:
+        file_name (str): The name of the file, including the extension.
+        file_type (str): The type of the file (ex. "raw", "idx", "bot", "netcdf").
+        ship_name (str): The name of the ship, will get normalized.
+        survey_name (str): The name of the survey.
+        echosounder (str): The name of the echosounder.
+        data_source (str): The name of the data source.
+        file_download_directory (str): The directory you want to download the
+            file to.
+        is_metadata (bool): Whether the file is a metadata file or not,
+            defaults to False.
+        upload_to_gcp (bool): Whether to upload the file to gcp after
+            downloading it, defaults to False.
+        debug (bool): Whether to print debug messages or not, defaults to
+            False.
+        gcp_project_id (str): The gcp project id to use for uploading the file
+            to gcp, defaults to None (will use environment variable).
+        gcp_bucket_name (str): The gcp bucket name to use for uploading the
+            file to gcp, defaults to None (will use environment variable).
+        gcp_bucket (storage.Client.bucket): The gcp bucket object to use for
+            uploading the file to gcp, defaults to None (will create one using
+            gcp_bucket_name).
+        s3_resource (boto3.resource): The s3 resource object to use for
+            checking if the file exists in s3, defaults to None (will create
+            one).
+    """
 
     file_name: str = None
     file_type: str = None
