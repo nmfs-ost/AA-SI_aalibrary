@@ -69,25 +69,41 @@ VALID_ECHOSOUNDERS = [
 VALID_DATA_SOURCES = ["NCEI", "OMAO", "HDD", "TEST"]
 
 
-def use_gcp_dev():
+def use_gcp_dev() -> None:
     """Sets environment variables to use GCP development resources."""
     os.environ["AALIBRARY_GCP_PROJECT_ID"] = GCP_DEV_PROJECT_ID
     os.environ["AALIBRARY_GCP_BUCKET_NAME"] = GCP_DEV_BUCKET_NAME
     logger.debug("You are now using the GCP Dev environment.")
 
 
-def use_gcp_prod():
+def use_gcp_prod() -> None:
     """Sets environment variables to use GCP production resources."""
     os.environ["AALIBRARY_GCP_PROJECT_ID"] = GCP_PROD_PROJECT_ID
     os.environ["AALIBRARY_GCP_BUCKET_NAME"] = GCP_PROD_BUCKET_NAME
     logger.debug("You are now using the GCP Prod environment.")
 
 
-def get_current_gcp_project_id():
+def use_custom_gcp_environment(project_id: str, bucket_name: str) -> None:
+    """Sets environment variables to use the custom GCP resources. specified by
+    the user.
+
+    Args:
+        project_id (str): The GCP project ID to use.
+        bucket_name (str): The GCP bucket name to use.
+    """
+    os.environ["AALIBRARY_GCP_PROJECT_ID"] = project_id
+    os.environ["AALIBRARY_GCP_BUCKET_NAME"] = bucket_name
+    logger.debug(
+        "You are now using a custom GCP environment with project ID"
+        f" '{project_id}' and bucket name '{bucket_name}'."
+    )
+
+
+def get_current_gcp_project_id() -> str:
     """Returns the current GCP project ID being used."""
     return os.getenv("AALIBRARY_GCP_PROJECT_ID")
 
 
-def get_current_gcp_bucket_name():
+def get_current_gcp_bucket_name() -> str:
     """Returns the current GCP bucket name being used."""
     return os.getenv("AALIBRARY_GCP_BUCKET_NAME")
