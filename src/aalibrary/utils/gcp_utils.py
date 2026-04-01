@@ -789,8 +789,9 @@ def rename_gcs_folder(
         new_blob = bucket.rename_blob(blob, new_blob_name)
         renamed_blobs_msgs.append(f"\tRenamed {blob.name} to {new_blob.name}")
 
-    for msg in renamed_blobs_msgs:
+    for msg in sorted(renamed_blobs_msgs):
         print(msg)
+
 
 def move_folder_contents_within_gcs_bucket(
     gcp_bucket_name: str = "",
@@ -885,7 +886,7 @@ def copy_folder_contents_within_gcs_bucket(
 
         status_msgs.append(f"\n\tCopied '{blob.name}' to '{new_blob.name}'")
 
-    for msg in status_msgs:
+    for msg in sorted(status_msgs):
         print(msg)
 
 
@@ -1010,7 +1011,7 @@ def copy_folder_contents_between_buckets(
             f"to '{new_blob.name}' in bucket '{destination_bucket_name}'"
         )
 
-    for msg in status_msgs:
+    for msg in sorted(status_msgs):
         print(msg)
 
 
@@ -1073,7 +1074,7 @@ def move_folder_contents_between_buckets(
             f"to '{new_blob.name}' in bucket '{destination_bucket_name}'"
         )
 
-    for msg in status_msgs:
+    for msg in sorted(status_msgs):
         print(msg)
 
 
