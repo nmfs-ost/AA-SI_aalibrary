@@ -1,6 +1,8 @@
 """This file contains code pertaining to auxiliary functions related to parsing
 through our google storage bucket."""
 
+# flake8: noqa: E203
+
 from typing import List, Union
 from random import randint
 from difflib import get_close_matches
@@ -840,7 +842,7 @@ def move_folder_contents_within_gcs_bucket(
         blob.delete()
 
         status_msgs.append(f"\n\tMoved '{blob.name}' to '{new_blob.name}'")
-    
+
     for msg in status_msgs:
         print(msg)
 
