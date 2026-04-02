@@ -259,7 +259,103 @@ def upload_local_calibration_files_from_directory_to_gcp_storage_bucket(
     data_source: str = "",
     gcp_bucket: storage.Client.bucket = None,
     debug: bool = False,
-): ...
+):
+    """ENTRYPOINT FOR END-USERS
+    Uploads all of the files from a local calibration directory into the
+    appropriate location in the GCP storage bucket.
+    NOTE: Assumes that all files share the same metadata.
+
+    Args:
+        local_calibration_directory_to_upload (str, optional): The calibration
+            directory which contains all of the files you want to upload.
+            Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey.
+            Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults
+            to "".
+        echosounder (str, optional): The echosounder used to gather the data.
+            Defaults to "".
+        data_source (str, optional): The source of the file. Necessary due to
+            the way the storage bucket is organized. Can be one of
+            ["NCEI", "OMAO", "HDD"]. Defaults to "".
+        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
+            used to download the file. Defaults to None.
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+    """
+    # Warn user that this function assumes the same metadata for all files
+    # within directory.
+    logging.warning(
+        (
+            "WARNING: THIS FUNCTION ASSUMES THAT ALL FILES WITHIN THIS "
+            "DIRECTORY ARE FROM THE SAME SHIP, SURVEY, AND ECHOSOUNDER."
+        )
+    )
+    local_calibration_directory_to_upload = os.path.normpath(
+        local_calibration_directory_to_upload
+    )
+    # Check that the directory exists
+    check_for_assertion_errors(
+        directory=local_calibration_directory_to_upload,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+    )
+
+    # normalize ship name
+    ship_name_normalized = helpers.normalize_ship_name(ship_name)
+    if debug:
+        print(f"NORMALIZED SHIP NAME: {ship_name_normalized}")
+        print(
+            "LOCAL DIRECTORY TO UPLOAD:"
+            f" {local_calibration_directory_to_upload}"
+        )
+    # Make sure GCP bucket is setup with default values if None specified.
+    if gcp_bucket is None:
+        _, _, gcp_bucket = cloud_utils.setup_gcp_storage_objs(verbose=True)
+
+    # Check (glob) for raw and idx files.
+    print("CHECKING DIRECTORY FOR FILES...")
+    all_files = [
+        x
+        for x in glob.glob(
+            os.sep.join([local_calibration_directory_to_upload, "*"])
+        )
+    ]
+    file_upload_count = 0
+    file_error_count = 0
+
+    # Upload each file to GCP at the correct location.
+    if len(all_files) > 0:
+        pbar = tqdm(all_files, desc="Uploading all files")
+        for file in pbar:
+            try:
+                file_name = file.split(os.sep)[-1]
+                # Upload file to GCP at the correct storage bucket location.
+                # The function already checks if the file exists.
+                upload_file_to_gcp_storage_bucket(
+                    file_name=file_name,
+                    ship_name=ship_name_normalized,
+                    survey_name=survey_name,
+                    echosounder=echosounder,
+                    file_location=file,
+                    gcp_bucket=gcp_bucket,
+                    data_source=data_source,
+                    is_metadata=False,
+                    is_survey_metadata=False,
+                    is_calibration_file=True,
+                    is_calibration_mapping_file=False,
+                    is_auxiliary_file=False,
+                    debug=debug,
+                )
+                file_upload_count += 1
+            except Exception as e:
+                file_error_count += 1
+                print(e)
+    print(
+        f"{file_upload_count} FILES UPLOADED WITH {file_error_count} ERRORS."
+    )
+
 
 def upload_local_auxiliary_files_from_directory_to_gcp_storage_bucket(
     local_auxiliary_directory_to_upload: str = "",
