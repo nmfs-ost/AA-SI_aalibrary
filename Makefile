@@ -45,4 +45,4 @@ install-editable:
 	python -m pip install -e .
 
 uninstall-editable:
-	python -m pip uninstall aalibrary
+	python -m pip uninstall aalibrary -y
