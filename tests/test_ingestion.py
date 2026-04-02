@@ -28,7 +28,7 @@ class TestNCEIIngestion:
             survey_name="RL2107",
             echosounder="EK80",
             data_source="NCEI",
-            file_download_location=".",
+            file_download_directory=".",
             is_metadata=False,
         )
 
