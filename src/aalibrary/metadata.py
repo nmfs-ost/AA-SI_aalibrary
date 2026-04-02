@@ -443,7 +443,7 @@ def _parse_and_upload_ncei_persons_metadata(file_json: dict):
 
     # Upload to GCP BigQuery
     pandas_gbq.to_gbq(
-        dataframe=ncei_survey_persons
+        dataframe=ncei_survey_persons,
         destination_table="metadata.ncei_persons",
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",

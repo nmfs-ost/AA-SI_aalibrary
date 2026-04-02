@@ -13,10 +13,16 @@ from tqdm import tqdm
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
+    import config
+    import metadata
+    from raw_file import RawFile
     from utils import cloud_utils, helpers
     from utils.helpers import check_for_assertion_errors
 else:
     # uses current package visibility
+    from aalibrary import config
+    from aalibrary import metadata
+    from aalibrary.raw_file import RawFile
     from aalibrary.utils import cloud_utils, helpers
     from aalibrary.utils.helpers import check_for_assertion_errors
 
@@ -171,6 +177,7 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
     # Upload each raw file to gcp
     if len(raw_files) > 0:
         for raw_file in tqdm(raw_files, desc="Uploading raw files"):
+            file_download_directory = os.sep.join(raw_file.split(os.sep)[:-1])
             file_name = raw_file.split(os.sep)[-1]
             # Upload raw to GCP at the correct storage bucket location.
             # The function already checks if the file exists.
@@ -186,16 +193,19 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            # metadata.create_and_upload_metadata_df(
-            #     file_name=file_name,
-            #     file_type="raw",
-            #     ship_name=ship_name,
-            #     survey_name=survey_name,
-            #     echosounder=echosounder,
-            #     data_source=data_source,
-            #     gcp_bucket=gcp_bucket,
-            #     debug=debug,
-            # )
+            metadata.create_and_upload_metadata_df_for_raw(
+                rf=RawFile(
+                    file_name=file_name,
+                    file_type="raw",
+                    ship_name=ship_name,
+                    survey_name=survey_name,
+                    echosounder=echosounder,
+                    file_download_directory=file_download_directory,
+                    data_source=data_source,
+                    gcp_bucket=gcp_bucket,
+                    debug=debug,
+                )
+            )
             raw_upload_count += 1
         print(f"{raw_upload_count} RAW FILES UPLOADED.")
 
@@ -217,16 +227,18 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 is_metadata=False,
                 debug=debug,
             )
-            # metadata.create_and_upload_metadata_df_for_netcdf(
-            #     file_name=file_name,
-            #     file_type="netcdf",
-            #     ship_name=ship_name_normalized,
-            #     survey_name=survey_name,
-            #     echosounder=echosounder,
-            #     data_source=data_source,
-            #     gcp_bucket=gcp_bucket,
-            #     debug=debug,
-            # )
+            metadata.create_and_upload_metadata_df_for_netcdf(
+                rf=RawFile(
+                    file_name=file_name,
+                    file_type="netcdf",
+                    ship_name=ship_name_normalized,
+                    survey_name=survey_name,
+                    echosounder=echosounder,
+                    data_source=data_source,
+                    gcp_bucket=gcp_bucket,
+                    debug=debug,
+                )
+            )
             netcdf_upload_count += 1
         print(f"{netcdf_upload_count} NETCDF FILES UPLOADED.")
 
@@ -406,6 +418,7 @@ def upload_file_to_gcp_storage_bucket(
 
 
 if __name__ == "__main__":
+    config.use_gcp_dev()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
         cloud_utils.setup_gcp_storage_objs(
             project_id="ggn-nmfs-aa-dev-1",
@@ -413,18 +426,20 @@ if __name__ == "__main__":
         )
     )
 
-    # upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
-    #     local_echosounder_directory_to_upload="./test_data_dir/Reuben_Lasker/RL2107/EK80/",
-    #     ship_name="Reuben_Lasker",
-    #     survey_name="RL2107",
-    #     echosounder="EK80",
-    #     data_source="HDD",
-    #     gcp_bucket=gcp_bucket,
-    #     debug=True,
-    # )
+    print(os.getcwd())
 
-    upload_folder_as_is_to_gcp(
-        local_folder_path="./test_data_dir/Reuben_Lasker/",
+    upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
+        local_echosounder_directory_to_upload=r"test_data_dir/Reuben_Lasker/RL2107/EK80",
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        echosounder="EK80",
+        data_source="HDD",
         gcp_bucket=gcp_bucket,
-        destination_prefix="other/deletable/",
+        debug=True,
     )
+
+    # upload_folder_as_is_to_gcp(
+    #     local_folder_path="./test_data_dir/Reuben_Lasker/",
+    #     gcp_bucket=gcp_bucket,
+    #     destination_prefix="other/deletable/",
+    # )
