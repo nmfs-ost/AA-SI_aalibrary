@@ -251,6 +251,27 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
     )
 
 
+def upload_local_calibration_files_from_directory_to_gcp_storage_bucket(
+    local_calibration_directory_to_upload: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "",
+    gcp_bucket: storage.Client.bucket = None,
+    debug: bool = False,
+): ...
+
+def upload_local_auxiliary_files_from_directory_to_gcp_storage_bucket(
+    local_auxiliary_directory_to_upload: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "",
+    gcp_bucket: storage.Client.bucket = None,
+    debug: bool = False,
+): ...
+
+
 def upload_folder_as_is_to_gcp(
     local_folder_path: str = "",
     gcp_bucket: storage.Client.bucket = None,
@@ -331,6 +352,9 @@ def upload_file_to_gcp_storage_bucket(
     data_source: str = "",
     is_metadata: bool = False,
     is_survey_metadata: bool = False,
+    is_calibration_file: bool = False,
+    is_calibration_mapping_file: bool = False,
+    is_auxiliary_file: bool = False,
     debug: bool = False,
 ):
     """Safely uploads a local file to the storage bucket. Will also check to
@@ -360,6 +384,15 @@ def upload_file_to_gcp_storage_bucket(
         is_survey_metadata (bool, optional): Whether or not the file is a
             metadata file associated with a survey. The files are stored at
             the survey level, in the `metadata/` folder. Defaults to False.
+        is_calibration_file (bool, optional): Whether of not the file is a
+            calibration file. These files are stored within their own
+            `calibration/` sub-directory within the survey.
+        is_calibration_mapping_file (bool, optional): Whether or not a file is
+            a calibration mapping file. This is stored in a separate directory
+            called `mappings/` within the `calibration/` directory.
+        is_auxiliary_file (bool, optional): Whether or not the file is an
+            auxiliary file associated with the survey. These files can be of
+            any extension. And do not necessarily have to be data files.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
@@ -374,6 +407,9 @@ def upload_file_to_gcp_storage_bucket(
             data_source=data_source,
             is_metadata=is_metadata,
             is_survey_metadata=is_survey_metadata,
+            is_calibration_file=is_calibration_file,
+            is_calibration_mapping_file=is_calibration_mapping_file,
+            is_auxiliary_file=is_auxiliary_file,
             debug=debug,
         )
     )
