@@ -474,17 +474,10 @@ def convert_raw_to_netcdf_ices(
             debug=rf.debug,
         )
         # Upload the metadata file associated with this
-        # metadata.create_and_upload_metadata_df_for_netcdf(
-        #     file_name=rf.netcdf_file_name,
-        #     file_type="netcdf",
-        #     ship_name=rf.ship_name,
-        #     survey_name=rf.survey_name,
-        #     echosounder=rf.echosounder,
-        #     data_source=rf.data_source,
-        #     gcp_bucket=gcp_bucket,
-        #     netcdf_local_file_location=rf.netcdf_file_download_path,
-        #     debug=debug,
-        # )
+        metadata.create_and_upload_metadata_df_for_netcdf(
+            rf=rf,
+            debug=rf.debug,
+        )
 
 
 if __name__ == "__main__":
