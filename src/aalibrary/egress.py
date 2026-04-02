@@ -331,6 +331,7 @@ def upload_local_calibration_files_from_directory_to_gcp_storage_bucket(
         for file in pbar:
             try:
                 file_name = file.split(os.sep)[-1]
+                pbar.set_postfix_str(f"{file_name}")
                 # Upload file to GCP at the correct storage bucket location.
                 # The function already checks if the file exists.
                 upload_file_to_gcp_storage_bucket(
@@ -437,6 +438,7 @@ def upload_local_auxiliary_files_from_directory_to_gcp_storage_bucket(
         for file in pbar:
             try:
                 file_name = file.split(os.sep)[-1]
+                pbar.set_postfix_str(f"{file_name}")
                 # Upload file to GCP at the correct storage bucket location.
                 # The function already checks if the file exists.
                 upload_file_to_gcp_storage_bucket(
