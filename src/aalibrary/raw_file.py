@@ -31,7 +31,8 @@ class RawFile:
 
     Args:
         file_name (str): The name of the file, including the extension.
-        file_type (str): The type of the file (ex. "raw", "idx", "bot", "netcdf").
+        file_type (str): The type of the file (ex. "raw", "idx", "bot",
+            "netcdf").
         ship_name (str): The name of the ship, will get normalized.
         survey_name (str): The name of the survey.
         echosounder (str): The name of the echosounder.
