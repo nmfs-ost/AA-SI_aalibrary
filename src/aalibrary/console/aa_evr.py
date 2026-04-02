@@ -435,7 +435,7 @@ def _build_union_region_mask(
 
     for evr_path in evr_files:
         # Use huge depth bounds to avoid old-API depth-filtering of sentinel values
-        regions2d = er.read_evr(str(evr_path), min_depth=-1.0e9, max_depth=1.0e9)
+        regions2d = er.read_evr(str(evr_path))
 
         # --- get underlying dataframe ---
         df = None
