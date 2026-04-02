@@ -21,6 +21,7 @@ if __package__ is None or __package__ == "":
     import utils
     from raw_file import RawFile
     import config
+    from __init__ import __version__ as aalibrary_version
 
     # from utils import nc_reader
     from utils.ncei_utils import (
@@ -31,6 +32,7 @@ else:
     from aalibrary import utils
     from aalibrary.raw_file import RawFile
     from aalibrary import config
+    from aalibrary.__init__ import __version__ as aalibrary_version
 
     # from aalibrary.utils import nc_reader
     from aalibrary.utils.ncei_utils import (
@@ -101,6 +103,7 @@ def create_metadata_json_for_raw_files(
             "%Y-%m-%d %H:%M:%S"
         ),
         "UPLOADED_BY": email,
+        "AALIBRARY_VERSION": aalibrary_version,
         "ECHOPYPE_VERSION": echopype.__version__,
         "PYTHON_VERSION": sys.version.split(" ")[0],
         "NUMPY_VERSION": np.version.version,
