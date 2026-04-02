@@ -224,6 +224,7 @@ def parse_correct_gcp_storage_bucket_location(
     is_metadata: bool = False,
     is_survey_metadata: bool = False,
     is_calibration_file: bool = False,
+    is_calibration_mapping_file: bool = False,
     is_auxiliary_file: bool = False,
     debug: bool = False,
 ) -> str:
@@ -256,6 +257,9 @@ def parse_correct_gcp_storage_bucket_location(
         is_calibration_file (bool, optional): Whether of not the file is a
             calibration file. These files are stored within their own
             `calibration/` sub-directory within the survey.
+        is_calibration_mapping_file (bool, optional): Whether or not a file is
+            a calibration mapping file. This is stored in a separate directory
+            called `mappings/` within the `calibration/` directory.
         is_auxiliary_file (bool, optional): Whether or not the file is an
             auxiliary file associated with the survey. These files can be of
             any extension. And do not necessarily have to be data files.
@@ -272,19 +276,23 @@ def parse_correct_gcp_storage_bucket_location(
         is_metadata
         ^ is_survey_metadata
         ^ is_calibration_file
+        ^ is_calibration_mapping_file
         ^ is_auxiliary_file
     ) or not any(
         [
             is_metadata,
             is_survey_metadata,
             is_calibration_file,
+            is_calibration_mapping_file,
             is_auxiliary_file,
         ]
     ), (
         "Make sure that only one of the following params is set to True:\n"
-        "[is_metadata,is_survey_metadata,is_calibration_file,is_auxiliary_file]"
+        "[is_metadata,is_survey_metadata,is_calibration_file,"
+        "is_calibration_mapping_file,is_auxiliary_file]"
         "\nor that all are set to false."
-        f"[{is_metadata} {is_survey_metadata} {is_calibration_file} {is_auxiliary_file}]"
+        f"[{is_metadata} {is_survey_metadata} {is_calibration_file}"
+        f" {is_calibration_mapping_file} {is_auxiliary_file}]"
     )
 
     # Creating the correct upload location
@@ -310,6 +318,8 @@ def parse_correct_gcp_storage_bucket_location(
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/calibration/{file_name}"
         )
+    elif is_calibration_mapping_file:
+        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/calibration/mappings/{file_name}"
     elif is_auxiliary_file:
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/auxiliary/{file_name}"
@@ -325,6 +335,10 @@ def parse_correct_gcp_storage_bucket_location(
             gcp_storage_bucket_location = (
                 f"{data_source}/{ship_name}/"
                 f"{survey_name}/{echosounder}/data/netcdf/{file_name}"
+            )
+        else:
+            raise FileNotFoundError(
+                "The file's GCP Storage Bucket path could not be parsed."
             )
 
     if debug:
