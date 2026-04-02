@@ -186,12 +186,6 @@ Usage: aa-coerce-time [OPTIONS] [INPUT_PATH]
 	  aa-coerce-time pingdata.nc --time-name ping_time --win-len 120 --report -o pingdata_timefix.nc
 ```
 
-## aa_crop
-
-```bash
-
-```
-
 ## aa_depth
 
 ```bash
@@ -205,24 +199,6 @@ Options:
 
 
 	Example:
-```
-
-## aa_detect_seafloor
-
-```bash
-
-```
-
-## aa_detect_shoal
-
-```bash
-
-```
-
-## aa_detect_transient
-
-```bash
-
 ```
 
 ## aa_dispersion
@@ -412,18 +388,6 @@ NOTE
   emitted. Run with --debug to compare time ranges.
 ```
 
-## aa_fetch
-
-```bash
-
-```
-
-## aa_find
-
-```bash
-
-```
-
 ## aa_freqdiff
 
 ```bash
@@ -449,18 +413,6 @@ Usage: aa-freqdiff [OPTIONS] [INPUT_PATH]
 	Examples:
 	  aa-freqdiff data.nc --freqABEq '"38.0kHz" - "120.0kHz">=12.0dB' -o out_mask.nc
 	  aa-freqdiff data.nc --chanABEq '"chan1" - "chan2"<-5dB'
-```
-
-## aa_get
-
-```bash
-
-```
-
-## aa_help
-
-```bash
-
 ```
 
 ## aa_impulse
@@ -972,12 +924,6 @@ Usage: aa-swap-freq [OPTIONS] [INPUT_PATH]
 	  Replaces the 'channel' dimension with the 'frequency_nominal' coordinate so that
 	  data are indexed by nominal transducer frequency (e.g., 18000., 38000., 120000.).
 	  Operation requires unique frequencies.
-```
-
-## aa_test
-
-```bash
-
 ```
 
 ## aa_transient
