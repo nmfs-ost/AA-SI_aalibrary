@@ -1,13 +1,14 @@
 """For testing ingestion."""
 
-# pylint: disable=attribute-defined-outside-init
+# pylint: disable=attribute-defined-outside-init,C0103
 
 import os
 import pytest
 
-from aalibrary import ingestion
+from aalibrary import ingestion, config
 import aalibrary.conversion
 from aalibrary.utils import cloud_utils, helpers
+from aalibrary.raw_file import RawFile
 
 
 class TestNCEIIngestion:
@@ -15,53 +16,105 @@ class TestNCEIIngestion:
 
     def setup_class(self):
         """Used for setting up the class."""
-        self.file_name = "2107RL_CW-D20210919-T172430.raw"
-        self.file_name_idx = "2107RL_CW-D20210919-T172430.idx"
-        self.file_name_nc = "2107RL_CW-D20210919-T172430.nc"
-        self.file_type = "raw"
-        self.ship_name = "Reuben_Lasker"
-        self.survey_name = "RL2107"
-        self.echosounder = "EK80"
-        self.data_source = "NCEI"
-        self.file_download_location = "."
-        self.is_metadata = False
+        # Use dev environment
+        config.use_gcp_dev()
 
-        self.local_raw_file_path = os.sep.join(
-            [self.file_download_location, self.file_name]
+        self.rf = RawFile(
+            file_name="2107RL_CW-D20210919-T172430.raw",
+            file_name_idx="2107RL_CW-D20210919-T172430.idx",
+            file_name_nc="2107RL_CW-D20210919-T172430.nc",
+            file_type="raw",
+            ship_name="Reuben_Lasker",
+            survey_name="RL2107",
+            echosounder="EK80",
+            data_source="NCEI",
+            file_download_location=".",
+            is_metadata=False,
         )
-        self.local_idx_file_path = (
-            ".".join(self.local_raw_file_path.split(".")[:-1]) + ".idx"
-        )
+
+        self.local_raw_file_path = self.rf.raw_file_download_path
+        self.local_idx_file_path = self.rf.idx_file_download_path
+        self.local_bot_file_path = self.rf.bot_file_download_path
         self.gcp_storage_bucket_location_raw = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                is_metadata=self.is_metadata,
-            )
+            self.rf.raw_gcp_storage_bucket_location
         )
         self.gcp_storage_bucket_location_idx = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=self.file_name_idx,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                is_metadata=self.is_metadata,
-            )
+            self.rf.idx_gcp_storage_bucket_location
+        )
+        self.gcp_storage_bucket_location_bot = (
+            self.rf.bot_gcp_storage_bucket_location
         )
 
         # set up storage objects
-        _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
+        self.gcp_bucket = self.rf.gcp_bucket
         self.s3_client, self.s3_resource, self.s3_bucket = (
-            cloud_utils.create_s3_objs()
+            self.rf.s3_client,
+            self.rf.s3_resource,
+            self.rf.s3_bucket,
         )
 
-    def download_from_NCEI_upload_to_GCP(self): ...
+    def download_from_NCEI_upload_to_GCP(self):
+        """Tests downloading a raw from NCEI and then uploading to GCP at the
+        correct location. Asserts that the file exists in GCP when complete.
+        """
+        # Delete from GCP if it exists; to bypass cache and download direct
+        # from NCEI
+        if self.rf.raw_file_exists_in_gcp:
+            cloud_utils.delete_file_from_gcp(
+                gcp_bucket=self.gcp_bucket,
+                blob_file_path=self.gcp_storage_bucket_location_raw,
+            )
+        if self.rf.idx_file_exists_in_gcp:
+            cloud_utils.delete_file_from_gcp(
+                gcp_bucket=self.gcp_bucket,
+                blob_file_path=self.gcp_storage_bucket_location_idx,
+            )
+        if self.rf.bot_file_exists_in_gcp:
+            cloud_utils.delete_file_from_gcp(
+                gcp_bucket=self.gcp_bucket,
+                blob_file_path=self.gcp_storage_bucket_location_bot,
+            )
+
+        # Delete locally if it exists
+        if os.path.exists(self.local_raw_file_path):
+            os.remove(self.local_raw_file_path)
+        if os.path.exists(self.local_idx_file_path):
+            os.remove(self.local_idx_file_path)
+        if os.path.exists(self.local_bot_file_path):
+            os.remove(self.local_bot_file_path)
+
+        # Download and upload to GCP using one function.
+        ingestion.download_raw_file_from_ncei(
+            file_name=self.rf.file_name,
+            ship_name=self.rf.ship_name,
+            survey_name=self.rf.survey_name,
+            echosounder=self.rf.echosounder,
+            file_download_directory=self.rf.raw_file_download_path,
+            upload_to_gcp=True,
+            debug=False,
+        )
+
+        # assert that raw file exists after it have been downloaded.
+        assert os.path.exists(
+            self.local_raw_file_path
+        ), "Raw file has not been downloaded locally."
+
+        # Assert that the raw file have been uploaded to GCP
+        if self.rf.raw_file_exists_in_ncei:
+            assert cloud_utils.check_if_file_exists_in_gcp(
+                self.gcp_bucket, self.gcp_storage_bucket_location_raw
+            ), "Raw file has not been uploaded to GCP."
+        # Assert that the associated idx file exists in GCP
+        if self.rf.idx_file_exists_in_ncei:
+            assert cloud_utils.check_if_file_exists_in_gcp(
+                self.gcp_bucket, self.gcp_storage_bucket_location_idx
+            ), "Idx file has not been uploaded to GCP."
+
+        # Assert that the associated bot file exists in GCP
+        if self.rf.bot_file_exists_in_ncei:
+            assert cloud_utils.check_if_file_exists_in_gcp(
+                self.gcp_bucket, self.gcp_storage_bucket_location_bot
+            ), "Bot file has not been uploaded to GCP."
 
     def test_download_from_ncei(self):
         """Tests downloading a raw and idx file direct from NCEI, but without
@@ -92,12 +145,12 @@ class TestNCEIIngestion:
             os.remove(self.local_idx_file_path)
 
         ingestion.download_raw_file(
-            file_name=self.file_name,
-            ship_name=self.ship_name,
-            survey_name=self.survey_name,
-            echosounder=self.echosounder,
-            data_source=self.data_source,
-            file_download_directory=self.file_download_location,
+            file_name=self.rf.file_name,
+            ship_name=self.rf.ship_name,
+            survey_name=self.rf.survey_name,
+            echosounder=self.rf.echosounder,
+            data_source=self.rf.data_source,
+            file_download_directory=self.rf.raw_file_download_path,
             debug=False,
         )
 
@@ -117,12 +170,12 @@ class TestNCEIIngestion:
             os.remove(self.local_idx_file_path)
 
         ingestion.download_raw_file(
-            file_name=self.file_name,
-            ship_name=self.ship_name,
-            survey_name=self.survey_name,
-            echosounder=self.echosounder,
-            data_source=self.data_source,
-            file_download_directory=self.file_download_location,
+            file_name=self.rf.file_name,
+            ship_name=self.rf.ship_name,
+            survey_name=self.rf.survey_name,
+            echosounder=self.rf.echosounder,
+            data_source=self.rf.data_source,
+            file_download_directory=self.rf.raw_file_download_path,
             debug=False,
         )
 
@@ -137,7 +190,7 @@ class TestNCEIIngestion:
         the raw file."""
         assert (
             self.gcp_storage_bucket_location_raw
-            == f"NCEI/Reuben_Lasker/RL2107/EK80/data/raw/{self.file_name}"
+            == f"NCEI/Reuben_Lasker/RL2107/EK80/data/raw/{self.rf.file_name}"
         ), (
             "Incorrectly parsed GCP location: "
             f"`{self.gcp_storage_bucket_location_raw}`"
@@ -187,7 +240,6 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name="",
-                file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
@@ -202,7 +254,6 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
-                file_type="",
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
@@ -217,7 +268,6 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
-                file_type="abc",
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
@@ -232,7 +282,6 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
-                file_type=self.file_type,
                 ship_name="",
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
@@ -247,7 +296,6 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
-                file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name="",
                 echosounder=self.echosounder,
@@ -262,7 +310,6 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
-                file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder="",
@@ -277,7 +324,6 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
-                file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder="abc",
@@ -292,7 +338,6 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name=self.file_name,
-                file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
@@ -311,7 +356,6 @@ class TestNCEIIngestionUserErrors:
 
             ingestion.download_raw_file(
                 file_name=self.file_name,
-                file_type=self.file_type,
                 ship_name=self.ship_name,
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
