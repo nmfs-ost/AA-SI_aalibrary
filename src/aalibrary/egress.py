@@ -548,6 +548,7 @@ def upload_file_to_gcp_storage_bucket(
     is_calibration_file: bool = False,
     is_calibration_mapping_file: bool = False,
     is_auxiliary_file: bool = False,
+    verbose: bool = True,
     debug: bool = False,
 ):
     """Safely uploads a local file to the storage bucket. Will also check to
@@ -586,6 +587,10 @@ def upload_file_to_gcp_storage_bucket(
         is_auxiliary_file (bool, optional): Whether or not the file is an
             auxiliary file associated with the survey. These files can be of
             any extension. And do not necessarily have to be data files.
+        verbose (bool, optional): Whether or not you want to print intermediate
+            statements about uploads. Helpful for if you are using progress
+            bars.
+            Defaults to True.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
@@ -620,12 +625,13 @@ def upload_file_to_gcp_storage_bucket(
         )
     else:
         try:
-            print(
-                (
-                    f"UPLOADING FILE `{file_name}` TO GCP AT"
-                    f" `{gcp_storage_bucket_location}`..."
+            if verbose:
+                print(
+                    (
+                        f"UPLOADING FILE `{file_name}` TO GCP AT"
+                        f" `{gcp_storage_bucket_location}`..."
+                    )
                 )
-            )
             # Upload to storage bucket.
             cloud_utils.upload_file_to_gcp_bucket(
                 bucket=gcp_bucket,
@@ -633,7 +639,8 @@ def upload_file_to_gcp_storage_bucket(
                 local_file_path=file_location,
                 debug=debug,
             )
-            print("UPLOADED.")
+            if verbose:
+                print("UPLOADED.")
         except Exception as e:
             logging.error(
                 "COULD NOT UPLOAD FILE %s TO GCP (%s) STORAGE BUCKET DUE TO "
