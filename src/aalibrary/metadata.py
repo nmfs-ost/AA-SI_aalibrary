@@ -431,7 +431,8 @@ def get_metadata_in_df_format():
 
 
 def get_deletion_datetime_of_file(
-    file_name: str = "", gcp_project_id: str = config.get_current_gcp_project_id()
+    file_name: str = "",
+    gcp_project_id: str = config.get_current_gcp_project_id(),
 ) -> datetime:
     """Gets the DELETION_DATETIME of a file. Returns a datetime object.
 
