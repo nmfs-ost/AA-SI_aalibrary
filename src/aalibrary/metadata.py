@@ -12,6 +12,7 @@ import boto3
 from google.cloud import bigquery
 import numpy as np
 import pandas as pd
+import pandas_gbq
 
 import echopype
 
@@ -242,7 +243,8 @@ def create_and_upload_metadata_df_for_raw(
     )
 
     # Upload to GCP BigQuery
-    metadata_df.to_gbq(
+    pandas_gbq.to_gbq(
+        dataframe=metadata_df,
         destination_table="metadata.aalibrary_file_metadata",
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",
@@ -271,7 +273,8 @@ def create_and_upload_metadata_df_for_netcdf(
     )
 
     # Upload to GCP BigQuery
-    metadata_df.to_gbq(
+    pandas_gbq.to_gbq(
+        dataframe=metadata_df,
         destination_table="metadata.aalibrary_netcdf_metadata",
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",
@@ -394,7 +397,8 @@ def _parse_and_upload_ncei_survey_level_metadata(
         ncei_survey_level_metadata_json
     )
     # Upload to GCP BigQuery
-    ncei_survey_level_metadata_df.to_gbq(
+    pandas_gbq.to_gbq(
+        dataframe=ncei_survey_level_metadata_df,
         destination_table="metadata.ncei_cruise_metadata",
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",
@@ -438,7 +442,8 @@ def _parse_and_upload_ncei_persons_metadata(file_json: dict):
     # uuids_df = utils.cloud_utils.bq_query_to_pandas(client=)
 
     # Upload to GCP BigQuery
-    ncei_survey_persons_df.to_gbq(
+    pandas_gbq.to_gbq(
+        dataframe=ncei_survey_persons
         destination_table="metadata.ncei_persons",
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",
