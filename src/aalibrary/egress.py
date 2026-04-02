@@ -464,6 +464,7 @@ def upload_local_auxiliary_files_from_directory_to_gcp_storage_bucket(
         f"{file_upload_count} FILES UPLOADED WITH {file_error_count} ERRORS."
     )
 
+
 def upload_folder_as_is_to_gcp(
     local_folder_path: str = "",
     gcp_bucket: storage.Client.bucket = None,
