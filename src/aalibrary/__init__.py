@@ -5,7 +5,7 @@ import warnings
 
 # Import sub-packages
 # flake8: noqa
-import config
+from . import config
 
 __version__ = "1.2.0"
 
