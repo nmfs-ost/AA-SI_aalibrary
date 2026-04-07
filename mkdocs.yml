@@ -1,4 +1,7 @@
 site_name: AALibrary
+repo_url: https://github.com/nmfs-ost/AA-SI_aalibrary/
+site_author: Hannan Khan
+site_description: AALibrary is a Python library that provides tools for working with acoustic data in the cloud.
 
 theme:
   name: material
@@ -53,6 +56,7 @@ nav:
     - "Notice": about/notice.md
     - "Disclaimer": about/disclaimer.md
     - "External Resources": about/external_resources.md
+  - GCPSetup ↗: https://github.com/nmfs-ost/AA-SI_GCPSetup
 
 plugins:
 - search:
