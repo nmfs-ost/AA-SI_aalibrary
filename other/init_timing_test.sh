@@ -6,6 +6,8 @@ stage_1_start_time=$(date +%s)
 set -e  # Exit immediately if any command fails
 
 echo "🔊🐟 Initializing..."
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
 
 # --- Ensure the home directory exists ---
 echo "🏚️ Preparing workstation setup at $HOME..."
@@ -133,18 +135,18 @@ stage_6_duration=$((stage_6_end_time - stage_6_start_time))
 
 # STAGE 7: PYTHON PACKAGE INSTALLATIONS
 stage_7_start_time=$(date +%s)
-pip install --upgrade pip
-pip install pyworms matplotlib toml
+uv pip install --upgrade pip
+uv pip install pyworms matplotlib toml
 echo "🎣 Installing AA-SI_aalibrary (active signal interpretation)..."
-pip install --no-cache-dir -vv --force-reinstall git+https://github.com/nmfs-ost/AA-SI_aalibrary
+uv pip install -vv git+https://github.com/nmfs-ost/AA-SI_aalibrary
 
 echo "🐡 Installing echoml (echo classification & ML)..."
-pip install --no-cache-dir -vv --force-reinstall git+https://github.com/nmfs-ost/AA-SI_KMeans
+uv pip install -vv git+https://github.com/nmfs-ost/AA-SI_KMeans
 
 echo "🦈 Installing echosms (system management for sonar ops)..."
-pip install echosms echoregions
+uv pip install echosms echoregions
 
-pip install ipykernel
+uv pip install ipykernel
 python -m ipykernel install --user --name=venv312 --display-name "venv312"
 stage_7_end_time=$(date +%s)
 stage_7_duration=$((stage_7_end_time - stage_7_start_time))
