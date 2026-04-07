@@ -894,7 +894,7 @@ def copy_folder_contents_within_gcs_bucket(
 
 def copy_object_between_buckets(
     bucket_name, blob_name, destination_bucket_name, destination_blob_name
-):
+) -> None:
     """Copies a blob/object from one bucket to another bucket.
 
     Args:
@@ -926,7 +926,7 @@ def copy_object_between_buckets(
 
 def move_object_between_buckets(
     bucket_name, blob_name, destination_bucket_name, destination_blob_name
-):
+) -> None:
     """Moves a blob/object from one bucket to another.
     NOTE: Deletes the original blob after copying to the new bucket.
 
