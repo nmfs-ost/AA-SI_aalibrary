@@ -9,3 +9,7 @@ The NCEI Water Column Sonar Viewer provides public access to over 300 terabytes 
 NOAA has other strategic initiatives that are being implemented concurrently with Active Acoustics. You can find links to them here.
 
 [Passive Acoustics Monitoring Strategic Initiative](https://nmfs-ost.github.io/PAM_National_Network/content/SI%20coord/SI_Coordination.html) - NOAA Fisheries’ PAM programs collect underwater sound recordings of the marine environment.
+
+## Data Roadmap - Data Levels
+
+We are currently tracking our data pipeline development efforts by using a [Data Roadmap](https://github.com/nmfs-ost/AA-SI_DataRoadMap). This roadmap is defined through the use of data levels based on [echoPype's data processing levels](https://echolevels.readthedocs.io/en/latest/levels_proposed.html).
