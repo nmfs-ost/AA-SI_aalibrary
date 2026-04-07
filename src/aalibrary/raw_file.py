@@ -1,8 +1,6 @@
 """This script contains the necessary classes RawFile, which is used to obtain
 all of the attributes of a file."""
 
-# pylint: disable=unused-argument
-
 from collections import OrderedDict
 import logging
 import os
@@ -59,29 +57,26 @@ class RawFile:
             one).
     """
 
+    file_name: str = None
+    file_type: str = None
+    ship_name: str = None
+    survey_name: str = None
+    echosounder: str = None
+    data_source: str = None
+    file_download_directory: str = None
+    is_metadata: bool = False
+    upload_to_gcp: bool = False
+    debug: bool = False
+    gcp_project_id: str = os.getenv("AALIBRARY_GCP_PROJECT_ID")
+    gcp_bucket_name: str = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
+    gcp_bucket: storage.Client.bucket = None
+    s3_resource: boto3.resource = None
     # Get all valid and normalized ICES ship names
     valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
         normalize_ship_names=True
     )
 
-    def __init__(
-        self,
-        file_name: str = None,
-        file_type: str = None,
-        ship_name: str = None,
-        survey_name: str = None,
-        echosounder: str = None,
-        data_source: str = None,
-        file_download_directory: str = None,
-        is_metadata: bool = False,
-        upload_to_gcp: bool = False,
-        debug: bool = False,
-        gcp_project_id: str = os.getenv("AALIBRARY_GCP_PROJECT_ID"),
-        gcp_bucket_name: str = os.getenv("AALIBRARY_GCP_BUCKET_NAME"),
-        gcp_bucket: storage.Client.bucket = None,
-        s3_resource: boto3.resource = None,
-        **kwargs,
-    ):
+    def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self._handle_paths()
         self._create_vars_for_use_later()
