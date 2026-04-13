@@ -112,8 +112,10 @@ def create_metadata_json_for_raw_files(
         # pip lock file - for current environment
         "NCEI_CRUISE_ID": rf.survey_name,
         "NCEI_URI": rf.raw_file_s3_object_key,
+        "GCP_BUCKET_NAME": rf.gcp_bucket_name,
         "GCP_URI": rf.raw_gcp_storage_bucket_location,
         "FILE_DATETIME": file_datetime,
+        "FILE_DATETIME_TIMEZONE": None, # TODO: add timezone info if possible in rf object.
         "DELETION_DATETIME": deletion_datetime,
         "ICES_CODE": rf.ices_code,
         "SHIP_NAME": rf.ship_name,
@@ -134,6 +136,13 @@ def create_metadata_json_for_raw_files(
         "BOT_FILE_EXISTS_IN_NCEI": rf.bot_file_exists_in_ncei,
         "BOT_FILE_EXISTS_IN_GCP": rf.bot_file_exists_in_gcp,
         "BOT_FILE_EXISTS_IN_OMAO": rf.bot_file_exists_in_omao,
+        "METADATA_JSON_FILE_GCP_URI": None, # TODO: add this info if possible in rf object.
+        "METADATA_JSON_FILE_NCEI_URI": None, # TODO: add this info if possible in rf object.
+        "METADATA_JSON_FILE_EXISTS_IN_GCP": None, # TODO: add this info if possible in rf object.
+        "METADATA_JSON_FILE_EXISTS_IN_NCEI": None, # TODO: add this info if possible in rf object.
+        "TUGBOAT_METADATA_JSON_SUBMISSION_STATUS": None, # TODO: add this info if possible in rf object.
+        "FM_FILE_TYPE": None, # TODO: add this info if possible in rf object.
+        "TRANSECT": None, # TODO: add this info if possible in rf object.
     }
 
     aalibrary_metadata_df = pd.json_normalize(metadata_json)
