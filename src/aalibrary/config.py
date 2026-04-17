@@ -15,6 +15,7 @@ GCP_DEV_PROJECT_ID = "ggn-nmfs-aa-dev-1"
 GCP_PROD_PROJECT_ID = "ggn-nmfs-aa-prod-1"
 GCP_DEV_BUCKET_NAME = "ggn-nmfs-aa-dev-1-data"
 GCP_PROD_BUCKET_NAME = "ggn-nmfs-aa-prod-1-data"
+NCEI_BUCKET_NAME = "noaa-wcsd-pds"
 
 RAW_DATA_FILE_TYPES = ["raw", "idx", "bot"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
