@@ -18,12 +18,24 @@ if __package__ is None or __package__ == "":
     import config
     import ices_ship_names
     from utils.helpers import get_parsed_datetime_from_filename
+    from utils.get_datagram_data import (
+        stream_datagram_dict_from_ncei,
+    )
+    from utils.ncei_utils import (
+        check_if_tugboat_metadata_json_exists_in_survey,
+    )
 else:
     # uses current package visibility
     from aalibrary import utils
     from aalibrary import config
     from aalibrary import ices_ship_names
     from aalibrary.utils.helpers import get_parsed_datetime_from_filename
+    from aalibrary.utils.get_datagram_data import (
+        stream_datagram_dict_from_ncei,
+    )
+    from aalibrary.utils.ncei_utils import (
+        check_if_tugboat_metadata_json_exists_in_survey,
+    )
 
 
 class RawFile:
@@ -71,6 +83,7 @@ class RawFile:
     gcp_bucket_name: str = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
     gcp_bucket: storage.Client.bucket = None
     s3_resource: boto3.resource = None
+    datagram_dict: dict = {}
     # Get all valid and normalized ICES ship names
     valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
         normalize_ship_names=True
@@ -80,6 +93,8 @@ class RawFile:
         self.__dict__.update(kwargs)
         self._handle_paths()
         self._create_vars_for_use_later()
+        self._create_cruise_level_metadata_vars()
+        self._get_datagram_data()
         self._create_download_directories_if_not_exists()
 
         self._check_for_assertion_errors()
@@ -391,6 +406,75 @@ class RawFile:
         self.idx_file_exists_in_omao = False
         self.bot_file_exists_in_omao = False
         self.netcdf_file_exists_in_omao = False
+
+    def _create_cruise_level_metadata_vars(self):
+        """Creates cruise level metadata variables that we can use to access
+        cruise level metadata files."""
+
+        self.cruise_level_metadata_json_file_ncei_uri = (
+            check_if_tugboat_metadata_json_exists_in_survey(
+                ship_name=self.ship_name_unnormalized,
+                survey_name=self.survey_name,
+                echosounder=self.echosounder,
+                s3_resource=self.s3_resource,
+                s3_bucket_name=self.s3_bucket_name,
+            )
+        )
+        if self.cruise_level_metadata_json_file_ncei_uri is not None:
+            self.cruise_level_metadata_file_name = (
+                self.cruise_level_metadata_json_file_ncei_uri.split("/")[-1]
+            )
+            self.cruise_level_metadata_json_file_exists_in_ncei = True
+            self.cruise_level_metadata_file_gcp_uri = (
+                utils.helpers.parse_correct_gcp_storage_bucket_location(
+                    file_name=self.cruise_level_metadata_file_name,
+                    file_type="json",
+                    ship_name=self.ship_name,
+                    survey_name=self.survey_name,
+                    echosounder=self.echosounder,
+                    data_source=self.data_source,
+                    is_survey_metadata=True,
+                    debug=self.debug,
+                )
+            )
+            self.cruise_level_metadata_exists_in_gcp = (
+                utils.cloud_utils.check_if_file_exists_in_gcp(
+                    bucket=self.gcp_bucket,
+                    file_path=self.cruise_level_metadata_file_gcp_uri,
+                )
+            )
+        else:
+            self.cruise_level_metadata_file_name = None
+            self.cruise_level_metadata_json_file_exists_in_ncei = False
+            self.cruise_level_metadata_file_gcp_uri = None
+            self.cruise_level_metadata_exists_in_gcp = False
+
+    def _get_datagram_data(self):
+        """Gets datagram data from the raw file and adds it to the RawFile
+        object as a dictionary. If the file is from NCEI, it will stream the
+        datagram data from S3. If the file is not from NCEI, it will read the
+        datagram data from the raw file directly. The datagram data will be
+        stored in the `datagram_dict` attribute of the RawFile object."""
+
+        if self.data_source == "NCEI" and self.raw_file_exists_in_ncei:
+            self.datagram_dict = stream_datagram_dict_from_ncei(
+                s3_object_key=self.raw_file_s3_object_key
+            )
+            # Assign the relevant metadata from the datagram to the RawFile
+            # object as attributes if they exist in the datagram.
+            if "timestamp" in self.datagram_dict:
+                self.datagram_timestamp = self.datagram_dict["timestamp"]
+                self.file_datetime_timezone = str(
+                    self.datagram_timestamp.tzinfo
+                )
+            else:
+                self.datagram_timestamp = None
+                self.file_datetime_timezone = None
+
+            if "transect_name" in self.datagram_dict:
+                self.transect_name = self.datagram_dict["transect_name"]
+            else:
+                self.transect_name = None
 
     def _check_for_assertion_errors(self):
         """Checks for errors in each variable in our self.__dict__."""
