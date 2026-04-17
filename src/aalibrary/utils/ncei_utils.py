@@ -660,9 +660,9 @@ def check_if_tugboat_metadata_json_exists_in_survey(
         s3_resource=s3_bucket,
     )
 
-    for obj_key, file_name in all_metadata_obj_keys:
+    for obj_key in all_metadata_obj_keys:
         # Handle for main metadata file for upload to BigQuery.
-        if file_name.endswith("metadata.json"):
+        if obj_key.endswith("metadata.json"):
             return obj_key
 
     return None
@@ -968,4 +968,10 @@ if __name__ == "__main__":
     # print(f"Time taken: {time/5} seconds per run")
     # print(f"{time:.6f} seconds (over 5 runs)")
     # print(get_all_ship_names_in_ncei(return_full_paths=True, normalize=True))
-    print(get_all_surveys_in_ncei(s3_client=s3_client, return_full_paths=True))
+    # print(get_all_surveys_in_ncei(s3_client=s3_client, return_full_paths=True))
+
+    check_if_tugboat_metadata_json_exists_in_survey(
+        ship_name="Reuben_Lasker",
+        survey_name="RL2107",
+        s3_bucket=s3_resource,
+    )
