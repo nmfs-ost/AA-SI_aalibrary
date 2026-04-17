@@ -148,6 +148,7 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=False,
+                verbose=False,
                 debug=debug,
             )
             idx_upload_count += 1
@@ -169,6 +170,7 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=False,
+                verbose=False,
                 debug=debug,
             )
             bot_upload_count += 1
@@ -191,6 +193,7 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=False,
+                verbose=False,
                 debug=debug,
             )
             metadata.create_and_upload_metadata_df_for_raw(
@@ -225,6 +228,7 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
                 is_metadata=False,
+                verbose=False,
                 debug=debug,
             )
             metadata.create_and_upload_metadata_df_for_netcdf(
@@ -347,6 +351,7 @@ def upload_local_calibration_files_from_directory_to_gcp_storage_bucket(
                     is_calibration_file=True,
                     is_calibration_mapping_file=False,
                     is_auxiliary_file=False,
+                    verbose=False,
                     debug=debug,
                 )
                 file_upload_count += 1
@@ -454,6 +459,7 @@ def upload_local_auxiliary_files_from_directory_to_gcp_storage_bucket(
                     is_calibration_file=False,
                     is_calibration_mapping_file=False,
                     is_auxiliary_file=True,
+                    verbose=False,
                     debug=debug,
                 )
                 file_upload_count += 1
