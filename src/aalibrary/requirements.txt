@@ -27,6 +27,7 @@ mkdocs
 mkdocs-material
 mkdocstrings-python
 mkdocs-git-revision-date-localized-plugin
+mkdocs-open-in-new-tab
 nbformat
 python-dotenv
 sqlparse
