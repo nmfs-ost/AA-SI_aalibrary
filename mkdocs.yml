@@ -57,11 +57,12 @@ nav:
     - "Disclaimer": about/disclaimer.md
     - "External Resources": about/external_resources.md
   - GCPSetup ↗: https://github.com/nmfs-ost/AA-SI_GCPSetup
+  - Report an Issue ↗: https://github.com/nmfs-ost/AA-SI_aalibrary/issues
 
 plugins:
 - search:
-    # This separator includes the `.` character to separate words for searching. 
-    separator: '[\s\-\.]+'
+    # This separator includes the `.` & `_` characters to separate words for searching. 
+    separator: '[\s\-\.\_]+'
 - mkdocstrings:
     default_handler: python
     handlers:
@@ -71,3 +72,4 @@ plugins:
           group_by_category: true
           summary: true
 - git-revision-date-localized
+- open-in-new-tab
