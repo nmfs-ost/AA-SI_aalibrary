@@ -415,9 +415,7 @@ class RawFile:
             check_if_tugboat_metadata_json_exists_in_survey(
                 ship_name=self.ship_name_unnormalized,
                 survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                s3_resource=self.s3_resource,
-                s3_bucket_name=self.s3_bucket_name,
+                s3_bucket=self.s3_resource,
             )
         )
         if self.cruise_level_metadata_json_file_ncei_uri is not None:
