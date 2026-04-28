@@ -5,6 +5,7 @@ removing background noise, applying transformations, and saving back.
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from loguru import logger
@@ -12,7 +13,28 @@ import echopype as ep  # make sure echopype is installed
 import pprint
 import warnings
     
+import logging
+
 warnings.filterwarnings("ignore")
+
+
+def silence_all_logs():
+    # Standard logging: disable everything at/below CRITICAL
+    logging.disable(logging.CRITICAL)
+    
+    # Also clear handlers on root + any named loggers already configured,
+    # in case something added a handler with propagate=False
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    
+    # Loguru: remove all sinks (only if loguru is actually imported)
+    if "loguru" in sys.modules:
+        from loguru import logger
+        logger.remove()
+
+
 def print_help():
     help_text = """
     Usage: aa-nc [OPTIONS] INPUT_PATH
@@ -41,7 +63,7 @@ def print_help():
 
 
 def main():
-
+    silence_all_logs()
     # Display help if no arguments are provided or if --help is explicitly passed
     if len(sys.argv) == 1 or "--help" in sys.argv:
         print_help()
