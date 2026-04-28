@@ -1046,23 +1046,32 @@ _DRAW_JS_HELPERS = """\
     return out;
   };
 
-  W._aaMsToEvl = function(ms) {
+  // ---------------------------------------------------------------
+  // Date / time formatters per Echoview spec.
+  //
+  // EVL/EVR date format: CCYYMMDD       (e.g. "20240315")
+  // EVL/EVR time format: HHmmSSssss     (e.g. "1530453205" = 15:30:45.3205)
+  //   ssss is fractional seconds in TEN-THOUSANDTHS, written as 4 integer
+  //   digits with no decimal point. JavaScript Date only resolves to
+  //   milliseconds, so we multiply ms x 10 and zero-pad to fill.
+  // ---------------------------------------------------------------
+  W._aaEvlDate = function(ms) {
     var d = new Date(ms);
     var p2 = function(n){ return String(n).padStart(2,'0'); };
-    var p3 = function(n){ return String(n).padStart(3,'0'); };
-    var date = String(d.getUTCFullYear()) + p2(d.getUTCMonth()+1) + p2(d.getUTCDate());
-    var time = p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + '.' + p3(d.getUTCMilliseconds()) + '0';
-    return date + ' ' + time;
+    return String(d.getUTCFullYear()) + p2(d.getUTCMonth()+1) + p2(d.getUTCDate());
+  };
+  W._aaEvlTime = function(ms) {
+    var d = new Date(ms);
+    var p2 = function(n){ return String(n).padStart(2,'0'); };
+    var p4 = function(n){ return String(n).padStart(4,'0'); };
+    var ssss = d.getUTCMilliseconds() * 10;
+    return p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + p4(ssss);
   };
 
   W._aaIsTime = function(xs) {
     if (!xs || !xs.length) return false;
     var v = xs[0]; if (Array.isArray(v)) v = v[0];
     return typeof v === 'number' && v > 1e12;
-  };
-
-  W._aaXStr = function(x, isTime) {
-    return isTime ? _aaMsToEvl(x) : x.toFixed(6);
   };
 
   // Collect sources whose names start with prefix
@@ -1078,42 +1087,140 @@ _DRAW_JS_HELPERS = """\
     return result;
   };
 
-  // Build EVL content from current freehand + polyline drawings
+  // ---------------------------------------------------------------
+  // EVL — Echoview Line File
+  //
+  // Per Echoview spec
+  // (https://support.echoview.com/.../Exporting_line_data.htm):
+  //
+  //   Line 1:  "EVBD <format_version> <generator_version>"
+  //   Line 2:  <total point count>
+  //   Lines 3..N+2:  <date> <time> <depth> <line_status>
+  //                  fields separated by single space
+  //                  line_status: 0=none 1=unverified 2=bad 3=good
+  //   Line endings: CR/LF (DOS).
+  //
+  // Crucially: an EVL file represents EXACTLY ONE LINE — there is no
+  // "named line" concept. If the user has drawn multiple freehand strokes
+  // and/or polylines, we concatenate all points and sort by time, treating
+  // the strokes as pieces of a single boundary (which is the typical
+  // workflow when refining a bottom or surface line).
+  // ---------------------------------------------------------------
   W.aaGenerateEvl = function() {
     var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
     segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
     if (!segs.length) return null;
-    var isTime = _aaIsTime(segs[0].xs);
-    var rows = ['EVBD 3 9.0.120.30842', String(segs.length)];
-    segs.forEach(function(seg, li) {
-      rows.push('aa-plot line ' + (li + 1));
-      rows.push('-10000.0000 0 0');
-      rows.push(String(seg.xs.length));
+    if (!_aaIsTime(segs[0].xs)) {
+      return { error: 'EVL export requires a time-based x-axis (e.g. ping_time). Re-plot with a time x-axis to enable export.' };
+    }
+
+    // Concatenate all points from all strokes, sort by time.
+    var pts = [];
+    segs.forEach(function(seg) {
       for (var i = 0; i < seg.xs.length; i++) {
-        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
+        pts.push({ t: seg.xs[i], d: seg.ys[i] });
       }
     });
-    return rows.join('\\n');
+    pts.sort(function(a, b) { return a.t - b.t; });
+
+    var LINE_STATUS = '1';  // 1 = unverified — safe default for user-drawn lines
+    var rows = [];
+    rows.push('EVBD 3 aa-plot-1.0');
+    rows.push(String(pts.length));
+    pts.forEach(function(p) {
+      rows.push(
+        _aaEvlDate(p.t) + ' ' + _aaEvlTime(p.t) + ' ' +
+        p.d.toFixed(4) + ' ' + LINE_STATUS
+      );
+    });
+    return rows.join('\\r\\n') + '\\r\\n';
   };
 
-  // Build EVR content from current region polygons
+  // ---------------------------------------------------------------
+  // EVR — Echoview 2D Region Definition File
+  //
+  // Per Echoview spec
+  // (https://support.echoview.com/.../2D_Region_definition_file_format.htm):
+  //
+  //   Line 1:  "EVRG <format_version=7> <generator_version>"
+  //   Line 2:  <region count>
+  //
+  //   Then for each region:
+  //     <blank line>
+  //     <header line, 13 space-separated tokens, CR/LF>:
+  //         13 <pcount> <id> 0 <ctype> -1 1
+  //         <left_date> <left_time> <top_depth>
+  //         <right_date> <right_time> <bot_depth>
+  //     <#notes lines, CR/LF>
+  //     <#detection-settings lines, CR/LF>
+  //     <region classification, CR/LF>
+  //     <points line: date1 time1 depth1 date2 time2 depth2 ... <region_type>>
+  //     <region name, CR/LF>
+  //
+  // Region creation type 2 = polygon tool (matches what the user draws).
+  // Region type 1 = analysis (the typical use for polygon ROIs).
+  // ---------------------------------------------------------------
   W.aaGenerateEvr = function() {
     var segs = _aaCollect('aa_regions_');
     segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
     if (!segs.length) return null;
-    var isTime = _aaIsTime(segs[0].xs);
-    var rows = ['EVBD 3 9.0.120.30842', String(segs.length) + ' 4'];
-    segs.forEach(function(seg, ri) {
-      rows.push('Region ' + (ri + 1));
-      rows.push('');          // notes
-      rows.push('');          // detection settings
-      rows.push('1');         // region type: 1 = analysis
-      rows.push(String(seg.xs.length));
-      for (var i = 0; i < seg.xs.length; i++) {
-        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
+    if (!_aaIsTime(segs[0].xs)) {
+      return { error: 'EVR export requires a time-based x-axis (e.g. ping_time). Re-plot with a time x-axis to enable export.' };
+    }
+
+    var REGION_STRUCT = '13';
+    var SELECTED      = '0';
+    var CREATION_TYPE = '2';   // polygon tool
+    var DUMMY         = '-1';
+    var REGION_TYPE   = '1';   // analysis
+
+    var rows = [];
+    rows.push('EVRG 7 aa-plot-1.0');
+    rows.push(String(segs.length));
+
+    segs.forEach(function(seg, idx) {
+      var rid = idx + 1;
+      var n = seg.xs.length;
+
+      // Bounding rectangle
+      var minX = seg.xs[0], maxX = seg.xs[0];
+      var minY = seg.ys[0], maxY = seg.ys[0];
+      for (var i = 1; i < n; i++) {
+        if (seg.xs[i] < minX) minX = seg.xs[i];
+        if (seg.xs[i] > maxX) maxX = seg.xs[i];
+        if (seg.ys[i] < minY) minY = seg.ys[i];
+        if (seg.ys[i] > maxY) maxY = seg.ys[i];
       }
+
+      rows.push('');  // blank-line region separator
+
+      // Header line: 13 tokens (date and time count as separate tokens
+      // so the bounding-rectangle x-coords are 2 tokens each).
+      rows.push([
+        REGION_STRUCT, String(n), String(rid),
+        SELECTED, CREATION_TYPE, DUMMY, '1',
+        _aaEvlDate(minX), _aaEvlTime(minX), minY.toFixed(4),
+        _aaEvlDate(maxX), _aaEvlTime(maxX), maxY.toFixed(4)
+      ].join(' '));
+
+      rows.push('0');                       // # notes lines
+      rows.push('0');                       // # detection-settings lines
+      rows.push('Unclassified regions');    // region classification
+
+      // All polygon points on ONE line, region type at the end.
+      var tokens = [];
+      for (var i = 0; i < n; i++) {
+        tokens.push(_aaEvlDate(seg.xs[i]));
+        tokens.push(_aaEvlTime(seg.xs[i]));
+        tokens.push(seg.ys[i].toFixed(10));
+      }
+      tokens.push(REGION_TYPE);
+      rows.push(tokens.join(' '));
+
+      rows.push('aa-plot region ' + rid);   // region name
     });
-    return rows.join('\\n');
+
+    return rows.join('\\r\\n') + '\\r\\n';
   };
 
   // ---------------------------------------------------------------
@@ -1258,38 +1365,44 @@ _DRAW_JS_HELPERS = """\
 
   // ---------------------------------------------------------------
   // Public buttons
+  //
+  // The generator functions return one of:
+  //   - null              : nothing drawn
+  //   - { error: "..." }  : drawn but x-axis isn't time-based
+  //   - string            : valid EVL/EVR content
   // ---------------------------------------------------------------
-  W.aaExportEvl = function() {
-    var content = aaGenerateEvl();
-    if (!content) {
-      alert('No lines drawn yet.\\nActivate Freehand or Polyline in the echogram toolbar, draw some lines, then export.');
-      return;
+  function _handleGenResult(content, kindLabel, onContent) {
+    if (content === null) {
+      alert('No ' + kindLabel + ' drawn yet.\\nActivate the relevant tool in the echogram toolbar, draw, then try again.');
+      return false;
     }
-    _aaTryDownload(content, 'aa_lines.evl');
+    if (typeof content === 'object' && content && content.error) {
+      alert(content.error);
+      return false;
+    }
+    onContent(content);
+    return true;
+  }
+
+  W.aaExportEvl = function() {
+    _handleGenResult(aaGenerateEvl(), 'lines', function(c) {
+      _aaTryDownload(c, 'aa_lines.evl');
+    });
   };
   W.aaShowEvlText = function() {
-    var content = aaGenerateEvl();
-    if (!content) {
-      alert('No lines drawn yet.\\nActivate Freehand or Polyline in the echogram toolbar, draw some lines, then try again.');
-      return;
-    }
-    _aaShowTextModal(content, 'aa_lines.evl', 'EVL Line File');
+    _handleGenResult(aaGenerateEvl(), 'lines', function(c) {
+      _aaShowTextModal(c, 'aa_lines.evl', 'EVL Line File');
+    });
   };
   W.aaExportEvr = function() {
-    var content = aaGenerateEvr();
-    if (!content) {
-      alert('No regions drawn yet.\\nActivate the Region tool in the echogram toolbar, draw some polygons, then export.');
-      return;
-    }
-    _aaTryDownload(content, 'aa_regions.evr');
+    _handleGenResult(aaGenerateEvr(), 'regions', function(c) {
+      _aaTryDownload(c, 'aa_regions.evr');
+    });
   };
   W.aaShowEvrText = function() {
-    var content = aaGenerateEvr();
-    if (!content) {
-      alert('No regions drawn yet.\\nActivate the Region tool in the echogram toolbar, draw some polygons, then try again.');
-      return;
-    }
-    _aaShowTextModal(content, 'aa_regions.evr', 'EVR Region File');
+    _handleGenResult(aaGenerateEvr(), 'regions', function(c) {
+      _aaShowTextModal(c, 'aa_regions.evr', 'EVR Region File');
+    });
   };
 
   W.aaClearDraw = function() {
@@ -1451,7 +1564,9 @@ def _build_annotation_panel() -> pn.pane.HTML:
     <div class="aa-draw-hint">
       <b>Tip:</b> tools appear in the plot toolbar above the echogram &mdash; switch freely between draw, zoom and pan.<br>
       Drag any vertex with the <b>Edit</b> tool to adjust; shift-click a vertex to delete it.<br>
-      EVL / EVR files use Echoview line/region format and open directly in Echoview.
+      EVL / EVR files use Echoview line/region format and open directly in Echoview.<br>
+      <b>Note:</b> export requires a time-based x-axis (ping_time). Multiple freehand/polyline
+      strokes are merged into a single time-sorted EVL line; each polygon becomes a distinct EVR region.
     </div>
   </div>
 </div>
