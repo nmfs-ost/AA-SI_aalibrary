@@ -30,7 +30,7 @@ import logging
 
 def silence_all_logs():
     # Standard logging: disable everything at/below CRITICAL
-    logging.disable(logging.CRITICAL)
+    logging.disable(logging.DEBUG)
     
     # Also clear handlers on root + any named loggers already configured,
     # in case something added a handler with propagate=False
