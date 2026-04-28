@@ -1088,7 +1088,88 @@ _DRAW_JS_HELPERS = """\
   };
 
   // ---------------------------------------------------------------
-  // EVL — Echoview Line File
+  // Diagnostic summary — collects the bounding ranges of the drawn
+  // geometry. Used in the show-text modal so the user can verify
+  // the polygon actually overlaps their echogram before they bother
+  // running the file through aa-evr/aa-evl.
+  // ---------------------------------------------------------------
+  W._aaSummariseSegs = function(segs) {
+    if (!segs || !segs.length) return null;
+    var isTime = _aaIsTime(segs[0].xs);
+    var minX = +Infinity, maxX = -Infinity, minY = +Infinity, maxY = -Infinity;
+    var totalPts = 0;
+    segs.forEach(function(seg) {
+      for (var i = 0; i < seg.xs.length; i++) {
+        var x = seg.xs[i], y = seg.ys[i];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        totalPts += 1;
+      }
+    });
+    function fmtX(x) {
+      if (isTime) {
+        var d = new Date(x);
+        return d.toISOString().replace('T', ' ').slice(0, 23) + ' UTC';
+      }
+      return x.toFixed(4);
+    }
+    return {
+      strokeCount: segs.length,
+      pointCount:  totalPts,
+      isTime:      isTime,
+      xMin:        fmtX(minX),
+      xMax:        fmtX(maxX),
+      yMin:        minY.toFixed(4),
+      yMax:        maxY.toFixed(4),
+      yMinRaw:     minY,
+      yMaxRaw:     maxY
+    };
+  };
+
+  // Format the summary as an HTML block for the modal header.
+  W._aaSummaryHtml = function(summary, kindLabel) {
+    if (!summary) return '';
+    var depthHint = '';
+    // Heuristic: if the y range looks like integer indices (0..N with small N),
+    // the user probably drew on a range_sample axis — flag this.
+    if (summary.yMaxRaw < 2000 && summary.yMaxRaw > 0 &&
+        Math.abs(summary.yMaxRaw - Math.round(summary.yMaxRaw)) < 0.001 &&
+        Math.abs(summary.yMinRaw - Math.round(summary.yMinRaw)) < 0.001) {
+      // Could be either depth-in-metres or range-sample — surface a warning.
+      depthHint = (
+        '<div style="margin-top:6px;padding:6px 8px;border-left:3px solid #f59e0b;'
+        + 'background:#fef3c7;color:#78350f;font-size:0.92em;line-height:1.4;">'
+        + '<b>Heads-up:</b> the y values look integer-like. If your plot used '
+        + '<code>range_sample</code> indices instead of metre-valued depth, '
+        + 'aa-evr/aa-evl will not find a match. Re-plot with the depth coordinate '
+        + '(or pass <code>--y depth</code>) before drawing.'
+        + '</div>'
+      );
+    }
+    var timeHint = summary.isTime
+      ? ''
+      : ('<div style="margin-top:6px;padding:6px 8px;border-left:3px solid #ef4444;'
+         + 'background:#fee2e2;color:#7f1d1d;font-size:0.92em;line-height:1.4;">'
+         + '<b>Cannot export:</b> the x-axis is not time-based. EVL/EVR require ping_time.'
+         + '</div>');
+    return (
+      '<div style="margin:6px 0;padding:8px 10px;background:#eff6ff;'
+      + 'border:1px solid #bfdbfe;border-radius:6px;font-size:0.92em;line-height:1.5;color:#1e3a5f;">'
+      + '<b>Polygon summary</b> &mdash; verify these match your echogram before importing'
+      + '<div style="font-family:Menlo,Consolas,monospace;font-size:0.92em;margin-top:4px;">'
+      + '&nbsp;&nbsp;' + kindLabel + ': ' + summary.strokeCount
+      + ' (' + summary.pointCount + ' points total)<br>'
+      + '&nbsp;&nbsp;time:&nbsp; ' + summary.xMin + '<br>'
+      + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&rarr;&nbsp; ' + summary.xMax + '<br>'
+      + '&nbsp;&nbsp;depth: ' + summary.yMin + ' &rarr; ' + summary.yMax
+      + '</div>'
+      + timeHint
+      + depthHint
+      + '</div>'
+    );
+  };
   //
   // Per Echoview spec
   // (https://support.echoview.com/.../Exporting_line_data.htm):
@@ -1257,8 +1338,12 @@ _DRAW_JS_HELPERS = """\
   // ---------------------------------------------------------------
   // Always-show modal — used by the "Show ... text" buttons.
   // Works in any environment, including sandboxed iframes.
+  //
+  // summary_html : optional HTML to inject between the title and the
+  //                copy-paste textarea (used to display the polygon's
+  //                time/depth ranges so the user can sanity-check).
   // ---------------------------------------------------------------
-  W._aaShowTextModal = function(content, filename, title_text) {
+  W._aaShowTextModal = function(content, filename, title_text, summary_html) {
     var overlay = document.createElement('div');
     overlay.style.cssText = [
       'position:fixed','top:0','left:0','width:100%','height:100%',
@@ -1356,6 +1441,11 @@ _DRAW_JS_HELPERS = """\
     btnRow.appendChild(closeBtn);
     box.appendChild(title);
     box.appendChild(hint);
+    if (summary_html) {
+      var summaryDiv = document.createElement('div');
+      summaryDiv.innerHTML = summary_html;
+      box.appendChild(summaryDiv);
+    }
     box.appendChild(ta);
     box.appendChild(btnRow);
     overlay.appendChild(box);
@@ -1391,7 +1481,11 @@ _DRAW_JS_HELPERS = """\
   };
   W.aaShowEvlText = function() {
     _handleGenResult(aaGenerateEvl(), 'lines', function(c) {
-      _aaShowTextModal(c, 'aa_lines.evl', 'EVL Line File');
+      var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
+      segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+      var summary = _aaSummariseSegs(segs);
+      var summaryHtml = _aaSummaryHtml(summary, 'strokes');
+      _aaShowTextModal(c, 'aa_lines.evl', 'EVL Line File', summaryHtml);
     });
   };
   W.aaExportEvr = function() {
@@ -1401,7 +1495,11 @@ _DRAW_JS_HELPERS = """\
   };
   W.aaShowEvrText = function() {
     _handleGenResult(aaGenerateEvr(), 'regions', function(c) {
-      _aaShowTextModal(c, 'aa_regions.evr', 'EVR Region File');
+      var segs = _aaCollect('aa_regions_');
+      segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+      var summary = _aaSummariseSegs(segs);
+      var summaryHtml = _aaSummaryHtml(summary, 'regions');
+      _aaShowTextModal(c, 'aa_regions.evr', 'EVR Region File', summaryHtml);
     });
   };
 
