@@ -49,8 +49,22 @@ Known fixes in this version:
      mask) and dimension name variations (region_id, region) across echoregions versions.
 """
 
-import argparse
+# === Silence logs BEFORE any heavy imports ===
+import logging
 import sys
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+from loguru import logger
+logger.remove()
+# Default sink: WARNING+ to stderr so real errors aren't swallowed.
+# _configure_logging() below replaces this once --debug is parsed.
+logger.add(sys.stderr, level="WARNING")
+
+# Now the heavy imports - anything they log gets squashed
+import argparse
 import pprint
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
@@ -58,9 +72,20 @@ from typing import Iterable, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 import echoregions as er
+
+
+def silence_all_logs():
+    """Re-apply suppression in case a library re-enabled logging
+    or added its own loguru sink during initialization."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
 
 
 # ---------------------------
@@ -70,7 +95,7 @@ import echoregions as er
 def print_help() -> None:
     print(
         """
-aa-evr — apply Echoview region(s) (.evr) to an echogram NetCDF (.nc/.netcdf4)
+aa-evr - apply Echoview region(s) (.evr) to an echogram NetCDF (.nc/.netcdf4)
 
 USAGE
   # Apply existing EVR file(s):
@@ -142,6 +167,8 @@ NOTE
 
 
 def _configure_logging(debug: bool) -> None:
+    """Replace the default suppression sink with a user-visible one.
+    Keeps standard logging fully disabled."""
     logger.remove()
     logger.add(sys.stderr, level="DEBUG" if debug else "INFO")
 
@@ -297,14 +324,14 @@ def _extract_region_mask_union(
             if da.sizes[rdim] == 0:
                 # FIX: zero-region crash.
                 # echoregions returned no matching polygons for this time window.
-                # This is valid — it means no EVR polygons overlap the echogram,
+                # This is valid - it means no EVR polygons overlap the echogram,
                 # commonly because aa-evl upstream has already trimmed the time range.
                 # Return all-False (nothing inside any region) instead of crashing.
                 logger.warning(
                     f"EVR returned 0 matching regions for this echogram "
                     f"(region_id dimension is empty). This typically means the EVR "
                     f"polygon time range does not overlap the current echogram ping_time "
-                    f"range — which can happen when aa-evl has already masked the data. "
+                    f"range - which can happen when aa-evl has already masked the data. "
                     f"Treating as all-False (nothing inside any region). "
                     f"Run with --debug to compare time ranges."
                 )
@@ -336,7 +363,7 @@ def _build_union_region_mask(
 
     Two modes (auto-detected per EVR file):
       1) Normal echogram EVR (depth+time polygons): echoregions Regions2D.region_mask()
-      2) GPS/alongtrack EVR (no usable depth): TIME-ONLY fallback — keep all depths
+      2) GPS/alongtrack EVR (no usable depth): TIME-ONLY fallback - keep all depths
          for pings whose ping_time falls within any region time span.
 
     KEY: The returned mask uses the original dataset coordinate labels (not the
@@ -550,7 +577,7 @@ def _build_union_region_mask(
             )
             if debug:
                 logger.debug(
-                    f"{evr_path.name}: time-only mask — "
+                    f"{evr_path.name}: time-only mask - "
                     f"inside pings={int(mask_time.sum())}/{mask_time.size}"
                 )
 
@@ -607,7 +634,7 @@ def _build_union_region_mask(
             if debug:
                 n_in = int(file_union.values.sum())
                 logger.debug(
-                    f"{evr_path.name}: polygon mask — "
+                    f"{evr_path.name}: polygon mask - "
                     f"inside={n_in}/{file_union.size} cells "
                     f"({100 * n_in / max(file_union.size, 1):.1f}%)"
                 )
@@ -648,7 +675,7 @@ def _apply_mask(
     Uses positional (coordinate-stripped) masking as the sole strategy.
     By construction the mask has the same shape as the data along (time_dim,
     depth_dim), so stripping coordinate labels before broadcasting guarantees
-    no reindex mismatch can silently fill the mask with NaN — which in numpy
+    no reindex mismatch can silently fill the mask with NaN - which in numpy
     evaluates as True and causes xr.where to keep all original values unchanged.
     """
     ds_out = ds.copy(deep=False)
@@ -707,7 +734,15 @@ def _process_file(
         logger.error(f"Output exists (use --overwrite): {output_path}")
         return None
 
-    ds = xr.open_dataset(input_path)
+    # Guard against clobbering the input
+    if output_path.resolve() == input_path.resolve():
+        logger.error(f"Refusing to overwrite input file: {input_path.resolve()}")
+        return None
+
+    # Read into memory and release the file handle so we can write into the
+    # same directory without xarray holding a read lock.
+    with xr.open_dataset(input_path) as ds_in:
+        ds = ds_in.load()
 
     tdim, ddim = _infer_dims(ds, var=var, time_dim=time_dim, depth_dim=depth_dim)
     if debug:
@@ -743,16 +778,12 @@ def _process_file(
             "Run with --debug to see time/depth ranges for diagnosis."
         )
         if fail_empty:
-            try:
-                ds.close()
-            except Exception:
-                pass
             return None
 
     if inside == total:
         logger.warning(
             "Union mask is FULL (all cells inside). Output will be identical to "
-            "input — no data will be masked out. Check EVR polygon boundaries."
+            "input - no data will be masked out. Check EVR polygon boundaries."
         )
 
     ds_out = _apply_mask(
@@ -762,11 +793,6 @@ def _process_file(
     ds_out.attrs["aa_evr_files"] = ",".join(str(p) for p in evr_files)
 
     ds_out.to_netcdf(output_path)
-
-    try:
-        ds.close()
-    except Exception:
-        pass
 
     return output_path
 
@@ -792,13 +818,13 @@ def main() -> int:
         help="Input .nc/.netcdf4 paths (or read from stdin).",
     )
 
-    # ── EVR mode ──
+    # -- EVR mode --
     parser.add_argument(
         "--evr", required=False, default=None, nargs="+", type=Path, metavar="EVR",
         help="One or more .evr paths (omit to enter interactive drawing mode).",
     )
 
-    # ── Drawing mode ──
+    # -- Drawing mode --
     parser.add_argument(
         "--name", type=str, default=None, dest="name",
         help=(
@@ -812,7 +838,7 @@ def main() -> int:
         help="Drawing mode: Bokeh server port (default: 5006; auto-increments if busy).",
     )
 
-    # ── Shared output options ──
+    # -- Shared output options --
     parser.add_argument(
         "-o", "--output-path", dest="output_path", type=Path,
         help="Output path (only valid for a single input file, EVR mode only).",
@@ -830,7 +856,7 @@ def main() -> int:
         help="Overwrite existing output files.",
     )
 
-    # ── Masking options (shared) ──
+    # -- Masking options (shared) --
     parser.add_argument(
         "--var", type=str, default="Sv",
         help="Variable to mask (default: Sv).",
@@ -863,9 +889,9 @@ def main() -> int:
 
     _configure_logging(args.debug)
 
-    # ══════════════════════════════════════════════════════════════
+    # ==============================================================
     # Route: DRAWING MODE  (--evr not provided)
-    # ══════════════════════════════════════════════════════════════
+    # ==============================================================
     if not args.evr:
         try:
             from aalibrary.utils.region_draw import run_drawing_mode
@@ -927,9 +953,9 @@ def main() -> int:
         else:
             return 1
 
-    # ══════════════════════════════════════════════════════════════
+    # ==============================================================
     # Route: EVR MODE  (--evr provided)
-    # ══════════════════════════════════════════════════════════════
+    # ==============================================================
     input_paths = list(_iter_input_paths(args.input_paths))
     if not input_paths:
         logger.error("No input paths provided (positional or via stdin).")
