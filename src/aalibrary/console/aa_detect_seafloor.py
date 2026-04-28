@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Console tool to detect the seafloor (bottom line) using Echopype’s dispatcher
 `echopype.mask.detect_seafloor(ds, method, params)` and save the result.
