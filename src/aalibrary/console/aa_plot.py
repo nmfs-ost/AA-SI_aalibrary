@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-aa-plot — Interactive echogram plotting (HTML) for Echopype/xarray NetCDF datasets
+aa-plot - Interactive echogram plotting (HTML) for Echopype/xarray NetCDF datasets
 
 Goals:
 - Accept .nc path from argv OR stdin (pipeline-friendly).
@@ -9,20 +9,39 @@ Goals:
   * If Sv has a 'channel' dimension, tabs are per-channel (labels include
     frequency_nominal if present as a coord on channel).
   * If Sv has a 'frequency_nominal' dimension, tabs are per-frequency.
-  * If BOTH are dimensions, tabs are nested: frequency -> channel, or channel -> frequency.
 - No matplotlib. Output is standalone HTML.
 - Print absolute HTML path to stdout for downstream chaining.
 - Keep stdout clean except for final path (logs go to stderr via loguru).
 - Drawing tools (freehand, polyline, region polygon) overlay the echogram;
   annotations export to EVL (lines) or EVR (regions) Echoview-compatible files.
+
+Notes for cloud / JupyterLab workspaces:
+- JupyterLab opens HTML files in a restrictive iframe sandbox that blocks
+  file downloads (the sandbox lacks `allow-downloads`). The "Export EVL/EVR"
+  buttons attempt a download but may silently fail. The "Show EVL/EVR text"
+  buttons always work: they open a modal with the file content for copy/paste.
 """
 
 from __future__ import annotations
 
+# === Silence logs BEFORE any heavy imports ===
+import logging
+import sys
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+from loguru import logger
+logger.remove()
+# Default sink: WARNING+ to stderr so real errors aren't swallowed.
+# _configure_logging() below replaces this once --quiet is parsed.
+logger.add(sys.stderr, level="WARNING")
+
+# Now the heavy imports - anything they log gets squashed
 import argparse
 import io
 import json
-import sys
 from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +49,6 @@ from typing import Optional, Tuple, Any
 
 import numpy as np
 import xarray as xr
-from loguru import logger
 
 import holoviews as hv
 from holoviews import opts
@@ -38,6 +56,19 @@ import hvplot.xarray  # noqa: F401
 import panel as pn
 
 pn.extension()
+
+
+def silence_all_logs():
+    """Re-apply suppression in case a library re-enabled logging
+    or added its own loguru sink during initialization."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
+
 
 # ---------------------------------------------------------------------------
 # Y-axis names that represent "depth / range" and should be drawn top-down
@@ -107,6 +138,8 @@ Output:
 
 
 def _configure_logging(quiet: bool) -> None:
+    """Replace the default suppression sink with a user-visible one.
+    Standard logging stays fully disabled."""
     logger.remove()
     if quiet:
         logger.add(sys.stderr, level="WARNING", backtrace=False, diagnose=False)
@@ -222,9 +255,41 @@ def _x_label(x_name: str) -> str:
     return nice.get(x_name, x_name)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+#  CATEGORICAL DETECTION (for cluster labels, masks, and similar)
+# ===========================================================================
+
+def _is_categorical(da: xr.DataArray, finite_vals: np.ndarray) -> bool:
+    """
+    Decide whether a variable should be summarized categorically.
+
+    Triggers as categorical when:
+      - dtype is integer/unsigned/bool, OR
+      - dtype is float but every finite value is integer-valued AND there are
+        fewer than ~50 unique values. This catches KMeans labels, region masks,
+        and similar discrete data stored as float (a common xarray quirk).
+    """
+    if da.dtype.kind in ("i", "u", "b"):
+        return True
+    if finite_vals.size == 0:
+        return False
+    # Subsample for the integer-valued check; full scan for unique-count below.
+    sample_size = min(50_000, finite_vals.size)
+    step = max(1, finite_vals.size // sample_size)
+    sample = finite_vals[::step]
+    try:
+        if np.all(np.equal(np.mod(sample, 1.0), 0.0)):
+            unique_count = int(np.unique(finite_vals).size)
+            if unique_count < 50:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+# ===========================================================================
 #  DATA SUMMARY PANEL
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 _SIDEBAR_CSS = """\
 <style>
@@ -264,6 +329,16 @@ _SIDEBAR_CSS = """\
     flex: 1 1 260px;
     box-sizing: border-box;
 }
+.aa-section.aa-section-pipeline {
+    background: #fef3c7;
+    border-left: 3px solid #f59e0b;
+}
+.aa-section.aa-section-pipeline .aa-section-head { color: #78350f; }
+.aa-section.aa-section-varinfo {
+    background: #ede9fe;
+    border-left: 3px solid #8b5cf6;
+}
+.aa-section.aa-section-varinfo .aa-section-head { color: #4c1d95; }
 .aa-section-head {
     color: #475569;
     font-weight: 600;
@@ -282,6 +357,23 @@ _SIDEBAR_CSS = """\
 .aa-chan-idx { color: #94a3b8; min-width: 24px; }
 .aa-chan-name { color: #1e293b; }
 .aa-chan-freq { color: #6366f1; margin-left: auto; }
+.aa-cluster-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 1px 0;
+}
+.aa-cluster-label { color: #94a3b8; min-width: 80px; }
+.aa-cluster-bar-wrap {
+    flex: 1;
+    background: #e2e8f0;
+    border-radius: 3px;
+    height: 10px;
+    overflow: hidden;
+    min-width: 60px;
+}
+.aa-cluster-bar { height: 100%; background: linear-gradient(90deg, #0369a1, #0ea5e9); }
+.aa-cluster-count { color: #334155; min-width: 90px; text-align: right; }
 .aa-divider { border: none; border-top: 1px solid #e2e8f0; margin: 4px 0; }
 .aa-copy-btn {
     background: #f1f5f9;
@@ -298,6 +390,25 @@ _SIDEBAR_CSS = """\
     text-align: center;
 }
 .aa-copy-btn:hover { background: #e2e8f0; color: #1e293b; border-color: #94a3b8; }
+.aa-details {
+    margin: 4px 14px 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    padding: 6px 10px;
+    background: #ffffff;
+}
+.aa-details summary {
+    cursor: pointer;
+    color: #475569;
+    font-weight: 600;
+    font-size: 0.86em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    user-select: none;
+    outline: none;
+}
+.aa-details summary:hover { color: #0369a1; }
+.aa-details-body { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f1f5f9; }
 </style>
 """
 
@@ -346,10 +457,39 @@ _COPY_JS_TEMPLATE = """\
 """
 
 
+def _esc(s: str) -> str:
+    """HTML-escape a string for safe insertion into the summary panel."""
+    return (
+        s.replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+    )
+
+
 def _html_row(key: str, val: str, em: bool = False) -> str:
     cls = "aa-val-em" if em else "aa-val"
-    val = val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f'<div class="aa-row"><span class="aa-key">{key}</span><span class="{cls}">{val}</span></div>'
+    return f'<div class="aa-row"><span class="aa-key">{_esc(key)}</span><span class="{cls}">{_esc(val)}</span></div>'
+
+
+def _format_attr_value(v: Any) -> str:
+    """Format an xarray attr value for display, truncating overly long strings."""
+    if isinstance(v, (bytes, bytearray)):
+        try:
+            v = v.decode("utf-8", errors="replace")
+        except Exception:
+            v = repr(v)
+    if isinstance(v, (list, tuple, np.ndarray)):
+        try:
+            arr = np.asarray(v)
+            if arr.size <= 10:
+                return ", ".join(_coord_to_str(x) for x in arr.tolist())
+            return f"[{arr.size} items: " + ", ".join(_coord_to_str(x) for x in arr.flat[:5]) + ", ...]"
+        except Exception:
+            pass
+    s = str(v)
+    if len(s) > 200:
+        s = s[:200] + " ..."
+    return s
 
 
 def _build_data_log(
@@ -362,29 +502,58 @@ def _build_data_log(
     sections: list[str] = []
     sections.append(f'<div class="aa-sidebar-title">{_CLIPBOARD_SVG} Data Summary</div>')
 
+    # ------------------------------------------------------------------
+    # Source
+    # ------------------------------------------------------------------
     src = ds.encoding.get("source", "(in-memory)")
     src_short = Path(src).name if src != "(in-memory)" else src
     sec = '<div class="aa-section"><div class="aa-section-head">Source</div>'
     sec += _html_row("file", src_short)
     sec += _html_row("variable", var, em=True)
+    sec += _html_row("dtype", str(ds[var].dtype))
     sec += _html_row("x-axis", x_name)
     sec += _html_row("y-axis", f"{y_name} \u2195 inverted" if flip_y else y_name)
     sec += '</div>'
     sections.append(sec)
 
     attrs = ds.attrs
+
+    # ------------------------------------------------------------------
+    # Pipeline provenance — any aa_* attrs left by upstream tools.
+    # This is the key context for KMeans / EVL / EVR / depth / etc:
+    # the parameters that produced this file live here.
+    # ------------------------------------------------------------------
+    aa_attrs = {k: v for k, v in attrs.items() if k.startswith("aa_") or k.lower() == "history"}
+    if aa_attrs:
+        sec = '<div class="aa-section aa-section-pipeline"><div class="aa-section-head">Pipeline / Provenance</div>'
+        for k in sorted(aa_attrs.keys()):
+            sec += _html_row(k, _format_attr_value(aa_attrs[k]),
+                             em=(k == "aa_tool"))
+        sec += '</div>'
+        sections.append(sec)
+
+    # ------------------------------------------------------------------
+    # Curated common metadata
+    # ------------------------------------------------------------------
     interesting_keys = [
         ("sonar_model", "sonar"), ("survey_name", "survey"), ("title", "title"),
         ("institution", "institution"), ("platform_name", "platform"),
         ("instrument_type", "instrument"), ("date_created", "created"),
         ("time_coverage_start", "time start"), ("time_coverage_end", "time end"),
     ]
-    attr_rows = [_html_row(lbl, str(attrs[ak])) for ak, lbl in interesting_keys if ak in attrs and attrs[ak]]
+    attr_rows = [
+        _html_row(lbl, _format_attr_value(attrs[ak]))
+        for ak, lbl in interesting_keys
+        if ak in attrs and attrs[ak] not in (None, "", b"")
+    ]
     if attr_rows:
         sec = '<div class="aa-section"><div class="aa-section-head">Metadata</div>'
         sec += "".join(attr_rows) + '</div>'
         sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Dimensions
+    # ------------------------------------------------------------------
     da = ds[var]
     sec = '<div class="aa-section"><div class="aa-section-head">Dimensions</div>'
     for d, s in da.sizes.items():
@@ -392,6 +561,9 @@ def _build_data_log(
     sec += '</div>'
     sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Coord ranges
+    # ------------------------------------------------------------------
     range_rows = []
     for cname in da.dims:
         if cname in ds.coords:
@@ -411,16 +583,17 @@ def _build_data_log(
         sec += "".join(range_rows) + '</div>'
         sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Channels
+    # ------------------------------------------------------------------
     chan_dim = "channel" if "channel" in da.dims else None
     f_on_chan = None
     if chan_dim:
         ccoord = ds[chan_dim]
-        for loc in (ds.data_vars, ds.coords):
-            if "frequency_nominal" in loc:
-                f = ds["frequency_nominal"]
-                if chan_dim in f.dims:
-                    f_on_chan = f
-                    break
+        if "frequency_nominal" in ds:
+            f = ds["frequency_nominal"]
+            if chan_dim in f.dims:
+                f_on_chan = f
 
         sec = '<div class="aa-section"><div class="aa-section-head">Channels</div>'
         for ci in range(ccoord.size):
@@ -438,55 +611,154 @@ def _build_data_log(
                         else f'<span class="aa-chan-freq">{fv_num:.0f} Hz</span>'
                     )
                 except Exception:
-                    freq_html = f'<span class="aa-chan-freq">{_coord_to_str(fv)}</span>'
+                    freq_html = f'<span class="aa-chan-freq">{_esc(_coord_to_str(fv))}</span>'
             sec += (
                 f'<div class="aa-chan-row">'
                 f'<span class="aa-chan-idx">[{ci}]</span>'
-                f'<span class="aa-chan-name">{ch_str}</span>'
+                f'<span class="aa-chan-name">{_esc(ch_str)}</span>'
                 f'{freq_html}</div>'
             )
         sec += '</div>'
         sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Active Variable Info — variable-level attrs (units, long_name,
+    # _FillValue, plus any aa_* / kmeans / clustering parameters set
+    # by upstream tools on the variable itself).
+    # ------------------------------------------------------------------
+    var_attrs = {k: v for k, v in da.attrs.items()}
+    if var_attrs:
+        sec = f'<div class="aa-section aa-section-varinfo"><div class="aa-section-head">{_esc(var)} Attributes</div>'
+        for k in sorted(var_attrs.keys()):
+            sec += _html_row(k, _format_attr_value(var_attrs[k]))
+        sec += '</div>'
+        sections.append(sec)
+
+    # ------------------------------------------------------------------
+    # Statistics — categorical or continuous
+    # ------------------------------------------------------------------
     finite = np.array([])
-    sec = f'<div class="aa-section"><div class="aa-section-head">{var} Statistics</div>'
+    cluster_summary_for_text: list[str] = []  # populated below for plain-text copy
+    sec = f'<div class="aa-section"><div class="aa-section-head">{_esc(var)} Statistics</div>'
     try:
-        vals = da.values
-        finite = vals[np.isfinite(vals)]
+        vals = np.asarray(da.values)
+        if vals.dtype.kind == "f":
+            finite = vals[np.isfinite(vals)]
+        else:
+            finite = vals.ravel()
         total = vals.size
         nan_count = total - finite.size
         sec += _html_row("samples", f"{total:,}")
         sec += _html_row("NaN / Inf", f"{nan_count:,} ({100 * nan_count / max(total, 1):.1f}%)")
+
         if finite.size > 0:
-            sec += '<hr class="aa-divider"/>'
-            sec += _html_row("min", f"{finite.min():.2f}", em=True)
-            sec += _html_row("max", f"{finite.max():.2f}", em=True)
-            sec += _html_row("mean", f"{finite.mean():.2f}")
-            sec += _html_row("std", f"{finite.std():.2f}")
-            sec += '<hr class="aa-divider"/>'
-            for q in (5, 25, 50, 75, 95):
-                sec += _html_row(f"P{q}", f"{np.percentile(finite, q):.2f}")
+            categorical = _is_categorical(da, finite)
+
+            if categorical:
+                # Cluster / class summary — for KMeans labels, region masks, etc.
+                sec += _html_row("kind", "categorical / discrete", em=True)
+                # Compute counts on the FULL data so percentages are exact.
+                if vals.dtype.kind == "f":
+                    flat = vals.ravel()
+                    flat = flat[np.isfinite(flat)]
+                else:
+                    flat = vals.ravel()
+                unique, counts = np.unique(flat, return_counts=True)
+                sec += _html_row("classes", f"{unique.size}", em=True)
+                sec += '<hr class="aa-divider"/>'
+                # Sort by count desc so largest cluster is on top.
+                order = np.argsort(-counts)
+                # Limit to top 20 to keep panel readable.
+                limit = min(20, unique.size)
+                max_count = int(counts.max()) if counts.size else 1
+                for j in order[:limit]:
+                    u = unique[j]
+                    c = int(counts[j])
+                    pct = 100.0 * c / finite.size
+                    label = _coord_to_str(u)
+                    if vals.dtype.kind == "f":
+                        try:
+                            label = str(int(u))
+                        except Exception:
+                            pass
+                    bar_pct = (c / max_count) * 100
+                    cluster_summary_for_text.append(f"  class {label}: {c:,} ({pct:.2f}%)")
+                    sec += (
+                        f'<div class="aa-cluster-row">'
+                        f'<span class="aa-cluster-label">class {_esc(label)}</span>'
+                        f'<span class="aa-cluster-bar-wrap">'
+                        f'<span class="aa-cluster-bar" style="width:{bar_pct:.1f}%"></span>'
+                        f'</span>'
+                        f'<span class="aa-cluster-count">{c:,} ({pct:.1f}%)</span>'
+                        f'</div>'
+                    )
+                if unique.size > limit:
+                    sec += _html_row("(truncated)", f"+ {unique.size - limit} more classes")
+            else:
+                # Continuous — existing min/max/mean/std/percentiles
+                sec += _html_row("kind", "continuous")
+                sec += '<hr class="aa-divider"/>'
+                sec += _html_row("min", f"{finite.min():.2f}", em=True)
+                sec += _html_row("max", f"{finite.max():.2f}", em=True)
+                sec += _html_row("mean", f"{finite.mean():.2f}")
+                sec += _html_row("std", f"{finite.std():.2f}")
+                sec += '<hr class="aa-divider"/>'
+                for q in (5, 25, 50, 75, 95):
+                    sec += _html_row(f"P{q}", f"{np.percentile(finite, q):.2f}")
     except Exception as exc:
         sec += _html_row("error", str(exc))
     sec += '</div>'
     sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # All Variables (just shapes + dtype)
+    # ------------------------------------------------------------------
     sec = '<div class="aa-section"><div class="aa-section-head">All Variables</div>'
     for dv in ds.data_vars:
         shape_str = ", ".join(f"{s}" for s in ds[dv].shape)
-        sec += _html_row(dv, f"({shape_str})")
+        dtype_str = str(ds[dv].dtype)
+        sec += _html_row(dv, f"({shape_str}) {dtype_str}")
     sec += '</div>'
     sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Collapsible: full dataset attributes (everything not shown above)
+    # ------------------------------------------------------------------
+    shown_keys = {ak for ak, _ in interesting_keys} | set(aa_attrs.keys())
+    other_attrs = {k: v for k, v in attrs.items() if k not in shown_keys}
+    if other_attrs:
+        det = '<details class="aa-details"><summary>All Dataset Attributes</summary><div class="aa-details-body">'
+        for k in sorted(other_attrs.keys()):
+            det += _html_row(k, _format_attr_value(other_attrs[k]))
+        det += '</div></details>'
+    else:
+        det = ""
+
+    # ------------------------------------------------------------------
+    # Plain-text copy
+    # ------------------------------------------------------------------
     plain_lines: list[str] = []
-    plain_lines.append(f"aa-plot Data Summary — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    plain_lines.append(f"aa-plot Data Summary - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     plain_lines.append(f"File: {ds.encoding.get('source', '(in-memory)')}")
-    plain_lines.append(f"Variable: {var}  |  X: {x_name}  |  Y: {y_name} {'(inverted)' if flip_y else ''}")
+    plain_lines.append(f"Variable: {var} (dtype={ds[var].dtype})")
+    plain_lines.append(f"Axes: x={x_name}  y={y_name}{' (inverted)' if flip_y else ''}")
+    if aa_attrs:
+        plain_lines.append("")
+        plain_lines.append("Pipeline / Provenance:")
+        for k in sorted(aa_attrs.keys()):
+            plain_lines.append(f"  {k}: {_format_attr_value(aa_attrs[k])}")
+    if var_attrs:
+        plain_lines.append("")
+        plain_lines.append(f"{var} Attributes:")
+        for k in sorted(var_attrs.keys()):
+            plain_lines.append(f"  {k}: {_format_attr_value(var_attrs[k])}")
     plain_lines.append("")
+    plain_lines.append("Dimensions:")
     for d, s in da.sizes.items():
         plain_lines.append(f"  {d}: {s}")
     if chan_dim:
         plain_lines.append("")
+        plain_lines.append("Channels:")
         ccoord = ds[chan_dim]
         for ci in range(ccoord.size):
             ch_str = _coord_to_str(ccoord.isel({chan_dim: ci}).values)
@@ -496,7 +768,11 @@ def _build_data_log(
                 freq_part = f"  ({_coord_to_str(fv)} Hz)"
             plain_lines.append(f"  [{ci}] {ch_str}{freq_part}")
     try:
-        if finite.size > 0:
+        if cluster_summary_for_text:
+            plain_lines.append("")
+            plain_lines.append(f"{var} Class Counts:")
+            plain_lines.extend(cluster_summary_for_text)
+        elif finite.size > 0 and not _is_categorical(da, finite):
             plain_lines.append("")
             plain_lines.append(
                 f"  {var}: min={finite.min():.4f}  max={finite.max():.4f}  "
@@ -509,7 +785,7 @@ def _build_data_log(
 
     text_json = json.dumps("\n".join(plain_lines))
     copy_js = _COPY_JS_TEMPLATE.format(text_json=text_json)
-    copy_btn = f'<button class="aa-copy-btn" onclick="{copy_js.strip()}">Copy to clipboard</button>'
+    copy_btn = f'<button class="aa-copy-btn" onclick="{copy_js.strip()}">Copy summary</button>'
 
     html = (
         f'{_SIDEBAR_CSS}<div class="aa-sidebar">'
@@ -517,15 +793,16 @@ def _build_data_log(
         + '<div class="aa-sections-grid">'
         + "".join(sections[1:])
         + '</div>'
+        + det
         + copy_btn
         + '</div>'
     )
     return pn.pane.HTML(html, sizing_mode="stretch_width")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  COLORMAP PICKER
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _get_bokeh_palette(name: str, n: int = 256) -> list[str]:
     from bokeh.palettes import all_palettes
@@ -589,9 +866,9 @@ def _build_cmap_picker(default_cmap: str) -> pn.pane.Bokeh:
     return pn.pane.Bokeh(select, sizing_mode="fixed")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  HOVER + CROSSHAIR + TAP (click-to-pin)
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
     from bokeh.models import HoverTool, CrosshairTool, TapTool, CustomJS
@@ -646,9 +923,9 @@ def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
     return hover, crosshair, tap
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  DRAWING TOOLS  (freehand · polyline · region polygon)
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+#  DRAWING TOOLS  (freehand / polyline / region polygon)
+# ===========================================================================
 
 _DRAW_CSS = """\
 <style>
@@ -705,12 +982,13 @@ _DRAW_CSS = """\
     border-radius: 3px;
     flex-shrink: 0;
 }
-.aa-draw-btns {
+.aa-draw-btnrow {
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
     margin-top: 8px;
 }
+.aa-draw-btnrow + .aa-draw-btnrow { margin-top: 6px; }
 .aa-draw-btn {
     background: #f1f5f9;
     border: 1px solid #cbd5e1;
@@ -728,6 +1006,7 @@ _DRAW_CSS = """\
 .aa-draw-btn.evl:hover  { background:#e0f2fe; border-color:#0284c7; }
 .aa-draw-btn.evr  { border-color:#818CF8; color:#4338ca; }
 .aa-draw-btn.evr:hover  { background:#eef2ff; border-color:#6366f1; }
+.aa-draw-btn.txt  { background:#f8fafc; border-style:dashed; }
 .aa-draw-btn.clr  { border-color:#FCA5A5; color:#be123c; }
 .aa-draw-btn.clr:hover  { background:#fff1f2; border-color:#fb7185; }
 .aa-draw-hint {
@@ -735,6 +1014,17 @@ _DRAW_CSS = """\
     font-size: 0.82em;
     margin-top: 9px;
     line-height: 1.55;
+}
+.aa-draw-hint b { color: #475569; }
+.aa-draw-warn {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-left: 3px solid #f59e0b;
+    background: #fef3c7;
+    color: #78350f;
+    font-size: 0.82em;
+    line-height: 1.5;
+    border-radius: 0 4px 4px 0;
 }
 </style>
 """
@@ -775,7 +1065,7 @@ _DRAW_JS_HELPERS = """\
     return isTime ? _aaMsToEvl(x) : x.toFixed(6);
   };
 
-  // Collect sources whose names start with prefix, return arrays of {xs,ys}
+  // Collect sources whose names start with prefix
   W._aaCollect = function(prefix) {
     var result = [];
     _aaGetModels().forEach(function(m) {
@@ -788,127 +1078,11 @@ _DRAW_JS_HELPERS = """\
     return result;
   };
 
-  W._aaDownload = function(content, filename) {
-    // Strategy 1: data: URI anchor click — works in most iframe contexts
-    // (unlike blob: URLs which are blocked by GCP / JupyterLab sandbox).
-    try {
-      var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
-      var a = document.createElement('a');
-      a.href = uri;
-      a.download = filename;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // Give the browser a moment; if nothing happened we fall through
-      // (we can't detect failure synchronously, so we just return here —
-      //  the user will see the modal if they click again after nothing downloaded).
-      return;
-    } catch(e1) { /* fall through */ }
-
-    // Strategy 2: open data: URI in a new tab — user can File > Save As
-    try {
-      var uri2 = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
-      var w = window.open(uri2, '_blank');
-      if (w) {
-        w.document && w.document.title && (w.document.title = filename);
-        return;
-      }
-    } catch(e2) { /* fall through */ }
-
-    // Strategy 3: modal textarea — always works; user copies the text manually.
-    // Styled to match the aa-plot sidebar palette.
-    var overlay = document.createElement('div');
-    overlay.style.cssText = [
-      'position:fixed','top:0','left:0','width:100%','height:100%',
-      'background:rgba(15,23,42,0.72)','z-index:99999',
-      'display:flex','align-items:center','justify-content:center'
-    ].join(';');
-
-    var box = document.createElement('div');
-    box.style.cssText = [
-      'background:#f8fafc','border:1px solid #cbd5e1','border-radius:10px',
-      'padding:18px 20px','max-width:720px','width:92%','max-height:80vh',
-      'display:flex','flex-direction:column','gap:10px',
-      'font-family:Menlo,Consolas,DejaVu Sans Mono,monospace','font-size:0.82em'
-    ].join(';');
-
-    var title = document.createElement('div');
-    title.style.cssText = 'font-weight:700;color:#0369a1;font-size:1.05em;';
-    title.textContent = '\u26a0\ufe0f Download blocked \u2014 copy text below (' + filename + ')';
-
-    var hint = document.createElement('div');
-    hint.style.cssText = 'color:#64748b;font-size:0.92em;';
-    hint.textContent = 'Your browser or environment blocked the download (sandboxed iframe). Select all and copy, then paste into a plain .txt file and rename to ' + filename + '.';
-
-    var ta = document.createElement('textarea');
-    ta.value = content;
-    ta.style.cssText = [
-      'width:100%','min-height:220px','resize:vertical',
-      'background:#0f172a','color:#e2e8f0',
-      'border:1px solid #334155','border-radius:6px',
-      'padding:8px 10px','font-family:inherit','font-size:1em',
-      'box-sizing:border-box'
-    ].join(';');
-    ta.readOnly = false;
-    ta.spellcheck = false;
-
-    var btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:8px;';
-
-    var copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Copy to clipboard';
-    copyBtn.style.cssText = [
-      'background:#e0f2fe','border:1px solid #7dd3fc','border-radius:5px',
-      'color:#0369a1','padding:5px 14px','cursor:pointer','font-family:inherit'
-    ].join(';');
-    copyBtn.onclick = function() {
-      ta.select();
-      try {
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(content).then(function(){
-            copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
-            setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
-          });
-        } else {
-          document.execCommand('copy');
-          copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
-          setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
-        }
-      } catch(e) { copyBtn.textContent = 'Copy failed'; }
-    };
-
-    var closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = [
-      'background:#f1f5f9','border:1px solid #cbd5e1','border-radius:5px',
-      'color:#475569','padding:5px 14px','cursor:pointer','font-family:inherit'
-    ].join(';');
-    closeBtn.onclick = function() { document.body.removeChild(overlay); };
-    overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
-
-    btnRow.appendChild(copyBtn);
-    btnRow.appendChild(closeBtn);
-    box.appendChild(title);
-    box.appendChild(hint);
-    box.appendChild(ta);
-    box.appendChild(btnRow);
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-    setTimeout(function(){ ta.select(); }, 80);
-  };
-
-  // Export EVL — collects from aa_freehand_* and aa_lines_* sources
-  // Format: Echoview Line File (EVBD 3)
-  // Each drawn stroke / polyline becomes one named EVL line.
-  W.aaExportEvl = function() {
+  // Build EVL content from current freehand + polyline drawings
+  W.aaGenerateEvl = function() {
     var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
-    // Filter out empty segments
     segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
-    if (!segs.length) {
-      alert('No lines drawn yet.\\nActivate the Freehand (\\u270F) or Polyline (\\u26AA) tool in the echogram toolbar, draw some lines, then export.');
-      return;
-    }
+    if (!segs.length) return null;
     var isTime = _aaIsTime(segs[0].xs);
     var rows = ['EVBD 3 9.0.120.30842', String(segs.length)];
     segs.forEach(function(seg, li) {
@@ -919,19 +1093,14 @@ _DRAW_JS_HELPERS = """\
         rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
       }
     });
-    _aaDownload(rows.join('\\n'), 'aa_lines.evl');
+    return rows.join('\\n');
   };
 
-  // Export EVR — collects from aa_regions_* sources
-  // Format: Echoview Region File (EVBD 3)
-  // Each drawn polygon becomes one EVR region (type 1 = analysis).
-  W.aaExportEvr = function() {
+  // Build EVR content from current region polygons
+  W.aaGenerateEvr = function() {
     var segs = _aaCollect('aa_regions_');
     segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
-    if (!segs.length) {
-      alert('No regions drawn yet.\\nActivate the Region (\\u25A1) tool in the echogram toolbar, draw some polygons, then export.');
-      return;
-    }
+    if (!segs.length) return null;
     var isTime = _aaIsTime(segs[0].xs);
     var rows = ['EVBD 3 9.0.120.30842', String(segs.length) + ' 4'];
     segs.forEach(function(seg, ri) {
@@ -944,10 +1113,185 @@ _DRAW_JS_HELPERS = """\
         rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
       }
     });
-    _aaDownload(rows.join('\\n'), 'aa_regions.evr');
+    return rows.join('\\n');
   };
 
-  // Clear all drawing layers
+  // ---------------------------------------------------------------
+  // Delivery: try a real download, fall back to modal.
+  // ---------------------------------------------------------------
+  W._aaTryDownload = function(content, filename) {
+    // Strategy 1: data: URI anchor click — works in most contexts but
+    // is BLOCKED in JupyterLab's default sandboxed iframe (no allow-downloads).
+    // We can't detect this synchronously, so on Jupyter the user sees nothing
+    // happen — which is why we also expose explicit "Show text" buttons.
+    try {
+      var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+      var a = document.createElement('a');
+      a.href = uri;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    } catch(e1) { /* fall through */ }
+
+    // Strategy 2: open data: URI in a new tab
+    try {
+      var uri2 = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+      var w = window.open(uri2, '_blank');
+      if (w) return;
+    } catch(e2) { /* fall through */ }
+
+    // Strategy 3: modal
+    _aaShowTextModal(content, filename, 'Download blocked - copy text below');
+  };
+
+  // ---------------------------------------------------------------
+  // Always-show modal — used by the "Show ... text" buttons.
+  // Works in any environment, including sandboxed iframes.
+  // ---------------------------------------------------------------
+  W._aaShowTextModal = function(content, filename, title_text) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = [
+      'position:fixed','top:0','left:0','width:100%','height:100%',
+      'background:rgba(15,23,42,0.72)','z-index:99999',
+      'display:flex','align-items:center','justify-content:center'
+    ].join(';');
+
+    var box = document.createElement('div');
+    box.style.cssText = [
+      'background:#f8fafc','border:1px solid #cbd5e1','border-radius:10px',
+      'padding:18px 20px','max-width:760px','width:92%','max-height:80vh',
+      'display:flex','flex-direction:column','gap:10px',
+      'font-family:Menlo,Consolas,DejaVu Sans Mono,monospace','font-size:0.82em'
+    ].join(';');
+
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;color:#0369a1;font-size:1.05em;';
+    title.textContent = title_text + ' (suggested filename: ' + filename + ')';
+
+    var hint = document.createElement('div');
+    hint.style.cssText = 'color:#64748b;font-size:0.92em;line-height:1.5;';
+    hint.innerHTML = (
+      'Select-all and copy the text below, then paste into a plain text file ' +
+      'and save as <b>' + filename + '</b>.<br>' +
+      '<span style="color:#94a3b8;">In JupyterLab: File &rarr; New &rarr; Text File &rarr; paste &rarr; rename.</span>'
+    );
+
+    var ta = document.createElement('textarea');
+    ta.value = content;
+    ta.style.cssText = [
+      'width:100%','min-height:240px','resize:vertical',
+      'background:#0f172a','color:#e2e8f0',
+      'border:1px solid #334155','border-radius:6px',
+      'padding:8px 10px','font-family:inherit','font-size:1em',
+      'box-sizing:border-box'
+    ].join(';');
+    ta.readOnly = false;
+    ta.spellcheck = false;
+
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+    var copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy to clipboard';
+    copyBtn.style.cssText = [
+      'background:#e0f2fe','border:1px solid #7dd3fc','border-radius:5px',
+      'color:#0369a1','padding:5px 14px','cursor:pointer','font-family:inherit'
+    ].join(';');
+    copyBtn.onclick = function() {
+      ta.select();
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(content).then(function(){
+            copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
+            setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
+          }, function() {
+            document.execCommand('copy');
+            copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
+            setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
+          });
+        } else {
+          document.execCommand('copy');
+          copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
+          setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
+        }
+      } catch(e) { copyBtn.textContent = 'Copy failed'; }
+    };
+
+    var dlBtn = document.createElement('button');
+    dlBtn.textContent = 'Try download';
+    dlBtn.style.cssText = [
+      'background:#f0fdf4','border:1px solid #86efac','border-radius:5px',
+      'color:#166534','padding:5px 14px','cursor:pointer','font-family:inherit'
+    ].join(';');
+    dlBtn.onclick = function() {
+      try {
+        var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+        var a = document.createElement('a');
+        a.href = uri; a.download = filename; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch(e) { dlBtn.textContent = 'Blocked'; }
+    };
+
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = [
+      'background:#f1f5f9','border:1px solid #cbd5e1','border-radius:5px',
+      'color:#475569','padding:5px 14px','cursor:pointer','font-family:inherit'
+    ].join(';');
+    closeBtn.onclick = function() { document.body.removeChild(overlay); };
+    overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
+
+    btnRow.appendChild(copyBtn);
+    btnRow.appendChild(dlBtn);
+    btnRow.appendChild(closeBtn);
+    box.appendChild(title);
+    box.appendChild(hint);
+    box.appendChild(ta);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    setTimeout(function(){ ta.select(); }, 80);
+  };
+
+  // ---------------------------------------------------------------
+  // Public buttons
+  // ---------------------------------------------------------------
+  W.aaExportEvl = function() {
+    var content = aaGenerateEvl();
+    if (!content) {
+      alert('No lines drawn yet.\\nActivate Freehand or Polyline in the echogram toolbar, draw some lines, then export.');
+      return;
+    }
+    _aaTryDownload(content, 'aa_lines.evl');
+  };
+  W.aaShowEvlText = function() {
+    var content = aaGenerateEvl();
+    if (!content) {
+      alert('No lines drawn yet.\\nActivate Freehand or Polyline in the echogram toolbar, draw some lines, then try again.');
+      return;
+    }
+    _aaShowTextModal(content, 'aa_lines.evl', 'EVL Line File');
+  };
+  W.aaExportEvr = function() {
+    var content = aaGenerateEvr();
+    if (!content) {
+      alert('No regions drawn yet.\\nActivate the Region tool in the echogram toolbar, draw some polygons, then export.');
+      return;
+    }
+    _aaTryDownload(content, 'aa_regions.evr');
+  };
+  W.aaShowEvrText = function() {
+    var content = aaGenerateEvr();
+    if (!content) {
+      alert('No regions drawn yet.\\nActivate the Region tool in the echogram toolbar, draw some polygons, then try again.');
+      return;
+    }
+    _aaShowTextModal(content, 'aa_regions.evr', 'EVR Region File');
+  };
+
   W.aaClearDraw = function() {
     if (!confirm('Clear all drawn lines and regions?')) return;
     _aaGetModels().forEach(function(m) {
@@ -979,14 +1323,13 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
     aa_regions_{i}   Patches    blue  #4499FF   PolyDrawTool  (double-click to close)
 
     PolyEditTool is also added so drawn geometry can be edited (shift-click vertex to delete).
-    Sources are named so the JS export helpers can find them across all tabs.
     """
     from bokeh.models import (
         FreehandDrawTool, PolyDrawTool, PolyEditTool,
         ColumnDataSource,
     )
 
-    # ── Freehand (gold) — exports as EVL ──────────────────────────────────
+    # -- Freehand (gold) -- exports as EVL --
     fh_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_freehand_{draw_idx}")
     fh_rend = fig.multi_line(
         "xs", "ys", source=fh_src,
@@ -994,9 +1337,9 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
         line_cap="round", line_join="round",
     )
     freehand_tool = FreehandDrawTool(renderers=[fh_rend], num_objects=0)
-    freehand_tool.description = "Freehand line (→ EVL)"
+    freehand_tool.description = "Freehand line (-> EVL)"
 
-    # ── Polyline segments (cyan dashed) — exports as EVL ─────────────────
+    # -- Polyline segments (cyan dashed) -- exports as EVL --
     ln_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_lines_{draw_idx}")
     ln_rend = fig.multi_line(
         "xs", "ys", source=ln_src,
@@ -1004,9 +1347,9 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
     )
     ln_rend.glyph.line_dash = [8, 4]
     line_tool = PolyDrawTool(renderers=[ln_rend], num_objects=0)
-    line_tool.description = "Polyline segments (→ EVL, dbl-click to finish)"
+    line_tool.description = "Polyline segments (-> EVL, dbl-click to finish)"
 
-    # ── Region polygons (blue translucent) — exports as EVR ───────────────
+    # -- Region polygons (blue translucent) -- exports as EVR --
     rg_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_regions_{draw_idx}")
     rg_rend = fig.patches(
         "xs", "ys", source=rg_src,
@@ -1014,13 +1357,16 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
         line_color="#4499FF", line_width=2.0, line_alpha=0.92,
     )
     region_tool = PolyDrawTool(renderers=[rg_rend], num_objects=0)
-    region_tool.description = "Region polygon (→ EVR, dbl-click to close)"
+    region_tool.description = "Region polygon (-> EVR, dbl-click to close)"
 
-    # ── Vertex editor — lets you drag / delete vertices after drawing ──────
+    # -- Vertex editor -- lets you drag / delete vertices after drawing --
+    # Using fig.scatter(marker="circle", size=...) instead of fig.circle(size=...)
+    # because the latter was deprecated in Bokeh 3.4.
     try:
         vtx_src = ColumnDataSource(data={"x": [], "y": []})
-        vtx_rend = fig.circle(
+        vtx_rend = fig.scatter(
             "x", "y", source=vtx_src,
+            marker="circle",
             size=9, color="white", fill_alpha=0.85,
             line_color="#64748b", line_width=1.2,
         )
@@ -1037,32 +1383,29 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
 
 def _build_annotation_panel() -> pn.pane.HTML:
     """
-    Build the annotation controls pane — consistent with the sidebar style.
+    Build the annotation controls pane.
 
-    The panel is purely HTML + a <script> block defining JS helpers and
-    download functions.  No server required; works in the static embedded HTML.
+    Two rows of buttons:
+      Row 1: download buttons (work in normal browser tabs)
+      Row 2: "Show text" buttons (work everywhere, including JupyterLab sandbox)
 
-    EVL format notes
-    ----------------
-    EVBD 3 9.0.120.30842
-    <n_lines>
-    <line_name>
-    -10000.0000 0 0          (bad_data_value  status  editable)
-    <n_points>
-    YYYYMMDD HHMMSS.ssss     depth_m          (tab-separated)
-    ...
+    EVL format
+      EVBD 3 9.0.120.30842
+      <n_lines>
+      <line_name>
+      -10000.0000 0 0          (bad_data_value  status  editable)
+      <n_points>
+      YYYYMMDD HHMMSS.ssss     depth_m
 
-    EVR format notes
-    ----------------
-    EVBD 3 9.0.120.30842
-    <n_regions> 4
-    <region_name>
-                             (notes — blank)
-                             (detection_settings — blank)
-    1                        (region type: 1=analysis)
-    <n_points>
-    YYYYMMDD HHMMSS.ssss     depth_m
-    ...
+    EVR format
+      EVBD 3 9.0.120.30842
+      <n_regions> 4
+      <region_name>
+                               (notes)
+                               (detection_settings)
+      1                        (region type: 1=analysis)
+      <n_points>
+      YYYYMMDD HHMMSS.ssss     depth_m
     """
     pencil_svg = (
         '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
@@ -1080,24 +1423,33 @@ def _build_annotation_panel() -> pn.pane.HTML:
     <div class="aa-draw-legend">
       <div class="aa-draw-legend-item">
         <div class="aa-swatch-freehand"></div>
-        <span><b>Freehand</b> &mdash; activate ✏ in toolbar, draw freely</span>
+        <span><b>Freehand</b> &mdash; activate &#9999; in toolbar, draw freely</span>
       </div>
       <div class="aa-draw-legend-item">
         <div class="aa-swatch-poly"></div>
-        <span><b>Polyline</b> &mdash; activate ⬤ in toolbar, click points, dbl-click to finish</span>
+        <span><b>Polyline</b> &mdash; activate in toolbar, click points, dbl-click to finish</span>
       </div>
       <div class="aa-draw-legend-item">
         <div class="aa-swatch-region"></div>
-        <span><b>Region</b> &mdash; activate ▭ in toolbar, click vertices, dbl-click to close</span>
+        <span><b>Region</b> &mdash; activate in toolbar, click vertices, dbl-click to close</span>
       </div>
     </div>
-    <div class="aa-draw-btns">
-      <button class="aa-draw-btn evl" onclick="aaExportEvl()">&#11015; Export EVL &nbsp;<span style="opacity:.65;font-size:.9em">(freehand + polylines)</span></button>
-      <button class="aa-draw-btn evr" onclick="aaExportEvr()">&#11015; Export EVR &nbsp;<span style="opacity:.65;font-size:.9em">(regions)</span></button>
+    <div class="aa-draw-btnrow">
+      <button class="aa-draw-btn evl" onclick="aaExportEvl()">&#11015; Download EVL</button>
+      <button class="aa-draw-btn evr" onclick="aaExportEvr()">&#11015; Download EVR</button>
       <button class="aa-draw-btn clr" onclick="aaClearDraw()">&#128465; Clear all</button>
     </div>
+    <div class="aa-draw-btnrow">
+      <button class="aa-draw-btn evl txt" onclick="aaShowEvlText()">&#128203; Show EVL text</button>
+      <button class="aa-draw-btn evr txt" onclick="aaShowEvrText()">&#128203; Show EVR text</button>
+    </div>
+    <div class="aa-draw-warn">
+      <b>JupyterLab / cloud workspace?</b> The Download buttons are blocked by the
+      iframe sandbox and may silently do nothing. Use the <b>Show text</b> buttons
+      instead &mdash; they open a copyable text view that works everywhere.
+    </div>
     <div class="aa-draw-hint">
-      <b>Tip:</b> tools appear in the plot toolbar above the echogram &mdash; switch freely between draw, zoom&nbsp;&#x1F50D; and pan&nbsp;&#x270B;.<br>
+      <b>Tip:</b> tools appear in the plot toolbar above the echogram &mdash; switch freely between draw, zoom and pan.<br>
       Drag any vertex with the <b>Edit</b> tool to adjust; shift-click a vertex to delete it.<br>
       EVL / EVR files use Echoview line/region format and open directly in Echoview.
     </div>
@@ -1107,9 +1459,9 @@ def _build_annotation_panel() -> pn.pane.HTML:
     return pn.pane.HTML(html, sizing_mode="stretch_width")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  PLOT CONSTRUCTION
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _plot_echogram(
     da: xr.DataArray,
@@ -1177,7 +1529,6 @@ def _plot_echogram(
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
 
-    # Combined hook: stretch_width + drawing tools
     _draw_idx = draw_idx
     _add_draw = show_draw
 
@@ -1315,12 +1666,10 @@ def _build_all_tabs(
         ccoord = ds[chan_dim]
 
         f_on_chan = None
-        for loc in (ds.data_vars, ds.coords):
-            if "frequency_nominal" in loc:
-                f = ds["frequency_nominal"]
-                if chan_dim in f.dims:
-                    f_on_chan = f
-                    break
+        if "frequency_nominal" in ds:
+            f = ds["frequency_nominal"]
+            if chan_dim in f.dims:
+                f_on_chan = f
 
         tabs = []
         for ci in range(ccoord.size):
@@ -1345,7 +1694,7 @@ def _build_all_tabs(
 
         return pn.Tabs(*tabs, sizing_mode="stretch_width", dynamic=False)
 
-    # Fallback — no channel dim
+    # Fallback - no channel dim
     da2 = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
     plot = _plot_echogram(
         da=da2, var=var, x_name=x_name, y_name=y_name, title=var,
@@ -1360,9 +1709,9 @@ def _build_all_tabs(
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  HEADER
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool) -> pn.pane.Markdown:
     source = ds.encoding.get("source", "(in-memory)")
@@ -1370,12 +1719,15 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
     attrs = ds.attrs
     sonar_model = attrs.get("sonar_model", attrs.get("keywords", ""))
     survey_name = attrs.get("survey_name", attrs.get("title", ""))
+    aa_tool = attrs.get("aa_tool", "")
 
     meta_lines = []
     if survey_name:
         meta_lines.append(f"- **survey:** `{survey_name}`")
     if sonar_model:
         meta_lines.append(f"- **sonar:** `{sonar_model}`")
+    if aa_tool:
+        meta_lines.append(f"- **last pipeline step:** `{aa_tool}`")
 
     orient_note = "y-axis inverted (surface at top)" if flip_y else "y-axis normal"
     md = (
@@ -1383,7 +1735,7 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
         f"- **file:** `{source}`\n"
         f"- **var:** `{var}` \u00a0 ({dim_info})\n"
         f"- **x:** `{x_name}`  \u2022  **y:** `{y_name}` \u00a0 *({orient_note})*\n"
-        + "\n".join(meta_lines) + "\n\n"
+        + ("\n".join(meta_lines) + "\n" if meta_lines else "") + "\n"
         "<span style='color:#777; font-size:0.85em;'>"
         "Scroll to zoom \u00b7 Shift+drag to pan \u00b7 Click to pin coordinates \u00b7 "
         "Hover for values \u00b7 Colormap picker below \u00b7 "
@@ -1393,9 +1745,9 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
     return pn.pane.Markdown(md, sizing_mode="stretch_width")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  LAYOUT ASSEMBLY
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _render_layout(
     ds: xr.Dataset,
@@ -1431,9 +1783,9 @@ def _render_layout(
     if flip_y:
         flip_y = _should_flip_y(y_name)
         if flip_y:
-            logger.info(f"Y-axis '{y_name}' recognised as range/depth \u2192 inverting (surface at top).")
+            logger.info(f"Y-axis '{y_name}' recognised as range/depth -> inverting (surface at top).")
         else:
-            logger.info(f"Y-axis '{y_name}' not in depth/range list \u2192 keeping default orientation.")
+            logger.info(f"Y-axis '{y_name}' not in depth/range list -> keeping default orientation.")
 
     min_width = max(width, 100)
 
@@ -1491,9 +1843,9 @@ def _render_layout(
     return pn.Column(*parts, sizing_mode="stretch_width")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  CLI
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def main() -> None:
     if len(sys.argv) == 1:
@@ -1573,7 +1925,8 @@ def main() -> None:
     try:
         buf = io.StringIO()
         with redirect_stdout(buf), redirect_stderr(buf):
-            ds = xr.open_dataset(args.input_path)
+            with xr.open_dataset(args.input_path) as ds_in:
+                ds = ds_in.load()
 
         ds.encoding["source"] = str(args.input_path)
         var = _ensure_variable(ds, args.var)
