@@ -1,48 +1,44 @@
 #!/usr/bin/env python3
 """
-Console tool for converting RAW files to NetCDF using Echopype,
-removing background noise, applying transformations, and saving back.
+Console tool for converting RAW files to NetCDF using Echopype, ...
 """
 
-import argparse
-from html import parser
-import pprint
+# === Silence logs BEFORE any heavy imports ===
+import logging
 import sys
 from pathlib import Path
 
+logging.disable(logging.CRITICAL)
 
-
+# Loguru auto-registers a default stderr sink at import time,
+# so remove it immediately after importing.
 from loguru import logger
-import echopype as ep  # make sure echopype is installed
+logger.remove()
 
+# Now the heavy imports — anything they log gets squashed
+import argparse
+import pprint
 
+import echopype as ep
 import panel as pn
 import hvplot.xarray
 import hvplot
 import holoviews as hv
-import panel as pn
 import nbformat as nbf
+
 hv.extension('bokeh')
 pn.extension('bokeh')
-#hvplot.extension('matplotlib')
 
-import logging
 
 def silence_all_logs():
-    # Standard logging: disable everything at/below CRITICAL
-    logging.disable(logging.DEBUG)
-    
-    # Also clear handlers on root + any named loggers already configured,
-    # in case something added a handler with propagate=False
+    """Re-apply suppression. Useful if a library re-enabled logging
+    or added a loguru sink during its own initialization."""
+    logging.disable(logging.CRITICAL)
     for name in [None] + list(logging.root.manager.loggerDict):
         lg = logging.getLogger(name)
         lg.handlers.clear()
         lg.propagate = True
-    
-    # Loguru: remove all sinks (only if loguru is actually imported)
-    if "loguru" in sys.modules:
-        from loguru import logger
-        logger.remove()
+    logger.remove()
 
 def write_panel_notebook(output_path: Path):
     nb = nbf.v4.new_notebook()
