@@ -26,7 +26,23 @@ hv.extension('bokeh')
 pn.extension('bokeh')
 #hvplot.extension('matplotlib')
 
+import logging
 
+def silence_all_logs():
+    # Standard logging: disable everything at/below CRITICAL
+    logging.disable(logging.CRITICAL)
+    
+    # Also clear handlers on root + any named loggers already configured,
+    # in case something added a handler with propagate=False
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    
+    # Loguru: remove all sinks (only if loguru is actually imported)
+    if "loguru" in sys.modules:
+        from loguru import logger
+        logger.remove()
 
 def write_panel_notebook(output_path: Path):
     nb = nbf.v4.new_notebook()
@@ -150,7 +166,7 @@ def print_help():
 
 
 def main():
-
+    silence_all_logs()
     if len(sys.argv) == 1:
         if not sys.stdin.isatty():
             stdin_data = sys.stdin.readline().strip()
