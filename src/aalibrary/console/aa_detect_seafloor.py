@@ -24,6 +24,7 @@ import numpy as np
 import pprint
 
 
+
 def print_help():
     help_text = """
     Usage: aa-detect-seafloor [OPTIONS] [INPUT_PATH]
