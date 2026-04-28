@@ -169,8 +169,15 @@ def _coord_to_str(val: Any) -> str:
 
 
 def _detect_axis(ds: xr.Dataset, candidates: Tuple[str, ...], fallback_index: int) -> str:
+    """
+    Find the first matching candidate as a dim, coordinate, OR data variable.
+    Echopype stores `echo_range` as a data_var (not a coord), so without the
+    data_vars check, axis detection falls through to `range_sample` integer
+    indices — clicks then return sample indices, polygons get exported as
+    if they were metres, and downstream masking fails silently.
+    """
     for c in candidates:
-        if c in ds.dims or c in ds.coords:
+        if c in ds.dims or c in ds.coords or c in ds.data_vars:
             return c
     dims = list(ds.dims)
     if dims:
@@ -180,8 +187,125 @@ def _detect_axis(ds: xr.Dataset, candidates: Tuple[str, ...], fallback_index: in
 
 def _detect_axes(ds: xr.Dataset) -> Tuple[str, str]:
     x_name = _detect_axis(ds, ("ping_time", "time", "ping", "profile_time"), fallback_index=0)
-    y_name = _detect_axis(ds, ("echo_range", "range", "range_meter", "range_sample", "depth"), fallback_index=1)
+    # Prefer metre-valued y over integer-index range_sample whenever possible.
+    # Order: depth (post-aa-depth) > echo_range (Echopype default) > range > range_meter
+    #        > range_sample (last resort, integer indices) > depth-as-coord fallback.
+    y_name = _detect_axis(
+        ds,
+        ("depth", "echo_range", "range_meter", "range", "range_sample"),
+        fallback_index=1,
+    )
     return x_name, y_name
+
+
+def _warn_range_sample_y(ds: xr.Dataset) -> None:
+    """Emit a one-line warning when y-axis is range_sample (integer indices).
+
+    Polygons drawn against an integer-index y will be exported with those
+    indices treated as metres, and aa-evl/aa-evr will silently produce empty
+    masks. Tell the user how to fix the upstream pipeline or override --y.
+    """
+    has_metre = any(
+        n in ds.coords or n in ds.data_vars
+        for n in ("depth", "echo_range", "range_meter", "range")
+    )
+    suggestion = (
+        "Pass --y depth or --y echo_range to use that axis instead."
+        if has_metre
+        else "Run the data through aa-depth first to add a metre-valued depth coord."
+    )
+    logger.warning(
+        "Y-axis resolved to 'range_sample' (integer sample indices, NOT metres). "
+        "Drawn polygons exported via the EVL/EVR buttons will be in sample-index "
+        f"units and will produce empty masks in aa-evl/aa-evr. {suggestion}"
+    )
+
+
+def _ensure_y_axis_coord(
+    ds: xr.Dataset,
+    da: xr.DataArray,
+    y_name: str,
+    x_name: str,
+) -> Tuple[xr.DataArray, str]:
+    """
+    Ensure `y_name` is a 1-D coordinate on `da` so hvplot.quadmesh can use it
+    AND so that drawing-tool click coordinates are in the same units as the
+    user sees on the y-axis.
+
+    If y_name is a data_var (e.g. Echopype's `echo_range`) or a 2-D coord
+    (e.g. depth varying per ping), reduce it to a 1-D vector along the depth
+    dimension and assign it as a coord on da.
+
+    Falls back gracefully: if nothing can be done, returns da unchanged with
+    its original dim-coord. Logs a warning so the user knows.
+    """
+    # Already a 1-D coord on da? Nothing to do — but if it's range_sample,
+    # warn that drawn polygons will be in integer indices (won't round-trip
+    # through aa-evl/aa-evr), unless there's no metre alternative anywhere.
+    if y_name in da.coords and da.coords[y_name].ndim == 1:
+        if y_name == "range_sample":
+            _warn_range_sample_y(ds)
+        return da, y_name
+
+    # Find the source variable in the dataset
+    src = None
+    if y_name in da.coords:
+        src = da.coords[y_name]
+    elif y_name in ds.coords:
+        src = ds[y_name]
+    elif y_name in ds.data_vars:
+        src = ds[y_name]
+
+    if src is None:
+        # y_name is just a dim name with no values (rare).
+        if y_name in da.dims and y_name == "range_sample":
+            _warn_range_sample_y(ds)
+        return da, y_name
+
+    # Reduce src to 1-D along the depth dim
+    depth_dim = None
+    for d in src.dims:
+        if d in da.dims and d != x_name:
+            depth_dim = d
+            break
+
+    if depth_dim is None:
+        return da, y_name
+
+    # If src varies with x (e.g. echo_range is (channel, ping_time, range_sample)),
+    # collapse non-depth dims by taking the first index. This is a standard echogram
+    # display approximation; per-ping depth variation is small at the cell level.
+    reduced = src
+    for d in list(reduced.dims):
+        if d == depth_dim:
+            continue
+        try:
+            reduced = reduced.isel({d: 0})
+        except Exception:
+            pass
+    # Drop any remaining non-depth-dim coordinates that came along
+    for c in list(reduced.coords):
+        if c != depth_dim and c in reduced.coords:
+            try:
+                reduced = reduced.drop_vars(c)
+            except Exception:
+                pass
+
+    if reduced.ndim != 1:
+        # Could not reduce cleanly; fall back to original dim
+        logger.warning(
+            f"Could not reduce '{y_name}' to a 1-D depth axis; falling back to '{depth_dim}'."
+        )
+        return da, depth_dim
+
+    # Assign reduced values as a coord on da's depth dim
+    try:
+        da = da.assign_coords({y_name: (depth_dim, np.asarray(reduced.values))})
+    except Exception as exc:
+        logger.warning(f"Could not promote '{y_name}' to a coord on '{depth_dim}': {exc}")
+        return da, depth_dim
+
+    return da, y_name
 
 
 def _should_flip_y(y_name: str) -> bool:
@@ -1840,6 +1964,7 @@ def _build_single_plot(
             f_val = ds[freq_dim].isel({freq_dim: 0}).values
             label = f"frequency={_coord_to_str(f_val)}"
 
+    da, y_name = _ensure_y_axis_coord(ds, da, y_name, x_name)
     da = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
     return _plot_echogram(
         da=da, var=var, x_name=x_name, y_name=y_name,
@@ -1893,10 +2018,11 @@ def _build_all_tabs(
                 label = f"{_coord_to_str(c_val)} \u2022 {_coord_to_str(f_val)} Hz"
 
             da2 = da.isel({chan_dim: ci})
-            da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
+            da2, y_name_resolved = _ensure_y_axis_coord(ds, da2, y_name, x_name)
+            da2 = _prep_da(da2, x_name, y_name_resolved, decimate, ymin, ymax)
 
             plot = _plot_echogram(
-                da=da2, var=var, x_name=x_name, y_name=y_name,
+                da=da2, var=var, x_name=x_name, y_name=y_name_resolved,
                 title=f"{var} \u2022 {label}", cmap=cmap, vmin=vmin, vmax=vmax,
                 min_width=min_width, height=height, toolbar=toolbar,
                 pin_div=pin_div, flip_y=flip_y,
@@ -1908,9 +2034,10 @@ def _build_all_tabs(
         return pn.Tabs(*tabs, sizing_mode="stretch_width", dynamic=False)
 
     # Fallback - no channel dim
-    da2 = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
+    da2, y_name_resolved = _ensure_y_axis_coord(ds, da, y_name, x_name)
+    da2 = _prep_da(da2, x_name, y_name_resolved, decimate, ymin, ymax)
     plot = _plot_echogram(
-        da=da2, var=var, x_name=x_name, y_name=y_name, title=var,
+        da=da2, var=var, x_name=x_name, y_name=y_name_resolved, title=var,
         cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
         toolbar=toolbar, pin_div=pin_div, flip_y=flip_y,
         show_hover=show_hover, show_crosshair=show_crosshair,
