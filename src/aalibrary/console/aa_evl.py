@@ -637,13 +637,25 @@ def _apply_mask(
     Apply boolean mask to all variables containing (time_dim, depth_dim).
     Uses positional masking (coordinate-stripped) to avoid the silent
     coordinate-mismatch / NaN-fill bug from aa-evr.
+
+    Variables that represent the depth/range *axis* (echo_range, depth,
+    range, range_meter, etc.) are intentionally NOT masked. They define
+    the coordinate system and need to remain valid for downstream tools
+    (especially aa-plot's auto-range — masking them creates a NaN-filled
+    axis that visibly breaks the y-axis scale).
     """
+    AXIS_VARS = frozenset({
+        "echo_range", "depth", "range", "range_m", "range_meter", "range_sample",
+    })
+
     ds_out = ds.copy(deep=False)
 
     # Pre-compute positional numpy mask (n_time, n_depth)
     mask_np = np.asarray(mask.transpose(time_dim, depth_dim).values, dtype=bool)
 
     for name, da in list(ds_out.data_vars.items()):
+        if name in AXIS_VARS:
+            continue  # Skip axis variables — masking them breaks the coord system
         if (time_dim in da.dims) and (depth_dim in da.dims):
             m_bare = xr.DataArray(mask_np, dims=(time_dim, depth_dim))
             m_broadcast = m_bare.broadcast_like(da)
