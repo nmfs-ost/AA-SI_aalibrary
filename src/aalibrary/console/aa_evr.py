@@ -501,6 +501,23 @@ def _build_union_region_mask(
 
         # --- normalise DEPTH lists: replace sentinels, clip to echogram range ---
         if "depth" in df.columns:
+            # Capture raw depth statistics *before* clamping so we can detect
+            # the case where the polygon was drawn against an integer-index
+            # axis (e.g. range_sample) and gets squashed to a single point.
+            raw_depth_min = float("inf")
+            raw_depth_max = float("-inf")
+            raw_depth_count = 0
+            for d_list in df["depth"]:
+                for d in list(d_list):
+                    try:
+                        x = float(d)
+                        if np.isfinite(x) and abs(x) < 9000:
+                            raw_depth_count += 1
+                            if x < raw_depth_min: raw_depth_min = x
+                            if x > raw_depth_max: raw_depth_max = x
+                    except Exception:
+                        pass
+
             new_depth = []
             for d_list in df["depth"]:
                 fixed = []
@@ -519,6 +536,32 @@ def _build_union_region_mask(
                     fixed.append(x)
                 new_depth.append(fixed)
             df["depth"] = new_depth
+
+            # --- diagnostic: did clamping wipe out the polygon? ---
+            if raw_depth_count > 0:
+                if debug:
+                    logger.debug(
+                        f"{evr_path.name}: EVR depth range (raw): "
+                        f"{raw_depth_min:.2f} -> {raw_depth_max:.2f} "
+                        f"(echogram range: {ech_depth_min:.2f} -> {ech_depth_max:.2f} m)"
+                    )
+                # If the raw polygon depths are mostly OUTSIDE the echogram
+                # range, the clamp will collapse them all to ech_depth_max
+                # (or _min) and produce a degenerate line that masks nothing.
+                # Almost always means the polygon was drawn in range_sample
+                # indices instead of metres.
+                if raw_depth_min > ech_depth_max or raw_depth_max < ech_depth_min:
+                    logger.warning(
+                        f"{evr_path.name}: polygon depths ({raw_depth_min:.2f} -> "
+                        f"{raw_depth_max:.2f}) are entirely OUTSIDE the echogram "
+                        f"depth range ({ech_depth_min:.2f} -> {ech_depth_max:.2f} m). "
+                        f"All depths will be clamped to a single edge value, "
+                        f"producing an EMPTY mask.\n"
+                        f"  Most common cause: the EVR was created from a plot "
+                        f"whose y-axis was 'range_sample' (integer indices) instead "
+                        f"of metre-valued depth. Re-plot with --y echo_range or "
+                        f"--y depth, or run aa-plot >= 1.x with metre-axis auto-detection."
+                    )
 
         # --- close polygons ---
         if "time" in df.columns and "depth" in df.columns:
