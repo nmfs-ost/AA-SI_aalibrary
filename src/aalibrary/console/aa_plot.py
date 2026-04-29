@@ -296,24 +296,55 @@ def _ensure_y_axis_coord(
     if depth_dim is None:
         return da, y_name
 
-    # If src varies with x (e.g. echo_range is (channel, ping_time, range_sample)),
-    # collapse non-depth dims by taking the first index. This is a standard echogram
-    # display approximation; per-ping depth variation is small at the cell level.
+    # Reduce src to 1-D along the depth dim. The depth/echo_range variable is
+    # often (channel, ping_time, range_sample) — same shape as Sv. We need a
+    # 1-D vector along range_sample.
+    #
+    # NaN-AWARE REDUCTION: aa-evr's masking applies xr.where(mask, da, NaN)
+    # to every variable with (time, depth) dims, which means depth and
+    # echo_range themselves get NaN'd outside the polygon. A naive isel(d=0)
+    # then produces a NaN-filled axis and hvplot's auto-range chokes (visible
+    # as a "zoomed in" plot showing only a fragment of the depth axis).
+    #
+    # Strategy: nanmean across non-depth dims. Echo-range and depth are
+    # roughly constant along ping_time anyway (transducer doesn't move
+    # much per cell), so the mean of finite values is essentially the same
+    # as picking any single ping. nanmean ignores the masked-out NaNs and
+    # returns the underlying physical depth axis.
     reduced = src
-    for d in list(reduced.dims):
-        if d == depth_dim:
-            continue
+    nondepth_dims = [d for d in reduced.dims if d != depth_dim]
+    if nondepth_dims:
         try:
-            reduced = reduced.isel({d: 0})
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # ignore "Mean of empty slice"
+                reduced = reduced.mean(dim=nondepth_dims, skipna=True)
         except Exception:
-            pass
-    # Drop any remaining non-depth-dim coordinates that came along
+            # Fallback to isel(0) if mean fails (e.g. non-numeric)
+            for d in nondepth_dims:
+                try:
+                    reduced = reduced.isel({d: 0})
+                except Exception:
+                    pass
+
+    # If the reduction still left coords on non-depth dims, drop them
     for c in list(reduced.coords):
         if c != depth_dim and c in reduced.coords:
             try:
                 reduced = reduced.drop_vars(c)
             except Exception:
                 pass
+
+    # Final NaN safety: if the reduced axis is still all-NaN (e.g. polygon
+    # masked the entire dataset), fall back to the integer dim so hvplot
+    # has SOMETHING to plot rather than a blank zoomed-in canvas.
+    reduced_vals = np.asarray(reduced.values)
+    if reduced_vals.dtype.kind == "f" and not np.any(np.isfinite(reduced_vals)):
+        logger.warning(
+            f"'{y_name}' is all-NaN after reducing to 1-D — every value was "
+            f"masked out. Falling back to '{depth_dim}' integer axis. The "
+            f"data itself may be empty downstream of an over-aggressive mask."
+        )
+        return da, depth_dim
 
     if reduced.ndim != 1:
         # Could not reduce cleanly; fall back to original dim

@@ -518,6 +518,19 @@ def _build_union_region_mask(
                     except Exception:
                         pass
 
+            # Detect catastrophic clamp: polygon depths entirely outside
+            # the echogram metre range. Almost always means the EVR was
+            # drawn against a range_sample (integer index) axis. In that
+            # case, DO NOT clamp — leave the polygon as-is so echoregions
+            # filters it out cleanly and we can emit a clear diagnostic.
+            # Clamping would silently collapse all vertices onto a single
+            # edge value, producing a degenerate horizontal line that
+            # masks nothing but reports no error.
+            polygon_outside_echogram = (
+                raw_depth_count > 0
+                and (raw_depth_min > ech_depth_max or raw_depth_max < ech_depth_min)
+            )
+
             new_depth = []
             for d_list in df["depth"]:
                 fixed = []
@@ -528,16 +541,24 @@ def _build_union_region_mask(
                         fixed.append(np.nan)
                         continue
                     if np.isfinite(x):
+                        # Always replace Echoview sentinel values (±9999.99)
+                        # which represent "to the surface" / "to the seafloor"
+                        # boundaries — those genuinely should clamp.
                         if x <= -9000:
                             x = ech_depth_min
                         elif x >= 9000:
                             x = ech_depth_max
-                        x = min(max(x, ech_depth_min), ech_depth_max)
+                        # For NORMAL polygon vertices, only clamp if the
+                        # polygon as a whole is at least partly inside the
+                        # echogram. If it's entirely outside, preserve the
+                        # original values so the failure is visible.
+                        elif not polygon_outside_echogram:
+                            x = min(max(x, ech_depth_min), ech_depth_max)
                     fixed.append(x)
                 new_depth.append(fixed)
             df["depth"] = new_depth
 
-            # --- diagnostic: did clamping wipe out the polygon? ---
+            # --- diagnostic logging ---
             if raw_depth_count > 0:
                 if debug:
                     logger.debug(
@@ -545,22 +566,20 @@ def _build_union_region_mask(
                         f"{raw_depth_min:.2f} -> {raw_depth_max:.2f} "
                         f"(echogram range: {ech_depth_min:.2f} -> {ech_depth_max:.2f} m)"
                     )
-                # If the raw polygon depths are mostly OUTSIDE the echogram
-                # range, the clamp will collapse them all to ech_depth_max
-                # (or _min) and produce a degenerate line that masks nothing.
-                # Almost always means the polygon was drawn in range_sample
-                # indices instead of metres.
-                if raw_depth_min > ech_depth_max or raw_depth_max < ech_depth_min:
+                if polygon_outside_echogram:
                     logger.warning(
                         f"{evr_path.name}: polygon depths ({raw_depth_min:.2f} -> "
                         f"{raw_depth_max:.2f}) are entirely OUTSIDE the echogram "
                         f"depth range ({ech_depth_min:.2f} -> {ech_depth_max:.2f} m). "
-                        f"All depths will be clamped to a single edge value, "
-                        f"producing an EMPTY mask.\n"
-                        f"  Most common cause: the EVR was created from a plot "
-                        f"whose y-axis was 'range_sample' (integer indices) instead "
-                        f"of metre-valued depth. Re-plot with --y echo_range or "
-                        f"--y depth, or run aa-plot >= 1.x with metre-axis auto-detection."
+                        f"This EVR cannot mask any cells in this echogram.\n"
+                        f"  Most common cause: the EVR was created from an aa-plot "
+                        f"HTML whose y-axis was 'range_sample' (integer indices, 0 "
+                        f"to ~N) instead of metre-valued depth. The polygon depths "
+                        f"in the EVR are sample indices, not metres.\n"
+                        f"  Fix: regenerate the aa-plot HTML against an input file "
+                        f"that contains a 'depth' or 'echo_range' axis (run aa-depth "
+                        f"first), or pass --y echo_range / --y depth explicitly to "
+                        f"aa-plot. Then redraw and re-export the EVR."
                     )
 
         # --- close polygons ---
@@ -720,12 +739,24 @@ def _apply_mask(
     depth_dim), so stripping coordinate labels before broadcasting guarantees
     no reindex mismatch can silently fill the mask with NaN - which in numpy
     evaluates as True and causes xr.where to keep all original values unchanged.
+
+    Variables that represent the depth/range *axis* (echo_range, depth,
+    range, range_meter, etc.) are intentionally NOT masked. They define
+    the coordinate system and need to remain valid for downstream tools
+    (especially aa-plot's auto-range — masking them creates a NaN-filled
+    axis that visibly breaks the y-axis scale).
     """
+    AXIS_VARS = frozenset({
+        "echo_range", "depth", "range", "range_m", "range_meter", "range_sample",
+    })
+
     ds_out = ds.copy(deep=False)
 
     mask_np = np.asarray(mask.transpose(time_dim, depth_dim).values, dtype=bool)
 
     for name, da in list(ds_out.data_vars.items()):
+        if name in AXIS_VARS:
+            continue  # Skip axis variables — masking them breaks the coord system
         if (time_dim in da.dims) and (depth_dim in da.dims):
             m_bare = xr.DataArray(mask_np, dims=(time_dim, depth_dim))
             m_broadcast = m_bare.broadcast_like(da)
