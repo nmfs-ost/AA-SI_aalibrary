@@ -94,11 +94,16 @@ Arguments:
 
 Core selection:
   --var VAR                 Variable to plot (default: Sv if present, else first data_var).
-  --all                     Plot all channels/frequencies as tabs.
+  --all                     Plot all channels/frequencies as tabs (default
+                            behavior when the dataset has a 'channel' dim
+                            with > 1 entry; flag kept for backwards compat).
+  --single                  Plot only one channel (default channel 0) instead
+                            of all-channels tabs. Use --channel/--frequency
+                            to choose which.
   --frequency FLOAT         Select single nominal frequency (Hz) (nearest match).
   --channel NAME            Select single channel by name (exact match preferred).
   --group-by {auto,channel,freq}
-                            When --all and both channel+freq dimensions are available:
+                            When tabs are shown and both channel+freq dims are available:
                               auto   -> frequency outer tabs, channel inner tabs
                               channel-> channel outer tabs, frequency inner tabs
                               freq   -> frequency outer tabs, channel inner tabs
@@ -254,6 +259,14 @@ def _ensure_y_axis_coord(
             if host_dim in da.dims and host_dim != y_name:
                 try:
                     da = da.swap_dims({host_dim: y_name})
+                    # Drop displaced dim coord (now an aux coord whose
+                    # value range conflicts with the new dim coord and
+                    # confuses hvplot auto-ranging).
+                    if host_dim in da.coords and host_dim not in da.dims:
+                        try:
+                            da = da.drop_vars(host_dim)
+                        except Exception:
+                            pass
                 except Exception as exc:
                     logger.debug(f"swap_dims early-return fallback for '{y_name}': {exc}")
         return da, y_name
@@ -314,12 +327,25 @@ def _ensure_y_axis_coord(
     # quadmesh chokes when there's a dim coordinate AND a non-dim aux coord
     # on the same axis (it tries to squeeze a non-singleton axis during
     # canonicalization). Swapping makes the metre values the canonical axis.
+    #
+    # After the swap we also DROP the original integer dim coord (e.g.
+    # `range_sample` 0..2559) — it now lives as an aux coord on the new
+    # `depth` dim and confuses hvplot's auto-ranging because two coords
+    # with very different ranges (0..2559 vs 0..500) claim the same axis.
+    # That mismatch produces a visually zoomed-in plot where only part of
+    # the data is shown.
     try:
         vals = np.asarray(reduced.values)
         da = da.assign_coords({y_name: (depth_dim, vals)})
         if y_name != depth_dim:
             try:
                 da = da.swap_dims({depth_dim: y_name})
+                # Drop the displaced dim coord if it became an aux coord
+                if depth_dim in da.coords and depth_dim not in da.dims:
+                    try:
+                        da = da.drop_vars(depth_dim)
+                    except Exception:
+                        pass
             except Exception as exc:
                 # If swap fails (e.g. duplicate values), fall back to the
                 # plain assign-coord behavior. hvplot may still work if
@@ -2226,7 +2252,13 @@ def main() -> None:
     )
     p.add_argument("input_path", type=Path, nargs="?")
     p.add_argument("--var", default=None)
-    p.add_argument("--all", action="store_true")
+    p.add_argument("--all", action="store_true",
+                   help="(Default behavior — kept for backwards compat.) "
+                        "Plot every channel/frequency in tabs.")
+    p.add_argument("--single", action="store_true",
+                   help="Plot only one channel (default channel 0). "
+                        "Opt-out of the per-channel tab default. Use with "
+                        "--frequency or --channel to pick which one.")
     p.add_argument("--frequency", type=float, default=None)
     p.add_argument("--channel", type=str, default=None)
     p.add_argument("--group-by", type=str, default="auto", choices=["auto", "channel", "freq"])
@@ -2285,6 +2317,9 @@ def main() -> None:
     if args.all and (args.frequency is not None or args.channel is not None):
         logger.error("Use either --all OR a specific --frequency/--channel (not both).")
         raise SystemExit(2)
+    if args.single and args.all:
+        logger.error("Cannot combine --single and --all.")
+        raise SystemExit(2)
 
     try:
         buf = io.StringIO()
@@ -2296,8 +2331,28 @@ def main() -> None:
         var = _ensure_variable(ds, args.var)
         logger.info(f"Plotting var='{var}' from {args.input_path.name}")
 
+        # New default: tabs across channels when there's a 'channel' dim
+        # with > 1 entry, unless --single is given or a specific channel/
+        # frequency is requested. --all stays as an explicit opt-in for
+        # backwards compatibility.
+        explicit_single = (
+            args.single
+            or args.frequency is not None
+            or args.channel is not None
+        )
+        chan_size = ds[var].sizes.get("channel", 1) if var in ds.data_vars else 1
+        all_plots = (
+            args.all
+            or (chan_size > 1 and not explicit_single)
+        )
+        if all_plots and not args.all:
+            logger.info(
+                f"Multi-channel dataset detected (channel size={chan_size}); "
+                f"plotting all channels in tabs. Pass --single to plot one."
+            )
+
         layout = _render_layout(
-            ds=ds, var=var, all_plots=args.all, group_by=args.group_by,
+            ds=ds, var=var, all_plots=all_plots, group_by=args.group_by,
             frequency=args.frequency, channel=args.channel,
             x_override=args.x_override, y_override=args.y_override,
             vmin=args.vmin, vmax=args.vmax, cmap=args.cmap,
