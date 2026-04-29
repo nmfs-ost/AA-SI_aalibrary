@@ -239,12 +239,23 @@ def _ensure_y_axis_coord(
     Falls back gracefully: if nothing can be done, returns da unchanged with
     its original dim-coord. Logs a warning so the user knows.
     """
-    # Already a 1-D coord on da? Nothing to do — but if it's range_sample,
-    # warn that drawn polygons will be in integer indices (won't round-trip
-    # through aa-evl/aa-evr), unless there's no metre alternative anywhere.
+    # Already a 1-D coord on da?
     if y_name in da.coords and da.coords[y_name].ndim == 1:
         if y_name == "range_sample":
             _warn_range_sample_y(ds)
+            return da, y_name
+        # Promote to dim coordinate if it's a non-dim aux coord on a single
+        # axis. Avoids the holoviews "squeeze non-singleton axis" error that
+        # occurs when both the integer dim coord (range_sample) and a metre
+        # aux coord (depth) share the same axis.
+        coord_da = da.coords[y_name]
+        if y_name not in da.dims and len(coord_da.dims) == 1:
+            host_dim = coord_da.dims[0]
+            if host_dim in da.dims and host_dim != y_name:
+                try:
+                    da = da.swap_dims({host_dim: y_name})
+                except Exception as exc:
+                    logger.debug(f"swap_dims early-return fallback for '{y_name}': {exc}")
         return da, y_name
 
     # Find the source variable in the dataset
@@ -298,9 +309,22 @@ def _ensure_y_axis_coord(
         )
         return da, depth_dim
 
-    # Assign reduced values as a coord on da's depth dim
+    # Assign reduced values as a coord on da's depth dim, then SWAP it onto
+    # the dim so it becomes the dimension coordinate. Holoviews/hvplot's
+    # quadmesh chokes when there's a dim coordinate AND a non-dim aux coord
+    # on the same axis (it tries to squeeze a non-singleton axis during
+    # canonicalization). Swapping makes the metre values the canonical axis.
     try:
-        da = da.assign_coords({y_name: (depth_dim, np.asarray(reduced.values))})
+        vals = np.asarray(reduced.values)
+        da = da.assign_coords({y_name: (depth_dim, vals)})
+        if y_name != depth_dim:
+            try:
+                da = da.swap_dims({depth_dim: y_name})
+            except Exception as exc:
+                # If swap fails (e.g. duplicate values), fall back to the
+                # plain assign-coord behavior. hvplot may still work if
+                # it picks the right coord.
+                logger.debug(f"swap_dims fallback for '{y_name}': {exc}")
     except Exception as exc:
         logger.warning(f"Could not promote '{y_name}' to a coord on '{depth_dim}': {exc}")
         return da, depth_dim
