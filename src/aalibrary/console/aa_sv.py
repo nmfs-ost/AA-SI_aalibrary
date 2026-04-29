@@ -1,125 +1,48 @@
 #!/usr/bin/env python3
 """
-Console tool for converting RAW files to NetCDF using Echopype, ...
+aa-sv
+
+Console tool for computing Sv (volume backscattering strength) from a .nc
+EchoData file (typically the output of aa-nc) using Echopype, and saving
+back to NetCDF.
+
+Pipeline-friendly: reads input path from positional arg or stdin, writes
+output path to stdout, all logs to stderr.
 """
 
 # === Silence logs BEFORE any heavy imports ===
 import logging
 import sys
-from pathlib import Path
+import warnings
 
 logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
 
-# Loguru auto-registers a default stderr sink at import time,
-# so remove it immediately after importing.
 from loguru import logger
 logger.remove()
+# Default sink: WARNING+ to stderr so real errors aren't swallowed.
+# Without this, any exception in process_file disappears silently and
+# the pipeline downstream gets no input — a confusing failure mode.
+logger.add(sys.stderr, level="WARNING")
 
-# Now the heavy imports — anything they log gets squashed
+# Now the heavy imports - anything they log gets squashed
 import argparse
 import pprint
+from pathlib import Path
 
 import echopype as ep
-import panel as pn
-import hvplot.xarray
-import hvplot
-import holoviews as hv
-import nbformat as nbf
-
-hv.extension('bokeh')
-pn.extension('bokeh')
 
 
 def silence_all_logs():
-    """Re-apply suppression. Useful if a library re-enabled logging
-    or added a loguru sink during its own initialization."""
+    """Re-apply suppression in case a library re-enabled logging
+    or added its own loguru sink during initialization."""
     logging.disable(logging.CRITICAL)
     for name in [None] + list(logging.root.manager.loggerDict):
         lg = logging.getLogger(name)
         lg.handlers.clear()
         lg.propagate = True
     logger.remove()
-
-def write_panel_notebook(output_path: Path):
-    nb = nbf.v4.new_notebook()
-
-    # Intro markdown cell
-    imports = """from loguru import logger
-import echopype as ep  # make sure echopype is installed
-
-
-import panel as pn
-import hvplot.xarray
-import hvplot
-import holoviews as hv
-import panel as pn
-import nbformat as nbf
-hv.extension('bokeh')
-pn.extension('bokeh')
-"""
-    nb.cells.append(nbf.v4.new_markdown_cell(imports))
-
-    # Panel + hvplot setup
-    functions = """def process_file(
-    input_path: Path,
-    output_path: Path,
-    plot: str = None
-):
-    
-
-
-    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
-    ed = ep.open_converted(input_path)
-
-    logger.info(f"Computing Sv from EchoData...")
-    ds_Sv = ep.calibrate.compute_Sv(ed)
-
-    # Step 4: Save back to NetCDF
-    logger.info(f"Saving processed EchoData to {output_path} ...")
-
-    #ds_Sv = clean_attrs(ds_Sv)
-
-    output_path = output_path.with_suffix(".nc")
-    ds_Sv.to_netcdf(output_path)
-    
-    
-    logger.info("Sv computation complete.")
-
-        
-        # Slider for channel selection
-    channel_slider = pn.widgets.IntSlider(
-        name='Channel',
-        start=0,
-        end=ds_Sv.sizes['channel']-1,
-        step=1,
-        value=0
-    )
-
-    # Bind slider to plot
-    interactive_plot = pn.bind(plot_channel, ds=ds_Sv, plot=plot, channel=channel_slider)
-
-    # Layout: slider above plot
-    dashboard = pn.Column(channel_slider, interactive_plot)
-"""
-    nb.cells.append(nbf.v4.new_code_cell(functions))
-
-    # Example widget/plot cell
-    executions = """import pandas as pd
-import numpy as np
-
-df = pd.DataFrame({
-    'x': np.linspace(0, 10, 200),
-    'y': np.sin(np.linspace(0, 10, 200))
-})
-
-plot = df.hvplot.line(x='x', y='y')
-pn.panel(plot).servable()
-"""
-    nb.cells.append(nbf.v4.new_code_cell(executions))
-
-    # Save the notebook
-    with output_path.open("w") as f:
-        nbf.write(nb, f)
+    logger.add(sys.stderr, level="WARNING")
 
 
 def print_help():
@@ -127,113 +50,96 @@ def print_help():
     Usage: aa-sv [OPTIONS] [INPUT_PATH]
 
     Arguments:
-    INPUT_PATH                 Path to the .raw or .netcdf4 file.
+    INPUT_PATH                  Path to the .nc / .netcdf4 EchoData file.
                                 Optional. Defaults to stdin if not provided.
 
     Options:
     -o, --output_path           Path to save processed output.
-                                Default: overwrites .nc files or creates a new .nc for RAW.
+                                Default: same directory as input, with '_Sv'
+                                appended to the stem and a .nc suffix.
 
-    --plot [VALUE]              Generate plots of the processed data.
-                                Optional argument with optional value.
-                                If provided without a value, defaults to 'Sv'.
-                                Example: --plot or --plot TS
-                                Default: None
-
-    --waveform_mode             For EK80 echosounders: specify waveform mode.
+    --waveform_mode             For EK80 echosounders ONLY: waveform mode.
                                 Choices: CW, BB, FM
-                                Default: CW
+                                Default: not passed (echopype picks per-sonar).
 
-    --encode_mode               For EK80 echosounders: specify encoding mode.
+    --encode_mode               For EK80 echosounders ONLY: encoding mode.
                                 Choices: complex, power
-                                Default: complex
+                                Default: not passed (echopype picks per-sonar).
 
     Description:
-    This tool computes Sv (volume backscattering strength) from .raw or
-    .netcdf4 files with Echopype. It includes optional plotting and
-    EK80-specific waveform/encoding configuration.
+    This tool computes Sv (volume backscattering strength) from a previously-
+    converted NetCDF EchoData file using echopype.calibrate.compute_Sv, and
+    saves the result to a new .nc file. The output path is printed to stdout
+    for piping into the next stage of the pipeline.
+
+    For visualization, pipe the output into aa-plot:
+        aa-nc --sonar_model EK60 input.raw | aa-sv | aa-plot
 
     Example:
-    aa-sv /path/to/input.nc --waveform_mode FM --encode_mode power \\
-          --plot Sv -o /path/to/output.nc
+        aa-sv /path/to/input.nc --waveform_mode FM --encode_mode power \\
+              -o /path/to/output.nc
     """
     print(help_text)
 
 
-
 def main():
-    silence_all_logs()
+    # Stdin / no-args handling
     if len(sys.argv) == 1:
         if not sys.stdin.isatty():
             stdin_data = sys.stdin.readline().strip()
             if stdin_data:
                 sys.argv.append(stdin_data)
+            else:
+                print_help()
+                sys.exit(0)
         else:
             print_help()
             sys.exit(0)
 
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print_help()
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
-        description="Process .raw or .netcdf4 files with Echopype and remove background noise."
+        description="Compute Sv from a NetCDF EchoData file with Echopype.",
+        add_help=False,
     )
 
-    # ---------------------------
-    # Required file arguments
-    # ---------------------------
     parser.add_argument(
         "input_path",
         type=Path,
-        help="Path to the .raw or .netcdf4 file.",
-        nargs="?",  # makes it optional
+        nargs="?",
+        help="Path to the .nc / .netcdf4 EchoData file.",
     )
-
     parser.add_argument(
-        "-o",
-        "--output_path",
+        "-o", "--output_path",
         type=Path,
-        help="Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
+        help="Path to save processed output. Default appends '_Sv' to the input stem.",
     )
-    
-    
     parser.add_argument(
-        "--plot",
-        nargs="?",        # means "0 or 1 values allowed"
-        const="Sv",  # value to use if provided without a value
-        default=None,     # value if the option is not provided at all
-        type=str,
-        help="Optional argument with an optional value"
-    )
-
-    parser.add_argument(
-
         "--waveform_mode",
         type=str,
-        help="For EK80 Echosounders: Optional argument to specify the waveform mode",
-        default="CW",     # value if the option is not provided at all
-        choices=["CW", "BB", "FM"]
+        default=None,
+        choices=["CW", "BB", "FM"],
+        help="For EK80 Echosounders ONLY: waveform mode. Omit for EK60.",
     )
-    
-    
     parser.add_argument(
         "--encode_mode",
-        default="complex",     # value if the option is not provided at all
         type=str,
+        default=None,
         choices=["complex", "power"],
-        help="For EK80 Echosounders: Optional argument with an optional value"
+        help="For EK80 Echosounders ONLY: encoding mode. Omit for EK60.",
     )
-
-    # ---------------------------
-    # remove_background_noise arguments
-    # ---------------------------
-
 
     args = parser.parse_args()
 
     # ---------------------------
     # Validate input
     # ---------------------------
-
     if args.input_path is None:
-        # Read from stdin
+        if sys.stdin.isatty():
+            logger.error("No input path provided and no stdin available.")
+            sys.exit(1)
         args.input_path = Path(sys.stdin.readline().strip())
         logger.info(f"Read input path from stdin: {args.input_path}")
 
@@ -241,53 +147,56 @@ def main():
         logger.error(f"File '{args.input_path}' does not exist.")
         sys.exit(1)
 
-    allowed_extensions = {".netcdf4": "netcdf", ".nc": "netcdf"}
-
+    allowed_extensions = {".netcdf4", ".nc"}
     ext = args.input_path.suffix.lower()
     if ext not in allowed_extensions:
         logger.error(
             f"'{args.input_path.name}' is not a supported file type. "
-            f"Allowed: {', '.join(allowed_extensions.keys())}"
+            f"Allowed: {', '.join(sorted(allowed_extensions))}"
         )
         sys.exit(1)
 
-    file_type = allowed_extensions[ext]
-
     # ---------------------------
-    # Set default output path
+    # Resolve output path
     # ---------------------------
     if args.output_path is None:
-        if file_type == "netcdf":
-            # Overwrite the existing NetCDF
-            args.output_path = args.input_path
+        args.output_path = args.input_path
 
-        else:
-            # RAW file → produce NetCDF with same stem
-            args.output_path = args.input_path.with_suffix(".nc")
+    args.output_path = args.output_path.with_stem(args.output_path.stem + "_Sv")
+    args.output_path = args.output_path.with_suffix(".nc")
+
+    # Guard against clobbering the input
+    if args.output_path.resolve() == args.input_path.resolve():
+        logger.error(f"Refusing to overwrite input file: {args.input_path.resolve()}")
+        sys.exit(1)
 
     # ---------------------------
     # Process file
     # ---------------------------
     try:
-        
-        args.output_path = args.output_path.with_stem(args.output_path.stem + "_Sv")
-        args.output_path = args.output_path.with_suffix(".nc")
-        # Pretty-print args to logger
-        args_dict = vars(args)
-        pretty_args = pprint.pformat(args_dict)
-        logger.debug(f"Executing aa-sv configured with [OPTIONS]:\n{pretty_args}\n* ( Each aa-sv associated option_name may be overridden using --option_name value )" )
+        args_summary = {
+            "input_path": args.input_path,
+            "output_path": args.output_path,
+            "waveform_mode": args.waveform_mode,
+            "encode_mode": args.encode_mode,
+        }
+        logger.debug(
+            f"Executing aa-sv configured with [OPTIONS]:\n"
+            f"{pprint.pformat(args_summary)}"
+        )
 
         process_file(
             input_path=args.input_path,
             output_path=args.output_path,
-            plot=args.plot,
             waveform_mode=args.waveform_mode,
-            encode_mode=args.encode_mode
+            encode_mode=args.encode_mode,
         )
 
-
-
-        # Print output path to stdout for piping
+        logger.success(
+            f"Generated {args.output_path.resolve()} with aa-sv. "
+            "Passing .nc path to stdout..."
+        )
+        # Pipe the output path to stdout for the next tool
         print(args.output_path.resolve())
 
     except Exception as e:
@@ -295,100 +204,54 @@ def main():
         sys.exit(1)
 
 
-def clean_attrs(Sv):
-    # Dataset-level attrs
-    #keywords = top_check.attrs.get("keywords", "")
-    #is_kongsberg = bool(re.search(combined_pattern, keywords))
-    
-    for k, v in Sv.attrs.items():
+def clean_attrs(ds):
+    """Replace None-valued attrs with 'NA' so the dataset is NetCDF-safe.
+    NetCDF attrs cannot be None — to_netcdf will raise on serialization."""
+    for k, v in ds.attrs.items():
         if v is None:
-            Sv.attrs[k] = "NaN"  # or float('nan') if numeric
-
-    # Variable-level attrs
-    for var in Sv.data_vars:
-        for k, v in Sv[var].attrs.items():
+            ds.attrs[k] = "NA"
+    for var in ds.data_vars:
+        for k, v in ds[var].attrs.items():
             if v is None:
-                Sv[var].attrs[k] = "NaN"  # or float('nan') if numeric
-    return Sv
-
-    # Function to update plot based on channel
-    
-def plot_channel(ds, plot, channel=0):
-    data = ds[plot].isel(channel=channel)
-    return data.hvplot(
-    x="ping_time",
-    y="range_sample",
-    cmap="viridis",
-    responsive=True,   # let it auto-resize, no aspect math
-    width=2400,
-    height=1200,
-    invert_yaxis=True,
-    title=f"Sv Plot - Channel {channel}"
-    )
-    
+                ds[var].attrs[k] = "NA"
+    return ds
 
 
 def process_file(
     input_path: Path,
     output_path: Path,
-    plot: str = None,
-    waveform_mode: str = None,
-    encode_mode: str = None
+    waveform_mode=None,
+    encode_mode=None,
 ):
-    """
-    Load EchoData from RAW or NetCDF, compute Sv and save to NetCDF.
-    """
+    """Load EchoData from NetCDF, compute Sv, and save to NetCDF."""
 
-
-    logger.info(f"Generating EchoData from NetCDF file :\n {input_path}")
+    logger.info(f"Loading EchoData from {input_path}")
     ed = ep.open_converted(input_path)
 
-    logger.info(f"Computing Sv from EchoData")
-    ds_Sv = ep.calibrate.compute_Sv(ed, waveform_mode=waveform_mode, encode_mode=encode_mode)
+    # Build kwargs lazily — only pass waveform_mode / encode_mode when the
+    # user explicitly provided them. echopype's compute_Sv treats these as
+    # EK80-only; passing CW/complex unconditionally to an EK60 dataset
+    # raises an error. The previous version of this script always passed
+    # them, which is why EK60 pipelines silently failed.
+    compute_kwargs = {}
+    if waveform_mode is not None:
+        compute_kwargs["waveform_mode"] = waveform_mode
+    if encode_mode is not None:
+        compute_kwargs["encode_mode"] = encode_mode
 
+    if compute_kwargs:
+        logger.info(f"Computing Sv (EK80 mode: {compute_kwargs})")
+    else:
+        logger.info("Computing Sv (using echopype defaults for this sonar)")
+
+    ds_Sv = ep.calibrate.compute_Sv(ed, **compute_kwargs)
     ds_Sv = clean_attrs(ds_Sv)
+
     output_path = output_path.with_suffix(".nc")
+    logger.info(f"Saving Sv dataset to {output_path}")
     ds_Sv.to_netcdf(output_path)
-    
+    logger.success(f"Sv computation complete: {output_path.resolve()}")
 
-    logger.success(f"Generating {output_path.resolve()} with aa-sv. Passing nc path to stdin...")
-
-
-    if plot:
-        
-        # Slider for channel selection
-        channel_slider = pn.widgets.IntSlider(
-            name='Channel',
-            start=0,
-            end=ds_Sv.sizes['channel']-1,
-            step=1,
-            value=0
-        )
-
-        # Bind slider to plot
-        interactive_plot = pn.bind(plot_channel, ds=ds_Sv, plot=plot, channel=channel_slider)
-
-        # Layout: slider above plot
-        dashboard = pn.Column(channel_slider, interactive_plot)
-
-            
-        # Serve interactive plot
-        output_path = output_path.with_suffix(".html")
-        #hvplot.save(plt, output_path)
-        
-        # Save standalone interactive HTML
-        dashboard.save(output_path, embed=True)
-        
-        # Serve interactive plot
-        output_path = output_path.with_suffix(".png")
-        #hvplot.save(plt, output_path)
-        
-        # Save standalone interactive HTML
-        #dashboard.save(output_path, embed=True)
-        
-        write_panel_notebook()
-    
-    
 
 if __name__ == "__main__":
     main()
