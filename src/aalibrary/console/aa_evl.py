@@ -87,6 +87,89 @@ def silence_all_logs():
     logger.add(sys.stderr, level="WARNING")
 
 
+# ---------------------------------------------------------------------------
+# Workaround: echoregions.lines.lines_parser.parse_evl crashes on pandas 2.x
+# when string[pyarrow] is the default string dtype.
+#
+# Upstream code does:
+#     df = pd.DataFrame([{"time": "20090916 1247393820", ...}])  # str column
+#     df.loc[:, "time"] = df.loc[:, "time"].apply(parse_time)    # <-- DatetimeArray
+#
+# The .apply returns datetime objects but the column is dtyped `string[pyarrow]`,
+# which refuses datetime values:
+#     TypeError: Invalid value '<DatetimeArray>...' for dtype 'str'
+#
+# Old pandas silently upgraded the column dtype; new pandas does not.
+# We patch parse_evl to convert the string column to datetime BEFORE
+# writing it back, sidestepping the dtype clash entirely.
+#
+# Re-applies upstream's own logic; only the assignment mechanic changes.
+# ---------------------------------------------------------------------------
+def _patch_echoregions_parse_evl() -> None:
+    try:
+        import os as _os
+        from echoregions.lines import lines_parser as _lp
+        from echoregions.utils.io import check_file as _check_file
+        from echoregions.utils.time import parse_time as _parse_time
+    except Exception as _exc:
+        logger.debug(f"Could not patch echoregions.parse_evl: {_exc}")
+        return
+
+    def parse_evl(input_file: str):
+        _check_file(input_file, "EVL")
+        with open(input_file, encoding="utf-8-sig") as fid:
+            file_lines = fid.readlines()
+        file_type, file_format_number, ev_version = file_lines[0].strip().split()
+        file_metadata = {
+            "file_name": (
+                _os.path.splitext(_os.path.basename(input_file))[0]
+                + _os.path.splitext(_os.path.basename(input_file))[1]
+            ),
+            "file_type": file_type,
+            "evl_file_format_version": file_format_number,
+            "echoview_version": ev_version,
+        }
+        n_points = int(file_lines[1].strip())
+        if (len(file_lines) - 2) != n_points:
+            raise ValueError(
+                "There exists a mismatch between the expected number of lines "
+                f"in the file and the actual number of points. There should be "
+                f"2 less lines in the file than the number of points, however "
+                f"we have {len(file_lines)} number of lines in the file and "
+                f"{n_points} number of points."
+            )
+        points = []
+        for i in range(n_points):
+            date, time, depth, status = file_lines[i + 2].strip().split()
+            points.append(
+                {
+                    # Pre-parse to datetime so the column is born as the right
+                    # dtype — no string-to-datetime reassignment needed.
+                    "time": _parse_time(f"{date} {time}"),
+                    "depth": float(depth),
+                    "status": status,
+                }
+            )
+        df = pd.DataFrame(points)
+        df = df.assign(**file_metadata)
+        order = list(file_metadata.keys()) + ["time", "depth", "status"]
+        return df[order]
+
+    _lp.parse_evl = parse_evl
+    # The Lines class imports parse_evl by name into its own module
+    # namespace, so we have to rebind the reference there too — patching
+    # only lines_parser leaves Lines.__init__ calling the unpatched copy.
+    try:
+        from echoregions.lines import lines as _lines_mod
+        _lines_mod.parse_evl = parse_evl
+    except Exception as _exc:
+        logger.debug(f"Could not rebind parse_evl in echoregions.lines.lines: {_exc}")
+    logger.debug("Applied echoregions.parse_evl PyArrow-string-dtype patch.")
+
+
+_patch_echoregions_parse_evl()
+
+
 # ---------------------------
 # Help / logging
 # ---------------------------
