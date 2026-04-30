@@ -1,6 +1,6 @@
-"""Configuration loading, saving, and setup wizard for aa-help.
+"""Config loading for aa-help.
 
-Config lives at ~/.config/aalibrary/aa_help.toml (or $XDG_CONFIG_HOME/aalibrary/...).
+Lives at ~/.config/aalibrary/aa_help.toml (or $XDG_CONFIG_HOME/aalibrary/...).
 """
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ from pathlib import Path
 from typing import Any
 
 try:
-    import tomllib  # py3.11+
-except ModuleNotFoundError:  # pragma: no cover
+    import tomllib
+except ModuleNotFoundError:
     import tomli as tomllib  # type: ignore
 
 try:
     import tomli_w
     _HAVE_TOMLI_W = True
-except ModuleNotFoundError:  # pragma: no cover
+except ModuleNotFoundError:
     _HAVE_TOMLI_W = False
 
 
@@ -34,13 +34,15 @@ class Settings:
     project_id: str = ""
     location: str = DEFAULT_LOCATION
     model: str = DEFAULT_MODEL
-    temperature: float = 0.4
+    temperature: float = 0.2          # lower default; planner output
     max_output_tokens: int = 4096
     knowledge_dirs: list[str] = field(default_factory=list)
     extra_system_prompt: str = ""
+    rag_top_k: int = 8                # how many chunks to retrieve per query
+    rag_max_chars: int = 60_000       # hard cap on retrieved-context size
 
     def is_complete(self) -> bool:
-        return bool(self.project_id) and bool(self.location) and bool(self.model)
+        return bool(self.project_id and self.location and self.model)
 
 
 def config_dir() -> Path:
@@ -58,20 +60,22 @@ def _ensure_dir() -> None:
 
 
 def load_config() -> Settings:
-    path = config_path()
-    if not path.exists():
+    p = config_path()
+    if not p.exists():
         return Settings()
-    with path.open("rb") as f:
+    with p.open("rb") as f:
         data = tomllib.load(f)
     aa = data.get("aa_help", {})
     return Settings(
         project_id=aa.get("project_id", ""),
         location=aa.get("location", DEFAULT_LOCATION),
         model=aa.get("model", DEFAULT_MODEL),
-        temperature=float(aa.get("temperature", 0.4)),
+        temperature=float(aa.get("temperature", 0.2)),
         max_output_tokens=int(aa.get("max_output_tokens", 4096)),
         knowledge_dirs=list(aa.get("knowledge_dirs", [])),
         extra_system_prompt=aa.get("extra_system_prompt", ""),
+        rag_top_k=int(aa.get("rag_top_k", 8)),
+        rag_max_chars=int(aa.get("rag_max_chars", 60_000)),
     )
 
 
@@ -86,7 +90,6 @@ def save_config(settings: Settings) -> None:
 
 
 def _dump_toml(payload: dict[str, Any]) -> str:
-    """Tiny fallback TOML writer for our flat schema (no tomli_w installed)."""
     lines = ["[aa_help]"]
     for k, v in payload["aa_help"].items():
         if isinstance(v, str):
@@ -105,37 +108,34 @@ def _dump_toml(payload: dict[str, Any]) -> str:
 def run_setup_wizard() -> Settings:
     print("=== aa-help setup ===")
     print(f"Config will be written to: {config_path()}\n")
-    current = load_config()
+    cur = load_config()
 
-    project = input(f"GCP project ID [{current.project_id}]: ").strip() or current.project_id
+    project = input(f"GCP project ID [{cur.project_id}]: ").strip() or cur.project_id
     while not project:
         project = input("GCP project ID is required: ").strip()
+    location = (input(f"Vertex AI location [{cur.location or DEFAULT_LOCATION}]: ").strip()
+                or cur.location or DEFAULT_LOCATION)
+    model = (input(f"Model [{cur.model or DEFAULT_MODEL}]: ").strip()
+             or cur.model or DEFAULT_MODEL)
 
-    location = (input(f"Vertex AI location [{current.location or DEFAULT_LOCATION}]: ").strip()
-                or current.location or DEFAULT_LOCATION)
-    model = (input(f"Model [{current.model or DEFAULT_MODEL}]: ").strip()
-             or current.model or DEFAULT_MODEL)
-
-    settings = Settings(
-        project_id=project,
-        location=location,
-        model=model,
-        temperature=current.temperature,
-        max_output_tokens=current.max_output_tokens,
-        knowledge_dirs=current.knowledge_dirs,
-        extra_system_prompt=current.extra_system_prompt,
+    s = Settings(
+        project_id=project, location=location, model=model,
+        temperature=cur.temperature, max_output_tokens=cur.max_output_tokens,
+        knowledge_dirs=cur.knowledge_dirs,
+        extra_system_prompt=cur.extra_system_prompt,
+        rag_top_k=cur.rag_top_k, rag_max_chars=cur.rag_max_chars,
     )
-    save_config(settings)
+    save_config(s)
     print(f"\nSaved config to {config_path()}")
-    print("Tip: add directories to `knowledge_dirs` in the TOML to teach aa-help more.")
-    print("     (drop .md / .txt / .rst / .py files in there)")
-    return settings
+    print("Next: add docs to knowledge_dirs in the toml, then run:")
+    print("    aa-help --reindex")
+    return s
 
 
 def edit_config() -> None:
     _ensure_dir()
-    path = config_path()
-    if not path.exists():
+    p = config_path()
+    if not p.exists():
         save_config(Settings())
     editor = os.environ.get("EDITOR") or os.environ.get("VISUAL")
     if not editor:
@@ -144,6 +144,6 @@ def edit_config() -> None:
                 editor = cand
                 break
     if not editor:
-        print(f"No $EDITOR set. Open {path} manually.", file=sys.stderr)
+        print(f"No $EDITOR set. Open {p} manually.", file=sys.stderr)
         return
-    subprocess.call([editor, str(path)])
+    subprocess.call([editor, str(p)])
