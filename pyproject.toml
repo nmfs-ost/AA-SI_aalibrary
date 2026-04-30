@@ -43,7 +43,7 @@ Changelog = "https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/CHANGELOG.md"
 [aa_help]
 project_id = "ggn-nmfs-aa-dev-1"
 location = "us-central1"
-model = "gemini-3.1-pro"
+model = "gemini-2.5-pro"
 temperature = 0.4
 max_output_tokens = 4096
 knowledge_dirs = []
