@@ -1,19 +1,19 @@
 """aa-help: Vertex AI planner and explainer for the aalibrary toolkit.
 
 Usage:
-    aa-help                                  # interactive REPL (dry-run mode)
+    aa-help                                  # interactive REPL (dry-run)
     aa-help "your question or goal"          # one-shot, dry-run by default
-    aa-help --execute "..."                  # one-shot, allowed to run pipelines
+    aa-help --execute "..."                  # one-shot, allowed to run
     aa-help --setup                          # config wizard
     aa-help --edit                           # open config in $EDITOR
     aa-help --config                         # print config path
-    aa-help --reindex                        # rebuild knowledge DB from scratch
-    aa-help --refresh-index                  # incremental knowledge refresh
+    aa-help --reindex                        # rebuild knowledge DB
+    aa-help --refresh-index                  # incremental index update
     aa-help --index-stats                    # show what's indexed
     aa-help --model MODEL                    # override model for this run
 """
 
-# === Silence logs BEFORE any heavy imports (matches aa-sv pattern) ===
+# === Silence logs BEFORE any heavy imports ===
 import logging
 import sys
 import warnings
@@ -25,14 +25,20 @@ from loguru import logger
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
-# Heavy imports (anything they log gets squashed)
+# Heavy imports
 import argparse
 from pathlib import Path
 
 from aalibrary.utils._help import config as cfg
 from aalibrary.utils._help import knowledge as kb
 from aalibrary.utils._help.planner import Planner
-from aalibrary.utils._help.ui import handle_plan
+from aalibrary.utils._help.ui import (
+    handle_plan,
+    print_banner,
+    print_error,
+    print_info,
+    thinking,
+)
 
 
 def silence_all_logs():
@@ -54,7 +60,7 @@ def _build_parser():
     p.add_argument("question", nargs="*",
                    help="One-shot question/goal. Omit to enter REPL mode.")
     p.add_argument("--execute", action="store_true",
-                   help="Allow the planner to actually run pipelines (with confirm).")
+                   help="Allow the planner to run pipelines (with confirm).")
     p.add_argument("--setup", action="store_true",
                    help="Run the configuration wizard.")
     p.add_argument("--config", action="store_true",
@@ -74,10 +80,10 @@ def _build_parser():
 
 def _do_index(rebuild: bool, settings: cfg.Settings) -> int:
     if not settings.knowledge_dirs:
-        print("No `knowledge_dirs` configured. Edit your config first:")
-        print(f"  {cfg.config_path()}")
+        print_error("No `knowledge_dirs` configured. Edit your config first:")
+        print_info(f"  {cfg.config_path()}")
         return 1
-    print("Indexing knowledge dirs...")
+    print_info("Indexing knowledge dirs...")
     indexed, skipped, chunks = kb.build_or_refresh(
         [Path(d) for d in settings.knowledge_dirs],
         cfg.config_dir(),
@@ -85,21 +91,21 @@ def _do_index(rebuild: bool, settings: cfg.Settings) -> int:
         settings.location,
         rebuild=rebuild,
     )
-    print(f"\nIndexed: {indexed} files  ({chunks} new chunks)")
-    print(f"Skipped: {skipped} files  (unchanged or empty)")
+    print_info(f"Indexed: {indexed} files  ({chunks} new chunks)")
+    print_info(f"Skipped: {skipped} files  (unchanged or empty)")
     s = kb.stats(cfg.config_dir())
-    print(f"DB now contains: {s['files']} files, {s['chunks']} chunks "
-          f"({s.get('size_bytes', 0):,} bytes)")
+    print_info(f"DB now contains: {s['files']} files, {s['chunks']} chunks "
+               f"({s.get('size_bytes', 0):,} bytes)")
     return 0
 
 
 def _do_index_stats() -> int:
     s = kb.stats(cfg.config_dir())
-    print(f"DB path: {s['db_path']}")
-    print(f"Files indexed: {s['files']}")
-    print(f"Chunks indexed: {s['chunks']}")
+    print_info(f"DB path: {s['db_path']}")
+    print_info(f"Files indexed: {s['files']}")
+    print_info(f"Chunks indexed: {s['chunks']}")
     if "size_bytes" in s:
-        print(f"DB size: {s['size_bytes']:,} bytes")
+        print_info(f"DB size: {s['size_bytes']:,} bytes")
     return 0
 
 
@@ -121,7 +127,7 @@ def main(argv=None):
 
     settings = cfg.load_config()
     if not settings.is_complete():
-        logger.warning("aa-help is not configured yet. Running setup...")
+        print_info("aa-help is not configured yet. Running setup...")
         settings = cfg.run_setup_wizard()
     if args.model:
         settings.model = args.model
@@ -136,12 +142,12 @@ def main(argv=None):
     # One-shot or REPL?
     if args.question:
         question = " ".join(args.question)
-        plan = planner.plan(question)
+        with thinking("planning"):
+            plan = planner.plan(question)
         return handle_plan(plan, allow_execute=args.execute)
 
     # REPL
-    print("aa-help interactive mode. Ctrl-D / Ctrl-C to exit.")
-    print(f"Mode: {'EXECUTE allowed' if args.execute else 'dry-run (use --execute to enable)'}")
+    print_banner(mode="execute" if args.execute else "dry-run")
     while True:
         try:
             line = input("\naa-help> ").strip()
@@ -153,12 +159,13 @@ def main(argv=None):
         if line in ("/exit", "/quit", ":q"):
             return 0
         try:
-            plan = planner.plan(line)
+            with thinking("planning"):
+                plan = planner.plan(line)
             handle_plan(plan, allow_execute=args.execute)
         except KeyboardInterrupt:
-            print("\n[interrupted]")
+            print_info("[interrupted]")
         except Exception as e:
-            print(f"[error] {e}", file=sys.stderr)
+            print_error(str(e))
 
 
 if __name__ == "__main__":
