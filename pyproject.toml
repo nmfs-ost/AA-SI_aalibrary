@@ -30,7 +30,7 @@ maintainers = [
 ]
 description = "A data-fetching library created for NOAA's Active-Acoustics initiative."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 
 [project.urls]
@@ -39,6 +39,15 @@ Documentation = "https://nmfs-ost.github.io/AA-SI_aalibrary/"
 Issues = "https://github.com/nmfs-ost/AA-SI_aalibrary/issues"
 Repository = "https://github.com/nmfs-ost/AA-SI_aalibrary"
 Changelog = "https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/CHANGELOG.md"
+
+[aa_help]
+project_id = "ggn-nmfs-aa-dev-1"
+location = "us-central1"
+model = "gemini-3.1-pro"
+temperature = 0.4
+max_output_tokens = 4096
+knowledge_dirs = []
+extra_system_prompt = ""
 
 [project.scripts]
 aa-raw = "aalibrary.console.aa_raw:main"
