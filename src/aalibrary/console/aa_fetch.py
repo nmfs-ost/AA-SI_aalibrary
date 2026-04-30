@@ -4,155 +4,188 @@ aa-fetch
 
 Execute a multi-fetch job defined by a YAML file.
 
-Input (YAML path):
-- Optional positional YAML_PATH
-- OR a single-line YAML path via stdin (pipeline-friendly)
-  Example:
-    aa-get -n req.yaml | aa-fetch
+Reads a YAML path from a positional argument or from stdin, parses it via
+aalibrary.utils.multi_fetch_yaml_parser, runs the resulting SQL against the
+metadata DB, and downloads matching files into a per-run directory under
+--output_root.
 
-Output:
-- No stdout output. This tool performs an action only.
-- Logs go to stderr via loguru.
+Pipeline contract:
+- stdin  : optional YAML path (one line)
+- stdout : NOTHING — this is the terminus of the build → fetch pipeline
+- stderr : all logs and errors
 
-Usage:
-  aa-fetch [OPTIONS] [YAML_PATH]
-
-Arguments:
-  YAML_PATH
-      Path to YAML file. Optional.
-      If omitted, aa-fetch reads ONE line from stdin.
-      Special: '-' forces reading YAML_PATH from stdin.
-
-Options:
-  -o, --output_root PATH
-      Parent directory where the download directory will be created.
-      Default: current working directory.
-
-  -n, --download_dir_name NAME
-      Name of the download directory under output_root.
-      Default: aa_fetch_<timestamp>
+Typical usage:
+    aa-get -n request.yaml | aa-fetch
+    aa-fetch ./request.yaml -o ./downloads -n run_001
 """
 from __future__ import annotations
 
-import argparse
+# === Silence noisy library logs BEFORE any heavy imports ===
+import logging
 import sys
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+from loguru import logger
+logger.remove()
+# INFO level so the user sees fetch progress / counts / destination on stderr.
+# Stdout intentionally stays empty per the pipeline contract above.
+logger.add(sys.stderr, level="INFO")
+
+# Heavy imports
+import argparse
 from datetime import datetime
 from pathlib import Path
 
-from loguru import logger
 
-
+def silence_all_logs():
+    """Re-apply suppression in case a library re-enabled logging
+    or added its own loguru sink during initialization."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
 
 
 def print_help() -> None:
-    """
-    Verbose, human-friendly help text (aa-clean style).
-    Prints to stderr so it never contaminates pipeline stdout.
-    """
+    """Verbose help. Prints to stderr so it never contaminates pipeline stdout."""
     help_text = r"""
 aa-fetch — Execute a YAML-driven multi-fetch job (no stdout output)
 
 WHAT THIS TOOL DOES
-  • Reads a YAML file that describes one or more fetch "requests"
-  • Parses it using aalibrary.utils.multi_fetch_yaml_parser
-  • Executes the fetch workflow (network / database / download work)
-  • Creates a download directory for this run
-  • Logs progress and errors to stderr (via loguru)
-  • IMPORTANT: This tool DOES NOT print anything to stdout on success.
-
-WHY THERE IS NO STDOUT
-  aa-fetch is an "action" tool. It is designed to execute work and log to stderr.
-  This keeps stdout clean for other tools in the ecosystem and avoids breaking pipes.
+  • Reads a YAML file describing one or more fetch "requests"
+  • Parses it via aalibrary.utils.multi_fetch_yaml_parser
+  • Builds a SQL query and runs it against the metadata DB
+  • Downloads matching files into a per-run directory
+  • Logs progress and errors to stderr (loguru)
+  • Prints NOTHING to stdout — this is the terminus of the pipeline
 
 HOW YAML_PATH IS PROVIDED
   (A) Positional argument:
       aa-fetch /path/to/fetch_request.yaml
 
-  (B) Piped into stdin (one line):
-      echo /path/to/fetch_request.yaml | aa-fetch
+  (B) Piped via stdin (one line):
+      aa-get -n req.yaml | aa-fetch
 
   Notes:
-    • If YAML_PATH is omitted and stdin is NOT piped, aa-fetch prints this help and exits.
+    • If YAML_PATH is omitted and stdin is a TTY, aa-fetch prints help and exits.
     • When reading from stdin, aa-fetch reads exactly ONE line and strips whitespace.
+    • Flags can be combined with stdin input:
+          cat path.txt | aa-fetch -o ./downloads -n run_001
 
-DOWNLOAD DIRECTORY CONTROLS (ONLY TWO FLAGS)
+DOWNLOAD DIRECTORY
   -o, --output_root PATH
-      Default: current working directory (CWD)
+      Parent directory for the per-run download directory.
+      Default: current working directory.
 
   -n, --download_dir_name NAME
+      Name of the per-run download directory under --output_root.
       Default: aa_fetch_<YYYYMMDD_HHMMSS>
 
+EXIT CODES
+  0  success
+  1  YAML/import/runtime/download error
+  2  invalid usage (missing input, bad output dir name)
+
 PIPELINE EXAMPLES
-  aa-get -n request.yaml | aa-fetch
+  aa-get | aa-fetch
+  aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001
   aa-fetch ./request.yaml
-  aa-fetch -o ./downloads -n run_001 ./request.yaml
 
 TROUBLESHOOTING
   • "File does not exist" — check the YAML path or your pipeline output.
-  • Auth errors — ensure your environment credentials are set.
+  • Auth / BigQuery errors — ensure your GCP credentials are configured.
 """
     print(help_text.strip() + "\n", file=sys.stderr)
+
 
 def _default_download_dir_name() -> str:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"aa_fetch_{stamp}"
 
 
+def _read_yaml_path_from_stdin() -> Path | None:
+    """Return Path read from stdin (single line), or None if stdin is a TTY / empty."""
+    if sys.stdin.isatty():
+        return None
+    line = sys.stdin.readline()
+    if not line:
+        return None
+    line = line.strip()
+    if not line:
+        return None
+    return Path(line)
+
+
 def main() -> int:
+    # Help short-circuit
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print_help()
+        return 0
 
+    # No-args + interactive terminal → show help
+    if len(sys.argv) == 1 and sys.stdin.isatty():
+        print_help()
+        return 0
 
-    if len(sys.argv) == 1:
-        if not sys.stdin.isatty():
-            stdin_data = sys.stdin.readline().strip()
-            if stdin_data:
-                sys.argv.append(stdin_data)
-        else:
-            print_help()
-            sys.exit(0)
-
-    import aalibrary.utils.multi_fetch_yaml_parser as mf
     parser = argparse.ArgumentParser(
-        description="Execute aa-fetch YAML job (no stdout output)."
+        description="Execute aa-fetch YAML job (no stdout output).",
+        add_help=False,
     )
-
     parser.add_argument(
         "yaml_path",
         type=Path,
-        help="Path to YAML file. Optional. If omitted, reads one line from stdin. Use '-' to force stdin.",
+        nargs="?",
+        help="Path to YAML file. Optional — falls back to stdin.",
     )
-
     parser.add_argument(
-        "-o",
-        "--output_root",
+        "-o", "--output_root",
         type=Path,
         default=None,
-        help="Parent directory where download directory will be created (default: CWD).",
+        help="Parent directory where the download directory will be created (default: CWD).",
     )
-
     parser.add_argument(
-        "-n",
-        "--download_dir_name",
+        "-n", "--download_dir_name",
         type=str,
         default=None,
         help="Download directory name under output_root (default: aa_fetch_<timestamp>).",
     )
 
-    # Parse args
     args = parser.parse_args()
 
-    print(args)
-
+    # ---------------------------
+    # Resolve YAML path: positional > stdin > fail
+    # ---------------------------
     if args.yaml_path is None:
-        args.yaml_path = Path(sys.stdin.readline().strip())
-        logger.error(f"YAML file does not exist: {args.yaml_path}")
+        stdin_path = _read_yaml_path_from_stdin()
+        if stdin_path is None:
+            logger.error("No YAML path provided and no stdin available.")
+            print_help()
+            return 2
+        args.yaml_path = stdin_path
+        # Note: the previous version logged "YAML file does not exist" here
+        # unconditionally — a copy-paste bug. The path may well exist; we
+        # check next.
+        logger.info(f"Read YAML path from stdin: {args.yaml_path}")
 
     if not args.yaml_path.exists():
-        logger.error(f"File '{args.yaml_path}' does not exist.")
-        sys.exit(1)
+        logger.error(f"YAML file does not exist: {args.yaml_path}")
+        return 1
 
-    # Output directory handling (two flags you described)
+    if not args.yaml_path.is_file():
+        logger.error(f"YAML path is not a file: {args.yaml_path}")
+        return 1
+
+    # ---------------------------
+    # Resolve & create download directory
+    # ---------------------------
     output_root = (args.output_root or Path.cwd()).expanduser().resolve()
-    download_dir_name = (args.download_dir_name or _default_download_dir_name())
+    download_dir_name = (args.download_dir_name or _default_download_dir_name()).strip()
 
     if not download_dir_name:
         logger.error("--download_dir_name cannot be empty.")
@@ -166,28 +199,49 @@ def main() -> int:
         logger.exception(f"Failed to create download directory under '{output_root}': {e}")
         return 2
 
-    # Execute the exact logic you showed (but no stdout prints)
+    logger.info(f"Download directory: {download_dir}")
+
+    # ---------------------------
+    # Heavy import (deferred so --help / arg validation is fast)
+    # ---------------------------
     try:
+        import aalibrary.utils.multi_fetch_yaml_parser as mf
+    except Exception as e:
+        logger.exception(f"Failed to import multi_fetch_yaml_parser: {e}")
+        return 1
+
+    # ---------------------------
+    # Execute fetch
+    # ---------------------------
+    try:
+        # YAMLParser always populates sql_query, so the previous hasattr()
+        # guard was dead code — log it directly.
         yaml_test = mf.YAMLParser(yaml_file_path=str(args.yaml_path))
+        logger.info(f"SQL query built from YAML:\n{yaml_test.sql_query}")
 
-        # Log SQL query if present (stderr), but don't print to stdout
-        if hasattr(yaml_test, "sql_query"):
-            logger.info(f"SQL query built from YAML:\n{yaml_test.sql_query}")
-
-        # Execute fetch. No BigQuery args here (per your requirement).
-        # If your parser uses BigQuery internally, it can pull credentials from env/defaults.
         results = mf.parse_yaml_and_fetch_results(yaml_file_path=str(args.yaml_path))
 
-        # Log summary (stderr)
         try:
-            logger.info(f"Fetch results: {results}")
-            logger.info(f"Result count: {len(results)}")
-            mf.download_results(results, download_dir)
+            n = len(results)
+        except TypeError:
+            n = "?"
+        logger.info(f"Result count: {n}")
 
-        except Exception:
-            logger.info("Fetch completed (results not sizeable/loggable cleanly).")
+        if not results:
+            logger.warning("No files matched the YAML criteria — nothing to download.")
+            return 0
 
-        logger.info(f"Download directory: {download_dir}")
+        # IMPORTANT: do NOT wrap download_results in a "could not log cleanly"
+        # except. The previous version did, and it silently swallowed real
+        # download failures behind a benign-sounding message. Let download
+        # errors surface as their own logged exception.
+        try:
+            mf.download_results(results, str(download_dir))
+        except Exception as e:
+            logger.exception(f"Download failed: {e}")
+            return 1
+
+        logger.success(f"aa-fetch complete. Files in: {download_dir}")
         return 0
 
     except Exception as e:

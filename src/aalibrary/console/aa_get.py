@@ -4,63 +4,54 @@ aa-get
 
 Interactive terminal UI tool that builds a raw-fetch schedule YAML file.
 
-Key behaviors:
-- Runs an interactive InquirerPy UI (needs a TTY).
+Pipeline contract:
+- Runs an interactive InquirerPy UI (needs a TTY somewhere — stdout OR stderr).
 - Saves YAML to a user-chosen directory + filename.
 - Prints ONLY the saved YAML path to stdout (pipeline-safe).
-- When stdout is piped, UI output is automatically sent to stderr so piping works:
-    aa-get -n test.yaml | cat
+- When stdout is piped, UI output is automatically routed to stderr so piping works:
+      aa-get -n test.yaml | aa-fetch
 
 Usage:
   aa-get [OPTIONS] [OUTPUT_DIR]
-
-Arguments:
-  OUTPUT_DIR
-      Optional directory to save into.
-      Defaults to current working directory.
-
-      Special value:
-        -   Read OUTPUT_DIR from stdin (one line). Useful if you *want* to pipe
-            an output dir into aa-get without hanging in normal use.
-            Example:
-              echo /tmp/schedules | aa-get -n test.yaml -
-
-Options:
-  -d, --output_dir PATH
-      Directory to save into (overrides positional OUTPUT_DIR).
-
-  -n, --file_name NAME
-      Output filename. Adds .yaml if missing.
-      Default: fetch_request_<timestamp>.yaml
-
-  -h, --help
-      Show help.
-
-Examples:
-  aa-get
-  aa-get ./schedules
-  aa-get -d ./schedules -n test.yaml
-  aa-get -n test.yaml | cat
-  echo ./schedules | aa-get -n test.yaml - | cat
 """
 from __future__ import annotations
 
-import argparse
+# === Silence noisy library logs BEFORE any heavy imports ===
+import logging
 import sys
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+from loguru import logger
+logger.remove()
+logger.add(sys.stderr, level="WARNING")
+
+import argparse
 from contextlib import contextmanager
 from pathlib import Path
 
-from loguru import logger
+# Heavy imports — UI builder
+from aalibrary.utils.raw_fetch_schedule_builder import (
+    default_output_path,
+    main as builder_main,
+)
 
-# Import your app's main + its default naming helper
-from aalibrary.utils.raw_fetch_schedule_builder import default_output_path, main as builder_main
+
+def silence_all_logs():
+    """Re-apply suppression in case a library re-enabled logging."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
 
 
 def print_help() -> None:
-    """
-    Verbose, human-friendly help text (aa-clean style).
-    Prints to stderr so it never contaminates pipeline stdout.
-    """
+    """Verbose help. Prints to stderr so it never contaminates pipeline stdout."""
     help_text = r"""
 aa-get — Interactive YAML schedule builder (prints saved YAML path)
 
@@ -77,13 +68,13 @@ WHY IT PRINTS A PATH TO STDOUT
 
   This enables a clean two-step pipeline:
       (1) aa-get builds the YAML
-      (2) aa-fetch consumes the YAML and performs the download/execution
+      (2) aa-fetch consumes the YAML and performs the download
 
 HOW TO USE WITH aa-fetch (RECOMMENDED)
   Build the YAML interactively, then immediately execute it:
 
       aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001
-      aa-get | aa-fetch (Barebones, defaults to CWD and timestamped filename)
+      aa-get | aa-fetch                  # defaults to CWD + timestamped filename
 
   Notes:
     • During the interactive UI, aa-get may render UI output to your terminal.
@@ -106,7 +97,7 @@ ARGUMENTS
 OPTIONS
   -d, --output_dir PATH
       Directory to save into (overrides positional OUTPUT_DIR).
-      Default: current working directory (CWD)
+      Default: current working directory.
 
   -n, --file_name NAME
       Output filename. Adds .yaml if missing.
@@ -127,25 +118,21 @@ EXAMPLES
 
   4) Recommended end-to-end pipeline (build → execute):
       aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001
-      aa-get | aa-fetch (Barebones, defaults to CWD and timestamped filename)
-
+      aa-get | aa-fetch
 """
     print(help_text.strip() + "\n", file=sys.stderr)
 
 
 def _coerce_yaml_file_name(name: str) -> str:
-    """
-    Ensure filename is non-empty and ends with .yaml.
-    Returns filename only (no directory component).
-    """
+    """Ensure filename is non-empty and ends with .yaml. Returns filename only."""
     name = (name or "").strip()
     if not name:
         raise ValueError("file_name cannot be empty.")
 
     p = Path(name)
 
-    # If user passed something like "dir/name.yaml", keep only the name.
-    # Directory is controlled by output_dir to avoid ambiguity.
+    # If user passed something like "dir/name.yaml", keep only the name —
+    # directory is controlled by output_dir to avoid ambiguity.
     if p.name == "":
         raise ValueError("file_name must include a filename.")
 
@@ -156,9 +143,7 @@ def _coerce_yaml_file_name(name: str) -> str:
 
 
 def _read_output_dir_from_stdin() -> Path:
-    """
-    Read ONE line from stdin for OUTPUT_DIR, used only when positional OUTPUT_DIR is '-'.
-    """
+    """Read ONE line from stdin for OUTPUT_DIR (used only when positional is '-')."""
     if sys.stdin.isatty():
         raise RuntimeError("OUTPUT_DIR is '-' but stdin is a TTY (nothing to read).")
 
@@ -171,14 +156,13 @@ def _read_output_dir_from_stdin() -> Path:
 @contextmanager
 def _ui_stdout_to_stderr_when_piped():
     """
-    In interactive tools, stdout being piped makes stdout non-TTY.
-    InquirerPy/prompt_toolkit expects a TTY for UI rendering.
+    Make the InquirerPy UI render correctly when stdout is piped to another tool.
 
-    Solution:
     - If stdout is a TTY: do nothing.
-    - If stdout is piped but stderr is a TTY: temporarily route sys.stdout -> sys.stderr
-      so UI renders on the terminal, while stdout stays clean for pipeline output.
-    - If neither stdout nor stderr is a TTY: cannot run interactive UI.
+    - If stdout is piped but stderr is a TTY: temporarily route sys.stdout → sys.stderr
+      so UI renders on the terminal, while the *real* stdout stays clean for the
+      pipeline.
+    - If neither stdout nor stderr is a TTY: cannot run an interactive UI.
     """
     if sys.stdout.isatty():
         yield
@@ -203,40 +187,33 @@ def main() -> int:
     # Preserve a handle to the "real" stdout for the final pipeline-safe print.
     real_stdout = sys.stdout
 
-    # aa-clean style help trigger if user literally passes no args and wants help:
-    # For aa-get, running with no args is valid, so we don't auto-print help here.
+    # Help short-circuit before argparse so -h and --help behave identically
+    # and don't trigger argparse's auto-help (we use add_help=False below).
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print_help()
+        return 0
 
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("-h", "--help", action="store_true", help="Show help and exit.")
-
     parser.add_argument(
         "output_dir_pos",
         nargs="?",
         default=None,
         help="Optional directory to save into. Use '-' to read directory from stdin.",
     )
-
     parser.add_argument(
-        "-d",
-        "--output_dir",
+        "-d", "--output_dir",
         type=str,
         default=None,
         help="Directory to save into (overrides positional OUTPUT_DIR).",
     )
-
     parser.add_argument(
-        "-n",
-        "--file_name",
+        "-n", "--file_name",
         type=str,
         default=None,
         help="Output filename (default: fetch_request_<timestamp>.yaml).",
     )
 
     args = parser.parse_args()
-
-    if args.help:
-        print_help()
-        return 0
 
     # ---------------------------
     # Resolve output directory
@@ -277,15 +254,24 @@ def main() -> int:
     # Run interactive builder
     # ---------------------------
     try:
-        # If stdout is piped, UI output is routed to stderr (TTY) automatically.
         with _ui_stdout_to_stderr_when_piped():
             saved_path = builder_main(output_path=out_path)
 
-        # Pipeline contract: ONLY the saved path goes to stdout.
-        # Use the real stdout handle even if we temporarily redirected sys.stdout.
+        # If the builder returns None, the user cancelled — emit nothing
+        # and exit non-zero so the downstream pipeline doesn't get a stray path.
+        if saved_path is None:
+            return 1
+
+        # Pipeline contract: ONLY the saved path goes to the real stdout,
+        # even if we temporarily redirected sys.stdout for the UI.
         print(Path(saved_path).resolve(), file=real_stdout)
         real_stdout.flush()
         return 0
+
+    except KeyboardInterrupt:
+        # Don't dump a traceback for an intentional Ctrl+C.
+        print("\nCancelled.", file=sys.stderr)
+        return 130
 
     except Exception as e:
         logger.exception(f"aa-get failed: {e}")

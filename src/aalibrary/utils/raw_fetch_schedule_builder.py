@@ -1,4 +1,26 @@
 #!/usr/bin/env python3
+"""
+raw_fetch_schedule_builder
+
+Interactive InquirerPy UI for building an Active-Acoustics fetch schedule
+YAML. Public surface (kept stable for aa-get):
+
+    default_output_path() -> Path
+    main(output_path: Path | None = None) -> Path | None
+
+`main` returns the saved path on success, or None if the user declined to
+save. The YAML schema is unchanged:
+
+    requests:
+      - vessel: "..."
+        survey: "..."
+        instrument: "..."
+        time-windows:
+          - start-date: "YYYY-MM-DD"
+            start-time: "HH:MM:SS"
+            end-date:   "YYYY-MM-DD"
+            end-time:   "HH:MM:SS"
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,9 +37,101 @@ try:
 except Exception:
     yaml = None
 
+# ----------------------------
+# Optional rich integration
+# ----------------------------
+# rich is treated as a soft dependency: when present we use Panels, Rules,
+# Tables and YAML syntax highlighting; when absent we fall back to plain
+# emoji-prefixed prints so the UI still works on minimal environments.
+
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.rule import Rule
+    from rich.table import Table
+    from rich.syntax import Syntax
+    from rich.text import Text
+    _RICH_AVAILABLE = True
+except Exception:
+    _RICH_AVAILABLE = False
+    Console = Panel = Rule = Table = Syntax = Text = None  # type: ignore
+
+# Module-level console handle. Created lazily inside main() so it captures
+# whatever sys.stdout is at the time the UI runs (aa-get may have swapped
+# stdout → stderr to keep the pipeline clean).
+_console: "Console | None" = None
+
+
+def _make_console() -> "Console | None":
+    if not _RICH_AVAILABLE:
+        return None
+    return Console()
+
 
 # ----------------------------
-# Helpers
+# Pretty-print helpers (rich-aware, with plain fallback)
+# ----------------------------
+
+def _print_banner() -> None:
+    title = "aa-get  ·  Fetch Schedule Builder"
+    subtitle = "Build a YAML schedule, then pipe it to aa-fetch."
+    if _console is not None:
+        _console.print()
+        _console.print(
+            Panel.fit(
+                Text.assemble(
+                    (title, "bold cyan"),
+                    "\n",
+                    (subtitle, "dim"),
+                ),
+                border_style="cyan",
+                padding=(0, 2),
+            )
+        )
+        _console.print()
+    else:
+        print("\n🧭   aa-get : Fetch Schedule Builder")
+        print(f"     {subtitle}\n")
+
+
+def _print_section(label: str) -> None:
+    if _console is not None:
+        _console.print()
+        _console.print(Rule(f"[bold]{label}[/bold]", style="cyan"))
+    else:
+        print(f"\n── {label} " + "─" * max(0, 50 - len(label)))
+
+
+def _print_info(text: str) -> None:
+    if _console is not None:
+        _console.print(f"[dim]{text}[/dim]")
+    else:
+        print(text)
+
+
+def _print_warning(text: str) -> None:
+    if _console is not None:
+        _console.print(f"[yellow]⚠️   {text}[/yellow]")
+    else:
+        print(f"⚠️   {text}")
+
+
+def _print_error(text: str) -> None:
+    if _console is not None:
+        _console.print(f"[red]🚫 {text}[/red]")
+    else:
+        print(f"🚫 {text}")
+
+
+def _print_success(text: str) -> None:
+    if _console is not None:
+        _console.print(f"[green]✅   {text}[/green]")
+    else:
+        print(f"✅   {text}")
+
+
+# ----------------------------
+# Helpers (UTC, validation)
 # ----------------------------
 
 def to_utc_z(dt: datetime) -> str:
@@ -45,13 +159,9 @@ _TIME_RE = re.compile(r"^\s*(\d{2}):(\d{2})(?::(\d{2}))?\s*$")
 
 def parse_user_time(text: str) -> tuple[int, int, int]:
     """
-    Parse user-entered time.
+    Parse user-entered time in HH:MM or HH:MM:SS format.
 
-    Accepted formats:
-      HH:MM
-      HH:MM:SS
-
-    Returns (hour, minute, second). Raises ValueError if invalid.
+    Returns (hour, minute, second). Raises ValueError on invalid input.
     """
     m = _TIME_RE.match(text or "")
     if not m:
@@ -73,10 +183,8 @@ def parse_user_time(text: str) -> tuple[int, int, int]:
 
 
 def pick_time_text(label: str, *, default: str = "00:00:00") -> tuple[int, int, int]:
-    """
-    Time picker:
-      Manual text entry HH:MM[:SS] with validation.
-    """
+    """Manual HH:MM[:SS] entry with validation."""
+
     def _time_validator(s: str) -> bool:
         parse_user_time(s)
         return True
@@ -100,11 +208,11 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def _normalize_available_dates(raw_dates: Iterable[Any]) -> list[str]:
     """
-    Convert the output of ncei_cache_utils.get_dates_of_survey_in_ncei_cache(...)
+    Convert ncei_cache_utils.get_dates_of_survey_in_ncei_cache(...) output
     into a sorted list of unique YYYY-MM-DD strings.
 
-    This is defensive: raw_dates might already be strings, or datetime/date objects,
-    or other representations depending on cache implementation.
+    Defensive: raw_dates may be strings, datetime/date objects, or other
+    representations depending on cache implementation.
     """
     out: set[str] = set()
     for d in raw_dates:
@@ -112,7 +220,6 @@ def _normalize_available_dates(raw_dates: Iterable[Any]) -> list[str]:
             continue
         if isinstance(d, str):
             s = d.strip()
-            # accept "YYYY-MM-DD" or full ISO like "YYYY-MM-DDTHH:MM:SSZ"
             if len(s) >= 10:
                 s10 = s[:10]
                 if _DATE_RE.match(s10):
@@ -122,7 +229,6 @@ def _normalize_available_dates(raw_dates: Iterable[Any]) -> list[str]:
         elif isinstance(d, date):
             out.add(d.strftime("%Y-%m-%d"))
         else:
-            # last-ditch: stringification
             s = str(d).strip()
             if len(s) >= 10:
                 s10 = s[:10]
@@ -133,11 +239,7 @@ def _normalize_available_dates(raw_dates: Iterable[Any]) -> list[str]:
 
 
 def get_available_dates_for_survey(vessel: str, survey: str) -> list[str]:
-    """
-    Pull available dates for (vessel, survey) from the cache utility.
-    Expected function (per your note):
-        get_dates_of_survey_in_ncei_cache(...)
-    """
+    """Pull available dates for (vessel, survey) from the NCEI cache utility."""
     raw_dates = ncei_cache_utils.get_dates_of_survey_in_ncei_cache(survey_name=survey)
     dates = _normalize_available_dates(raw_dates)
     if not dates:
@@ -150,13 +252,24 @@ def get_available_dates_for_survey(vessel: str, survey: str) -> list[str]:
 def pick_date_from_available(label: str, available_dates: list[str]) -> str:
     """
     Pick a date (YYYY-MM-DD) from a list of available dates.
-    Cursor starts at first option (no default passed).
+
+    Uses fuzzy search so typing e.g. "2012-08" filters quickly even when the
+    survey has hundreds of days. Falls back to plain select for very small
+    lists where fuzzy is overkill.
     """
-    choices = [{"name": d, "value": d} for d in available_dates]
+    if len(available_dates) <= 12:
+        return str(
+            inquirer.select(
+                message=f"📆   {label} date:",
+                choices=available_dates,
+                max_height="70%",
+            ).execute()
+        )
+
     return str(
-        inquirer.select(
-            message=f"📆   {label} date (available):",
-            choices=choices,
+        inquirer.fuzzy(
+            message=f"📆   {label} date (type to filter):",
+            choices=available_dates,
             max_height="70%",
         ).execute()
     )
@@ -164,16 +277,14 @@ def pick_date_from_available(label: str, available_dates: list[str]) -> str:
 
 def pick_datetime_parts(label: str, available_dates: list[str]) -> tuple[str, str, datetime]:
     """
-    Collect (date_str, time_str, dt_utc) where:
+    Collect (date_str, time_str, dt_utc):
       date_str = YYYY-MM-DD (must be in available_dates)
-      time_str = HH:MM:SS (manual validated)
-      dt_utc    = timezone-aware datetime in UTC
-
-    This respects "world time / unix time" by constructing an actual UTC datetime.
+      time_str = HH:MM:SS   (manual validated)
+      dt_utc   = timezone-aware datetime in UTC
     """
     date_str = pick_date_from_available(label, available_dates)
     hh, mm, ss = pick_time_text(label, default="00:00:00")
-    y, m, d = (int(date_str[0:4]), int(date_str[5:7]), int(date_str[8:10]))
+    y, m, d = int(date_str[0:4]), int(date_str[5:7]), int(date_str[8:10])
     dt = datetime(y, m, d, hh, mm, ss, tzinfo=timezone.utc)
     return date_str, f"{hh:02d}:{mm:02d}:{ss:02d}", dt
 
@@ -205,13 +316,6 @@ def ask_output_path() -> Path:
 
 @dataclass
 class TimeWindow:
-    """
-    Schema target:
-      - start-date: "YYYY-MM-DD"   (must be available for survey)
-        start-time: "HH:MM:SS"     (manual validated)
-        end-date:   "YYYY-MM-DD"   (must be available for survey)
-        end-time:   "HH:MM:SS"     (manual validated)
-    """
     start_date: str
     start_time: str
     end_date: str
@@ -268,21 +372,29 @@ def choose_instrument(ship_name: str, survey_name: str) -> str:
     )
 
 
-def create_time_window(*, available_dates: list[str]) -> TimeWindow:
+def create_time_window(*, available_dates: list[str], window_idx: int) -> TimeWindow:
     """
     Prompt for Start (date from available list + time via text) and End (same),
     validate end > start (UTC).
     """
+    _print_section(f"Time window {window_idx}")
+
+    # Show a quick orientation: how many dates, and the range covered.
+    _print_info(
+        f"{len(available_dates)} available date(s): "
+        f"{available_dates[0]} → {available_dates[-1]}"
+    )
+
     while True:
         try:
             s_date, s_time, s_dt = pick_datetime_parts("Start", available_dates)
             e_date, e_time, e_dt = pick_datetime_parts("End", available_dates)
         except ValueError as e:
-            print(f"\n🚫 {e}\n")
+            _print_error(str(e))
             continue
 
         if e_dt <= s_dt:
-            print("\n🚫 End must be after Start. Please try again.\n")
+            _print_error("End must be strictly after Start. Please try again.")
             continue
 
         return TimeWindow(
@@ -293,17 +405,26 @@ def create_time_window(*, available_dates: list[str]) -> TimeWindow:
         )
 
 
-def build_request() -> Request:
+def build_request(request_idx: int) -> Request:
+    _print_section(f"Request {request_idx} · Vessel")
     vessel = choose_vessel()
+
+    _print_section(f"Request {request_idx} · Survey")
     survey = choose_survey(vessel)
+
+    _print_section(f"Request {request_idx} · Instrument")
     instrument = choose_instrument(vessel, survey)
 
-    # NEW: constrain date picking to available survey dates
+    # Constrain date picking to dates actually present in the cache.
     available_dates = get_available_dates_for_survey(vessel, survey)
 
     windows: list[TimeWindow] = []
+    window_idx = 1
     while True:
-        windows.append(create_time_window(available_dates=available_dates))
+        windows.append(
+            create_time_window(available_dates=available_dates, window_idx=window_idx)
+        )
+        window_idx += 1
 
         more = inquirer.confirm(
             message="➕   Add another time window for this same vessel/survey/instrument?",
@@ -314,6 +435,70 @@ def build_request() -> Request:
 
     return Request(vessel=vessel, survey=survey, instrument=instrument, time_windows=windows)
 
+
+# ----------------------------
+# Summary / preview
+# ----------------------------
+
+def _print_summary(requests: list[Request]) -> None:
+    """Show a compact table of every request before saving."""
+    _print_section("Schedule summary")
+
+    if _console is not None:
+        table = Table(show_header=True, header_style="bold cyan", border_style="cyan")
+        table.add_column("#", justify="right", style="dim", width=3)
+        table.add_column("Vessel", style="bold")
+        table.add_column("Survey")
+        table.add_column("Instrument")
+        table.add_column("Time windows")
+
+        for i, r in enumerate(requests, start=1):
+            windows_repr = "\n".join(
+                f"{w.start_date} {w.start_time} → {w.end_date} {w.end_time}"
+                for w in r.time_windows
+            )
+            table.add_row(str(i), r.vessel, r.survey, r.instrument, windows_repr)
+
+        _console.print(table)
+    else:
+        for i, r in enumerate(requests, start=1):
+            print(f"  [{i}] {r.vessel} / {r.survey} / {r.instrument}")
+            for w in r.time_windows:
+                print(f"        {w.start_date} {w.start_time} → {w.end_date} {w.end_time}")
+
+
+def _print_yaml_preview(schedule_dict: dict[str, Any]) -> None:
+    """Pretty-print the YAML that will be / was saved."""
+    if yaml is None:
+        # JSON fallback path
+        import json
+        text = json.dumps(schedule_dict, indent=2)
+        if _console is not None:
+            _console.print(Panel(text, title="JSON (yaml not installed)", border_style="yellow"))
+        else:
+            print("\n🧾   Result (JSON fallback)\n")
+            print(text)
+        return
+
+    text = yaml.safe_dump(schedule_dict, sort_keys=False)
+
+    if _console is not None:
+        _console.print()
+        _console.print(
+            Panel(
+                Syntax(text, "yaml", theme="ansi_dark", background_color="default"),
+                title="🧾  Resulting YAML",
+                border_style="green",
+            )
+        )
+    else:
+        print("\n🧾   Result (YAML)\n")
+        print(text)
+
+
+# ----------------------------
+# YAML write
+# ----------------------------
 
 def write_yaml_file(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -327,7 +512,6 @@ def write_yaml_file(path: Path, data: dict[str, Any]) -> None:
         pass
 
     def _quoted_str_representer(dumper, value: str):
-        # Always emit strings with explicit quotes
         return dumper.represent_scalar("tag:yaml.org,2002:str", value, style='"')
 
     _QuotedDumper.add_representer(str, _quoted_str_representer)
@@ -342,37 +526,49 @@ def write_yaml_file(path: Path, data: dict[str, Any]) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def main(output_path: Path | None = None) -> Path:
+# ----------------------------
+# Top-level entry point
+# ----------------------------
+
+def main(output_path: Path | None = None) -> Path | None:
     """
-    Runs the interactive builder and saves YAML.
-    If output_path is provided, skips the output-path prompt.
-    Returns the saved path.
+    Run the interactive builder and save YAML.
+
+    Returns the saved path on success, or None if the user declined to save.
+    Raises KeyboardInterrupt to the caller if the user hits Ctrl+C — aa-get
+    handles that as a clean cancel.
     """
-    print("\n🧭   aa-get : Fetch Schedule Builder\n")
+    global _console
+    _console = _make_console()
+
+    _print_banner()
 
     requests: list[Request] = []
+    request_idx = 1
 
     while True:
-        requests.append(build_request())
+        try:
+            requests.append(build_request(request_idx))
+        except RuntimeError as e:
+            # e.g. "No available dates found for vessel=..., survey=..."
+            _print_error(str(e))
+            retry = inquirer.confirm(
+                message="🔁   Try a different vessel/survey?",
+                default=True,
+            ).execute()
+            if not retry:
+                return None
+            continue
+
+        request_idx += 1
 
         another_req = inquirer.confirm(
             message="🧩   Create another request (different vessel/survey/instrument)?",
             default=False,
         ).execute()
-
         if not another_req:
             break
 
-    # Emit YAML schema:
-    # requests:
-    #   - vessel: "Falkor"
-    #     survey: "FK004E"
-    #     instrument: "EM302"
-    #     time-windows:
-    #       - start-date: "2012-08-29"
-    #         start-time: "00:00:00"
-    #         end-date: "2012-09-01"
-    #         end-time: "23:59:59"
     schedule_dict: dict[str, Any] = {
         "requests": [
             {
@@ -393,25 +589,47 @@ def main(output_path: Path | None = None) -> Path:
         ]
     }
 
+    # Show what we're about to save and let the user back out.
+    _print_summary(requests)
+    _print_yaml_preview(schedule_dict)
+
+    save_confirmed = inquirer.confirm(
+        message="💾   Save this schedule?",
+        default=True,
+    ).execute()
+    if not save_confirmed:
+        _print_warning("Save cancelled by user. Nothing was written.")
+        return None
+
+    # Resolve output path (use the one aa-get passed in, or ask).
     out_path = output_path if output_path is not None else ask_output_path()
     out_path = Path(out_path).expanduser()
     if out_path.suffix == "":
         out_path = out_path.with_suffix(".yaml")
 
+    # Overwrite confirmation if the target already exists.
+    if out_path.exists():
+        overwrite = inquirer.confirm(
+            message=f"⚠️   '{out_path}' already exists. Overwrite?",
+            default=False,
+        ).execute()
+        if not overwrite:
+            _print_warning("Overwrite declined. Nothing was written.")
+            return None
+
     write_yaml_file(out_path, schedule_dict)
+    _print_success(f"Saved YAML to: {out_path}")
 
-    print("\n🧾   Result (YAML)\n")
-    if yaml is None:
-        import json
-        print(json.dumps(schedule_dict, indent=2))
-        print(f"\n💾   Saved (JSON fallback) to: {out_path}\n")
-    else:
-        print(yaml.safe_dump(schedule_dict, sort_keys=False))
-        print(f"\n💾   Saved YAML to: {out_path}\n")
-
-    print("✅   Done.\n")
     return out_path
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        # Friendly message instead of a stack trace.
+        if _console is not None:
+            _console.print("\n[yellow]Cancelled.[/yellow]")
+        else:
+            print("\nCancelled.")
+        raise SystemExit(130)

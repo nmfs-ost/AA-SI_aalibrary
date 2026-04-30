@@ -1,113 +1,165 @@
 #!/usr/bin/env python3
 """
-Console tool for converting RAW files to NetCDF using Echopype,
-removing background noise, applying transformations, and saving back.
+aa-clean
+
+Console tool for removing background noise from a Sv (volume backscattering
+strength) NetCDF dataset using echopype.clean.remove_background_noise, and
+saving the cleaned result back to NetCDF.
+
+Pipeline-friendly: reads input path from positional arg or stdin, writes
+output path to stdout, all logs to stderr.
+
+Typical pipeline usage:
+    aa-nc --sonar_model EK60 input.raw | aa-sv | aa-clean
 """
-import io
-from contextlib import redirect_stdout
-import argparse
+
+# === Silence logs BEFORE any heavy imports ===
+import logging
 import sys
-from pathlib import Path
-import xarray as xr
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
 
 from loguru import logger
-import echopype as ep  # make sure echopype is installed
-from echopype.clean import remove_background_noise
+logger.remove()
+# Default sink: WARNING+ to stderr so real errors aren't swallowed.
+# Without this, any exception in process_file disappears silently and
+# the pipeline downstream gets no input — a confusing failure mode.
+logger.add(sys.stderr, level="WARNING")
+
+# Now the heavy imports — anything they log gets squashed
+import argparse
 import pprint
+from pathlib import Path
+
+import xarray as xr
+from echopype.clean import remove_background_noise
+
+
+def silence_all_logs():
+    """Re-apply suppression in case a library re-enabled logging
+    or added its own loguru sink during initialization."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
+
 
 def print_help():
     help_text = """
     Usage: aa-clean [OPTIONS] [INPUT_PATH]
 
     Arguments:
-    INPUT_PATH                  Path to the .netcdf4 file.
+    INPUT_PATH                  Path to a Sv .nc / .netcdf4 file
+                                (typically the output of aa-sv).
                                 Optional. Defaults to stdin if not provided.
 
     Options:
     -o, --output_path           Path to save processed output.
-                                Default: overwrites .nc files or creates a new .nc for RAW.
-    --ping_num                  Number of pings to use for background noise removal.
+                                Default: same directory as input, with
+                                '_clean' appended to the stem and a
+                                .nc suffix. Note: '_clean' is ALWAYS
+                                appended, even when -o is given, so the
+                                input file is never silently overwritten.
+
+    --ping_num                  Number of pings to use for background
+                                noise estimation.
                                 Default: 20
-    --range_sample_num          Number of range samples to use for background noise removal.
+
+    --range_sample_num          Number of range samples to use for background
+                                noise estimation.
                                 Default: 20
-    --background_noise_max      Optional maximum background noise value.
-                                Default: None
-    --snr_threshold             SNR threshold in dB.
+
+    --background_noise_max      Optional upper bound on the estimated
+                                background noise, e.g. "-125dB". Pass with
+                                the dB unit suffix.
+                                Default: None (no cap).
+
+    --snr_threshold             SNR threshold as a number in dB. The 'dB'
+                                unit suffix is appended automatically before
+                                handing off to echopype.
                                 Default: 3.0
 
     Description:
-    This tool processes .netcdf4 files with Echopype and removes
-    background noise using ping-based and range-based thresholds.
+    Removes background noise from a Sv NetCDF using
+    echopype.clean.remove_background_noise. The expected input is the
+    output of aa-sv (a flat NetCDF Sv dataset, NOT a multi-group EchoData
+    file from aa-nc).
 
-    Example:
-    aa-clean /path/to/input.nc --ping_num 50 --range_sample_num 200 \\
-            --snr_threshold 5.0 -o /path/to/output.nc
+    Pipeline example:
+        aa-nc --sonar_model EK60 input.raw | aa-sv | aa-clean
+
+    Direct example:
+        aa-clean /path/to/input_Sv.nc \\
+                 --ping_num 50 --range_sample_num 200 \\
+                 --snr_threshold 5.0 -o /path/to/output.nc
     """
     print(help_text)
 
 
-
 def main():
-
+    # Stdin / no-args handling
     if len(sys.argv) == 1:
         if not sys.stdin.isatty():
             stdin_data = sys.stdin.readline().strip()
             if stdin_data:
                 sys.argv.append(stdin_data)
+            else:
+                # Stdin was piped but empty — bail with help instead of
+                # falling through and crashing on Path("").exists().
+                print_help()
+                sys.exit(0)
         else:
             print_help()
             sys.exit(0)
 
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print_help()
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
-        description="Process .raw or .netcdf4 files with Echopype and remove background noise."
+        description="Remove background noise from a Sv NetCDF file with Echopype.",
+        add_help=False,
     )
 
-    # ---------------------------
-    # Required file arguments
-    # ---------------------------
     parser.add_argument(
         "input_path",
         type=Path,
-        help="Path to the .raw or .netcdf4 file.",
-        nargs="?",  # makes it optional
+        nargs="?",
+        help="Path to the Sv .nc / .netcdf4 file.",
     )
-
     parser.add_argument(
-        "-o",
-        "--output_path",
+        "-o", "--output_path",
         type=Path,
-        help="Path to save processed output. Default behavior overwrites .nc files or creates a new .nc for RAW.",
+        help="Path to save processed output. '_clean' is appended to the stem.",
     )
-
-    # ---------------------------
-    # remove_background_noise arguments
-    # ---------------------------
     parser.add_argument(
         "--ping_num",
         type=int,
         default=20,
-        help="Number of pings to use for background noise removal.",
+        help="Number of pings to use for background noise estimation.",
     )
-
     parser.add_argument(
         "--range_sample_num",
         type=int,
         default=20,
-        help="Number of range samples to use for background noise removal.",
+        help="Number of range samples to use for background noise estimation.",
     )
-
     parser.add_argument(
         "--background_noise_max",
         type=str,
         default=None,
-        help="Optional maximum background noise value.",
+        help='Optional upper bound for background noise (e.g. "-125dB").',
     )
-
     parser.add_argument(
         "--snr_threshold",
         type=float,
         default=3.0,
-        help="SNR threshold in dB (default: 3.0).",
+        help="SNR threshold in dB (default: 3.0). 'dB' suffix added automatically.",
     )
 
     args = parser.parse_args()
@@ -115,10 +167,10 @@ def main():
     # ---------------------------
     # Validate input
     # ---------------------------
-
     if args.input_path is None:
-        # Read from stdin
-
+        if sys.stdin.isatty():
+            logger.error("No input path provided and no stdin available.")
+            sys.exit(1)
         args.input_path = Path(sys.stdin.readline().strip())
         logger.info(f"Read input path from stdin: {args.input_path}")
 
@@ -126,54 +178,61 @@ def main():
         logger.error(f"File '{args.input_path}' does not exist.")
         sys.exit(1)
 
-    allowed_extensions = {".netcdf4": "netcdf", ".nc": "netcdf"}
-
+    allowed_extensions = {".netcdf4", ".nc"}
     ext = args.input_path.suffix.lower()
     if ext not in allowed_extensions:
         logger.error(
             f"'{args.input_path.name}' is not a supported file type. "
-            f"Allowed: {', '.join(allowed_extensions.keys())}"
+            f"Allowed: {', '.join(sorted(allowed_extensions))}"
         )
         sys.exit(1)
 
-    file_type = allowed_extensions[ext]
-
     # ---------------------------
-    # Set default output path
+    # Resolve output path
     # ---------------------------
     if args.output_path is None:
-        if file_type == "netcdf":
-            # Overwrite the existing NetCDF
-            args.output_path = args.input_path
+        args.output_path = args.input_path
 
-        else:
-            # RAW file → produce NetCDF with same stem
-            args.output_path = args.input_path.with_suffix(".nc")
+    args.output_path = args.output_path.with_stem(args.output_path.stem + "_clean")
+    args.output_path = args.output_path.with_suffix(".nc")
+
+    # Guard against clobbering the input — refuse rather than silently
+    # corrupt the source file.
+    if args.output_path.resolve() == args.input_path.resolve():
+        logger.error(f"Refusing to overwrite input file: {args.input_path.resolve()}")
+        sys.exit(1)
 
     # ---------------------------
     # Process file
     # ---------------------------
     try:
-        
-        args.output_path = args.output_path.with_stem(args.output_path.stem + "_clean")
-        args.output_path = args.output_path.with_suffix(".nc")
+        args_summary = {
+            "input_path": args.input_path,
+            "output_path": args.output_path,
+            "ping_num": args.ping_num,
+            "range_sample_num": args.range_sample_num,
+            "background_noise_max": args.background_noise_max,
+            "snr_threshold": args.snr_threshold,
+        }
+        logger.debug(
+            f"Executing aa-clean configured with [OPTIONS]:\n"
+            f"{pprint.pformat(args_summary)}"
+        )
+
         process_file(
             input_path=args.input_path,
             output_path=args.output_path,
-            file_type=file_type,
             ping_num=args.ping_num,
             range_sample_num=args.range_sample_num,
             background_noise_max=args.background_noise_max,
             snr_threshold=args.snr_threshold,
         )
 
-        # Pretty-print args to logger
-        args_dict = vars(args)
-        pretty_args = pprint.pformat(args_dict)
-        logger.debug(f"\naa-clean args:\n{pretty_args}")
-
-        logger.info(f"Generating {args.output_path.resolve()} with aa-clean. Passing nc path to stdin...")
-        # Print output path to stdout for piping
+        logger.success(
+            f"Generated {args.output_path.resolve()} with aa-clean. "
+            "Passing .nc path to stdout..."
+        )
+        # Pipe the output path to stdout for the next tool
         print(args.output_path.resolve())
 
     except Exception as e:
@@ -181,83 +240,65 @@ def main():
         sys.exit(1)
 
 
-def clean_attrs(Sv):
-    # Dataset-level attrs
-    for k, v in Sv.attrs.items():
+def clean_attrs(ds):
+    """Replace None-valued attrs with 'NA' so the dataset is NetCDF-safe.
+    NetCDF attrs cannot be None — to_netcdf will raise on serialization.
+    Using 'NA' (matching aa-sv) rather than 'NaN' to avoid implying the
+    attribute was a missing numeric value."""
+    for k, v in ds.attrs.items():
         if v is None:
-            Sv.attrs[k] = "NaN"  # or float('nan') if numeric
-
-    # Variable-level attrs
-    for var in Sv.data_vars:
-        for k, v in Sv[var].attrs.items():
+            ds.attrs[k] = "NA"
+    for var in ds.data_vars:
+        for k, v in ds[var].attrs.items():
             if v is None:
-                Sv[var].attrs[k] = "NaN"  # or float('nan') if numeric
-    return Sv
+                ds[var].attrs[k] = "NA"
+    return ds
 
 
 def process_file(
     input_path: Path,
     output_path: Path,
-    file_type: str,
     ping_num: int,
     range_sample_num: int,
     background_noise_max: str = None,
     snr_threshold: float = 3.0,
 ):
-    """
-    Load EchoData from RAW or NetCDF, remove background noise, apply transformations, and save to NetCDF.
-    """
-    logger.info(f"Loading NetCDF file {input_path} into EchoData...")
-    
-    
+    """Load a Sv NetCDF, remove background noise, and save the result."""
 
+    logger.info(f"Loading Sv dataset from {input_path}")
+    # Note: this expects a flat Sv dataset (output of aa-sv via
+    # ds_Sv.to_netcdf), NOT a multi-group EchoData file (output of
+    # aa-nc via ed.to_netcdf). xr.open_dataset would only see the root
+    # group of the latter and remove_background_noise would fail.
+    ds_Sv = xr.open_dataset(input_path)
 
-    f = io.StringIO()
-    with redirect_stdout(f):
-        ed = xr.open_dataset(input_path) # Unwanted output affects the piping.
+    try:
+        logger.info(
+            f"Removing background noise "
+            f"(ping_num={ping_num}, range_sample_num={range_sample_num}, "
+            f"background_noise_max={background_noise_max}, "
+            f"SNR_threshold={snr_threshold}dB)"
+        )
+        ds_Sv_clean = remove_background_noise(
+            ds_Sv,
+            ping_num=ping_num,
+            range_sample_num=range_sample_num,
+            background_noise_max=background_noise_max,
+            SNR_threshold=f"{snr_threshold}dB",
+        )
 
-    # Step 3: Apply any additional transformation
-    logger.info("Applying transformations to EchoData...")
-    # Sv = ep.calibrate.compute_Sv(ed)
-    Sv_clean = transform_echo_data(
-        ed, ping_num, range_sample_num, background_noise_max, snr_threshold
-    )
+        ds_Sv_clean = clean_attrs(ds_Sv_clean)
 
-    # Step 4: Save back to NetCDF
-    logger.info(f"Saving processed EchoData to {output_path} ...")
+        # Force-load before writing so we don't depend on the source
+        # file handle still being open during to_netcdf's lazy compute.
+        ds_Sv_clean.load()
+    finally:
+        ds_Sv.close()
 
-    Sv_clean = clean_attrs(Sv_clean)
-
-    # .to_netcdf(output_path, overwrite=True)
-    # ed.ds_Sv_clean = Sv_clean  # Update EchoData with cleaned Sv
-
-    Sv_clean.to_netcdf(output_path.with_suffix(".nc"))
-    logger.info("Processing complete.")
-
-
-def transform_echo_data(
-    ed: ep.echodata,
-    ping_num: int,
-    range_sample_num: int,
-    background_noise_max: str = None,
-    snr_threshold: float = 3.0,
-):
-
-    # Step 2: Remove background noise
-    logger.info("Removing background noise...")
-    # ds_Sv comes from the EchoData object internally
-
-
-
-    #Sv = ep.calibrate.compute_Sv(ed)
-    Sv_clean = remove_background_noise(
-        ed,
-        ping_num=ping_num,
-        range_sample_num=range_sample_num,
-        background_noise_max=background_noise_max,
-        SNR_threshold=f"{snr_threshold}dB",
-    )
-    return Sv_clean
+    output_path = output_path.with_suffix(".nc")
+    logger.info(f"Saving cleaned Sv dataset to {output_path}")
+    ds_Sv_clean.to_netcdf(output_path)
+    logger.success(f"Background noise removal complete: {output_path.resolve()}")
 
 
 if __name__ == "__main__":
