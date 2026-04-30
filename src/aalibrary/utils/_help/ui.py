@@ -231,6 +231,14 @@ def _render_answer(plan: Plan) -> None:
 
 
 def _render_clarify(plan: Plan) -> None:
+    """Render the question prompt for a clarify plan.
+
+    When `options` are present, we skip the panel here -- the menu itself
+    will be the visual element. Without options, fall back to a panel
+    asking the user to type a free-form answer.
+    """
+    if plan.options:
+        return  # menu in handle_plan is the entire UI
     _console.print(Panel(
         f"[bold]I need one thing first:[/bold]\n\n  {plan.question}",
         title="[yellow]question[/yellow]",
@@ -327,8 +335,13 @@ def _menu(question: str, choices: list[tuple[str, str]]) -> str:
 
 # --- main entry ------------------------------------------------------------
 
-def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
-    """Render a plan and run the chosen action. Returns exit code.
+def handle_plan(plan: Plan, *, allow_execute: bool) -> tuple[int, str | None]:
+    """Render a plan and run the chosen action.
+
+    Returns (exit_code, follow_up_question).
+      - exit_code is 0 in normal cases, non-zero on execution failure.
+      - follow_up_question is a string when the user picked a clarify option;
+        the caller should re-plan with that as the new prompt. Otherwise None.
 
     Raises UserExit if the user Ctrl-C's out of a menu/confirm. Caller
     (REPL or one-shot main) decides whether that means "skip this plan"
@@ -336,8 +349,32 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
     """
     _print_plan(plan)
 
-    if plan.kind in ("answer", "clarify"):
-        return 0
+    if plan.kind == "answer":
+        return 0, None
+
+    if plan.kind == "clarify":
+        # If the planner provided options, surface them as a menu and feed
+        # the user's choice back as a follow-up question.
+        if plan.options:
+            choices: list[tuple[str, str]] = [(opt, opt) for opt in plan.options]
+            choices.append(("✕   cancel / type my own answer", "__cancel__"))
+
+            if _HAVE_RICH:
+                _console.print()
+                # Print the question above the menu since we skipped the panel.
+                _console.print(f"[bold yellow]?[/bold yellow] [bold]"
+                               f"{plan.question}[/bold]")
+            picked = _menu("pick one:", choices)
+
+            if picked == "__cancel__":
+                if _HAVE_RICH:
+                    _console.print("[dim](cancelled; ask a new question)[/dim]")
+                return 0, None
+            # Build a follow-up that combines the original question context
+            # with the user's choice.
+            follow_up = f"{plan.question} -> {picked}"
+            return 0, follow_up
+        return 0, None
 
     validation = validate(plan)
     if _HAVE_RICH:
@@ -372,8 +409,7 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
             _console.print("[dim]cancelled.[/dim]")
         else:
             print("cancelled.")
-        return 0
-
+        return 0, None
     if action == "oneline":
         parts = [render_command(s) for s in plan.stages]
         oneliner = " | ".join(parts)
@@ -383,8 +419,7 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
                                   background_color="default", word_wrap=True))
         else:
             print("\n" + oneliner)
-        return 0
-
+        return 0, None
     if action == "copy":
         text = render_pipeline(plan)
         try:
@@ -404,8 +439,7 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
             else:
                 print("clipboard unavailable:\n")
                 print(text)
-        return 0
-
+        return 0, None
     if action == "print":
         if _HAVE_RICH:
             _console.print("[dim]--execute not set; printing only:[/dim]")
@@ -416,12 +450,11 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
         else:
             print("\n(--execute was not set; not running.)")
             print(render_pipeline(plan))
-        return 0
-
+        return 0, None
     if action == "run":
         if not validation.ok:
             print_error("refusing to run -- validation failed.")
-            return 2
+            return 2, None
         if validation.needs_network_confirm:
             if not _confirm(
                 "this pipeline accesses network/cloud storage. continue?",
@@ -431,14 +464,13 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
                     _console.print("[dim]cancelled.[/dim]")
                 else:
                     print("cancelled.")
-                return 0
+                return 0, None
         if not _confirm("run it?", default=True):
             if _HAVE_RICH:
                 _console.print("[dim]cancelled.[/dim]")
             else:
                 print("cancelled.")
-            return 0
-
+            return 0, None
         if _HAVE_RICH:
             _console.print(Rule("🌊", style="cyan"))
             _console.print("[bold cyan]executing...[/bold cyan]\n")
@@ -459,6 +491,5 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
                 print("\npipeline complete.")
             else:
                 print(f"\npipeline failed (exit {rc}).")
-        return rc
-
-    return 0
+        return rc, None
+    return 0, None
