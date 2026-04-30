@@ -10,10 +10,22 @@ Usage:
     aa-help --no-stream          # disable streaming
     aa-help --model MODEL        # override model for this run
 """
-from __future__ import annotations
 
-import argparse
+# === Silence logs BEFORE any heavy imports (matches aa-sv pattern) ===
+import logging
 import sys
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+from loguru import logger
+logger.remove()
+# WARNING+ to stderr so real errors aren't swallowed.
+logger.add(sys.stderr, level="WARNING")
+
+# Now the heavy imports - anything they log gets squashed
+import argparse
 
 from aalibrary.utils._help import config as cfg
 from aalibrary.utils._help import context as ctx
@@ -21,7 +33,19 @@ from aalibrary.utils._help.repl import run_repl
 from aalibrary.utils._help.vertex_client import VertexHelper
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def silence_all_logs():
+    """Re-apply suppression in case google-genai / httpx / grpc re-enabled
+    logging or added their own handlers during initialization."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
+
+
+def _build_parser():
     p = argparse.ArgumentParser(
         prog="aa-help",
         description="Active Acoustics assistant powered by Vertex AI Gemini.",
@@ -46,7 +70,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     args = _build_parser().parse_args(argv)
 
     if args.config:
@@ -63,8 +87,7 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = cfg.load_config()
     if not settings.is_complete():
-        print("aa-help is not configured yet. Running setup wizard...\n",
-              file=sys.stderr)
+        logger.warning("aa-help is not configured yet. Running setup wizard...")
         settings = cfg.run_setup_wizard()
 
     if args.model:
@@ -76,7 +99,11 @@ def main(argv: list[str] | None = None) -> int:
         print(system_prompt)
         return 0
 
+    # Re-silence right before instantiating the Vertex client - google-auth
+    # and httpx attach handlers during first use, not at import time.
+    silence_all_logs()
     helper = VertexHelper(settings, system_prompt=system_prompt)
+    silence_all_logs()
 
     if args.question:
         question = " ".join(args.question)
