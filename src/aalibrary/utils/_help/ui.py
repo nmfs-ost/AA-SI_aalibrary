@@ -1,19 +1,18 @@
 """Interactive UI for aa-help, dressed up with `rich`.
 
-What this module provides:
-  - handle_plan(plan, allow_execute) -- main entry; renders a Plan and runs
-    the user's chosen action.
-  - thinking() -- context manager spinner around long Vertex calls.
-  - print_error(), print_info(), print_banner() -- helpers used by aa_help.py.
-
-Design notes:
-  - rich handles all output (panels, syntax highlighting, markdown).
-  - InquirerPy handles all input (arrow-key menus, confirms).
-  - When stdin/stdout isn't a TTY (piped, scripted), rich degrades to plain
-    text and InquirerPy's menus fall back to numbered prompts.
+Design choices:
+  - Width is CLAMPED to a sensible band (60-100 columns). On very wide
+    terminals, output stays readable instead of spreading edge to edge. On
+    very narrow ones, panels collapse padding to stay legible.
+  - Emojis are USED SPARINGLY: one in the banner, one on success, one on
+    failure, a wave on the execution divider. Stage rows and arg lines stay
+    plain text -- emojis on every line crosses into noise.
+  - Ctrl-C and Ctrl-D ALWAYS exit cleanly. The REPL catches at every level
+    and prints a single goodbye line; no tracebacks.
 """
 from __future__ import annotations
 
+import shutil
 import sys
 from contextlib import contextmanager
 from typing import Iterator
@@ -28,7 +27,7 @@ from .safety import (
 from .executor import execute
 
 
-# --- rich console (single shared instance) ---------------------------------
+# --- rich console ----------------------------------------------------------
 
 try:
     from rich.console import Console
@@ -43,36 +42,78 @@ try:
 except ModuleNotFoundError:
     _HAVE_RICH = False
 
-_console = Console(stderr=False) if _HAVE_RICH else None
-_err_console = Console(stderr=True) if _HAVE_RICH else None
+
+# Width clamp. Below MIN, terminals are too cramped for our panels and we
+# tighten everything up. Above MAX, lines get hard to scan; we cap there.
+WIDTH_MIN = 60
+WIDTH_MAX = 100
+
+
+def _term_width() -> int:
+    cols = shutil.get_terminal_size((80, 24)).columns
+    return max(WIDTH_MIN, min(cols, WIDTH_MAX))
+
+
+def _is_narrow() -> bool:
+    cols = shutil.get_terminal_size((80, 24)).columns
+    return cols < 70
+
+
+def _make_console(stderr: bool = False):
+    if not _HAVE_RICH:
+        return None
+    return Console(
+        stderr=stderr,
+        width=_term_width(),
+        # rich already auto-detects no-color terminals, log files, etc.
+        # We don't override its TTY detection here.
+    )
+
+
+_console = _make_console(stderr=False)
+_err_console = _make_console(stderr=True)
 
 
 def _is_tty() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-# --- public helpers used by aa_help.py -------------------------------------
+# --- public helpers --------------------------------------------------------
 
 def print_banner(mode: str) -> None:
-    """REPL banner shown at startup."""
+    """REPL banner shown at startup. One fish anchors the title."""
     if _HAVE_RICH:
         body = Text()
-        body.append("aa-help interactive mode\n", style="bold cyan")
-        body.append("Ask anything about aalibrary or active acoustics.\n\n",
-                    style="dim")
-        body.append("Mode: ", style="dim")
+        body.append("🐟 aa-help", style="bold cyan")
+        body.append(" — active acoustics assistant\n", style="cyan")
+        if not _is_narrow():
+            body.append("Ask anything about aalibrary or the aa-* tools.\n",
+                        style="dim")
+        body.append("\nMode: ", style="dim")
         if mode == "execute":
             body.append("EXECUTE allowed", style="bold green")
         else:
             body.append("dry-run ", style="bold yellow")
-            body.append("(use --execute to enable)", style="dim")
-        body.append("\nCommands: /reset  /exit  (Ctrl-D / Ctrl-C also exit)",
-                    style="dim")
-        _console.print(Panel(body, border_style="cyan", box=ROUNDED,
-                             padding=(0, 2)))
+            body.append("(--execute to enable)", style="dim")
+        body.append("\nExit: ", style="dim")
+        body.append("Ctrl-D, Ctrl-C, or /exit", style="dim italic")
+        _console.print(Panel(
+            body, border_style="cyan", box=ROUNDED,
+            padding=(0, 2) if not _is_narrow() else (0, 1),
+        ))
     else:
-        print("aa-help interactive mode. Ask anything.")
+        print("🐟 aa-help — active acoustics assistant")
         print(f"Mode: {'EXECUTE allowed' if mode == 'execute' else 'dry-run'}")
+        print("Exit: Ctrl-D, Ctrl-C, or /exit")
+
+
+def print_goodbye() -> None:
+    """Single-line goodbye on clean exit."""
+    if _HAVE_RICH:
+        _console.print()
+        _console.print("[cyan]🌊 fair winds.[/cyan]")
+    else:
+        print("\nfair winds.")
 
 
 def print_info(msg: str) -> None:
@@ -91,10 +132,15 @@ def print_error(msg: str) -> None:
 
 @contextmanager
 def thinking(label: str = "thinking") -> Iterator[None]:
-    """Context manager: shows a spinner while Vertex is being called."""
+    """Spinner during Vertex calls. Ctrl-C cleanly aborts the spinner."""
     if _HAVE_RICH and _is_tty():
-        with _console.status(f"[cyan]{label}...[/cyan]", spinner="dots"):
-            yield
+        try:
+            with _console.status(f"[cyan]{label}...[/cyan]", spinner="dots"):
+                yield
+        except KeyboardInterrupt:
+            # Re-raise so the REPL/main loop can decide what to do, but the
+            # status context exits cleanly first.
+            raise
     else:
         print(f"[{label}]", file=sys.stderr)
         yield
@@ -103,8 +149,8 @@ def thinking(label: str = "thinking") -> Iterator[None]:
 # --- plan rendering --------------------------------------------------------
 
 def _render_pipeline_panel(plan: Plan) -> None:
-    """The hero panel for kind=pipeline plans."""
     pipeline_text = render_pipeline(plan)
+    narrow = _is_narrow()
 
     if plan.summary:
         _console.print()
@@ -118,23 +164,24 @@ def _render_pipeline_panel(plan: Plan) -> None:
     )
     _console.print(Panel(
         syntax,
-        title="[bold]Proposed pipeline[/bold]",
+        title="[bold]proposed pipeline[/bold]",
         title_align="left",
         border_style="cyan",
         box=ROUNDED,
-        padding=(1, 2),
+        padding=(1, 2) if not narrow else (0, 1),
     ))
 
     if plan.stages:
-        stages_table = Table(show_header=False, box=None, padding=(0, 1, 0, 1))
+        stages_table = Table(show_header=False, box=None,
+                             padding=(0, 1, 0, 1))
         stages_table.add_column(style="dim", justify="right", width=3)
         stages_table.add_column(style="bold cyan", no_wrap=True)
-        stages_table.add_column(style="dim")
+        stages_table.add_column(style="dim", overflow="fold")
         for i, s in enumerate(plan.stages, 1):
             stages_table.add_row(f"{i}.", s.tool, s.explanation or "")
         _console.print(Panel(
             stages_table,
-            title="[bold]Stages[/bold]",
+            title="[bold]stages[/bold]",
             title_align="left",
             border_style="dim",
             box=ROUNDED,
@@ -143,12 +190,12 @@ def _render_pipeline_panel(plan: Plan) -> None:
 
     meta = Table.grid(padding=(0, 1))
     meta.add_column(style="bold")
-    meta.add_column()
+    meta.add_column(overflow="fold")
     if plan.expected_output:
-        meta.add_row("Output:", f"[green]{plan.expected_output}[/green]")
+        meta.add_row("output:", f"[green]{plan.expected_output}[/green]")
     if plan.risks:
         for r in plan.risks:
-            meta.add_row("[yellow]Risk:[/yellow]", f"[yellow]{r}[/yellow]")
+            meta.add_row("[yellow]risk:[/yellow]", f"[yellow]{r}[/yellow]")
     if plan.expected_output or plan.risks:
         _console.print(meta)
 
@@ -159,7 +206,7 @@ def _render_validation(v: ValidationResult) -> None:
         for e in v.errors:
             body.append(f"  ✗ {e}\n", style="red")
         _console.print(Panel(
-            body, title="[bold red]Plan blocked[/bold red]",
+            body, title="[bold red]plan blocked[/bold red]",
             title_align="left", border_style="red", box=HEAVY,
         ))
     if v.warnings:
@@ -167,35 +214,34 @@ def _render_validation(v: ValidationResult) -> None:
         for w in v.warnings:
             body.append(f"  ! {w}\n", style="yellow")
         _console.print(Panel(
-            body, title="[bold yellow]Heads-up[/bold yellow]",
+            body, title="[bold yellow]heads-up[/bold yellow]",
             title_align="left", border_style="yellow", box=ROUNDED,
         ))
 
 
 def _render_answer(plan: Plan) -> None:
-    """kind=answer -- a knowledge-question response, rendered as markdown."""
     if not plan.answer:
         _console.print("[dim](no answer)[/dim]")
         return
     _console.print(Panel(
         Markdown(plan.answer),
-        border_style="cyan", box=ROUNDED, padding=(1, 2),
+        border_style="cyan", box=ROUNDED,
+        padding=(1, 2) if not _is_narrow() else (0, 1),
     ))
 
 
 def _render_clarify(plan: Plan) -> None:
-    """kind=clarify -- the planner needs one more thing."""
     _console.print(Panel(
         f"[bold]I need one thing first:[/bold]\n\n  {plan.question}",
-        title="[yellow]Question[/yellow]",
+        title="[yellow]question[/yellow]",
         title_align="left",
-        border_style="yellow", box=ROUNDED, padding=(1, 2),
+        border_style="yellow", box=ROUNDED,
+        padding=(1, 2) if not _is_narrow() else (0, 1),
     ))
 
 
 def _print_plan(plan: Plan) -> None:
     if not _HAVE_RICH:
-        # Plain fallback (matches the old ui.py).
         if plan.kind == "answer":
             print(plan.answer or "(no answer)")
         elif plan.kind == "clarify":
@@ -207,9 +253,9 @@ def _print_plan(plan: Plan) -> None:
             for i, s in enumerate(plan.stages, 1):
                 print(f"  {i}. {s.tool} -- {s.explanation}")
             if plan.expected_output:
-                print(f"Output: {plan.expected_output}")
+                print(f"output: {plan.expected_output}")
             for r in plan.risks:
-                print(f"Risk: {r}")
+                print(f"risk: {r}")
         return
 
     if plan.kind == "answer":
@@ -220,7 +266,12 @@ def _print_plan(plan: Plan) -> None:
         _render_pipeline_panel(plan)
 
 
-# --- input prompts ---------------------------------------------------------
+# --- prompts ---------------------------------------------------------------
+
+class UserExit(Exception):
+    """Raised when the user hits Ctrl-C inside an InquirerPy prompt.
+    Caller decides whether to abort the plan-handling or quit the REPL."""
+
 
 def _confirm(message: str, default: bool = False) -> bool:
     if not _is_tty():
@@ -231,8 +282,13 @@ def _confirm(message: str, default: bool = False) -> bool:
             message=message, default=default,
             qmark="?", amark="✓",
         ).execute())
+    except KeyboardInterrupt:
+        raise UserExit()
     except Exception:
-        ans = input(f"{message} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
+        try:
+            ans = input(f"{message} [{'Y/n' if default else 'y/N'}]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            raise UserExit()
         if not ans:
             return default
         return ans.startswith("y")
@@ -251,11 +307,16 @@ def _menu(question: str, choices: list[tuple[str, str]]) -> str:
             qmark="?", amark="✓",
             pointer="▸",
         ).execute()
+    except KeyboardInterrupt:
+        raise UserExit()
     except Exception:
         for i, (label, _v) in enumerate(choices, 1):
             print(f"  {i}. {label}")
         while True:
-            ans = input("Select (number): ").strip()
+            try:
+                ans = input("Select (number): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                raise UserExit()
             try:
                 idx = int(ans) - 1
                 if 0 <= idx < len(choices):
@@ -267,6 +328,12 @@ def _menu(question: str, choices: list[tuple[str, str]]) -> str:
 # --- main entry ------------------------------------------------------------
 
 def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
+    """Render a plan and run the chosen action. Returns exit code.
+
+    Raises UserExit if the user Ctrl-C's out of a menu/confirm. Caller
+    (REPL or one-shot main) decides whether that means "skip this plan"
+    or "quit the program".
+    """
     _print_plan(plan)
 
     if plan.kind in ("answer", "clarify"):
@@ -277,34 +344,34 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
         _render_validation(validation)
     else:
         if validation.errors:
-            print("\nPlan blocked:")
+            print("\nplan blocked:")
             for e in validation.errors:
                 print(f"  ✗ {e}")
         if validation.warnings:
-            print("\nHeads-up:")
+            print("\nheads-up:")
             for w in validation.warnings:
                 print(f"  ! {w}")
 
     choices: list[tuple[str, str]] = []
     if validation.ok and allow_execute:
-        choices.append(("▶  Run this pipeline", "run"))
+        choices.append(("▶  run this pipeline", "run"))
     elif validation.ok and not allow_execute:
-        choices.append(("◌  Print only (--execute not set)", "print"))
+        choices.append(("◌  print only (--execute not set)", "print"))
     choices.extend([
-        ("📋  Copy pipeline to clipboard", "copy"),
-        ("│   Show as one-liner (for shell)", "oneline"),
-        ("✕   Cancel", "cancel"),
+        ("📋  copy pipeline to clipboard", "copy"),
+        ("│   show as one-liner", "oneline"),
+        ("✕   cancel", "cancel"),
     ])
 
     if _HAVE_RICH:
         _console.print()
-    action = _menu("What would you like to do?", choices)
+    action = _menu("what would you like to do?", choices)
 
     if action == "cancel":
         if _HAVE_RICH:
-            _console.print("[dim]Cancelled.[/dim]")
+            _console.print("[dim]cancelled.[/dim]")
         else:
-            print("Cancelled.")
+            print("cancelled.")
         return 0
 
     if action == "oneline":
@@ -313,7 +380,7 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
         if _HAVE_RICH:
             _console.print()
             _console.print(Syntax(oneliner, "bash", theme="ansi_dark",
-                                  background_color="default"))
+                                  background_color="default", word_wrap=True))
         else:
             print("\n" + oneliner)
         return 0
@@ -324,17 +391,18 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
             import pyperclip
             pyperclip.copy(text)
             if _HAVE_RICH:
-                _console.print("[green]✓ Copied to clipboard.[/green]")
+                _console.print("[green]✓ copied to clipboard.[/green]")
             else:
-                print("Copied to clipboard.")
+                print("copied to clipboard.")
         except Exception:
             if _HAVE_RICH:
-                _console.print("[yellow]Clipboard unavailable. "
-                               "Pipeline:[/yellow]")
+                _console.print("[yellow]clipboard unavailable. "
+                               "pipeline:[/yellow]")
                 _console.print(Syntax(text, "bash", theme="ansi_dark",
-                                      background_color="default"))
+                                      background_color="default",
+                                      word_wrap=True))
             else:
-                print("Clipboard unavailable:\n")
+                print("clipboard unavailable:\n")
                 print(text)
         return 0
 
@@ -343,7 +411,8 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
             _console.print("[dim]--execute not set; printing only:[/dim]")
             _console.print(Syntax(render_pipeline(plan), "bash",
                                   theme="ansi_dark",
-                                  background_color="default"))
+                                  background_color="default",
+                                  word_wrap=True))
         else:
             print("\n(--execute was not set; not running.)")
             print(render_pipeline(plan))
@@ -351,45 +420,45 @@ def handle_plan(plan: Plan, *, allow_execute: bool) -> int:
 
     if action == "run":
         if not validation.ok:
-            print_error("Refusing to run -- validation failed.")
+            print_error("refusing to run -- validation failed.")
             return 2
         if validation.needs_network_confirm:
             if not _confirm(
-                "This pipeline accesses network/cloud storage. Continue?",
+                "this pipeline accesses network/cloud storage. continue?",
                 default=False,
             ):
                 if _HAVE_RICH:
-                    _console.print("[dim]Cancelled.[/dim]")
+                    _console.print("[dim]cancelled.[/dim]")
                 else:
-                    print("Cancelled.")
+                    print("cancelled.")
                 return 0
-        if not _confirm("Run it?", default=True):
+        if not _confirm("run it?", default=True):
             if _HAVE_RICH:
-                _console.print("[dim]Cancelled.[/dim]")
+                _console.print("[dim]cancelled.[/dim]")
             else:
-                print("Cancelled.")
+                print("cancelled.")
             return 0
 
         if _HAVE_RICH:
-            _console.print(Rule(style="cyan"))
-            _console.print("[bold cyan]Executing...[/bold cyan]\n")
+            _console.print(Rule("🌊", style="cyan"))
+            _console.print("[bold cyan]executing...[/bold cyan]\n")
         else:
-            print("\nRunning...\n")
+            print("\nrunning...\n")
 
         rc = execute(plan, validation)
 
         if _HAVE_RICH:
             _console.print(Rule(style="cyan"))
             if rc == 0:
-                _console.print("[bold green]✓ Pipeline complete.[/bold green]")
+                _console.print("[bold green]🎣 pipeline complete.[/bold green]")
             else:
-                _console.print(f"[bold red]✗ Pipeline failed "
+                _console.print(f"[bold red]✗ pipeline failed "
                                f"(exit {rc}).[/bold red]")
         else:
             if rc == 0:
-                print("\nPipeline complete.")
+                print("\npipeline complete.")
             else:
-                print(f"\nPipeline failed (exit {rc}).")
+                print(f"\npipeline failed (exit {rc}).")
         return rc
 
     return 0

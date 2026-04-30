@@ -2,7 +2,7 @@
 
 Usage:
     aa-help                                  # interactive REPL (dry-run)
-    aa-help "your question or goal"          # one-shot, dry-run by default
+    aa-help "your question or goal"          # one-shot, dry-run
     aa-help --execute "..."                  # one-shot, allowed to run
     aa-help --setup                          # config wizard
     aa-help --edit                           # open config in $EDITOR
@@ -10,7 +10,12 @@ Usage:
     aa-help --reindex                        # rebuild knowledge DB
     aa-help --refresh-index                  # incremental index update
     aa-help --index-stats                    # show what's indexed
-    aa-help --model MODEL                    # override model for this run
+    aa-help --model MODEL                    # override model
+
+Exit:
+    Ctrl-D, Ctrl-C, or /exit at the REPL prompt always quit cleanly with
+    a one-line goodbye -- no tracebacks. Ctrl-C inside a menu just cancels
+    that one plan and returns you to the prompt.
 """
 
 # === Silence logs BEFORE any heavy imports ===
@@ -33,9 +38,11 @@ from aalibrary.utils._help import config as cfg
 from aalibrary.utils._help import knowledge as kb
 from aalibrary.utils._help.planner import Planner
 from aalibrary.utils._help.ui import (
+    UserExit,
     handle_plan,
     print_banner,
     print_error,
+    print_goodbye,
     print_info,
     thinking,
 )
@@ -109,63 +116,87 @@ def _do_index_stats() -> int:
     return 0
 
 
-def main(argv=None):
-    args = _build_parser().parse_args(argv)
-
-    # Cheap subcommands first -- no Vertex client needed.
-    if args.config:
-        print(cfg.config_path())
-        return 0
-    if args.edit:
-        cfg.edit_config()
-        return 0
-    if args.setup:
-        cfg.run_setup_wizard()
-        return 0
-    if args.index_stats:
-        return _do_index_stats()
-
-    settings = cfg.load_config()
-    if not settings.is_complete():
-        print_info("aa-help is not configured yet. Running setup...")
-        settings = cfg.run_setup_wizard()
-    if args.model:
-        settings.model = args.model
-
-    if args.reindex or args.refresh_index:
-        return _do_index(rebuild=args.reindex, settings=settings)
-
-    silence_all_logs()
-    planner = Planner(settings)
-    silence_all_logs()
-
-    # One-shot or REPL?
-    if args.question:
-        question = " ".join(args.question)
-        with thinking("planning"):
-            plan = planner.plan(question)
-        return handle_plan(plan, allow_execute=args.execute)
-
-    # REPL
-    print_banner(mode="execute" if args.execute else "dry-run")
+def _run_repl(planner: Planner, allow_execute: bool) -> int:
+    """Interactive loop. Returns 0 always; errors print but don't kill."""
+    print_banner(mode="execute" if allow_execute else "dry-run")
     while True:
         try:
             line = input("\naa-help> ").strip()
         except (EOFError, KeyboardInterrupt):
-            print()
+            print_goodbye()
             return 0
         if not line:
             continue
         if line in ("/exit", "/quit", ":q"):
+            print_goodbye()
             return 0
         try:
             with thinking("planning"):
                 plan = planner.plan(line)
-            handle_plan(plan, allow_execute=args.execute)
+            handle_plan(plan, allow_execute=allow_execute)
+        except UserExit:
+            # Ctrl-C inside a menu -- cancel the current plan, stay in REPL.
+            print_info("(cancelled; type /exit to leave aa-help)")
         except KeyboardInterrupt:
-            print_info("[interrupted]")
+            # Ctrl-C during planning -- same treatment.
+            print_info("(interrupted; type /exit to leave aa-help)")
         except Exception as e:
             print_error(str(e))
+
+
+def _run_one_shot(planner: Planner, question: str, allow_execute: bool) -> int:
+    """One-shot mode. Returns the plan/exec exit code."""
+    try:
+        with thinking("planning"):
+            plan = planner.plan(question)
+        return handle_plan(plan, allow_execute=allow_execute)
+    except (UserExit, KeyboardInterrupt):
+        print_goodbye()
+        return 130
+    except Exception as e:
+        print_error(str(e))
+        return 1
+
+
+def main(argv=None):
+    args = _build_parser().parse_args(argv)
+
+    # Cheap subcommands first -- no Vertex client needed.
+    try:
+        if args.config:
+            print(cfg.config_path())
+            return 0
+        if args.edit:
+            cfg.edit_config()
+            return 0
+        if args.setup:
+            cfg.run_setup_wizard()
+            return 0
+        if args.index_stats:
+            return _do_index_stats()
+
+        settings = cfg.load_config()
+        if not settings.is_complete():
+            print_info("aa-help is not configured yet. Running setup...")
+            settings = cfg.run_setup_wizard()
+        if args.model:
+            settings.model = args.model
+
+        if args.reindex or args.refresh_index:
+            return _do_index(rebuild=args.reindex, settings=settings)
+
+        silence_all_logs()
+        planner = Planner(settings)
+        silence_all_logs()
+
+        if args.question:
+            return _run_one_shot(planner, " ".join(args.question), args.execute)
+        return _run_repl(planner, args.execute)
+
+    except KeyboardInterrupt:
+        # Last-resort safety net for Ctrl-C during setup wizard, indexing, etc.
+        print_goodbye()
+        return 130
 
 
 if __name__ == "__main__":
