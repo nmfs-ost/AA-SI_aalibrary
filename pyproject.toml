@@ -46,14 +46,17 @@ location = "us-central1"
 model = "gemini-2.5-flash"
 temperature = 0.2
 max_output_tokens = 2048
+
 knowledge_dirs = [
-  "~/Documents/GitHub/AA-SI_aalibrary/docs",        # all your existing markdown docs
-  "~/Documents/GitHub/AA-SI_aalibrary/src",          # your library source
-  "~/aa-docs",                                        # personal notes + downloaded PDFs
+  "~/Documents/GitHub/AA-SI_aalibrary/docs/prompts",         # the JSON + TXT
+  "~/Documents/GitHub/AA-SI_aalibrary/docs/documentation",   # tool docs
+  "~/Documents/GitHub/AA-SI_aalibrary/docs/usage",           # usage examples
+  "~/aa-docs",                                                # personal notes
 ]
+
 extra_system_prompt = ""
-rag_top_k = 4
-rag_max_chars = 25000
+rag_top_k = 6
+rag_max_chars = 30000
 
 [project.scripts]
 aa-raw = "aalibrary.console.aa_raw:main"
