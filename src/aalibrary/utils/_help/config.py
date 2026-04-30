@@ -41,6 +41,11 @@ class Settings:
     rag_top_k: int = 8                # how many chunks to retrieve per query
     rag_max_chars: int = 60_000       # hard cap on retrieved-context size
 
+    # File discovery (acoustic-file index across the home directory).
+    file_scan_root: str = ""          # default: ~ (home dir)
+    file_scan_exclude: list[str] = field(default_factory=list)
+    file_index_ttl_seconds: int = 300
+
     def is_complete(self) -> bool:
         return bool(self.project_id and self.location and self.model)
 
@@ -76,6 +81,9 @@ def load_config() -> Settings:
         extra_system_prompt=aa.get("extra_system_prompt", ""),
         rag_top_k=int(aa.get("rag_top_k", 8)),
         rag_max_chars=int(aa.get("rag_max_chars", 60_000)),
+        file_scan_root=aa.get("file_scan_root", ""),
+        file_scan_exclude=list(aa.get("file_scan_exclude", [])),
+        file_index_ttl_seconds=int(aa.get("file_index_ttl_seconds", 300)),
     )
 
 

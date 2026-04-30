@@ -35,6 +35,7 @@ import argparse
 from pathlib import Path
 
 from aalibrary.utils._help import config as cfg
+from aalibrary.utils._help import fsscan
 from aalibrary.utils._help import knowledge as kb
 from aalibrary.utils._help.planner import Planner
 from aalibrary.utils._help.ui import (
@@ -80,6 +81,10 @@ def _build_parser():
                    help="Incrementally update the knowledge DB.")
     p.add_argument("--index-stats", action="store_true",
                    help="Show how many files/chunks are indexed.")
+    p.add_argument("--refresh-files", action="store_true",
+                   help="Re-walk the home dir and refresh the file index now.")
+    p.add_argument("--files-stats", action="store_true",
+                   help="Show what's in the cached file index.")
     p.add_argument("--model",
                    help="Override the configured model for this run.")
     return p
@@ -116,6 +121,32 @@ def _do_index_stats() -> int:
     return 0
 
 
+def _do_refresh_files(settings: cfg.Settings) -> int:
+    scan_root = (Path(settings.file_scan_root).expanduser()
+                 if settings.file_scan_root else Path.home())
+    print_info(f"Walking {scan_root} for acoustic files...")
+    index = fsscan.build_index(
+        scan_root, cfg.config_dir(), settings.file_scan_exclude
+    )
+    raw = len(index.get(".raw", []))
+    nc = len(index.get(".nc", [])) + len(index.get(".netcdf4", []))
+    ev = len(index.get(".evr", [])) + len(index.get(".evl", []))
+    print_info(f"Found: {raw} .raw, {nc} netcdf, {ev} echoview files.")
+    return 0
+
+
+def _do_files_stats(settings: cfg.Settings) -> int:
+    s = fsscan.stats(cfg.config_dir())
+    if not s.get("cached"):
+        print_info("No file index yet. Run `aa-help --refresh-files` to build one.")
+        return 0
+    print_info(f"Scan root: {s['scan_root']}")
+    print_info(f"Age: {s['age_seconds']}s "
+               f"(refreshes after {settings.file_index_ttl_seconds}s)")
+    print_info(f"Files: {s['raw']} .raw, {s['nc']} netcdf, {s['echoview']} echoview")
+    return 0
+
+
 def _run_repl(planner: Planner, allow_execute: bool) -> int:
     """Interactive loop. Returns 0 always; errors print but don't kill."""
     print_banner(mode="execute" if allow_execute else "dry-run")
@@ -130,26 +161,47 @@ def _run_repl(planner: Planner, allow_execute: bool) -> int:
         if line in ("/exit", "/quit", ":q"):
             print_goodbye()
             return 0
-        try:
-            with thinking("planning"):
-                plan = planner.plan(line)
-            handle_plan(plan, allow_execute=allow_execute)
-        except UserExit:
-            # Ctrl-C inside a menu -- cancel the current plan, stay in REPL.
-            print_info("(cancelled; type /exit to leave aa-help)")
-        except KeyboardInterrupt:
-            # Ctrl-C during planning -- same treatment.
-            print_info("(interrupted; type /exit to leave aa-help)")
-        except Exception as e:
-            print_error(str(e))
+
+        # Plan, then if the user picked a clarify option, re-plan with that
+        # answer until we get a pipeline/answer/cancel. Cap at 3 follow-ups
+        # to prevent runaway clarify loops if the planner misbehaves.
+        prompt = line
+        for _ in range(4):
+            try:
+                with thinking("planning"):
+                    plan = planner.plan(prompt)
+                _, follow_up = handle_plan(plan, allow_execute=allow_execute)
+            except UserExit:
+                print_info("(cancelled; type /exit to leave aa-help)")
+                break
+            except KeyboardInterrupt:
+                print_info("(interrupted; type /exit to leave aa-help)")
+                break
+            except Exception as e:
+                print_error(str(e))
+                break
+            if not follow_up:
+                break
+            prompt = follow_up
 
 
 def _run_one_shot(planner: Planner, question: str, allow_execute: bool) -> int:
-    """One-shot mode. Returns the plan/exec exit code."""
+    """One-shot mode. Returns the plan/exec exit code.
+
+    Like the REPL, allows up to 3 clarify-option follow-ups so a
+    one-shot invocation can still resolve through the menu UI.
+    """
+    prompt = question
+    last_rc = 0
     try:
-        with thinking("planning"):
-            plan = planner.plan(question)
-        return handle_plan(plan, allow_execute=allow_execute)
+        for _ in range(4):
+            with thinking("planning"):
+                plan = planner.plan(prompt)
+            last_rc, follow_up = handle_plan(plan, allow_execute=allow_execute)
+            if not follow_up:
+                return last_rc
+            prompt = follow_up
+        return last_rc
     except (UserExit, KeyboardInterrupt):
         print_goodbye()
         return 130
@@ -184,6 +236,10 @@ def main(argv=None):
 
         if args.reindex or args.refresh_index:
             return _do_index(rebuild=args.reindex, settings=settings)
+        if args.refresh_files:
+            return _do_refresh_files(settings)
+        if args.files_stats:
+            return _do_files_stats(settings)
 
         silence_all_logs()
         planner = Planner(settings)

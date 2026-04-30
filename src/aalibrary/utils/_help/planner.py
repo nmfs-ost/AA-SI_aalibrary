@@ -17,6 +17,7 @@ from typing import Optional
 
 from .config import Settings
 from . import knowledge as kb
+from . import fsscan
 from .plan import Plan, PLAN_SCHEMA_DESCRIPTION
 
 
@@ -143,6 +144,25 @@ class Planner:
             hits = []
         if hits:
             sections.append(_format_rag_block(hits, self._settings.rag_max_chars))
+
+        # File discovery: index acoustic files in the user's home tree
+        # (cached) and surface anything in CWD or mentioned in the question.
+        # Errors silently degrade to empty string -- discovery is opportunistic.
+        try:
+            from .config import config_dir
+            scan_root = (Path(self._settings.file_scan_root).expanduser()
+                         if self._settings.file_scan_root else Path.home())
+            fs_block = fsscan.scan_for_planner(
+                question,
+                config_dir=config_dir(),
+                scan_root=scan_root,
+                exclude_dirs=self._settings.file_scan_exclude,
+                ttl=self._settings.file_index_ttl_seconds,
+            )
+            if fs_block:
+                sections.append(fs_block)
+        except Exception as e:
+            sys.stderr.write(f"aa-help: filesystem scan failed: {e}\n")
 
         if self._settings.extra_system_prompt.strip():
             sections.append("\n\n=== USER NOTES ===\n"
