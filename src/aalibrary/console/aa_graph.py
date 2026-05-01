@@ -105,8 +105,11 @@ Variable & channel selection:
   --single                  Shortcut for --channel 0.
 
 Appearance:
-  --vmin FLOAT              Lower color limit in dB (default: -80).
-  --vmax FLOAT              Upper color limit in dB (default: -30).
+  --vmin FLOAT              Lower color limit. Default: -80 dB for Sv-like
+                            data; autoscaled for categorical data (e.g.
+                            cluster labels, region masks).
+  --vmax FLOAT              Upper color limit. Default: -30 dB for Sv-like
+                            data; autoscaled for categorical data.
   --cmap NAME               Matplotlib colormap (default: viridis).
   --figwidth FLOAT          Figure width in inches (default: 10).
   --rowheight FLOAT         Per-channel row height in inches (default: 3).
@@ -226,6 +229,35 @@ def _should_flip_y(y_name: str) -> bool:
     return y_name.lower() in _DEPTH_RANGE_NAMES
 
 
+def _is_categorical(da) -> bool:
+    """Decide whether a variable is categorical / discrete (cluster labels,
+    region masks, KMeans output, etc.).
+
+    Ported from aa-plot's `_is_categorical` so aa-graph treats cluster maps
+    the same way: integer/bool dtype is categorical outright; float arrays
+    are categorical when every finite value is integer-valued AND there are
+    fewer than ~50 unique values (catches labels stored as float, a common
+    xarray quirk).
+    """
+    if da.dtype.kind in ("i", "u", "b"):
+        return True
+    try:
+        vals = np.asarray(da.values).ravel()
+        finite = vals[np.isfinite(vals)]
+        if finite.size == 0:
+            return False
+        # Subsample for the integer-valued check; full pass for unique count.
+        sample_size = min(50_000, finite.size)
+        step = max(1, finite.size // sample_size)
+        sample = finite[::step]
+        if np.all(np.equal(np.mod(sample, 1.0), 0.0)):
+            if int(np.unique(finite).size) < 50:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Channel labeling — keep tab/subplot titles SHORT
 # ---------------------------------------------------------------------------
@@ -299,8 +331,8 @@ def echogram(
     channel: Optional[int] = None,
     frequency: Optional[float] = None,
     cmap: str = "viridis",
-    vmin: float = -80,
-    vmax: float = -30,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
     figwidth: float = 10,
     rowheight: float = 3,
     decimate: int = 1,
@@ -376,6 +408,20 @@ def echogram(
         da_panel = _decimate(da_panel, x_dim, decimate)
         da_panel = _crop_y(da_panel, y_dim, ymin, ymax)
 
+        # Resolve color limits and colorbar label. For categorical / discrete
+        # variables (cluster labels, region masks, etc.) we let matplotlib
+        # autoscale to the data range — the dB defaults of -80/-30 would
+        # collapse integer labels to a single color. For continuous Sv-like
+        # data, fall back to dB defaults when the caller didn't override.
+        is_cat = _is_categorical(da_panel)
+        if is_cat:
+            eff_vmin, eff_vmax = vmin, vmax  # honor explicit overrides; else None
+            cbar_label = f"{var}"
+        else:
+            eff_vmin = vmin if vmin is not None else -80
+            eff_vmax = vmax if vmax is not None else -30
+            cbar_label = f"{var} (dB)"
+
         do_flip = flip_y and _should_flip_y(y_dim)
 
         da_panel.plot.pcolormesh(
@@ -383,11 +429,11 @@ def echogram(
             y=y_dim,
             ax=ax,
             cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
+            vmin=eff_vmin,
+            vmax=eff_vmax,
             yincrease=not do_flip,
             add_colorbar=True,
-            cbar_kwargs={"label": f"{var} (dB)"},
+            cbar_kwargs={"label": cbar_label},
         )
 
         if label:
@@ -426,8 +472,8 @@ def main() -> None:
     p.add_argument("--frequency", type=float, default=None)
     p.add_argument("--single", action="store_true",
                    help="Shortcut for --channel 0.")
-    p.add_argument("--vmin", type=float, default=-80)
-    p.add_argument("--vmax", type=float, default=-30)
+    p.add_argument("--vmin", type=float, default=None)
+    p.add_argument("--vmax", type=float, default=None)
     p.add_argument("--cmap", type=str, default="viridis")
     p.add_argument("--figwidth", type=float, default=10)
     p.add_argument("--rowheight", type=float, default=3)
