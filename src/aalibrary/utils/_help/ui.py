@@ -230,20 +230,29 @@ def _jupyter_display_code(code: str, *, lang: str = "bash",
 # --- public helpers --------------------------------------------------------
 
 def print_banner(mode: str) -> None:
-    """REPL banner shown at startup. One fish anchors the title."""
+    """REPL banner shown at startup.
+
+    The fish lives OUTSIDE the panel: emoji width is a renderer-vs-font
+    coin flip, and putting one inside a Panel lets the emoji-line's right
+    border drift one column away from every other line. Outside the panel
+    there's no border to misalign.
+    """
     if _HAVE_RICH:
+        _console.print()
+        _console.print("[bold cyan]>>>[/bold cyan] [bold cyan]aa-help[/bold cyan] "
+                       "[cyan]— active acoustics assistant[/cyan]  [dim]🐟[/dim]")
         body = Text()
-        body.append("🐟 aa-help", style="bold cyan")
-        body.append(" — active acoustics assistant\n", style="cyan")
         if not _is_narrow():
             body.append("Ask anything about aalibrary or the aa-* tools.\n",
                         style="dim")
-        body.append("\nMode: ", style="dim")
+            body.append("\n", style="dim")
+        body.append("Mode: ", style="dim")
         if mode == "execute":
             body.append("EXECUTE allowed", style="bold green")
         else:
             body.append("dry-run ", style="bold yellow")
-            body.append("(--execute to enable)", style="dim")
+            body.append("(--no-execute to keep dry-run; --execute is now default)",
+                        style="dim")
         body.append("\nExit: ", style="dim")
         body.append("Ctrl-D, Ctrl-C, or /exit", style="dim italic")
         _console.print(Panel(
@@ -251,7 +260,7 @@ def print_banner(mode: str) -> None:
             padding=(0, 2) if not _is_narrow() else (0, 1),
         ))
     else:
-        print("🐟 aa-help — active acoustics assistant")
+        print(">>> aa-help — active acoustics assistant 🐟")
         print(f"Mode: {'EXECUTE allowed' if mode == 'execute' else 'dry-run'}")
         print("Exit: Ctrl-D, Ctrl-C, or /exit")
 
