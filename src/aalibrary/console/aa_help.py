@@ -1,9 +1,9 @@
 """aa-help: Vertex AI planner and explainer for the aalibrary toolkit.
 
 Usage:
-    aa-help                                  # interactive REPL (dry-run)
-    aa-help "your question or goal"          # one-shot, dry-run
-    aa-help --execute "..."                  # one-shot, allowed to run
+    aa-help                                  # interactive REPL (executes by default)
+    aa-help "your question or goal"          # one-shot
+    aa-help --no-execute "..."               # one-shot, dry-run only
     aa-help --setup                          # config wizard
     aa-help --edit                           # open config in $EDITOR
     aa-help --config                         # print config path
@@ -67,8 +67,15 @@ def _build_parser():
     )
     p.add_argument("question", nargs="*",
                    help="One-shot question/goal. Omit to enter REPL mode.")
-    p.add_argument("--execute", action="store_true",
-                   help="Allow the planner to run pipelines (with confirm).")
+    # Execute is now the DEFAULT. `--no-execute` opts into dry-run mode.
+    # BooleanOptionalAction (py3.9+) gives us both `--execute` and
+    # `--no-execute` automatically, so old muscle memory of typing
+    # `--execute` still works -- it's just a no-op now.
+    p.add_argument(
+        "--execute", action=argparse.BooleanOptionalAction, default=True,
+        help="Allow the planner to run pipelines (default: on; "
+             "use --no-execute for dry-run).",
+    )
     p.add_argument("--setup", action="store_true",
                    help="Run the configuration wizard.")
     p.add_argument("--config", action="store_true",
