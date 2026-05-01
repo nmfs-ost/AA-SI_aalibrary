@@ -25,7 +25,7 @@ def main():
     sudo chmod +x init.sh && \
     ./init.sh && \
     cd ~ && \
-    source venv3.12/bin/activate && \
+    source venv312/bin/activate && \
     gcloud auth application-default login && \
     gcloud config set account {{ACCOUNT}} && \
     gcloud config set project ggn-nmfs-aa-dev-1
