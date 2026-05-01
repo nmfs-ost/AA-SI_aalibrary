@@ -231,13 +231,23 @@ def _should_flip_y(y_name: str) -> bool:
 
 def _is_categorical(da) -> bool:
     """Decide whether a variable is categorical / discrete (cluster labels,
-    region masks, KMeans output, etc.).
+    region masks, KMeans / DBSCAN / HDBSCAN output, etc.).
 
-    Ported from aa-plot's `_is_categorical` so aa-graph treats cluster maps
-    the same way: integer/bool dtype is categorical outright; float arrays
-    are categorical when every finite value is integer-valued AND there are
-    fewer than ~50 unique values (catches labels stored as float, a common
-    xarray quirk).
+    Adapted from aa-plot's `_is_categorical`. Two triggers:
+      - dtype is integer / unsigned / bool, OR
+      - dtype is float but every finite value is integer-valued.
+
+    Note: aa-plot's version also gated the float case on "< 50 unique values"
+    to avoid mislabeling continuous-but-coincidentally-integer data as
+    categorical. That gate is intentionally dropped here, because HDBSCAN /
+    DBSCAN routinely produce hundreds of clusters, and noise represented as
+    NaN forces the labels array to float dtype. In echo-sounder data,
+    integer-valued floats are essentially always labels; continuous physical
+    quantities (Sv, TS, range, depth, NASC) are not stored that way.
+
+    HDBSCAN / DBSCAN noise label of -1 is handled correctly: it's still
+    integer-valued, so the array is detected as categorical and matplotlib
+    autoscales the colormap to include it.
     """
     if da.dtype.kind in ("i", "u", "b"):
         return True
@@ -246,13 +256,12 @@ def _is_categorical(da) -> bool:
         finite = vals[np.isfinite(vals)]
         if finite.size == 0:
             return False
-        # Subsample for the integer-valued check; full pass for unique count.
+        # Subsample for the integer-valued check; full pass not needed.
         sample_size = min(50_000, finite.size)
         step = max(1, finite.size // sample_size)
         sample = finite[::step]
         if np.all(np.equal(np.mod(sample, 1.0), 0.0)):
-            if int(np.unique(finite).size) < 50:
-                return True
+            return True
     except Exception:
         pass
     return False
@@ -413,10 +422,20 @@ def echogram(
         # autoscale to the data range — the dB defaults of -80/-30 would
         # collapse integer labels to a single color. For continuous Sv-like
         # data, fall back to dB defaults when the caller didn't override.
+        #
+        # Extra kwargs handle a subtle xarray quirk: when vmin/vmax are both
+        # None and data straddles zero (e.g. HDBSCAN/DBSCAN noise = -1 plus
+        # positive cluster IDs), xarray's `plot.pcolormesh` symmetrically
+        # centers the color scale around zero — so a [-1, 299] range becomes
+        # clim=(-299, 299), wasting half the colormap on values that don't
+        # exist. `center=False` disables that heuristic for categorical data.
         is_cat = _is_categorical(da_panel)
+        extra_plot_kw = {}
         if is_cat:
             eff_vmin, eff_vmax = vmin, vmax  # honor explicit overrides; else None
             cbar_label = f"{var}"
+            if eff_vmin is None and eff_vmax is None:
+                extra_plot_kw["center"] = False
         else:
             eff_vmin = vmin if vmin is not None else -80
             eff_vmax = vmax if vmax is not None else -30
@@ -434,6 +453,7 @@ def echogram(
             yincrease=not do_flip,
             add_colorbar=True,
             cbar_kwargs={"label": cbar_label},
+            **extra_plot_kw,
         )
 
         if label:
