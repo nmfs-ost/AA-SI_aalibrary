@@ -105,11 +105,13 @@ Variable & channel selection:
   --single                  Shortcut for --channel 0.
 
 Appearance:
-  --vmin FLOAT              Lower color limit. Default: -80 dB for Sv-like
-                            data; autoscaled for categorical data (e.g.
-                            cluster labels, region masks).
-  --vmax FLOAT              Upper color limit. Default: -30 dB for Sv-like
-                            data; autoscaled for categorical data.
+  --vmin FLOAT              Lower color limit. Default: per-variable
+                            (-80 dB for Sv/Sv_clean/MVBS, -90 dB for TS,
+                            autoscaled for NASC and for categorical data
+                            like cluster labels and masks).
+  --vmax FLOAT              Upper color limit. Default: per-variable
+                            (-30 dB for Sv/Sv_clean/MVBS, -20 dB for TS,
+                            autoscaled for NASC and categorical data).
   --cmap NAME               Matplotlib colormap (default: viridis).
   --figwidth FLOAT          Figure width in inches (default: 10).
   --rowheight FLOAT         Per-channel row height in inches (default: 3).
@@ -144,12 +146,36 @@ _DEPTH_RANGE_NAMES = frozenset({
 })
 
 
+# Per-variable plotting defaults: (vmin, vmax, units_for_cbar_label).
+# Categorical variables (masks, cluster maps, region labels) bypass this
+# entirely and autoscale to the data range — see _is_categorical below.
+# Anything not in this table falls back to autoscale; that's the right
+# behaviour for unknown variables since we have no idea what range they
+# live in.  Add new entries here as new dB-domain (or other) variables
+# come up — one line each, no other code changes needed.
+_VAR_DISPLAY_DEFAULTS = {
+    # name        : (vmin, vmax, units)
+    "Sv":          (-80, -30, "dB"),
+    "Sv_clean":    (-80, -30, "dB"),
+    "MVBS":        (-80, -30, "dB"),
+    "TS":          (-90, -20, "dB"),    # single-target TS spans wider than Sv
+    "NASC":        (None, None, "m\u00b2 nmi\u207b\u00b2"),  # linear; autoscale
+}
+
+# Default-variable search order when --var is not given.  First hit wins.
+# Cluster outputs are in here so `aa-graph file_dbscan.nc` Just Works.
+_DEFAULT_VAR_CANDIDATES = (
+    "Sv", "Sv_clean", "MVBS", "TS", "NASC",
+    "cluster_map",
+)
+
+
 def _ensure_variable(ds, var: Optional[str]) -> str:
     if var is not None:
         if var not in ds.data_vars:
             raise ValueError(f"Variable '{var}' not found. Available: {list(ds.data_vars)}")
         return var
-    for cand in ("Sv", "Sv_clean", "NASC"):
+    for cand in _DEFAULT_VAR_CANDIDATES:
         if cand in ds.data_vars:
             return cand
     if not ds.data_vars:
@@ -419,9 +445,11 @@ def echogram(
 
         # Resolve color limits and colorbar label. For categorical / discrete
         # variables (cluster labels, region masks, etc.) we let matplotlib
-        # autoscale to the data range — the dB defaults of -80/-30 would
-        # collapse integer labels to a single color. For continuous Sv-like
-        # data, fall back to dB defaults when the caller didn't override.
+        # autoscale to the data range — fixed dB defaults of -80/-30 would
+        # collapse integer labels to a single color. For continuous data we
+        # look up the variable in _VAR_DISPLAY_DEFAULTS for sensible defaults
+        # (Sv/MVBS get -80..-30 dB, TS gets -90..-20 dB, NASC autoscales,
+        # unknown vars autoscale).  User --vmin / --vmax always override.
         #
         # Extra kwargs handle a subtle xarray quirk: when vmin/vmax are both
         # None and data straddles zero (e.g. HDBSCAN/DBSCAN noise = -1 plus
@@ -437,9 +465,12 @@ def echogram(
             if eff_vmin is None and eff_vmax is None:
                 extra_plot_kw["center"] = False
         else:
-            eff_vmin = vmin if vmin is not None else -80
-            eff_vmax = vmax if vmax is not None else -30
-            cbar_label = f"{var} (dB)"
+            default_vmin, default_vmax, units = _VAR_DISPLAY_DEFAULTS.get(
+                var, (None, None, "")
+            )
+            eff_vmin = vmin if vmin is not None else default_vmin
+            eff_vmax = vmax if vmax is not None else default_vmax
+            cbar_label = f"{var} ({units})" if units else f"{var}"
 
         do_flip = flip_y and _should_flip_y(y_dim)
 

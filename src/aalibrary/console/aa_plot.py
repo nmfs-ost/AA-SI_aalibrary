@@ -393,13 +393,24 @@ def _should_flip_y(y_name: str) -> bool:
     return y_name.lower() in _DEPTH_RANGE_NAMES
 
 
+# Default-variable search order when --var is not given.  First hit wins.
+# Mirrors aa-graph's _DEFAULT_VAR_CANDIDATES so the two tools agree on
+# which variable a multi-var file plots by default.  Cluster outputs are
+# included so `aa-plot file_kmeans.nc` Just Works without --var.
+_DEFAULT_VAR_CANDIDATES = (
+    "Sv", "Sv_clean", "MVBS", "TS", "NASC",
+    "cluster_map",
+)
+
+
 def _ensure_variable(ds: xr.Dataset, var: Optional[str]) -> str:
     if var:
         if var not in ds.data_vars:
             raise ValueError(f"Variable '{var}' not found. Available: {list(ds.data_vars)}")
         return var
-    if "Sv" in ds.data_vars:
-        return "Sv"
+    for cand in _DEFAULT_VAR_CANDIDATES:
+        if cand in ds.data_vars:
+            return cand
     if len(ds.data_vars) == 0:
         raise ValueError("No data variables found to plot.")
     return list(ds.data_vars)[0]
