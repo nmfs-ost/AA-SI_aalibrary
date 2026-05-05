@@ -133,7 +133,9 @@ DRAWING MODE OPTIONS
                           auto-increments if occupied).
 
 MASKING (both modes)
-  --var NAME              Variable to mask (default: Sv).
+  --var NAME              Variable to mask (default: auto-detect — first of
+                          Sv, Sv_clean, MVBS, TS, NASC found in the file).
+                          Pass explicitly to override.
   --time-dim NAME         Time dimension name (default: infer ping_time else time).
   --depth-dim NAME        Depth dimension name (default: infer depth, range_sample,
                           or range_bin).
@@ -218,6 +220,49 @@ def _validate_inputs(input_paths: List[Path], evr_paths: List[Path]) -> None:
 # ---------------------------
 # Dataset helpers
 # ---------------------------
+
+# Default-variable search order when --var is not given.  First hit wins.
+# Mirrors aa_graph.py / aa_plot.py / kmeans_core.ACOUSTIC_VARIABLES so all
+# four tools agree on which variable a multi-var file targets by default.
+# Add new entries here when new acoustic variables come up — one line each.
+_DEFAULT_VAR_CANDIDATES = (
+    "Sv", "Sv_clean", "MVBS", "TS", "NASC",
+)
+
+
+def _resolve_var(ds: xr.Dataset, var: Optional[str]) -> str:
+    """Pick a variable to mask.
+
+    If *var* is given, validate it exists and return it.  Otherwise walk
+    _DEFAULT_VAR_CANDIDATES and return the first one present in the
+    dataset.  As a last resort, fall back to the first data variable in
+    the file (with a warning, since auto-picking an unknown variable is
+    a guess).
+    """
+    if var is not None:
+        if var not in ds.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found. "
+                f"Available: {list(ds.data_vars.keys())}"
+            )
+        return var
+
+    for cand in _DEFAULT_VAR_CANDIDATES:
+        if cand in ds.data_vars:
+            return cand
+
+    if not ds.data_vars:
+        raise ValueError("Dataset has no data variables to mask.")
+
+    fallback = list(ds.data_vars)[0]
+    logger.warning(
+        f"No standard acoustic variable "
+        f"({', '.join(_DEFAULT_VAR_CANDIDATES)}) found in dataset. "
+        f"Falling back to first data variable: '{fallback}'. "
+        f"Pass --var explicitly to override."
+    )
+    return fallback
+
 
 def _infer_dims(
     ds: xr.Dataset,
@@ -818,6 +863,14 @@ def _process_file(
     with xr.open_dataset(input_path) as ds_in:
         ds = ds_in.load()
 
+    # Resolve --var: explicit value if given, else auto-detect from a
+    # candidate list (Sv, Sv_clean, MVBS, TS, NASC) that mirrors aa-graph
+    # and aa-plot.  Lets `aa-evr file_TS.nc --evr ...` work without
+    # forcing the user to add --var TS by hand.
+    var = _resolve_var(ds, var)
+    if debug:
+        logger.debug(f"Resolved variable: '{var}'")
+
     tdim, ddim = _infer_dims(ds, var=var, time_dim=time_dim, depth_dim=depth_dim)
     if debug:
         logger.debug(
@@ -932,8 +985,12 @@ def main() -> int:
 
     # -- Masking options (shared) --
     parser.add_argument(
-        "--var", type=str, default="Sv",
-        help="Variable to mask (default: Sv).",
+        "--var", type=str, default=None,
+        help=(
+            "Variable to mask (default: auto-detect — first of "
+            "Sv, Sv_clean, MVBS, TS, NASC found in the file). "
+            "Pass explicitly to override."
+        ),
     )
     parser.add_argument(
         "--time-dim", type=str, default=None,
@@ -995,6 +1052,17 @@ def main() -> int:
             logger.error(f"Input file not found: {nc_path}")
             return 1
 
+        # Resolve --var: explicit value if given, else auto-detect by
+        # opening the file to inspect data_vars.  Mirrors the EVR-mode
+        # path so `aa-evr file_TS.nc --name foo.evr` works without
+        # forcing the user to add --var TS by hand.
+        try:
+            with xr.open_dataset(nc_path) as _ds_peek:
+                resolved_var = _resolve_var(_ds_peek, args.var)
+        except Exception as exc:
+            logger.error(f"Could not resolve variable in {nc_path}: {exc}")
+            return 1
+
         evr_name = args.name or (nc_path.with_suffix("").name + "_regions.evr")
         out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
 
@@ -1004,14 +1072,14 @@ def main() -> int:
                 f"  nc_path={nc_path}\n"
                 f"  evr_name={evr_name}\n"
                 f"  out_dir={out_dir}\n"
-                f"  var={args.var}, port={args.port}"
+                f"  var={resolved_var}, port={args.port}"
             )
 
         result = run_drawing_mode(
             nc_path=nc_path,
             evr_name=evr_name,
             out_dir=out_dir,
-            var=args.var,
+            var=resolved_var,
             time_dim=args.time_dim,
             depth_dim=args.depth_dim,
             channel_index=args.channel_index,
