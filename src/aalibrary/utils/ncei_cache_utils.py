@@ -5,6 +5,7 @@ through NCEI's s3 bucket using the cache created by the
 from typing import List, Union
 
 from google.cloud import bigquery
+import pandas as pd
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -538,6 +539,30 @@ def search_ncei_object_keys_for_string(
     return df["s3_object_key"].dropna().unique().tolist()
 
 
+def get_metadata_from_search_param(
+    search_param: str = "",
+) -> pd.DataFrame:
+    """Searches through the `s3_object_key` column of the NCEI cache in
+    BigQuery for a specific string and returns the metadata file key if there
+    is a metadata file that contains that string in its `s3_object_key`.
+
+    Args:
+        search_param (str): The string to search for in the `s3_object_key`
+            column of the NCEI cache in BigQuery.
+
+    Returns:
+        pd.DataFrame: A dictionary with the resulting search param's metadata in a
+            dict object.
+    """
+    gcp_bq_client = setup_gbq_client_objs()[0]
+
+    query = f"""SELECT *
+    FROM `metadata.ncei_cache`
+    WHERE s3_object_key LIKE '%{search_param}%'"""
+    df = bq_query_to_pandas(gcp_bq_client, query)
+    return df.dropna()
+
+
 def get_echosounder_from_raw_file(
     file_name: str = "",
     ship_name: str = "",
@@ -798,183 +823,186 @@ def get_dates_of_survey_in_ncei_cache(
 if __name__ == "__main__":
     gcp_bq_client, _ = setup_gbq_client_objs(project_id="ggn-nmfs-aa-dev-1")
 
-    # Test get_all_ship_names_in_ncei_cache
-    print(
-        get_all_ship_names_in_ncei_cache(
-            return_full_paths=True, normalize=False
-        )
-    )
-    print(
-        get_all_ship_names_in_ncei_cache(
-            return_full_paths=False, normalize=True
-        )
-    )
+    # # Test get_all_ship_names_in_ncei_cache
+    # print(
+    #     get_all_ship_names_in_ncei_cache(
+    #         return_full_paths=True, normalize=False
+    #     )
+    # )
+    # print(
+    #     get_all_ship_names_in_ncei_cache(
+    #         return_full_paths=False, normalize=True
+    #     )
+    # )
 
-    # Test get_all_surveys_in_ncei_cache
-    print(
-        get_all_surveys_in_ncei_cache(
-            gcp_bq_client=gcp_bq_client, return_full_paths=True
-        )
-    )
-    print(
-        get_all_surveys_in_ncei_cache(
-            gcp_bq_client=gcp_bq_client, return_full_paths=False
-        )
-    )
+    # # Test get_all_surveys_in_ncei_cache
+    # print(
+    #     get_all_surveys_in_ncei_cache(
+    #         gcp_bq_client=gcp_bq_client, return_full_paths=True
+    #     )
+    # )
+    # print(
+    #     get_all_surveys_in_ncei_cache(
+    #         gcp_bq_client=gcp_bq_client, return_full_paths=False
+    #     )
+    # )
 
-    # Test get_all_survey_names_from_a_ship_in_ncei_cache
-    print(
-        get_all_survey_names_from_a_ship_in_ncei_cache(
-            ship_name="Reuben_Lasker", gcp_bq_client=gcp_bq_client
-        )
-    )
-    print(
-        get_all_survey_names_from_a_ship_in_ncei_cache(
-            ship_name="Reuben_Lasker",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=True,
-        )
-    )
+    # # Test get_all_survey_names_from_a_ship_in_ncei_cache
+    # print(
+    #     get_all_survey_names_from_a_ship_in_ncei_cache(
+    #         ship_name="Reuben_Lasker", gcp_bq_client=gcp_bq_client
+    #     )
+    # )
+    # print(
+    #     get_all_survey_names_from_a_ship_in_ncei_cache(
+    #         ship_name="Reuben_Lasker",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=True,
+    #     )
+    # )
 
-    # Test get_all_echosounders_in_a_survey_in_ncei_cache
-    print(
-        get_all_echosounders_in_a_survey_in_ncei_cache(
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=True,
-        )
-    )
-    print(
-        get_all_echosounders_in_a_survey_in_ncei_cache(
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=False,
-        )
-    )
+    # # Test get_all_echosounders_in_a_survey_in_ncei_cache
+    # print(
+    #     get_all_echosounders_in_a_survey_in_ncei_cache(
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=True,
+    #     )
+    # )
+    # print(
+    #     get_all_echosounders_in_a_survey_in_ncei_cache(
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=False,
+    #     )
+    # )
 
-    # Test get_all_echosounders_in_ncei_cache
-    print(
-        get_all_echosounders_in_ncei_cache(
-            gcp_bq_client=gcp_bq_client, return_full_paths=True
-        )
-    )
-    print(
-        get_all_echosounders_in_ncei_cache(
-            gcp_bq_client=gcp_bq_client, return_full_paths=False
-        )
-    )
+    # # Test get_all_echosounders_in_ncei_cache
+    # print(
+    #     get_all_echosounders_in_ncei_cache(
+    #         gcp_bq_client=gcp_bq_client, return_full_paths=True
+    #     )
+    # )
+    # print(
+    #     get_all_echosounders_in_ncei_cache(
+    #         gcp_bq_client=gcp_bq_client, return_full_paths=False
+    #     )
+    # )
 
-    # Test get_all_file_names_from_survey_in_ncei_cache
-    print(
-        get_all_file_names_from_survey_in_ncei_cache(
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=True,
-        )
-    )
-    print(
-        get_all_file_names_from_survey_in_ncei_cache(
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=False,
-        )
-    )
+    # # Test get_all_file_names_from_survey_in_ncei_cache
+    # print(
+    #     get_all_file_names_from_survey_in_ncei_cache(
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=True,
+    #     )
+    # )
+    # print(
+    #     get_all_file_names_from_survey_in_ncei_cache(
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=False,
+    #     )
+    # )
 
-    # Test get_all_file_names_for_a_surveys_echosounder
-    print(
-        get_all_file_names_for_a_surveys_echosounder(
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            echosounder_name="EK60",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=True,
-        )
-    )
-    print(
-        get_all_file_names_for_a_surveys_echosounder(
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            echosounder_name="EK60",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=False,
-        )
-    )
+    # # Test get_all_file_names_for_a_surveys_echosounder
+    # print(
+    #     get_all_file_names_for_a_surveys_echosounder(
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         echosounder_name="EK60",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=True,
+    #     )
+    # )
+    # print(
+    #     get_all_file_names_for_a_surveys_echosounder(
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         echosounder_name="EK60",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=False,
+    #     )
+    # )
 
-    # Test get_all_raw_file_names_from_survey_in_ncei_cache
-    print(
-        get_all_raw_file_names_from_survey_in_ncei_cache(
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=True,
-        )
-    )
-    print(
-        get_all_raw_file_names_from_survey_in_ncei_cache(
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=False,
-        )
-    )
+    # # Test get_all_raw_file_names_from_survey_in_ncei_cache
+    # print(
+    #     get_all_raw_file_names_from_survey_in_ncei_cache(
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=True,
+    #     )
+    # )
+    # print(
+    #     get_all_raw_file_names_from_survey_in_ncei_cache(
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=False,
+    #     )
+    # )
 
-    # Test get_random_raw_file_from_ncei_cache
-    print(get_random_raw_file_from_ncei_cache(gcp_bq_client=gcp_bq_client))
+    # # Test get_random_raw_file_from_ncei_cache
+    # print(get_random_raw_file_from_ncei_cache(gcp_bq_client=gcp_bq_client))
 
-    # Test search_ncei_object_keys_for_string
-    print(search_ncei_object_keys_for_string(search_param="RL2107"))
+    # # Test search_ncei_object_keys_for_string
+    # print(search_ncei_object_keys_for_string(search_param="RL2107"))
 
-    # Test get_echosounder_from_raw_file
-    print(
-        get_echosounder_from_raw_file(
-            file_name="XYZ.raw",
-            ship_name="Reuben_Lasker",
-            survey_name="RL2107",
-            gcp_bq_client=gcp_bq_client,
-        )
-    )
+    # # Test get_echosounder_from_raw_file
+    # print(
+    #     get_echosounder_from_raw_file(
+    #         file_name="XYZ.raw",
+    #         ship_name="Reuben_Lasker",
+    #         survey_name="RL2107",
+    #         gcp_bq_client=gcp_bq_client,
+    #     )
+    # )
 
-    # Test check_if_tugboat_metadata_exists_in_survey_in_ncei_cache
-    print(
-        check_if_tugboat_metadata_exists_in_survey_in_ncei_cache(
-            ship_name="Roger_Revelle",
-            survey_name="RR2212",
-            gcp_bq_client=gcp_bq_client,
-        )
-    )
+    # # Test check_if_tugboat_metadata_exists_in_survey_in_ncei_cache
+    # print(
+    #     check_if_tugboat_metadata_exists_in_survey_in_ncei_cache(
+    #         ship_name="Roger_Revelle",
+    #         survey_name="RR2212",
+    #         gcp_bq_client=gcp_bq_client,
+    #     )
+    # )
 
-    # Test get_all_metadata_files_in_survey_in_ncei_cache
-    print(
-        get_all_metadata_files_in_survey_in_ncei_cache(
-            ship_name="Roger_Revelle",
-            survey_name="RR2212",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=True,
-        )
-    )
-    print(
-        get_all_metadata_files_in_survey_in_ncei_cache(
-            ship_name="Roger_Revelle",
-            survey_name="RR2212",
-            gcp_bq_client=gcp_bq_client,
-            return_full_paths=False,
-        )
-    )
+    # # Test get_all_metadata_files_in_survey_in_ncei_cache
+    # print(
+    #     get_all_metadata_files_in_survey_in_ncei_cache(
+    #         ship_name="Roger_Revelle",
+    #         survey_name="RR2212",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=True,
+    #     )
+    # )
+    # print(
+    #     get_all_metadata_files_in_survey_in_ncei_cache(
+    #         ship_name="Roger_Revelle",
+    #         survey_name="RR2212",
+    #         gcp_bq_client=gcp_bq_client,
+    #         return_full_paths=False,
+    #     )
+    # )
 
-    # Test get_folder_prefix_size_in_ncei_cache
-    print(
-        get_folder_prefix_size_in_ncei_cache(
-            folder_prefix="data/raw/Reuben_Lasker/RL2107/"
-        )
-    )
+    # # Test get_folder_prefix_size_in_ncei_cache
+    # print(
+    #     get_folder_prefix_size_in_ncei_cache(
+    #         folder_prefix="data/raw/Reuben_Lasker/RL2107/"
+    #     )
+    # )
 
-    # Test get_random_raw_file_from_ncei_cache_with_search_param
-    print(
-        get_random_raw_file_from_ncei_cache_with_search_param(
-            search_param="RL2107", gcp_bq_client=gcp_bq_client
-        )
-    )
+    # # Test get_random_raw_file_from_ncei_cache_with_search_param
+    # print(
+    #     get_random_raw_file_from_ncei_cache_with_search_param(
+    #         search_param="RL2107", gcp_bq_client=gcp_bq_client
+    #     )
+    # )
+
+    # Test get_metadata_from_search_param
+    print(get_metadata_from_search_param(search_param="D20090916-T132105"))
