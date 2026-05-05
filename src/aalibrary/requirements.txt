@@ -19,7 +19,7 @@ pytest
 pytz>=2024.1
 tqdm
 azure-storage-file-datalake>=12.7.0
-zarr==2.8.3
+zarr>=2.14
 inquirerpy
 loguru
 numcodecs==0.15.1; python_version>="3.11"
