@@ -107,12 +107,15 @@ Variable & channel selection:
 Appearance:
   --vmin FLOAT              Lower color limit. Default: per-variable
                             (-80 dB for Sv/Sv_clean/MVBS, -90 dB for TS,
-                            autoscaled for NASC and for categorical data
-                            like cluster labels and masks).
+                            autoscaled for NASC). For categorical data
+                            (cluster maps, masks) vmin/vmax are ignored
+                            and a discrete legend is used instead.
   --vmax FLOAT              Upper color limit. Default: per-variable
                             (-30 dB for Sv/Sv_clean/MVBS, -20 dB for TS,
-                            autoscaled for NASC and categorical data).
-  --cmap NAME               Matplotlib colormap (default: viridis).
+                            autoscaled for NASC). Ignored for categorical.
+  --cmap NAME               Matplotlib colormap (default: viridis). For
+                            cluster maps with many clusters, try 'hsv',
+                            'tab20', 'gist_rainbow' for more contrast.
   --figwidth FLOAT          Figure width in inches (default: 10).
   --rowheight FLOAT         Per-channel row height in inches (default: 3).
   --no-flip                 Don't auto-invert the y-axis for depth/range.
@@ -163,24 +166,108 @@ _VAR_DISPLAY_DEFAULTS = {
 }
 
 # Default-variable search order when --var is not given.  First hit wins.
-# Cluster outputs are in here so `aa-graph file_dbscan.nc` Just Works.
+# Cluster outputs come AFTER physical quantities so a file that happens to
+# contain both still prefers the echogram (`Sv`); pass `--var cluster_map`
+# (or whatever) to override.
 _DEFAULT_VAR_CANDIDATES = (
-    "Sv", "Sv_clean", "MVBS", "TS", "NASC",
-    "cluster_map",
+    # dB-domain echograms first (most common)
+    "Sv", "Sv_clean", "Sv_filtered", "Svf",
+    "MVBS", "TS",
+    # linear-domain
+    "NASC",
+    # cluster / label outputs (kept broad — different upstream tools use
+    # different names; with this list `aa-graph foo_kmeans.nc` Just Works
+    # whether it stored labels as `cluster_map`, `clusters`, or `labels`)
+    "cluster_map", "cluster_labels", "clusters", "cluster",
+    "kmeans_labels", "dbscan_labels", "hdbscan_labels", "labels",
 )
 
 
+def _score_var_for_plotting(da) -> int:
+    """Score a data variable on how echogram-shaped it is.
+
+    Used as a last-ditch fallback in `_ensure_variable` when neither
+    ``--var`` nor any name in `_DEFAULT_VAR_CANDIDATES` matches. We'd
+    rather pick a 3-D `(channel, ping_time, range_sample)` variable than
+    something 1-D and unrelated like `frequency_nominal`.
+    """
+    score = 0
+    has_time = any(d in da.dims for d in ("ping_time", "time", "ping"))
+    has_range = any(
+        d in da.dims for d in (_DEPTH_RANGE_NAMES | {"range_sample"})
+    )
+    if has_time and has_range:
+        score += 100        # a real echogram-shaped array
+    elif has_time or has_range:
+        score += 10         # halfway there
+    if da.ndim == 3:
+        score += 5          # bonus for channel dim
+    elif da.ndim == 2:
+        score += 1
+    return score
+
+
 def _ensure_variable(ds, var: Optional[str]) -> str:
+    """Resolve which data variable to plot.
+
+    Resolution order:
+      1. If --var was passed and matches a data_var exactly: use it.
+      2. If --var was passed and matches case-insensitively: use that
+         (with a log line so the user knows what happened).
+      3. If --var was passed but matches nothing: raise, with a
+         "did-you-mean" suggestion built from `difflib`.
+      4. Otherwise scan `_DEFAULT_VAR_CANDIDATES` in order, first hit wins.
+      5. Otherwise (file uses non-standard names) score every data_var
+         on how echogram-shaped it is and pick the best — beats the old
+         behaviour of blindly returning `list(ds.data_vars)[0]`, which
+         could land on a 1-D coord-like variable.
+    """
     if var is not None:
-        if var not in ds.data_vars:
-            raise ValueError(f"Variable '{var}' not found. Available: {list(ds.data_vars)}")
-        return var
+        if var in ds.data_vars:
+            return var
+        ci_match = next(
+            (v for v in ds.data_vars if v.lower() == var.lower()), None
+        )
+        if ci_match is not None:
+            logger.info(
+                f"Variable '{var}' resolved to '{ci_match}' (case-insensitive match)."
+            )
+            return ci_match
+        from difflib import get_close_matches
+        # Case-insensitive matching with a generous cutoff so realistic
+        # typos like "Sv_clena", "SVCLEAN", "kmeans" all pull useful
+        # suggestions. We map lowercased candidates back to their
+        # original-case names for the user-facing message.
+        names = list(ds.data_vars)
+        lower_to_orig = {n.lower(): n for n in names}
+        ci_suggestions = get_close_matches(
+            var.lower(), list(lower_to_orig.keys()), n=3, cutoff=0.4
+        )
+        suggestions = [lower_to_orig[s] for s in ci_suggestions]
+        msg = f"Variable '{var}' not found. Available: {names}"
+        if suggestions:
+            msg += f". Did you mean: {suggestions}?"
+        raise ValueError(msg)
+
     for cand in _DEFAULT_VAR_CANDIDATES:
         if cand in ds.data_vars:
             return cand
+
     if not ds.data_vars:
         raise ValueError("No data variables in file.")
-    return list(ds.data_vars)[0]
+
+    # Shape-based fallback: prefer (channel, time, range)-like arrays.
+    ranked = sorted(
+        ds.data_vars,
+        key=lambda v: _score_var_for_plotting(ds[v]),
+        reverse=True,
+    )
+    chosen = ranked[0]
+    logger.info(
+        f"No standard variable name matched; auto-selected '{chosen}' based on "
+        f"its dim shape. Other data vars: {ranked[1:]}"
+    )
+    return chosen
 
 
 def _detect_x_dim(da) -> str:
@@ -291,6 +378,205 @@ def _is_categorical(da) -> bool:
     except Exception:
         pass
     return False
+
+
+# ---------------------------------------------------------------------------
+# Discrete / cluster-aware legends
+# ---------------------------------------------------------------------------
+# When the data is categorical (cluster_map, KMeans / DBSCAN / HDBSCAN
+# labels, masks…) a continuous colorbar is the wrong tool. Two regimes:
+#
+#   * Few clusters (≤ _MAX_DISCRETE_TICKS, typically KMeans output) →
+#     a regular discrete colorbar with one tick per cluster, annotated
+#     with the cluster's record count.
+#
+#   * Many clusters (DBSCAN / HDBSCAN, can be hundreds) → a custom
+#     "weighted" legend where each cluster's vertical band height is
+#     proportional to log1p(count). This means the colors visible in
+#     the legend are the same colors the eye picks out of the map:
+#     the dominant cluster takes up the most legend space. A linear
+#     proportion would let one giant cluster swallow the whole legend
+#     and hide everything else, hence the log compression. Top-N
+#     clusters and the noise label (-1) get text annotations; the
+#     rest are colored bands only.
+#
+# DBSCAN/HDBSCAN noise (label -1) is always rendered in mid-gray
+# regardless of `--cmap` — that's the conventional reading of "noise".
+
+_MAX_DISCRETE_TICKS = 15        # cutoff between the two legend styles
+_PROP_LEGEND_TOP_LABELS = 10    # # of top-N clusters to text-annotate
+_NOISE_LABEL = -1               # DBSCAN / HDBSCAN noise convention
+_NOISE_COLOR = (0.55, 0.55, 0.55, 1.0)  # mid gray RGBA
+
+
+def _cluster_label_stats(da):
+    """Return ``(sorted_unique_labels, counts)`` for a categorical array.
+
+    NaN / non-finite values are excluded (HDBSCAN sometimes stores noise
+    as NaN instead of -1; either way it's not a real cluster).  Returns
+    integer label values when every finite value is integer-valued,
+    which is the common case.
+    """
+    vals = np.asarray(da.values).ravel()
+    finite = vals[np.isfinite(vals)]
+    if finite.size == 0:
+        return np.array([], dtype=np.int64), np.array([], dtype=np.int64)
+    if np.all(np.equal(np.mod(finite, 1.0), 0.0)):
+        finite = finite.astype(np.int64)
+    unique, counts = np.unique(finite, return_counts=True)
+    return unique, counts
+
+
+def _build_discrete_cmap(cmap_name: str, labels):
+    """Build a (ListedColormap, BoundaryNorm) pair aligned to the given labels.
+
+    The base colormap is sampled at ``len(labels)`` evenly-spaced points,
+    so neighboring cluster IDs get visually distinct colors. The noise
+    label (-1), if present, is hard-coded to gray regardless of cmap.
+
+    BoundaryNorm edges are placed at the midpoints between adjacent
+    label values, so sparse / non-contiguous label sets (e.g. {0, 1, 5,
+    99}) still map cleanly: each label gets its own band.
+    """
+    from matplotlib.colors import ListedColormap, BoundaryNorm
+    import matplotlib.pyplot as plt
+
+    n = len(labels)
+    if n == 0:
+        return ListedColormap([_NOISE_COLOR]), None
+
+    base = plt.get_cmap(cmap_name)
+    has_noise = bool((labels == _NOISE_LABEL).any())
+    non_noise_count = n - 1 if has_noise else n
+
+    if non_noise_count == 0:
+        non_noise_colors = []
+    elif non_noise_count == 1:
+        non_noise_colors = [base(0.5)]
+    else:
+        non_noise_colors = [
+            base(i / (non_noise_count - 1)) for i in range(non_noise_count)
+        ]
+
+    nn_iter = iter(non_noise_colors)
+    colors = [
+        _NOISE_COLOR if lbl == _NOISE_LABEL else next(nn_iter)
+        for lbl in labels
+    ]
+    listed = ListedColormap(colors)
+
+    if n == 1:
+        edges = np.array([labels[0] - 0.5, labels[0] + 0.5], dtype=float)
+    else:
+        labels_f = labels.astype(float)
+        mids = (labels_f[:-1] + labels_f[1:]) / 2.0
+        edges = np.concatenate(
+            [[labels_f[0] - 0.5], mids, [labels_f[-1] + 0.5]]
+        )
+    norm = BoundaryNorm(edges, ncolors=n)
+    return listed, norm
+
+
+def _text_color_for_bg(rgba) -> str:
+    """Return 'white' or 'black' for max contrast against ``rgba`` background."""
+    r, g, b = rgba[:3]
+    # Standard ITU-R BT.601 luma coefficients
+    lum = 0.299 * r + 0.587 * g + 0.114 * b
+    return "white" if lum < 0.5 else "black"
+
+
+def _add_discrete_colorbar(fig, ax, listed_cmap, norm, labels, counts, var):
+    """One-tick-per-cluster colorbar; suitable when cluster count is small.
+
+    Each tick label looks like ``"3  (12,847)"`` — cluster id, then the
+    record count in parens, so the user can compare cluster sizes at a
+    glance without leaving the figure.
+    """
+    from matplotlib.cm import ScalarMappable
+
+    sm = ScalarMappable(norm=norm, cmap=listed_cmap)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, ticks=list(labels))
+    tick_labels = []
+    for lbl, cnt in zip(labels, counts):
+        tag = "noise" if lbl == _NOISE_LABEL else str(int(lbl))
+        tick_labels.append(f"{tag}  ({cnt:,})")
+    cbar.ax.set_yticklabels(tick_labels, fontsize=8)
+    cbar.set_label(var)
+
+
+def _add_proportional_legend(fig, ax, listed_cmap, labels, counts, var):
+    """Vertical legend whose band heights are ~log of each cluster's count.
+
+    Shape is roughly that of a stacked bar: each cluster gets a colored
+    band whose height is ``log1p(count) / sum(log1p(counts))`` of the
+    available vertical space.  Labels are added inside the bands for
+    the largest ``_PROP_LEGEND_TOP_LABELS`` clusters plus noise (so the
+    legend stays readable even with hundreds of clusters); smaller
+    clusters are colored-only.
+
+    To prevent unreadable text-stacking when several large bands cluster
+    near each other (common with long-tail distributions), label
+    placement is greedy: candidate labels are sorted by y-position and
+    any label that would overlap a previously-placed one is dropped.
+    """
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+    weights = np.log1p(counts.astype(float))
+    if weights.sum() == 0:
+        weights = np.ones_like(weights)
+    weights = weights / weights.sum()
+    cum = np.concatenate([[0.0], np.cumsum(weights)])
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.12)
+    cax.set_xlim(0, 1)
+    cax.set_ylim(0, 1)
+
+    # Draw all colored bands first (no labels yet).
+    for i, lbl in enumerate(labels):
+        cax.fill_between([0, 1], cum[i], cum[i + 1],
+                         color=listed_cmap(i), linewidth=0)
+
+    # Pick label candidates: largest-by-count clusters, plus noise (-1).
+    top_n = min(_PROP_LEGEND_TOP_LABELS, len(labels))
+    candidate_idxs = set(np.argsort(counts)[-top_n:].tolist())
+    if _NOISE_LABEL in labels:
+        candidate_idxs.add(int(np.where(labels == _NOISE_LABEL)[0][0]))
+
+    # Greedy non-overlapping placement, ordered bottom→top so noise (which
+    # is usually at index 0 / bottom) anchors first when present.
+    candidates = sorted(
+        candidate_idxs,
+        key=lambda i: (cum[i] + cum[i + 1]) / 2.0,
+    )
+    # Min vertical separation between label centers, in axis coords.
+    # ~0.035 = ~3.5% of legend height per text line; tuned for fontsize 6.5.
+    min_sep = 0.035
+    last_y = -1.0
+    for i in candidates:
+        y0, y1 = cum[i], cum[i + 1]
+        y_mid = (y0 + y1) / 2.0
+        if y_mid - last_y < min_sep:
+            continue            # would overlap previous label → skip
+        if (y1 - y0) < 0.008:   # band too thin to host any text
+            continue
+        lbl = labels[i]
+        cnt = counts[i]
+        tag = "noise" if lbl == _NOISE_LABEL else str(int(lbl))
+        cax.text(
+            0.5, y_mid, f"{tag} ({cnt:,})",
+            ha="center", va="center",
+            fontsize=6.5,
+            color=_text_color_for_bg(listed_cmap(i)),
+        )
+        last_y = y_mid
+
+    cax.set_xticks([])
+    cax.set_yticks([])
+    for spine in cax.spines.values():
+        spine.set_visible(False)
+    cax.set_title(f"{var}\n({len(labels)} clusters)", fontsize=8)
 
 
 # ---------------------------------------------------------------------------
@@ -443,49 +729,69 @@ def echogram(
         da_panel = _decimate(da_panel, x_dim, decimate)
         da_panel = _crop_y(da_panel, y_dim, ymin, ymax)
 
-        # Resolve color limits and colorbar label. For categorical / discrete
-        # variables (cluster labels, region masks, etc.) we let matplotlib
-        # autoscale to the data range — fixed dB defaults of -80/-30 would
-        # collapse integer labels to a single color. For continuous data we
-        # look up the variable in _VAR_DISPLAY_DEFAULTS for sensible defaults
-        # (Sv/MVBS get -80..-30 dB, TS gets -90..-20 dB, NASC autoscales,
-        # unknown vars autoscale).  User --vmin / --vmax always override.
+        # Resolve color limits and colorbar label.  Two regimes:
         #
-        # Extra kwargs handle a subtle xarray quirk: when vmin/vmax are both
-        # None and data straddles zero (e.g. HDBSCAN/DBSCAN noise = -1 plus
-        # positive cluster IDs), xarray's `plot.pcolormesh` symmetrically
-        # centers the color scale around zero — so a [-1, 299] range becomes
-        # clim=(-299, 299), wasting half the colormap on values that don't
-        # exist. `center=False` disables that heuristic for categorical data.
+        # CONTINUOUS data (Sv, TS, MVBS, NASC, …) uses xarray's built-in
+        # pcolormesh + auto-colorbar with per-variable defaults from
+        # `_VAR_DISPLAY_DEFAULTS`. User --vmin/--vmax always override.
+        #
+        # CATEGORICAL data (cluster maps, masks, KMeans/DBSCAN/HDBSCAN
+        # labels) bypasses the auto-colorbar entirely. We build a
+        # ListedColormap + BoundaryNorm so each cluster gets exactly one
+        # color, then draw either a discrete colorbar (few clusters) or
+        # a weighted/proportional legend (many clusters). vmin/vmax are
+        # meaningless for label data and are ignored with a warning.
         is_cat = _is_categorical(da_panel)
-        extra_plot_kw = {}
+        do_flip = flip_y and _should_flip_y(y_dim)
+
+        plotted_categorical = False
         if is_cat:
-            eff_vmin, eff_vmax = vmin, vmax  # honor explicit overrides; else None
-            cbar_label = f"{var}"
-            if eff_vmin is None and eff_vmax is None:
-                extra_plot_kw["center"] = False
-        else:
+            unique_labels, counts = _cluster_label_stats(da_panel)
+            if len(unique_labels) > 0:
+                if vmin is not None or vmax is not None:
+                    logger.warning(
+                        "vmin/vmax are ignored for categorical/cluster data; "
+                        "using full label range."
+                    )
+                listed_cmap, norm = _build_discrete_cmap(cmap, unique_labels)
+                da_panel.plot.pcolormesh(
+                    x=x_dim, y=y_dim, ax=ax,
+                    cmap=listed_cmap, norm=norm,
+                    yincrease=not do_flip,
+                    add_colorbar=False,
+                )
+                if len(unique_labels) <= _MAX_DISCRETE_TICKS:
+                    _add_discrete_colorbar(
+                        fig, ax, listed_cmap, norm,
+                        unique_labels, counts, var,
+                    )
+                else:
+                    _add_proportional_legend(
+                        fig, ax, listed_cmap,
+                        unique_labels, counts, var,
+                    )
+                plotted_categorical = True
+            # else: all-NaN panel → fall through to the continuous branch
+            # (which will produce a sensibly-empty plot).
+
+        if not plotted_categorical:
             default_vmin, default_vmax, units = _VAR_DISPLAY_DEFAULTS.get(
                 var, (None, None, "")
             )
             eff_vmin = vmin if vmin is not None else default_vmin
             eff_vmax = vmax if vmax is not None else default_vmax
             cbar_label = f"{var} ({units})" if units else f"{var}"
-
-        do_flip = flip_y and _should_flip_y(y_dim)
-
-        da_panel.plot.pcolormesh(
-            x=x_dim,
-            y=y_dim,
-            ax=ax,
-            cmap=cmap,
-            vmin=eff_vmin,
-            vmax=eff_vmax,
-            yincrease=not do_flip,
-            add_colorbar=True,
-            cbar_kwargs={"label": cbar_label},
-            **extra_plot_kw,
-        )
+            da_panel.plot.pcolormesh(
+                x=x_dim,
+                y=y_dim,
+                ax=ax,
+                cmap=cmap,
+                vmin=eff_vmin,
+                vmax=eff_vmax,
+                yincrease=not do_flip,
+                add_colorbar=True,
+                cbar_kwargs={"label": cbar_label},
+            )
 
         if label:
             ax.set_title(label, fontsize=10)
