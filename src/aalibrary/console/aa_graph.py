@@ -622,6 +622,18 @@ def _add_proportional_legend(fig, ax, listed_cmap, labels, counts, var,
 # stays inside its allotted cell at default figure dimensions.
 _PIE_LEGEND_MAX_VISIBLE = 16
 
+# Cluster count above which the multi-row legend is dropped entirely
+# in favor of a brief summary text block (top-5 list + remainder +
+# noise). At very high counts (DBSCAN/HDBSCAN with hundreds of
+# clusters) any per-cluster legend is unreadable; identity has to come
+# from the map + right-side strip + summary together.
+_PIE_LEGEND_SIMPLIFY_AT = 30
+
+# Number of clusters listed in the simplified summary text block.
+# Five fits comfortably and covers the usual "what's actually here"
+# question without becoming another wall of text.
+_PIE_SUMMARY_TOP_N = 5
+
 # Minimum wedge percentage for an in-pie label (e.g. "12%"). Smaller
 # wedges leave their label out — they'd just smear over neighbors —
 # but they still appear in the legend.
@@ -713,56 +725,223 @@ def _pie_data_continuous(da_panel, cmap_name, eff_vmin, eff_vmax,
 
 def _render_pie_panel(fig, gs_cell, sizes, label_strings, colors,
                      title, channel_label=None,
-                     value_units="", noise_count=0):
-    """Draw a pie + compact legend in one GridSpec cell.
+                     value_units="", noise_count=0,
+                     listed_cmap_for_companion=None):
+    """Draw a pie + (optional companion pie) + legend in one GridSpec cell.
 
-    ``gs_cell`` is a single SubplotSpec; we subdivide it into a square
-    pie on the left and a fixed-width legend on the right so the
-    overall cell shape stays stable regardless of how many wedges
-    there are.
+    Layout adapts to context:
 
-    ``noise_count`` (categorical only) is appended to the legend as a
-    grey footnote — it's not represented in the pie itself but the
-    user usually wants to know how much of the data was discarded.
+      no noise            : [main pie | legend]
+      noise present       : [main pie | companion pie | legend]
+      ≥ _PIE_LEGEND_SIMPLIFY_AT clusters
+                          : [main pie | (companion if noise) | summary]
+
+    The companion pie is a 2-wedge "clean vs noise" breakdown drawn
+    only when ``noise_count > 0``. It exists because in messy DBSCAN /
+    HDBSCAN runs noise can be 60-80% of the data, and embedding that
+    in the right-side proportional strip drowns the actual clusters
+    visually. Splitting noise into its own small companion frees the
+    main pie to show only the meaningful clusters at full resolution.
+
+    The summary mode (text block instead of legend) kicks in at
+    ``_PIE_LEGEND_SIMPLIFY_AT`` clusters and beyond. Per-cluster legend
+    rows become unreadable at that scale, so we drop them entirely and
+    show only the top-5 by size, the remainder, and the noise count.
     """
-    if len(sizes) == 0:
+    n_clusters = len(sizes)
+    has_noise = noise_count > 0
+    use_summary = n_clusters > _PIE_LEGEND_SIMPLIFY_AT
+
+    # Truly empty: no clusters AND no noise → placeholder text and bail.
+    if n_clusters == 0 and not has_noise:
         ax = fig.add_subplot(gs_cell)
         ax.text(0.5, 0.5, "(no data)", ha="center", va="center",
                 transform=ax.transAxes, fontsize=8, color="gray")
         ax.axis("off")
         return
 
-    sub = gs_cell.subgridspec(1, 2, width_ratios=[1.0, 1.05], wspace=0.05)
-    ax_pie = fig.add_subplot(sub[0, 0])
-    ax_legend = fig.add_subplot(sub[0, 1])
+    # Allocate a horizontal subgridspec inside this cell. Width units
+    # are proportional, not absolute — gridspec stretches them to fill
+    # the available row width.  The trailing spacer on the right
+    # absorbs slack so the pie/legend cluster doesn't drift around.
+    if has_noise:
+        # main | companion | legend | spacer
+        sub = gs_cell.subgridspec(
+            1, 4, width_ratios=[1.0, 0.55, 1.5, 0.15], wspace=0.20,
+        )
+        ax_main = fig.add_subplot(sub[0, 0])
+        ax_comp = fig.add_subplot(sub[0, 1])
+        ax_legend = fig.add_subplot(sub[0, 2])
+    else:
+        sub = gs_cell.subgridspec(
+            1, 3, width_ratios=[1.0, 1.5, 0.15], wspace=0.15,
+        )
+        ax_main = fig.add_subplot(sub[0, 0])
+        ax_comp = None
+        ax_legend = fig.add_subplot(sub[0, 1])
     ax_legend.axis("off")
 
-    sizes_arr = np.asarray(sizes, dtype=float)
-    pct = 100.0 * sizes_arr / sizes_arr.sum()
+    # ---- Main pie -------------------------------------------------------
+    if n_clusters > 0:
+        sizes_arr = np.asarray(sizes, dtype=float)
+        pct = 100.0 * sizes_arr / sizes_arr.sum()
 
-    # In-wedge percent labels only for wedges large enough to host text.
+        # In-wedge % labels only for big wedges. At high cluster counts
+        # almost no wedges qualify, which is fine — that's the whole
+        # reason we add the summary text.
+        def _autopct(p):
+            return f"{p:.0f}%" if p >= _PIE_INLINE_LABEL_MIN_PCT else ""
+
+        _wedges, _texts, autotexts = ax_main.pie(
+            sizes_arr,
+            startangle=90,
+            colors=colors,
+            autopct=_autopct,
+            pctdistance=0.72,
+            textprops={"fontsize": 7},
+            wedgeprops={"linewidth": 0.5, "edgecolor": "white"},
+        )
+        for at, color in zip(autotexts, colors):
+            at.set_color(_text_color_for_bg(color))
+    else:
+        # Only noise present — main pie shows nothing useful, so put a
+        # placeholder so the layout stays balanced with the companion.
+        ax_main.text(0.5, 0.5, "(only noise)", ha="center", va="center",
+                     transform=ax_main.transAxes, fontsize=7, color="gray")
+        sizes_arr = np.array([])
+        pct = np.array([])
+
+    ax_main.set_aspect("equal")
+    if channel_label:
+        ax_main.set_title(channel_label, fontsize=8)
+
+    # ---- Companion "clean vs noise" pie --------------------------------
+    if ax_comp is not None:
+        clean_count = int(sizes_arr.sum()) if n_clusters > 0 else 0
+        _render_companion_pie(
+            ax_comp, clean_count, noise_count,
+            colors=colors, listed_cmap=listed_cmap_for_companion,
+        )
+
+    # ---- Legend or summary ---------------------------------------------
+    if use_summary:
+        _render_summary_text(
+            ax_legend, label_strings, sizes_arr, pct,
+            title=title, value_units=value_units, noise_count=noise_count,
+        )
+    elif n_clusters > 0:
+        _render_compact_legend(
+            ax_legend, label_strings, sizes_arr, pct, colors,
+            title=title, value_units=value_units,
+            # noise no longer appears as a legend row — it's already
+            # represented in the companion pie. Keeping it would just
+            # duplicate information.
+            noise_count=noise_count if ax_comp is None else 0,
+        )
+    else:
+        # Only noise → companion shows it; legend has nothing to add.
+        ax_legend.text(
+            0.5, 0.5,
+            f"{title}\n\nno meaningful clusters\nfound in this panel",
+            ha="center", va="center",
+            transform=ax_legend.transAxes,
+            fontsize=8, color="gray",
+        )
+
+
+def _render_companion_pie(ax, clean_count, noise_count, colors=None,
+                          listed_cmap=None):
+    """Two-wedge pie: 'clusters' vs 'noise'.
+
+    Color choice for the 'clusters' wedge is derived from the main
+    map's colormap so the visual lineage is obvious — by default we
+    take the median non-noise color from ``colors`` (the per-wedge
+    palette already used in the main pie).  Falls back to a neutral
+    blue if no colors are available.
+    """
+    total = clean_count + noise_count
+    if total == 0:
+        ax.axis("off")
+        return
+
+    # Pick a representative color for the 'clusters' wedge. Median of
+    # the existing wedge palette gives a tone that visually belongs to
+    # the same family as the map (e.g. teal-ish for viridis, mid-orange
+    # for inferno) without having to duplicate cmap-handling logic.
+    if colors and len(colors) > 0:
+        clean_color = colors[len(colors) // 2]
+    elif listed_cmap is not None:
+        clean_color = listed_cmap(0.5)
+    else:
+        clean_color = "#4a90c4"
+
+    sizes = []
+    wedge_colors = []
+    if clean_count > 0:
+        sizes.append(clean_count)
+        wedge_colors.append(clean_color)
+    if noise_count > 0:
+        sizes.append(noise_count)
+        wedge_colors.append(_NOISE_COLOR)
+
     def _autopct(p):
-        return f"{p:.0f}%" if p >= _PIE_INLINE_LABEL_MIN_PCT else ""
+        return f"{p:.0f}%" if p >= 5.0 else ""
 
-    wedges, _texts, autotexts = ax_pie.pie(
-        sizes_arr,
+    _w, _t, autotexts = ax.pie(
+        sizes,
         startangle=90,
-        colors=colors,
+        colors=wedge_colors,
         autopct=_autopct,
         pctdistance=0.72,
         textprops={"fontsize": 7},
         wedgeprops={"linewidth": 0.5, "edgecolor": "white"},
     )
-    for at, color in zip(autotexts, colors):
+    for at, color in zip(autotexts, wedge_colors):
         at.set_color(_text_color_for_bg(color))
 
-    ax_pie.set_aspect("equal")
-    if channel_label:
-        ax_pie.set_title(channel_label, fontsize=8)
+    ax.set_aspect("equal")
+    ax.set_title("clean vs noise", fontsize=7.5)
 
-    _render_compact_legend(
-        ax_legend, label_strings, sizes_arr, pct, colors,
-        title=title, value_units=value_units, noise_count=noise_count,
+
+def _render_summary_text(ax, label_strings, sizes, pct,
+                         title, value_units="", noise_count=0):
+    """Brief text block for high-cluster-count cases.
+
+    Replaces the multi-row legend when the cluster count crosses
+    ``_PIE_LEGEND_SIMPLIFY_AT``. Shows only enough information to
+    answer the questions the user actually asks at that scale: how
+    many clusters? what's the biggest? how much was noise?
+    """
+    n = len(label_strings)
+    visible = min(_PIE_SUMMARY_TOP_N, n)
+    suffix = f" {value_units}" if value_units else ""
+
+    lines = [f"{title}", f"{n} clusters total", ""]
+    if visible > 0:
+        lines.append(f"top {visible} by size:")
+        # Right-align cluster IDs in a fixed-width column so the
+        # percentages line up vertically — a small amount of effort
+        # that makes scanning the list much easier than ragged text.
+        max_id_len = max(len(label_strings[i]) for i in range(visible))
+        for i in range(visible):
+            id_str = label_strings[i].rjust(max_id_len)
+            lines.append(f"  {id_str}{suffix}   {pct[i]:5.1f}%")
+    if visible < n:
+        rem_count = int(sum(sizes[visible:]))
+        rem_pct = float(sum(pct[visible:]))
+        lines.append(f"  + {n - visible} more   {rem_pct:5.1f}%")
+        lines.append(f"     ({rem_count:,} pixels)")
+    if noise_count > 0:
+        lines.append("")
+        lines.append(f"noise (excluded):")
+        lines.append(f"  {noise_count:,} pixels")
+
+    ax.text(
+        0.05, 0.5, "\n".join(lines),
+        ha="left", va="center",
+        transform=ax.transAxes,
+        fontsize=8,
+        family="monospace",   # column alignment for the top-N list
     )
 
 
@@ -775,7 +954,9 @@ def _render_compact_legend(ax, label_strings, sizes, pct, colors,
     grows from 1 → 2 as entries pile up, but the total *area* of the
     legend is capped so the figure layout never expands to fit it.
 
-    Result: stable layout at any cluster count, even at 200+ clusters.
+    For very high cluster counts (> ``_PIE_LEGEND_SIMPLIFY_AT``) the
+    caller switches to ``_render_summary_text`` instead — at that
+    scale even a 2-column legend is unreadable.
     """
     from matplotlib.patches import Patch
 
@@ -1011,16 +1192,25 @@ def echogram(
         panel_specs.append(spec)
 
     # ---- Layout ----------------------------------------------------------
-    # GridSpec with one row per channel, plus an optional row at the bottom
-    # for the pie chart distribution. Using GridSpec rather than subplots()
-    # gives us control over per-row heights (the pie row is shorter than
-    # the echogram rows) and lets the pie row hold its own per-channel
-    # subgrid without disturbing sharex on the echograms.
+    # GridSpec interleaves an echogram row and (when enabled) a pie row
+    # for each channel:
+    #
+    #   Row 2*i      : echogram for channel i
+    #   Row 2*i + 1  : pie cell for channel i  (only if show_pie)
+    #
+    # This is a deliberate change from the older layout which stacked all
+    # echograms first and put pies in a single shared bottom row. The new
+    # arrangement gives each pie the FULL figure width — no neighbor pies
+    # competing for horizontal space — which eliminates the overlapping-
+    # text problem at high cluster counts. Each [echogram, pie] pair is
+    # self-contained and reads as a unit.
     show_pie = bool(pie) and n_panels > 0
-    n_rows = n_panels + (1 if show_pie else 0)
-    height_ratios = [rowheight] * n_panels
-    if show_pie:
-        height_ratios.append(pie_height)
+    height_ratios = []
+    for _ in range(n_panels):
+        height_ratios.append(rowheight)
+        if show_pie:
+            height_ratios.append(pie_height)
+    n_rows = len(height_ratios)
     fig_height = sum(height_ratios)
 
     fig = plt.figure(figsize=(figwidth, fig_height))
@@ -1028,14 +1218,22 @@ def echogram(
         n_rows, 1,
         height_ratios=height_ratios,
         figure=fig,
-        hspace=0.35,
+        # hspace generous enough that the pie title (channel label)
+        # doesn't crowd the echogram's x-axis labels above it.
+        hspace=0.55,
     )
 
-    # ---- Render echogram panels ------------------------------------------
+    def _row_for_channel(i, want_pie=False):
+        """Translate a channel index into its gridspec row index."""
+        if not show_pie:
+            return i
+        return 2 * i + (1 if want_pie else 0)
+
+    # ---- Render echogram + pie pairs -------------------------------------
     map_axes = []
     for i, spec in enumerate(panel_specs):
         sharex = map_axes[0] if i > 0 else None
-        ax = fig.add_subplot(gs[i, 0], sharex=sharex)
+        ax = fig.add_subplot(gs[_row_for_channel(i), 0], sharex=sharex)
         map_axes.append(ax)
 
         da_panel = spec["da_panel"]
@@ -1096,7 +1294,7 @@ def echogram(
                 add_colorbar=True,
                 cbar_kwargs={"label": cbar_label},
             )
-            # Stash effective limits for the pie row to mirror.
+            # Stash effective limits for the pie to mirror.
             spec["eff_vmin"] = eff_vmin
             spec["eff_vmax"] = eff_vmax
 
@@ -1105,48 +1303,43 @@ def echogram(
         else:
             ax.set_title("")
 
-    # ---- Render pie chart row --------------------------------------------
-    # One pie per channel, side-by-side, sharing colors with the matching
-    # echogram panel above. Width is split evenly across channels — for a
-    # single channel the pie spans the full row and tends to look quite
-    # large; that's intentional, since solo plots have screen real estate
-    # to spare and a bigger pie reads better.
-    if show_pie:
-        pie_gs = gs[n_panels, 0].subgridspec(1, n_panels, wspace=0.25)
-        for i, spec in enumerate(panel_specs):
-            cell = pie_gs[0, i]
-            channel_label = spec["label"]
-            if spec["is_cat"]:
-                if spec.get("listed_cmap") is None:
-                    # All-NaN panel → empty cell with placeholder text.
-                    _render_pie_panel(fig, cell, np.array([]), [], [],
-                                     title=var, channel_label=channel_label)
-                    continue
-                sizes, labels_s, colors = _pie_data_categorical(
-                    spec["unique_labels"], spec["counts"],
-                    spec["listed_cmap"],
-                )
-                noise_count = int(spec["counts"][
-                    spec["unique_labels"] == _NOISE_LABEL
-                ].sum()) if _NOISE_LABEL in spec["unique_labels"] else 0
-                _render_pie_panel(
-                    fig, cell, sizes, labels_s, colors,
-                    title=var,
-                    channel_label=channel_label,
-                    noise_count=noise_count,
-                )
-            else:
-                _, _, units = _VAR_DISPLAY_DEFAULTS.get(var, (None, None, ""))
-                sizes, labels_s, colors = _pie_data_continuous(
-                    spec["da_panel"], cmap,
-                    spec.get("eff_vmin"), spec.get("eff_vmax"),
-                )
-                _render_pie_panel(
-                    fig, cell, sizes, labels_s, colors,
-                    title=var,
-                    channel_label=channel_label,
-                    value_units=units,
-                )
+        # ---- Pie cell for this channel ----------------------------------
+        if not show_pie:
+            continue
+        cell = gs[_row_for_channel(i, want_pie=True), 0]
+        channel_label = spec["label"]
+        if spec["is_cat"]:
+            if spec.get("listed_cmap") is None:
+                # All-NaN panel → empty cell with placeholder text.
+                _render_pie_panel(fig, cell, np.array([]), [], [],
+                                 title=var, channel_label=channel_label)
+                continue
+            sizes, labels_s, colors = _pie_data_categorical(
+                spec["unique_labels"], spec["counts"],
+                spec["listed_cmap"],
+            )
+            noise_count = int(spec["counts"][
+                spec["unique_labels"] == _NOISE_LABEL
+            ].sum()) if _NOISE_LABEL in spec["unique_labels"] else 0
+            _render_pie_panel(
+                fig, cell, sizes, labels_s, colors,
+                title=var,
+                channel_label=channel_label,
+                noise_count=noise_count,
+                listed_cmap_for_companion=spec["listed_cmap"],
+            )
+        else:
+            _, _, units = _VAR_DISPLAY_DEFAULTS.get(var, (None, None, ""))
+            sizes, labels_s, colors = _pie_data_continuous(
+                spec["da_panel"], cmap,
+                spec.get("eff_vmin"), spec.get("eff_vmax"),
+            )
+            _render_pie_panel(
+                fig, cell, sizes, labels_s, colors,
+                title=var,
+                channel_label=channel_label,
+                value_units=units,
+            )
 
     fig.suptitle(f"{var}  ·  {Path(path).name}", fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.97])
