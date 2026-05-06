@@ -119,6 +119,13 @@ Appearance:
   --figwidth FLOAT          Figure width in inches (default: 10).
   --rowheight FLOAT         Per-channel row height in inches (default: 3).
   --no-flip                 Don't auto-invert the y-axis for depth/range.
+  --no-pie                  Suppress the pie-chart distribution row drawn
+                            below the echogram. By default a pie is shown
+                            per channel, sharing colors with the map: for
+                            cluster data each non-noise cluster is a wedge,
+                            for continuous data (Sv etc.) wedges represent
+                            value bins between vmin and vmax.
+  --pie-height FLOAT        Height of the pie row in inches (default: 2.6).
 
 Subsetting / performance:
   --decimate N              Take every Nth sample along x-axis (default: 1).
@@ -505,7 +512,8 @@ def _add_discrete_colorbar(fig, ax, listed_cmap, norm, labels, counts, var):
     cbar.set_label(var)
 
 
-def _add_proportional_legend(fig, ax, listed_cmap, labels, counts, var):
+def _add_proportional_legend(fig, ax, listed_cmap, labels, counts, var,
+                             compact=False):
     """Vertical legend whose band heights are ~log of each cluster's count.
 
     Shape is roughly that of a stacked bar: each cluster gets a colored
@@ -519,6 +527,13 @@ def _add_proportional_legend(fig, ax, listed_cmap, labels, counts, var):
     near each other (common with long-tail distributions), label
     placement is greedy: candidate labels are sorted by y-position and
     any label that would overlap a previously-placed one is dropped.
+
+    When ``compact=True`` (passed by callers that draw a pie chart with
+    its own legend below the figure), text annotations are suppressed
+    entirely except for the noise band.  The right-side strip becomes
+    a pure visual size-distribution preview, and the cluster identity
+    information lives in the pie legend instead — keeping the layout
+    width stable at high cluster counts.
     """
     from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -538,11 +553,15 @@ def _add_proportional_legend(fig, ax, listed_cmap, labels, counts, var):
         cax.fill_between([0, 1], cum[i], cum[i + 1],
                          color=listed_cmap(i), linewidth=0)
 
-    # Pick label candidates: largest-by-count clusters, plus noise (-1).
-    top_n = min(_PROP_LEGEND_TOP_LABELS, len(labels))
-    candidate_idxs = set(np.argsort(counts)[-top_n:].tolist())
+    # Pick label candidates. In compact mode, only noise (-1) gets a
+    # label — full identity lives in the pie legend.  In non-compact
+    # mode, also annotate the largest-by-count clusters.
+    candidate_idxs = set()
     if _NOISE_LABEL in labels:
         candidate_idxs.add(int(np.where(labels == _NOISE_LABEL)[0][0]))
+    if not compact:
+        top_n = min(_PROP_LEGEND_TOP_LABELS, len(labels))
+        candidate_idxs.update(np.argsort(counts)[-top_n:].tolist())
 
     # Greedy non-overlapping placement, ordered bottom→top so noise (which
     # is usually at index 0 / bottom) anchors first when present.
@@ -577,6 +596,241 @@ def _add_proportional_legend(fig, ax, listed_cmap, labels, counts, var):
     for spine in cax.spines.values():
         spine.set_visible(False)
     cax.set_title(f"{var}\n({len(labels)} clusters)", fontsize=8)
+
+
+# ---------------------------------------------------------------------------
+# Pie chart row — distribution-of-clusters (or value bins) under the map
+# ---------------------------------------------------------------------------
+# A geometrically-consistent companion to the per-channel echogram: one
+# pie chart per channel, drawn in a row beneath the maps. Wedge colors
+# are sampled from the *same* colormap as the main plot, so a yellow
+# wedge in the pie always means the same thing as a yellow region on
+# the map.
+#
+# For categorical data (cluster maps) the pie shows the relative size
+# of each *non-noise* cluster — noise / -1 is excluded by convention,
+# matching how downstream consumers treat DBSCAN/HDBSCAN output.
+#
+# For continuous data (Sv, MVBS, TS, NASC) the pie shows the share of
+# pixels falling in each of N equal-width value bins between vmin and
+# vmax. This effectively answers "how much of the echogram lives in
+# the bright/dim parts of the colorbar" — useful as a quick sanity
+# check on how full the dynamic range is being used.
+
+# Cap on entries shown in the compact pie legend before the rest are
+# rolled into a single "+ N more" entry. Tuned so a 2-column legend
+# stays inside its allotted cell at default figure dimensions.
+_PIE_LEGEND_MAX_VISIBLE = 16
+
+# Minimum wedge percentage for an in-pie label (e.g. "12%"). Smaller
+# wedges leave their label out — they'd just smear over neighbors —
+# but they still appear in the legend.
+_PIE_INLINE_LABEL_MIN_PCT = 4.0
+
+# Number of bins used to slice continuous data into pie wedges.
+_PIE_CONTINUOUS_BINS = 10
+
+
+def _pie_data_categorical(unique_labels, counts, listed_cmap):
+    """Wedge data for a categorical/cluster map.
+
+    Filters out the noise label (-1) so the pie shows only meaningful
+    clusters. Returns parallel arrays of (sizes, label_strings, RGBA
+    colors) sorted large→small. Colors come from the same
+    `listed_cmap` used on the main map, so wedge i and the matching
+    map region share a hue exactly.
+    """
+    if len(unique_labels) == 0:
+        return np.array([]), [], []
+
+    is_noise = unique_labels == _NOISE_LABEL
+    keep = ~is_noise
+    if not np.any(keep):
+        return np.array([]), [], []
+
+    sizes = counts[keep].astype(np.int64)
+    keep_labels = unique_labels[keep]
+    # listed_cmap was built in the same order as unique_labels, so we
+    # can index it directly with the kept positions.
+    keep_idxs = np.where(keep)[0]
+    colors = [listed_cmap(int(i)) for i in keep_idxs]
+    label_strings = [str(int(v)) for v in keep_labels]
+
+    order = np.argsort(sizes)[::-1]
+    sizes = sizes[order]
+    label_strings = [label_strings[i] for i in order]
+    colors = [colors[i] for i in order]
+    return sizes, label_strings, colors
+
+
+def _pie_data_continuous(da_panel, cmap_name, eff_vmin, eff_vmax,
+                         n_bins=_PIE_CONTINUOUS_BINS):
+    """Wedge data for continuous data, binned by value.
+
+    Bin edges span ``[eff_vmin, eff_vmax]``; pixels outside that range
+    are dropped (matching how the main map clips them visually). Each
+    bin's color is the colormap evaluated at the bin's midpoint so the
+    pie reads as a discrete sampling of the same colorbar.
+    """
+    import matplotlib.pyplot as plt
+
+    vals = np.asarray(da_panel.values).ravel()
+    finite = vals[np.isfinite(vals)]
+    if finite.size == 0:
+        return np.array([]), [], []
+
+    lo = eff_vmin if eff_vmin is not None else float(np.nanmin(finite))
+    hi = eff_vmax if eff_vmax is not None else float(np.nanmax(finite))
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        return np.array([]), [], []
+
+    edges = np.linspace(lo, hi, n_bins + 1)
+    counts, _ = np.histogram(finite, bins=edges)
+    centers = (edges[:-1] + edges[1:]) / 2.0
+    norm_centers = (centers - lo) / (hi - lo)
+
+    base = plt.get_cmap(cmap_name)
+    colors = [base(float(c)) for c in norm_centers]
+    # Compact bin labels: "−72→−64" rather than "−72.00 to −64.00"
+    label_strings = [
+        f"{edges[i]:.0f}\u2192{edges[i + 1]:.0f}" for i in range(n_bins)
+    ]
+
+    # Drop empty bins from the pie entirely (they'd be invisible wedges
+    # but would still take a legend row, wasting space).
+    keep = counts > 0
+    counts = counts[keep]
+    label_strings = [label_strings[i] for i, k in enumerate(keep) if k]
+    colors = [colors[i] for i, k in enumerate(keep) if k]
+
+    if counts.size == 0:
+        return np.array([]), [], []
+
+    # Continuous wedges are NOT sorted by size — they read better in
+    # the natural "low→high value" order of the colorbar.
+    return counts.astype(np.int64), label_strings, colors
+
+
+def _render_pie_panel(fig, gs_cell, sizes, label_strings, colors,
+                     title, channel_label=None,
+                     value_units="", noise_count=0):
+    """Draw a pie + compact legend in one GridSpec cell.
+
+    ``gs_cell`` is a single SubplotSpec; we subdivide it into a square
+    pie on the left and a fixed-width legend on the right so the
+    overall cell shape stays stable regardless of how many wedges
+    there are.
+
+    ``noise_count`` (categorical only) is appended to the legend as a
+    grey footnote — it's not represented in the pie itself but the
+    user usually wants to know how much of the data was discarded.
+    """
+    if len(sizes) == 0:
+        ax = fig.add_subplot(gs_cell)
+        ax.text(0.5, 0.5, "(no data)", ha="center", va="center",
+                transform=ax.transAxes, fontsize=8, color="gray")
+        ax.axis("off")
+        return
+
+    sub = gs_cell.subgridspec(1, 2, width_ratios=[1.0, 1.05], wspace=0.05)
+    ax_pie = fig.add_subplot(sub[0, 0])
+    ax_legend = fig.add_subplot(sub[0, 1])
+    ax_legend.axis("off")
+
+    sizes_arr = np.asarray(sizes, dtype=float)
+    pct = 100.0 * sizes_arr / sizes_arr.sum()
+
+    # In-wedge percent labels only for wedges large enough to host text.
+    def _autopct(p):
+        return f"{p:.0f}%" if p >= _PIE_INLINE_LABEL_MIN_PCT else ""
+
+    wedges, _texts, autotexts = ax_pie.pie(
+        sizes_arr,
+        startangle=90,
+        colors=colors,
+        autopct=_autopct,
+        pctdistance=0.72,
+        textprops={"fontsize": 7},
+        wedgeprops={"linewidth": 0.5, "edgecolor": "white"},
+    )
+    for at, color in zip(autotexts, colors):
+        at.set_color(_text_color_for_bg(color))
+
+    ax_pie.set_aspect("equal")
+    if channel_label:
+        ax_pie.set_title(channel_label, fontsize=8)
+
+    _render_compact_legend(
+        ax_legend, label_strings, sizes_arr, pct, colors,
+        title=title, value_units=value_units, noise_count=noise_count,
+    )
+
+
+def _render_compact_legend(ax, label_strings, sizes, pct, colors,
+                          title, value_units="", noise_count=0):
+    """Multi-column legend with hard cap on visible rows.
+
+    Limits visible entries to ``_PIE_LEGEND_MAX_VISIBLE`` and rolls the
+    rest into a single grey "+ N more" patch.  The number of columns
+    grows from 1 → 2 as entries pile up, but the total *area* of the
+    legend is capped so the figure layout never expands to fit it.
+
+    Result: stable layout at any cluster count, even at 200+ clusters.
+    """
+    from matplotlib.patches import Patch
+
+    n = len(label_strings)
+    pct = np.asarray(pct, dtype=float)
+
+    # Column count grows with row count, but never past 2 — at 3+
+    # columns the per-column width gets too narrow for "ID  count (pct)".
+    if n <= 8:
+        ncol = 1
+    else:
+        ncol = 2
+
+    visible = min(_PIE_LEGEND_MAX_VISIBLE, n)
+
+    handles = []
+    text_labels = []
+    suffix = f" {value_units}" if value_units else ""
+    for i in range(visible):
+        text_labels.append(
+            f"{label_strings[i]}{suffix}  {int(sizes[i]):,}  ({pct[i]:.1f}%)"
+        )
+        handles.append(Patch(facecolor=colors[i], edgecolor="none"))
+
+    if visible < n:
+        remaining = n - visible
+        rem_count = int(sizes[visible:].sum())
+        rem_pct = pct[visible:].sum()
+        handles.append(Patch(facecolor="lightgray", edgecolor="none"))
+        text_labels.append(
+            f"+ {remaining} more  {rem_count:,}  ({rem_pct:.1f}%)"
+        )
+
+    if noise_count > 0:
+        handles.append(Patch(facecolor=_NOISE_COLOR, edgecolor="none"))
+        text_labels.append(f"noise (excluded)  {noise_count:,}")
+
+    legend_title = title
+    if n > visible:
+        legend_title = f"{title} — top {visible} of {n}"
+
+    ax.legend(
+        handles, text_labels,
+        loc="center",
+        ncol=ncol,
+        fontsize=6.5,
+        frameon=False,
+        labelspacing=0.35,
+        columnspacing=0.6,
+        handlelength=1.2,
+        handleheight=1.0,
+        borderpad=0.2,
+        title=legend_title,
+        title_fontsize=7.5,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -660,6 +914,8 @@ def echogram(
     ymin: Optional[float] = None,
     ymax: Optional[float] = None,
     flip_y: bool = True,
+    pie: bool = True,
+    pie_height: float = 2.6,
 ):
     """Plot a Sv-style echogram from a NetCDF file. Returns the matplotlib Figure.
 
@@ -668,9 +924,14 @@ def echogram(
 
     Multi-channel datasets get one subplot per channel by default. Pass
     `channel=` or `frequency=` to plot a single channel.
+
+    A pie-chart row is drawn beneath the echogram showing the
+    distribution of clusters (categorical data) or value bins
+    (continuous data); pass ``pie=False`` to suppress it.
     """
     import xarray as xr
     import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
 
     ds = xr.open_dataset(path)
     var = _ensure_variable(ds, var)
@@ -705,19 +966,17 @@ def echogram(
         channel_idxs = [None]
 
     n_panels = len(channel_idxs)
-
-    fig, axes = plt.subplots(
-        n_panels, 1,
-        figsize=(figwidth, rowheight * n_panels),
-        sharex=True,
-        squeeze=False,
-    )
-
     x_dim = _detect_x_dim(da)
 
-    for i, ci in enumerate(channel_idxs):
-        ax = axes[i, 0]
-
+    # ---- Pre-pass: prepare per-panel data ---------------------------------
+    # We resolve the data array, decide categorical-vs-continuous, and (for
+    # categorical) compute the cluster stats and ListedColormap once. This
+    # information is consumed twice — by the main map render and by the
+    # pie chart render — so doing it up front avoids duplicated work and
+    # ensures the two views stay perfectly in sync (same colors, same
+    # cluster ordering).
+    panel_specs = []
+    for ci in channel_idxs:
         if ci is None:
             da_panel = da
             label = None
@@ -729,31 +988,73 @@ def echogram(
         da_panel = _decimate(da_panel, x_dim, decimate)
         da_panel = _crop_y(da_panel, y_dim, ymin, ymax)
 
-        # Resolve color limits and colorbar label.  Two regimes:
-        #
-        # CONTINUOUS data (Sv, TS, MVBS, NASC, …) uses xarray's built-in
-        # pcolormesh + auto-colorbar with per-variable defaults from
-        # `_VAR_DISPLAY_DEFAULTS`. User --vmin/--vmax always override.
-        #
-        # CATEGORICAL data (cluster maps, masks, KMeans/DBSCAN/HDBSCAN
-        # labels) bypasses the auto-colorbar entirely. We build a
-        # ListedColormap + BoundaryNorm so each cluster gets exactly one
-        # color, then draw either a discrete colorbar (few clusters) or
-        # a weighted/proportional legend (many clusters). vmin/vmax are
-        # meaningless for label data and are ignored with a warning.
         is_cat = _is_categorical(da_panel)
+        spec = {
+            "ci": ci,
+            "da_panel": da_panel,
+            "y_dim": y_dim,
+            "label": label,
+            "is_cat": is_cat,
+        }
+
+        if is_cat:
+            unique_labels, counts = _cluster_label_stats(da_panel)
+            spec["unique_labels"] = unique_labels
+            spec["counts"] = counts
+            if len(unique_labels) > 0:
+                spec["listed_cmap"], spec["norm"] = _build_discrete_cmap(
+                    cmap, unique_labels
+                )
+            else:
+                spec["listed_cmap"], spec["norm"] = None, None
+
+        panel_specs.append(spec)
+
+    # ---- Layout ----------------------------------------------------------
+    # GridSpec with one row per channel, plus an optional row at the bottom
+    # for the pie chart distribution. Using GridSpec rather than subplots()
+    # gives us control over per-row heights (the pie row is shorter than
+    # the echogram rows) and lets the pie row hold its own per-channel
+    # subgrid without disturbing sharex on the echograms.
+    show_pie = bool(pie) and n_panels > 0
+    n_rows = n_panels + (1 if show_pie else 0)
+    height_ratios = [rowheight] * n_panels
+    if show_pie:
+        height_ratios.append(pie_height)
+    fig_height = sum(height_ratios)
+
+    fig = plt.figure(figsize=(figwidth, fig_height))
+    gs = gridspec.GridSpec(
+        n_rows, 1,
+        height_ratios=height_ratios,
+        figure=fig,
+        hspace=0.35,
+    )
+
+    # ---- Render echogram panels ------------------------------------------
+    map_axes = []
+    for i, spec in enumerate(panel_specs):
+        sharex = map_axes[0] if i > 0 else None
+        ax = fig.add_subplot(gs[i, 0], sharex=sharex)
+        map_axes.append(ax)
+
+        da_panel = spec["da_panel"]
+        y_dim = spec["y_dim"]
+        is_cat = spec["is_cat"]
         do_flip = flip_y and _should_flip_y(y_dim)
 
         plotted_categorical = False
         if is_cat:
-            unique_labels, counts = _cluster_label_stats(da_panel)
+            unique_labels = spec["unique_labels"]
+            counts = spec["counts"]
+            listed_cmap = spec["listed_cmap"]
+            norm = spec["norm"]
             if len(unique_labels) > 0:
                 if vmin is not None or vmax is not None:
                     logger.warning(
                         "vmin/vmax are ignored for categorical/cluster data; "
                         "using full label range."
                     )
-                listed_cmap, norm = _build_discrete_cmap(cmap, unique_labels)
                 da_panel.plot.pcolormesh(
                     x=x_dim, y=y_dim, ax=ax,
                     cmap=listed_cmap, norm=norm,
@@ -766,13 +1067,16 @@ def echogram(
                         unique_labels, counts, var,
                     )
                 else:
+                    # When the pie row is also rendering, defer cluster
+                    # identity to the pie's compact legend and let the
+                    # right-side strip be a clean visual size preview.
                     _add_proportional_legend(
                         fig, ax, listed_cmap,
                         unique_labels, counts, var,
+                        compact=show_pie,
                     )
                 plotted_categorical = True
-            # else: all-NaN panel → fall through to the continuous branch
-            # (which will produce a sensibly-empty plot).
+            # else: all-NaN panel → fall through to continuous branch.
 
         if not plotted_categorical:
             default_vmin, default_vmax, units = _VAR_DISPLAY_DEFAULTS.get(
@@ -792,16 +1096,60 @@ def echogram(
                 add_colorbar=True,
                 cbar_kwargs={"label": cbar_label},
             )
+            # Stash effective limits for the pie row to mirror.
+            spec["eff_vmin"] = eff_vmin
+            spec["eff_vmax"] = eff_vmax
 
-        if label:
-            ax.set_title(label, fontsize=10)
-        # Drop the noisy auto-title xarray adds (it duplicates info that
-        # the suptitle and axis labels already cover).
+        if spec["label"]:
+            ax.set_title(spec["label"], fontsize=10)
         else:
             ax.set_title("")
 
+    # ---- Render pie chart row --------------------------------------------
+    # One pie per channel, side-by-side, sharing colors with the matching
+    # echogram panel above. Width is split evenly across channels — for a
+    # single channel the pie spans the full row and tends to look quite
+    # large; that's intentional, since solo plots have screen real estate
+    # to spare and a bigger pie reads better.
+    if show_pie:
+        pie_gs = gs[n_panels, 0].subgridspec(1, n_panels, wspace=0.25)
+        for i, spec in enumerate(panel_specs):
+            cell = pie_gs[0, i]
+            channel_label = spec["label"]
+            if spec["is_cat"]:
+                if spec.get("listed_cmap") is None:
+                    # All-NaN panel → empty cell with placeholder text.
+                    _render_pie_panel(fig, cell, np.array([]), [], [],
+                                     title=var, channel_label=channel_label)
+                    continue
+                sizes, labels_s, colors = _pie_data_categorical(
+                    spec["unique_labels"], spec["counts"],
+                    spec["listed_cmap"],
+                )
+                noise_count = int(spec["counts"][
+                    spec["unique_labels"] == _NOISE_LABEL
+                ].sum()) if _NOISE_LABEL in spec["unique_labels"] else 0
+                _render_pie_panel(
+                    fig, cell, sizes, labels_s, colors,
+                    title=var,
+                    channel_label=channel_label,
+                    noise_count=noise_count,
+                )
+            else:
+                _, _, units = _VAR_DISPLAY_DEFAULTS.get(var, (None, None, ""))
+                sizes, labels_s, colors = _pie_data_continuous(
+                    spec["da_panel"], cmap,
+                    spec.get("eff_vmin"), spec.get("eff_vmax"),
+                )
+                _render_pie_panel(
+                    fig, cell, sizes, labels_s, colors,
+                    title=var,
+                    channel_label=channel_label,
+                    value_units=units,
+                )
+
     fig.suptitle(f"{var}  ·  {Path(path).name}", fontsize=11)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
     return fig
 
 
@@ -835,6 +1183,10 @@ def main() -> None:
     p.add_argument("--figwidth", type=float, default=10)
     p.add_argument("--rowheight", type=float, default=3)
     p.add_argument("--no-flip", action="store_true")
+    p.add_argument("--no-pie", action="store_true",
+                   help="Suppress the pie-chart distribution row.")
+    p.add_argument("--pie-height", type=float, default=2.6,
+                   help="Pie row height in inches (default: 2.6).")
     p.add_argument("--decimate", type=int, default=1)
     p.add_argument("--ymin", type=float, default=None)
     p.add_argument("--ymax", type=float, default=None)
@@ -905,6 +1257,8 @@ def main() -> None:
             ymin=args.ymin,
             ymax=args.ymax,
             flip_y=not args.no_flip,
+            pie=not args.no_pie,
+            pie_height=args.pie_height,
         )
 
         args.output_path.parent.mkdir(parents=True, exist_ok=True)
