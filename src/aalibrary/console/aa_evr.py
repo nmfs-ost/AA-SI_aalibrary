@@ -49,8 +49,22 @@ Known fixes in this version:
      mask) and dimension name variations (region_id, region) across echoregions versions.
 """
 
-import argparse
+# === Silence logs BEFORE any heavy imports ===
+import logging
 import sys
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+from loguru import logger
+logger.remove()
+# Default sink: WARNING+ to stderr so real errors aren't swallowed.
+# _configure_logging() below replaces this once --debug is parsed.
+logger.add(sys.stderr, level="WARNING")
+
+# Now the heavy imports - anything they log gets squashed
+import argparse
 import pprint
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
@@ -58,9 +72,20 @@ from typing import Iterable, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 import echoregions as er
+
+
+def silence_all_logs():
+    """Re-apply suppression in case a library re-enabled logging
+    or added its own loguru sink during initialization."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
 
 
 # ---------------------------
@@ -70,7 +95,7 @@ import echoregions as er
 def print_help() -> None:
     print(
         """
-aa-evr — apply Echoview region(s) (.evr) to an echogram NetCDF (.nc/.netcdf4)
+aa-evr - apply Echoview region(s) (.evr) to an echogram NetCDF (.nc/.netcdf4)
 
 USAGE
   # Apply existing EVR file(s):
@@ -108,7 +133,9 @@ DRAWING MODE OPTIONS
                           auto-increments if occupied).
 
 MASKING (both modes)
-  --var NAME              Variable to mask (default: Sv).
+  --var NAME              Variable to mask (default: auto-detect — first of
+                          Sv, Sv_clean, MVBS, TS, NASC found in the file).
+                          Pass explicitly to override.
   --time-dim NAME         Time dimension name (default: infer ping_time else time).
   --depth-dim NAME        Depth dimension name (default: infer depth, range_sample,
                           or range_bin).
@@ -142,6 +169,8 @@ NOTE
 
 
 def _configure_logging(debug: bool) -> None:
+    """Replace the default suppression sink with a user-visible one.
+    Keeps standard logging fully disabled."""
     logger.remove()
     logger.add(sys.stderr, level="DEBUG" if debug else "INFO")
 
@@ -191,6 +220,49 @@ def _validate_inputs(input_paths: List[Path], evr_paths: List[Path]) -> None:
 # ---------------------------
 # Dataset helpers
 # ---------------------------
+
+# Default-variable search order when --var is not given.  First hit wins.
+# Mirrors aa_graph.py / aa_plot.py / kmeans_core.ACOUSTIC_VARIABLES so all
+# four tools agree on which variable a multi-var file targets by default.
+# Add new entries here when new acoustic variables come up — one line each.
+_DEFAULT_VAR_CANDIDATES = (
+    "Sv", "Sv_clean", "MVBS", "TS", "NASC",
+)
+
+
+def _resolve_var(ds: xr.Dataset, var: Optional[str]) -> str:
+    """Pick a variable to mask.
+
+    If *var* is given, validate it exists and return it.  Otherwise walk
+    _DEFAULT_VAR_CANDIDATES and return the first one present in the
+    dataset.  As a last resort, fall back to the first data variable in
+    the file (with a warning, since auto-picking an unknown variable is
+    a guess).
+    """
+    if var is not None:
+        if var not in ds.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found. "
+                f"Available: {list(ds.data_vars.keys())}"
+            )
+        return var
+
+    for cand in _DEFAULT_VAR_CANDIDATES:
+        if cand in ds.data_vars:
+            return cand
+
+    if not ds.data_vars:
+        raise ValueError("Dataset has no data variables to mask.")
+
+    fallback = list(ds.data_vars)[0]
+    logger.warning(
+        f"No standard acoustic variable "
+        f"({', '.join(_DEFAULT_VAR_CANDIDATES)}) found in dataset. "
+        f"Falling back to first data variable: '{fallback}'. "
+        f"Pass --var explicitly to override."
+    )
+    return fallback
+
 
 def _infer_dims(
     ds: xr.Dataset,
@@ -297,14 +369,14 @@ def _extract_region_mask_union(
             if da.sizes[rdim] == 0:
                 # FIX: zero-region crash.
                 # echoregions returned no matching polygons for this time window.
-                # This is valid — it means no EVR polygons overlap the echogram,
+                # This is valid - it means no EVR polygons overlap the echogram,
                 # commonly because aa-evl upstream has already trimmed the time range.
                 # Return all-False (nothing inside any region) instead of crashing.
                 logger.warning(
                     f"EVR returned 0 matching regions for this echogram "
                     f"(region_id dimension is empty). This typically means the EVR "
                     f"polygon time range does not overlap the current echogram ping_time "
-                    f"range — which can happen when aa-evl has already masked the data. "
+                    f"range - which can happen when aa-evl has already masked the data. "
                     f"Treating as all-False (nothing inside any region). "
                     f"Run with --debug to compare time ranges."
                 )
@@ -336,7 +408,7 @@ def _build_union_region_mask(
 
     Two modes (auto-detected per EVR file):
       1) Normal echogram EVR (depth+time polygons): echoregions Regions2D.region_mask()
-      2) GPS/alongtrack EVR (no usable depth): TIME-ONLY fallback — keep all depths
+      2) GPS/alongtrack EVR (no usable depth): TIME-ONLY fallback - keep all depths
          for pings whose ping_time falls within any region time span.
 
     KEY: The returned mask uses the original dataset coordinate labels (not the
@@ -474,6 +546,36 @@ def _build_union_region_mask(
 
         # --- normalise DEPTH lists: replace sentinels, clip to echogram range ---
         if "depth" in df.columns:
+            # Capture raw depth statistics *before* clamping so we can detect
+            # the case where the polygon was drawn against an integer-index
+            # axis (e.g. range_sample) and gets squashed to a single point.
+            raw_depth_min = float("inf")
+            raw_depth_max = float("-inf")
+            raw_depth_count = 0
+            for d_list in df["depth"]:
+                for d in list(d_list):
+                    try:
+                        x = float(d)
+                        if np.isfinite(x) and abs(x) < 9000:
+                            raw_depth_count += 1
+                            if x < raw_depth_min: raw_depth_min = x
+                            if x > raw_depth_max: raw_depth_max = x
+                    except Exception:
+                        pass
+
+            # Detect catastrophic clamp: polygon depths entirely outside
+            # the echogram metre range. Almost always means the EVR was
+            # drawn against a range_sample (integer index) axis. In that
+            # case, DO NOT clamp — leave the polygon as-is so echoregions
+            # filters it out cleanly and we can emit a clear diagnostic.
+            # Clamping would silently collapse all vertices onto a single
+            # edge value, producing a degenerate horizontal line that
+            # masks nothing but reports no error.
+            polygon_outside_echogram = (
+                raw_depth_count > 0
+                and (raw_depth_min > ech_depth_max or raw_depth_max < ech_depth_min)
+            )
+
             new_depth = []
             for d_list in df["depth"]:
                 fixed = []
@@ -484,14 +586,46 @@ def _build_union_region_mask(
                         fixed.append(np.nan)
                         continue
                     if np.isfinite(x):
+                        # Always replace Echoview sentinel values (±9999.99)
+                        # which represent "to the surface" / "to the seafloor"
+                        # boundaries — those genuinely should clamp.
                         if x <= -9000:
                             x = ech_depth_min
                         elif x >= 9000:
                             x = ech_depth_max
-                        x = min(max(x, ech_depth_min), ech_depth_max)
+                        # For NORMAL polygon vertices, only clamp if the
+                        # polygon as a whole is at least partly inside the
+                        # echogram. If it's entirely outside, preserve the
+                        # original values so the failure is visible.
+                        elif not polygon_outside_echogram:
+                            x = min(max(x, ech_depth_min), ech_depth_max)
                     fixed.append(x)
                 new_depth.append(fixed)
             df["depth"] = new_depth
+
+            # --- diagnostic logging ---
+            if raw_depth_count > 0:
+                if debug:
+                    logger.debug(
+                        f"{evr_path.name}: EVR depth range (raw): "
+                        f"{raw_depth_min:.2f} -> {raw_depth_max:.2f} "
+                        f"(echogram range: {ech_depth_min:.2f} -> {ech_depth_max:.2f} m)"
+                    )
+                if polygon_outside_echogram:
+                    logger.warning(
+                        f"{evr_path.name}: polygon depths ({raw_depth_min:.2f} -> "
+                        f"{raw_depth_max:.2f}) are entirely OUTSIDE the echogram "
+                        f"depth range ({ech_depth_min:.2f} -> {ech_depth_max:.2f} m). "
+                        f"This EVR cannot mask any cells in this echogram.\n"
+                        f"  Most common cause: the EVR was created from an aa-plot "
+                        f"HTML whose y-axis was 'range_sample' (integer indices, 0 "
+                        f"to ~N) instead of metre-valued depth. The polygon depths "
+                        f"in the EVR are sample indices, not metres.\n"
+                        f"  Fix: regenerate the aa-plot HTML against an input file "
+                        f"that contains a 'depth' or 'echo_range' axis (run aa-depth "
+                        f"first), or pass --y echo_range / --y depth explicitly to "
+                        f"aa-plot. Then redraw and re-export the EVR."
+                    )
 
         # --- close polygons ---
         if "time" in df.columns and "depth" in df.columns:
@@ -550,7 +684,7 @@ def _build_union_region_mask(
             )
             if debug:
                 logger.debug(
-                    f"{evr_path.name}: time-only mask — "
+                    f"{evr_path.name}: time-only mask - "
                     f"inside pings={int(mask_time.sum())}/{mask_time.size}"
                 )
 
@@ -607,7 +741,7 @@ def _build_union_region_mask(
             if debug:
                 n_in = int(file_union.values.sum())
                 logger.debug(
-                    f"{evr_path.name}: polygon mask — "
+                    f"{evr_path.name}: polygon mask - "
                     f"inside={n_in}/{file_union.size} cells "
                     f"({100 * n_in / max(file_union.size, 1):.1f}%)"
                 )
@@ -648,14 +782,26 @@ def _apply_mask(
     Uses positional (coordinate-stripped) masking as the sole strategy.
     By construction the mask has the same shape as the data along (time_dim,
     depth_dim), so stripping coordinate labels before broadcasting guarantees
-    no reindex mismatch can silently fill the mask with NaN — which in numpy
+    no reindex mismatch can silently fill the mask with NaN - which in numpy
     evaluates as True and causes xr.where to keep all original values unchanged.
+
+    Variables that represent the depth/range *axis* (echo_range, depth,
+    range, range_meter, etc.) are intentionally NOT masked. They define
+    the coordinate system and need to remain valid for downstream tools
+    (especially aa-plot's auto-range — masking them creates a NaN-filled
+    axis that visibly breaks the y-axis scale).
     """
+    AXIS_VARS = frozenset({
+        "echo_range", "depth", "range", "range_m", "range_meter", "range_sample",
+    })
+
     ds_out = ds.copy(deep=False)
 
     mask_np = np.asarray(mask.transpose(time_dim, depth_dim).values, dtype=bool)
 
     for name, da in list(ds_out.data_vars.items()):
+        if name in AXIS_VARS:
+            continue  # Skip axis variables — masking them breaks the coord system
         if (time_dim in da.dims) and (depth_dim in da.dims):
             m_bare = xr.DataArray(mask_np, dims=(time_dim, depth_dim))
             m_broadcast = m_bare.broadcast_like(da)
@@ -707,7 +853,23 @@ def _process_file(
         logger.error(f"Output exists (use --overwrite): {output_path}")
         return None
 
-    ds = xr.open_dataset(input_path)
+    # Guard against clobbering the input
+    if output_path.resolve() == input_path.resolve():
+        logger.error(f"Refusing to overwrite input file: {input_path.resolve()}")
+        return None
+
+    # Read into memory and release the file handle so we can write into the
+    # same directory without xarray holding a read lock.
+    with xr.open_dataset(input_path) as ds_in:
+        ds = ds_in.load()
+
+    # Resolve --var: explicit value if given, else auto-detect from a
+    # candidate list (Sv, Sv_clean, MVBS, TS, NASC) that mirrors aa-graph
+    # and aa-plot.  Lets `aa-evr file_TS.nc --evr ...` work without
+    # forcing the user to add --var TS by hand.
+    var = _resolve_var(ds, var)
+    if debug:
+        logger.debug(f"Resolved variable: '{var}'")
 
     tdim, ddim = _infer_dims(ds, var=var, time_dim=time_dim, depth_dim=depth_dim)
     if debug:
@@ -743,16 +905,12 @@ def _process_file(
             "Run with --debug to see time/depth ranges for diagnosis."
         )
         if fail_empty:
-            try:
-                ds.close()
-            except Exception:
-                pass
             return None
 
     if inside == total:
         logger.warning(
             "Union mask is FULL (all cells inside). Output will be identical to "
-            "input — no data will be masked out. Check EVR polygon boundaries."
+            "input - no data will be masked out. Check EVR polygon boundaries."
         )
 
     ds_out = _apply_mask(
@@ -762,11 +920,6 @@ def _process_file(
     ds_out.attrs["aa_evr_files"] = ",".join(str(p) for p in evr_files)
 
     ds_out.to_netcdf(output_path)
-
-    try:
-        ds.close()
-    except Exception:
-        pass
 
     return output_path
 
@@ -792,13 +945,13 @@ def main() -> int:
         help="Input .nc/.netcdf4 paths (or read from stdin).",
     )
 
-    # ── EVR mode ──
+    # -- EVR mode --
     parser.add_argument(
         "--evr", required=False, default=None, nargs="+", type=Path, metavar="EVR",
         help="One or more .evr paths (omit to enter interactive drawing mode).",
     )
 
-    # ── Drawing mode ──
+    # -- Drawing mode --
     parser.add_argument(
         "--name", type=str, default=None, dest="name",
         help=(
@@ -812,7 +965,7 @@ def main() -> int:
         help="Drawing mode: Bokeh server port (default: 5006; auto-increments if busy).",
     )
 
-    # ── Shared output options ──
+    # -- Shared output options --
     parser.add_argument(
         "-o", "--output-path", dest="output_path", type=Path,
         help="Output path (only valid for a single input file, EVR mode only).",
@@ -830,10 +983,14 @@ def main() -> int:
         help="Overwrite existing output files.",
     )
 
-    # ── Masking options (shared) ──
+    # -- Masking options (shared) --
     parser.add_argument(
-        "--var", type=str, default="Sv",
-        help="Variable to mask (default: Sv).",
+        "--var", type=str, default=None,
+        help=(
+            "Variable to mask (default: auto-detect — first of "
+            "Sv, Sv_clean, MVBS, TS, NASC found in the file). "
+            "Pass explicitly to override."
+        ),
     )
     parser.add_argument(
         "--time-dim", type=str, default=None,
@@ -863,9 +1020,9 @@ def main() -> int:
 
     _configure_logging(args.debug)
 
-    # ══════════════════════════════════════════════════════════════
+    # ==============================================================
     # Route: DRAWING MODE  (--evr not provided)
-    # ══════════════════════════════════════════════════════════════
+    # ==============================================================
     if not args.evr:
         try:
             from aalibrary.utils.region_draw import run_drawing_mode
@@ -895,6 +1052,17 @@ def main() -> int:
             logger.error(f"Input file not found: {nc_path}")
             return 1
 
+        # Resolve --var: explicit value if given, else auto-detect by
+        # opening the file to inspect data_vars.  Mirrors the EVR-mode
+        # path so `aa-evr file_TS.nc --name foo.evr` works without
+        # forcing the user to add --var TS by hand.
+        try:
+            with xr.open_dataset(nc_path) as _ds_peek:
+                resolved_var = _resolve_var(_ds_peek, args.var)
+        except Exception as exc:
+            logger.error(f"Could not resolve variable in {nc_path}: {exc}")
+            return 1
+
         evr_name = args.name or (nc_path.with_suffix("").name + "_regions.evr")
         out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
 
@@ -904,14 +1072,14 @@ def main() -> int:
                 f"  nc_path={nc_path}\n"
                 f"  evr_name={evr_name}\n"
                 f"  out_dir={out_dir}\n"
-                f"  var={args.var}, port={args.port}"
+                f"  var={resolved_var}, port={args.port}"
             )
 
         result = run_drawing_mode(
             nc_path=nc_path,
             evr_name=evr_name,
             out_dir=out_dir,
-            var=args.var,
+            var=resolved_var,
             time_dim=args.time_dim,
             depth_dim=args.depth_dim,
             channel_index=args.channel_index,
@@ -927,9 +1095,9 @@ def main() -> int:
         else:
             return 1
 
-    # ══════════════════════════════════════════════════════════════
+    # ==============================================================
     # Route: EVR MODE  (--evr provided)
-    # ══════════════════════════════════════════════════════════════
+    # ==============================================================
     input_paths = list(_iter_input_paths(args.input_paths))
     if not input_paths:
         logger.error("No input paths provided (positional or via stdin).")

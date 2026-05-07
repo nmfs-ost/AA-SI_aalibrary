@@ -1,5 +1,30 @@
+"""aa-refresh — clean reinstall of AA-SI development libraries with a pretty UI.
+
+Requires: rich  (pip install rich)
+"""
+
+from __future__ import annotations
+
+import argparse
 import subprocess
 import sys
+import time
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Callable
+
+from rich.console import Console, Group
+from rich.live import Live
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+from rich.text import Text
 
 
 LIBRARIES = [
@@ -13,101 +38,274 @@ LIBRARIES = [
     },
 ]
 
+console = Console()
 
-def print_help() -> None:
-    print(
-        """\
-Usage:
-  aa-refresh [--help] [--only <pip_name>]
 
-Description:
-  Uninstalls and reinstalls development libraries from their GitHub
-  repositories (main branch).  Uses --no-cache-dir and --force-reinstall
-  so setuptools re-discovers any new sub-packages on install.
+# --------------------------------------------------------------------------- #
+# Models
+# --------------------------------------------------------------------------- #
 
-  Libraries refreshed:
-    aalibrary        (AA-SI_aalibrary)
-    AA-SI-KMEANS     (AA-SI_KMeans)
+@dataclass
+class Result:
+    pip_name: str
+    success: bool
+    duration: float
+    error_tail: list[str] = field(default_factory=list)
 
-Options:
-  --only <pip_name>   Refresh a single library instead of all.
-                      e.g.  aa-refresh --only AA-SI-KMEANS
-  --help, -h          Show this help message.
 
-Notes:
-  - Intended for use inside your active virtual environment.
-  - Uses: python -m pip ... (so it targets the current interpreter).
-"""
+# --------------------------------------------------------------------------- #
+# Subprocess streaming
+# --------------------------------------------------------------------------- #
+
+def stream_command(
+    cmd: list[str],
+    on_line: Callable[[str], None],
+    tail_size: int = 30,
+) -> tuple[int, list[str]]:
+    """Run `cmd`, call `on_line` for each line of merged stdout/stderr.
+
+    Returns (return_code, last_n_lines).  The captured tail is what we show
+    inside an error panel if the install ends up failing.
+    """
+    tail: deque[str] = deque(maxlen=tail_size)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        errors="replace",
+    )
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+        line = raw.rstrip()
+        if not line:
+            continue
+        tail.append(line)
+        on_line(line)
+    return proc.wait(), list(tail)
+
+
+# --------------------------------------------------------------------------- #
+# Refresh logic
+# --------------------------------------------------------------------------- #
+
+def refresh_one(
+    lib: dict,
+    progress: Progress,
+    task_id: int,
+    status_text: Text,
+) -> Result:
+    pip_name = lib["pip_name"]
+    repo_url = lib["repo_url"]
+    started = time.monotonic()
+
+    def update(stage: str, line: str) -> None:
+        # Keep the live status to a single line so the layout stays stable.
+        trimmed = line if len(line) <= 90 else line[:87] + "..."
+        status_text.plain = f"  [{stage}] {trimmed}"
+        progress.update(
+            task_id,
+            description=f"[bold]{pip_name}[/]  [dim]· {stage}[/]",
+        )
+
+    # 1) Uninstall — non-zero is fine; the package may not have been installed.
+    stage_remove = "removing old version"
+    update(stage_remove, "starting...")
+    stream_command(
+        [sys.executable, "-m", "pip", "uninstall", "-y", pip_name],
+        on_line=lambda line: update(stage_remove, line),
+    )
+
+    # 2) Reinstall from GitHub — --no-cache-dir + --force-reinstall so that
+    #    setuptools re-discovers any new sub-packages.
+    stage_install = "pulling latest from GitHub"
+    update(stage_install, "starting...")
+    rc, tail = stream_command(
+        [
+            sys.executable, "-m", "pip", "install",
+            "--no-cache-dir", "--force-reinstall", repo_url,
+        ],
+        on_line=lambda line: update(stage_install, line),
+    )
+
+    duration = time.monotonic() - started
+    if rc != 0:
+        return Result(pip_name, success=False, duration=duration, error_tail=tail)
+    return Result(pip_name, success=True, duration=duration)
+
+
+# --------------------------------------------------------------------------- #
+# UI rendering
+# --------------------------------------------------------------------------- #
+
+def render_header() -> Panel:
+    body = Text.assemble(
+        "Welcome! This tool keeps your local AA-SI libraries in sync with the "
+        "latest code on GitHub. It removes your current copies and reinstalls "
+        "them fresh from the ",
+        ("main", "italic"),
+        " branch — so any new features, fixes, or sub-modules the team has "
+        "shipped show up on your machine.\n\n",
+        ("Recommended every week or two", "bold"),
+        ", and any time a teammate mentions a feature you don't seem to have "
+        "yet.\n\n",
+        ("interpreter: ", "dim"),
+        (sys.executable, "dim"),
+    )
+    return Panel(
+        body,
+        border_style="cyan",
+        title="[bold cyan]aa-refresh[/]",
+        title_align="left",
+        padding=(1, 2),
     )
 
 
-def run(cmd: list[str]) -> int:
-    """Run a command and return its exit code."""
-    print("+", " ".join(cmd))
-    return subprocess.run(cmd, check=False).returncode
+def render_farewell() -> Panel:
+    body = Text.assemble(
+        "The latest versions of your AA-SI libraries are now installed. "
+        "If you ever hit a missing function, a strange import error, or a "
+        "sub-module that won't load, running ",
+        ("aa-refresh", "bold"),
+        " is usually the first thing to try.\n\n",
+        ("Tip: ", "bold green"),
+        ("come back and run this every week or two to stay current.", "dim"),
+    )
+    return Panel(
+        body,
+        border_style="green",
+        title="[bold green]✔ You're all set[/]",
+        title_align="left",
+        padding=(1, 2),
+    )
 
 
-def refresh(pip_name: str, repo_url: str) -> int:
-    """Uninstall, clear pip cache for the package, and reinstall from GitHub."""
-
-    print(f"\n{'=' * 60}")
-    print(f"  Refreshing: {pip_name}")
-    print(f"{'=' * 60}")
-
-    # 1. Uninstall (non-zero is fine if it wasn't installed)
-    uninstall_rc = run([sys.executable, "-m", "pip", "uninstall", "-y", pip_name])
-    if uninstall_rc != 0:
-        print(f"  Note: uninstall of {pip_name} returned non-zero "
-              f"(may not have been installed). Continuing...")
-
-    # 2. Reinstall from GitHub with --no-cache-dir and --force-reinstall
-    #    --no-cache-dir  → ignores any cached wheel that baked in the old package list
-    #    --force-reinstall → guarantees a fresh build even if pip thinks it's satisfied
-    install_rc = run([
-        sys.executable, "-m", "pip", "install",
-        "--no-cache-dir",
-        "--force-reinstall",
-        repo_url,
-    ])
-
-    if install_rc != 0:
-        print(f"  ERROR: install of {pip_name} failed.", file=sys.stderr)
-        return install_rc
-
-    print(f"  Done: {pip_name} refreshed from GitHub (main).")
-    return 0
+def render_summary(results: list[Result]) -> Table:
+    table = Table(title="Refresh Summary", title_style="bold", show_lines=False)
+    table.add_column("Library", style="bold")
+    table.add_column("Status")
+    table.add_column("Time", justify="right", style="dim")
+    for r in results:
+        status = (
+            Text("✔ ok", style="green")
+            if r.success
+            else Text("✘ failed", style="red")
+        )
+        table.add_row(r.pip_name, status, f"{r.duration:.1f}s")
+    return table
 
 
-def main() -> int:
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print_help()
-        return 0
+def render_error_panels(failed: list[Result]) -> list[Panel]:
+    panels = []
+    for r in failed:
+        body = "\n".join(r.error_tail) or "(no output captured)"
+        panels.append(
+            Panel(
+                body,
+                title=f"[red]Last output from {r.pip_name}[/]",
+                border_style="red",
+            )
+        )
+    return panels
 
-    # --only <pip_name> filter
+
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="aa-refresh",
+        description=(
+            "Keep your AA-SI development libraries in sync with the latest code "
+            "on GitHub. aa-refresh removes your current copies of aalibrary and "
+            "AA-SI-KMEANS and reinstalls them fresh from main, so any new "
+            "features, fixes, or sub-modules show up on your machine. "
+            "Recommended every week or two."
+        ),
+        epilog="Run this from inside your active virtual environment.",
+    )
+    parser.add_argument(
+        "--only",
+        metavar="PIP_NAME",
+        help="Refresh just one library instead of all of them. "
+             "Example: --only aalibrary",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+
     targets = LIBRARIES
-    if "--only" in sys.argv:
-        idx = sys.argv.index("--only")
-        if idx + 1 >= len(sys.argv):
-            print("ERROR: --only requires a pip_name argument.", file=sys.stderr)
-            return 1
-        only = sys.argv[idx + 1]
-        targets = [lib for lib in LIBRARIES if lib["pip_name"] == only]
+    if args.only:
+        targets = [lib for lib in LIBRARIES if lib["pip_name"] == args.only]
         if not targets:
             known = ", ".join(lib["pip_name"] for lib in LIBRARIES)
-            print(f"ERROR: unknown library '{only}'. Known: {known}", file=sys.stderr)
+            console.print(
+                f"[red]ERROR:[/] unknown library [bold]{args.only}[/]. "
+                f"Known: {known}"
+            )
             return 1
 
-    failed = []
-    for lib in targets:
-        rc = refresh(lib["pip_name"], lib["repo_url"])
-        if rc != 0:
-            failed.append(lib["pip_name"])
+    console.print(render_header())
 
+    progress = Progress(
+        SpinnerColumn(style="cyan", finished_text="[green]✓[/]"),
+        TextColumn("{task.description}"),
+        BarColumn(bar_width=None, pulse_style="cyan"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    )
+
+    status_text = Text("  waiting...", style="dim italic")
+    live_group = Group(progress, status_text)
+
+    results: list[Result] = []
+    with Live(live_group, console=console, refresh_per_second=12):
+        for lib in targets:
+            task_id = progress.add_task(
+                f"[bold]{lib['pip_name']}[/]  [dim]· queued[/]",
+                total=None,
+            )
+            result = refresh_one(lib, progress, task_id, status_text)
+            results.append(result)
+            # Mark task complete so the spinner becomes a check / cross.
+            progress.update(
+                task_id,
+                description=(
+                    f"[bold]{lib['pip_name']}[/]  "
+                    + (
+                        "[green]✔ done[/]"
+                        if result.success
+                        else "[red]✘ failed[/]"
+                    )
+                ),
+                completed=1,
+                total=1,
+            )
+        status_text.plain = ""  # clear the live status line at the end
+
+    console.print()
+    console.print(render_summary(results))
+
+    failed = [r for r in results if not r.success]
     if failed:
-        print(f"\nFailed to refresh: {', '.join(failed)}", file=sys.stderr)
+        console.print()
+        console.print(
+            "[yellow]Something didn't go through.[/] Below is the tail end of "
+            "pip's output for each failure — that's usually enough for someone "
+            "on the team to figure out what happened."
+        )
+        console.print()
+        for panel in render_error_panels(failed):
+            console.print(panel)
         return 1
 
-    print(f"\nAll libraries refreshed successfully.")
+    console.print()
+    console.print(render_farewell())
     return 0
 
 

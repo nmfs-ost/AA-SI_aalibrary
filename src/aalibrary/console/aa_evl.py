@@ -21,7 +21,7 @@ EVL semantics:
   An EVL file is a time-series of (datetime, depth_metres) points defining a
   boundary line across the echogram (e.g. seafloor, surface, bottom exclusion
   zone).  Unlike EVR (closed polygons), an EVL is an open line; there is no
-  "inside" — only above vs. below.
+  "inside" - only above vs. below.
 
   --keep above   Keep data ABOVE the union line (default); mask everything below.
                  Typical use: mask out seafloor / bottom noise.
@@ -43,23 +43,131 @@ Design notes:
 - Lines are interpolated to every ping_time in the echogram using linear
   interpolation; pings outside the EVL time range use the nearest boundary
   value (forward/back fill).
-- Sentinel depth values (e.g. ±9999.99) are replaced with the echogram
+- Sentinel depth values (e.g. +/-9999.99) are replaced with the echogram
   depth min/max before interpolation.
 - Coordinate-label mismatch is avoided by positional masking (same fix as aa-evr).
 """
 
-import argparse
+# === Silence logs BEFORE any heavy imports ===
+import logging
 import sys
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+from loguru import logger
+logger.remove()
+# Default sink: WARNING+ to stderr so real errors aren't swallowed.
+# _configure_logging() below replaces this once --debug is parsed.
+logger.add(sys.stderr, level="WARNING")
+
+# Now the heavy imports - anything they log gets squashed
+import argparse
 import pprint
 from pathlib import Path
-from typing import Iterable, List, Literal, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 import echoregions as er
+
+
+def silence_all_logs():
+    """Re-apply suppression in case a library re-enabled logging
+    or added its own loguru sink during initialization."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
+
+
+# ---------------------------------------------------------------------------
+# Workaround: echoregions.lines.lines_parser.parse_evl crashes on pandas 2.x
+# when string[pyarrow] is the default string dtype.
+#
+# Upstream code does:
+#     df = pd.DataFrame([{"time": "20090916 1247393820", ...}])  # str column
+#     df.loc[:, "time"] = df.loc[:, "time"].apply(parse_time)    # <-- DatetimeArray
+#
+# The .apply returns datetime objects but the column is dtyped `string[pyarrow]`,
+# which refuses datetime values:
+#     TypeError: Invalid value '<DatetimeArray>...' for dtype 'str'
+#
+# Old pandas silently upgraded the column dtype; new pandas does not.
+# We patch parse_evl to convert the string column to datetime BEFORE
+# writing it back, sidestepping the dtype clash entirely.
+#
+# Re-applies upstream's own logic; only the assignment mechanic changes.
+# ---------------------------------------------------------------------------
+def _patch_echoregions_parse_evl() -> None:
+    try:
+        import os as _os
+        from echoregions.lines import lines_parser as _lp
+        from echoregions.utils.io import check_file as _check_file
+        from echoregions.utils.time import parse_time as _parse_time
+    except Exception as _exc:
+        logger.debug(f"Could not patch echoregions.parse_evl: {_exc}")
+        return
+
+    def parse_evl(input_file: str):
+        _check_file(input_file, "EVL")
+        with open(input_file, encoding="utf-8-sig") as fid:
+            file_lines = fid.readlines()
+        file_type, file_format_number, ev_version = file_lines[0].strip().split()
+        file_metadata = {
+            "file_name": (
+                _os.path.splitext(_os.path.basename(input_file))[0]
+                + _os.path.splitext(_os.path.basename(input_file))[1]
+            ),
+            "file_type": file_type,
+            "evl_file_format_version": file_format_number,
+            "echoview_version": ev_version,
+        }
+        n_points = int(file_lines[1].strip())
+        if (len(file_lines) - 2) != n_points:
+            raise ValueError(
+                "There exists a mismatch between the expected number of lines "
+                f"in the file and the actual number of points. There should be "
+                f"2 less lines in the file than the number of points, however "
+                f"we have {len(file_lines)} number of lines in the file and "
+                f"{n_points} number of points."
+            )
+        points = []
+        for i in range(n_points):
+            date, time, depth, status = file_lines[i + 2].strip().split()
+            points.append(
+                {
+                    # Pre-parse to datetime so the column is born as the right
+                    # dtype — no string-to-datetime reassignment needed.
+                    "time": _parse_time(f"{date} {time}"),
+                    "depth": float(depth),
+                    "status": status,
+                }
+            )
+        df = pd.DataFrame(points)
+        df = df.assign(**file_metadata)
+        order = list(file_metadata.keys()) + ["time", "depth", "status"]
+        return df[order]
+
+    _lp.parse_evl = parse_evl
+    # The Lines class imports parse_evl by name into its own module
+    # namespace, so we have to rebind the reference there too — patching
+    # only lines_parser leaves Lines.__init__ calling the unpatched copy.
+    try:
+        from echoregions.lines import lines as _lines_mod
+        _lines_mod.parse_evl = parse_evl
+    except Exception as _exc:
+        logger.debug(f"Could not rebind parse_evl in echoregions.lines.lines: {_exc}")
+    logger.debug("Applied echoregions.parse_evl PyArrow-string-dtype patch.")
+
+
+_patch_echoregions_parse_evl()
 
 
 # ---------------------------
@@ -69,7 +177,7 @@ import echoregions as er
 def print_help() -> None:
     print(
         """
-aa-evl — apply Echoview line(s) (.evl) to an echogram NetCDF (.nc/.netcdf4)
+aa-evl - apply Echoview line(s) (.evl) to an echogram NetCDF (.nc/.netcdf4)
 
 USAGE
   echo input.nc | aa-evl --evl seafloor.evl | aa-plot --all
@@ -139,6 +247,8 @@ NOTE
 
 
 def _configure_logging(debug: bool) -> None:
+    """Replace the default suppression sink with a user-visible one.
+    Keeps standard logging fully disabled."""
     logger.remove()
     logger.add(sys.stderr, level="DEBUG" if debug else "INFO")
 
@@ -178,7 +288,7 @@ def _validate_inputs(input_paths: List[Path], evl_paths: List[Path], keep: str) 
         if not evl.exists():
             logger.error(f"EVL file not found: {evl}")
             sys.exit(2)
-        if evl.suffix.lower() not in (".evl",):
+        if evl.suffix.lower() != ".evl":
             logger.warning(f"Unexpected extension for EVL file: {evl.name}")
 
     for p in input_paths:
@@ -297,8 +407,8 @@ def _read_evl_to_series(
     with depth values in metres.
 
     Handles:
-    - Sentinel depth values (|depth| >= 9000) → clipped to echogram range.
-    - NaN / bad depth values → dropped.
+    - Sentinel depth values (|depth| >= 9000) -> clipped to echogram range.
+    - NaN / bad depth values -> dropped.
     - The echoregions Lines2D dataframe layout (columns depend on version).
     """
     lines2d = er.read_evl(str(evl_path))
@@ -380,8 +490,8 @@ def _read_evl_to_series(
     if debug:
         logger.debug(
             f"{evl_path.name}: {len(s)} valid line points, "
-            f"depth range {s.min():.2f}–{s.max():.2f} m, "
-            f"time range {s.index.min()} → {s.index.max()}"
+            f"depth range {s.min():.2f}-{s.max():.2f} m, "
+            f"time range {s.index.min()} -> {s.index.max()}"
         )
 
     return s
@@ -394,7 +504,7 @@ def _interpolate_line_to_pings(
     fill_value_max: float,
 ) -> np.ndarray:
     """
-    Linearly interpolate a (time → depth) line Series to every ping_time in the
+    Linearly interpolate a (time -> depth) line Series to every ping_time in the
     echogram.  Pings outside the EVL time range are filled with the nearest
     boundary value (clamp extrapolation rather than NaN-fill).
 
@@ -470,8 +580,6 @@ def _build_line_mask(
         if depth_dim in da.coords
         else np.arange(da.sizes[depth_dim])
     )
-    n_pings = len(orig_time_vals)
-    n_depth = len(orig_depth_vals)
 
     # --- resolve metre-valued depth axis ---
     depth_vals_m = _get_depth_coord_metres(
@@ -492,10 +600,10 @@ def _build_line_mask(
 
     if debug:
         logger.debug(
-            f"Echogram depth range: {ech_depth_min:.2f} → {ech_depth_max:.2f} m"
+            f"Echogram depth range: {ech_depth_min:.2f} -> {ech_depth_max:.2f} m"
         )
         logger.debug(
-            f"Ping time range: {orig_time_vals.min()} → {orig_time_vals.max()}"
+            f"Ping time range: {orig_time_vals.min()} -> {orig_time_vals.max()}"
         )
 
     # --- read and interpolate each EVL ---
@@ -513,13 +621,17 @@ def _build_line_mask(
             )
 
     # --- build composite line ---
+    composite_line: Optional[np.ndarray] = None
+    upper_line: Optional[np.ndarray] = None
+    lower_line: Optional[np.ndarray] = None
+
     if keep == "above":
-        # Shallowest of all lines → keep anything above even the shallowest
+        # Shallowest of all lines -> keep anything above even the shallowest
         composite_line = np.min(np.stack(per_file_lines, axis=0), axis=0)
     elif keep == "below":
-        # Deepest of all lines → keep anything below even the deepest
+        # Deepest of all lines -> keep anything below even the deepest
         composite_line = np.max(np.stack(per_file_lines, axis=0), axis=0)
-    else:  # between — validated to have exactly 2
+    else:  # between - validated to have exactly 2
         upper_line = per_file_lines[0]
         lower_line = per_file_lines[1]
         # Ensure correct ordering (upper should be shallower)
@@ -529,14 +641,11 @@ def _build_line_mask(
                 "Swapping so the shallower line is treated as upper."
             )
             upper_line, lower_line = lower_line, upper_line
-        composite_line = None  # handled separately below
 
     # --- apply depth offset ---
     if keep == "between":
-        upper_line = upper_line + depth_offset
-        lower_line = lower_line + depth_offset
-        upper_line = np.clip(upper_line, ech_depth_min, ech_depth_max)
-        lower_line = np.clip(lower_line, ech_depth_min, ech_depth_max)
+        upper_line = np.clip(upper_line + depth_offset, ech_depth_min, ech_depth_max)
+        lower_line = np.clip(lower_line + depth_offset, ech_depth_min, ech_depth_max)
     else:
         composite_line = np.clip(
             composite_line + depth_offset, ech_depth_min, ech_depth_max
@@ -593,7 +702,10 @@ def _build_line_mask(
         },
     )
 
-    return mask_da, composite_line if keep != "between" else upper_line
+    # For "between" mode there is no single composite line; return the upper
+    # one so callers that want to write a representative line still get something.
+    returned_line = composite_line if keep != "between" else upper_line
+    return mask_da, returned_line
 
 
 def _apply_mask(
@@ -608,13 +720,25 @@ def _apply_mask(
     Apply boolean mask to all variables containing (time_dim, depth_dim).
     Uses positional masking (coordinate-stripped) to avoid the silent
     coordinate-mismatch / NaN-fill bug from aa-evr.
+
+    Variables that represent the depth/range *axis* (echo_range, depth,
+    range, range_meter, etc.) are intentionally NOT masked. They define
+    the coordinate system and need to remain valid for downstream tools
+    (especially aa-plot's auto-range — masking them creates a NaN-filled
+    axis that visibly breaks the y-axis scale).
     """
+    AXIS_VARS = frozenset({
+        "echo_range", "depth", "range", "range_m", "range_meter", "range_sample",
+    })
+
     ds_out = ds.copy(deep=False)
 
     # Pre-compute positional numpy mask (n_time, n_depth)
     mask_np = np.asarray(mask.transpose(time_dim, depth_dim).values, dtype=bool)
 
     for name, da in list(ds_out.data_vars.items()):
+        if name in AXIS_VARS:
+            continue  # Skip axis variables — masking them breaks the coord system
         if (time_dim in da.dims) and (depth_dim in da.dims):
             m_bare = xr.DataArray(mask_np, dims=(time_dim, depth_dim))
             m_broadcast = m_bare.broadcast_like(da)
@@ -678,7 +802,15 @@ def _process_file(
         logger.error(f"Output exists (use --overwrite): {output_path}")
         return None
 
-    ds = xr.open_dataset(input_path)
+    # Guard against clobbering the input
+    if output_path.resolve() == input_path.resolve():
+        logger.error(f"Refusing to overwrite input file: {input_path.resolve()}")
+        return None
+
+    # Read into memory and release the file handle so we can write into the
+    # same directory without xarray holding a read lock.
+    with xr.open_dataset(input_path) as ds_in:
+        ds = ds_in.load()
 
     tdim, ddim = _infer_dims(ds, var=var, time_dim=time_dim, depth_dim=depth_dim)
     if debug:
@@ -704,23 +836,19 @@ def _process_file(
 
     if inside == 0:
         logger.error(
-            "Line mask is EMPTY — 0 cells would be kept; output will be all-NaN.\n"
+            "Line mask is EMPTY - 0 cells would be kept; output will be all-NaN.\n"
             "Possible causes:\n"
-            "  • EVL time range does not overlap the NetCDF ping_time range\n"
-            "  • --keep direction is inverted for this line\n"
-            "  • Sentinel depth values were not resolved correctly\n"
+            "  - EVL time range does not overlap the NetCDF ping_time range\n"
+            "  - --keep direction is inverted for this line\n"
+            "  - Sentinel depth values were not resolved correctly\n"
             "Run with --debug to inspect time/depth ranges."
         )
         if fail_empty:
-            try:
-                ds.close()
-            except Exception:
-                pass
             return None
 
     if inside == total:
         logger.warning(
-            "Line mask is FULL — all cells are kept; no data will be masked.\n"
+            "Line mask is FULL - all cells are kept; no data will be masked.\n"
             "Check that the EVL line is within the echogram depth range and that\n"
             "--keep direction is correct."
         )
@@ -739,11 +867,6 @@ def _process_file(
     ds_out.attrs["aa_evl_depth_offset"] = str(depth_offset)
 
     ds_out.to_netcdf(output_path)
-
-    try:
-        ds.close()
-    except Exception:
-        pass
 
     return output_path
 

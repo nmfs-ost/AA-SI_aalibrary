@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-aa-plot — Interactive echogram plotting (HTML) for Echopype/xarray NetCDF datasets
+aa-plot - Interactive echogram plotting (HTML) for Echopype/xarray NetCDF datasets
 
 Goals:
 - Accept .nc path from argv OR stdin (pipeline-friendly).
@@ -9,20 +9,39 @@ Goals:
   * If Sv has a 'channel' dimension, tabs are per-channel (labels include
     frequency_nominal if present as a coord on channel).
   * If Sv has a 'frequency_nominal' dimension, tabs are per-frequency.
-  * If BOTH are dimensions, tabs are nested: frequency -> channel, or channel -> frequency.
 - No matplotlib. Output is standalone HTML.
 - Print absolute HTML path to stdout for downstream chaining.
 - Keep stdout clean except for final path (logs go to stderr via loguru).
 - Drawing tools (freehand, polyline, region polygon) overlay the echogram;
   annotations export to EVL (lines) or EVR (regions) Echoview-compatible files.
+
+Notes for cloud / JupyterLab workspaces:
+- JupyterLab opens HTML files in a restrictive iframe sandbox that blocks
+  file downloads (the sandbox lacks `allow-downloads`). The "Export EVL/EVR"
+  buttons attempt a download but may silently fail. The "Show EVL/EVR text"
+  buttons always work: they open a modal with the file content for copy/paste.
 """
 
 from __future__ import annotations
 
+# === Silence logs BEFORE any heavy imports ===
+import logging
+import sys
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+from loguru import logger
+logger.remove()
+# Default sink: WARNING+ to stderr so real errors aren't swallowed.
+# _configure_logging() below replaces this once --quiet is parsed.
+logger.add(sys.stderr, level="WARNING")
+
+# Now the heavy imports - anything they log gets squashed
 import argparse
 import io
 import json
-import sys
 from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +49,6 @@ from typing import Optional, Tuple, Any
 
 import numpy as np
 import xarray as xr
-from loguru import logger
 
 import holoviews as hv
 from holoviews import opts
@@ -38,6 +56,19 @@ import hvplot.xarray  # noqa: F401
 import panel as pn
 
 pn.extension()
+
+
+def silence_all_logs():
+    """Re-apply suppression in case a library re-enabled logging
+    or added its own loguru sink during initialization."""
+    logging.disable(logging.CRITICAL)
+    for name in [None] + list(logging.root.manager.loggerDict):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
+
 
 # ---------------------------------------------------------------------------
 # Y-axis names that represent "depth / range" and should be drawn top-down
@@ -63,11 +94,16 @@ Arguments:
 
 Core selection:
   --var VAR                 Variable to plot (default: Sv if present, else first data_var).
-  --all                     Plot all channels/frequencies as tabs.
+  --all                     Plot all channels/frequencies as tabs (default
+                            behavior when the dataset has a 'channel' dim
+                            with > 1 entry; flag kept for backwards compat).
+  --single                  Plot only one channel (default channel 0) instead
+                            of all-channels tabs. Use --channel/--frequency
+                            to choose which.
   --frequency FLOAT         Select single nominal frequency (Hz) (nearest match).
   --channel NAME            Select single channel by name (exact match preferred).
   --group-by {auto,channel,freq}
-                            When --all and both channel+freq dimensions are available:
+                            When tabs are shown and both channel+freq dims are available:
                               auto   -> frequency outer tabs, channel inner tabs
                               channel-> channel outer tabs, frequency inner tabs
                               freq   -> frequency outer tabs, channel inner tabs
@@ -107,6 +143,8 @@ Output:
 
 
 def _configure_logging(quiet: bool) -> None:
+    """Replace the default suppression sink with a user-visible one.
+    Standard logging stays fully disabled."""
     logger.remove()
     if quiet:
         logger.add(sys.stderr, level="WARNING", backtrace=False, diagnose=False)
@@ -136,8 +174,15 @@ def _coord_to_str(val: Any) -> str:
 
 
 def _detect_axis(ds: xr.Dataset, candidates: Tuple[str, ...], fallback_index: int) -> str:
+    """
+    Find the first matching candidate as a dim, coordinate, OR data variable.
+    Echopype stores `echo_range` as a data_var (not a coord), so without the
+    data_vars check, axis detection falls through to `range_sample` integer
+    indices — clicks then return sample indices, polygons get exported as
+    if they were metres, and downstream masking fails silently.
+    """
     for c in candidates:
-        if c in ds.dims or c in ds.coords:
+        if c in ds.dims or c in ds.coords or c in ds.data_vars:
             return c
     dims = list(ds.dims)
     if dims:
@@ -147,12 +192,215 @@ def _detect_axis(ds: xr.Dataset, candidates: Tuple[str, ...], fallback_index: in
 
 def _detect_axes(ds: xr.Dataset) -> Tuple[str, str]:
     x_name = _detect_axis(ds, ("ping_time", "time", "ping", "profile_time"), fallback_index=0)
-    y_name = _detect_axis(ds, ("echo_range", "range", "range_meter", "range_sample", "depth"), fallback_index=1)
+    # Prefer metre-valued y over integer-index range_sample whenever possible.
+    # Order: depth (post-aa-depth) > echo_range (Echopype default) > range > range_meter
+    #        > range_sample (last resort, integer indices) > depth-as-coord fallback.
+    y_name = _detect_axis(
+        ds,
+        ("depth", "echo_range", "range_meter", "range", "range_sample"),
+        fallback_index=1,
+    )
     return x_name, y_name
+
+
+def _warn_range_sample_y(ds: xr.Dataset) -> None:
+    """Emit a one-line warning when y-axis is range_sample (integer indices).
+
+    Polygons drawn against an integer-index y will be exported with those
+    indices treated as metres, and aa-evl/aa-evr will silently produce empty
+    masks. Tell the user how to fix the upstream pipeline or override --y.
+    """
+    has_metre = any(
+        n in ds.coords or n in ds.data_vars
+        for n in ("depth", "echo_range", "range_meter", "range")
+    )
+    suggestion = (
+        "Pass --y depth or --y echo_range to use that axis instead."
+        if has_metre
+        else "Run the data through aa-depth first to add a metre-valued depth coord."
+    )
+    logger.warning(
+        "Y-axis resolved to 'range_sample' (integer sample indices, NOT metres). "
+        "Drawn polygons exported via the EVL/EVR buttons will be in sample-index "
+        f"units and will produce empty masks in aa-evl/aa-evr. {suggestion}"
+    )
+
+
+def _ensure_y_axis_coord(
+    ds: xr.Dataset,
+    da: xr.DataArray,
+    y_name: str,
+    x_name: str,
+) -> Tuple[xr.DataArray, str]:
+    """
+    Ensure `y_name` is a 1-D coordinate on `da` so hvplot.quadmesh can use it
+    AND so that drawing-tool click coordinates are in the same units as the
+    user sees on the y-axis.
+
+    If y_name is a data_var (e.g. Echopype's `echo_range`) or a 2-D coord
+    (e.g. depth varying per ping), reduce it to a 1-D vector along the depth
+    dimension and assign it as a coord on da.
+
+    Falls back gracefully: if nothing can be done, returns da unchanged with
+    its original dim-coord. Logs a warning so the user knows.
+    """
+    # Already a 1-D coord on da?
+    if y_name in da.coords and da.coords[y_name].ndim == 1:
+        if y_name == "range_sample":
+            _warn_range_sample_y(ds)
+            return da, y_name
+        # Promote to dim coordinate if it's a non-dim aux coord on a single
+        # axis. Avoids the holoviews "squeeze non-singleton axis" error that
+        # occurs when both the integer dim coord (range_sample) and a metre
+        # aux coord (depth) share the same axis.
+        coord_da = da.coords[y_name]
+        if y_name not in da.dims and len(coord_da.dims) == 1:
+            host_dim = coord_da.dims[0]
+            if host_dim in da.dims and host_dim != y_name:
+                try:
+                    da = da.swap_dims({host_dim: y_name})
+                    # Drop displaced dim coord (now an aux coord whose
+                    # value range conflicts with the new dim coord and
+                    # confuses hvplot auto-ranging).
+                    if host_dim in da.coords and host_dim not in da.dims:
+                        try:
+                            da = da.drop_vars(host_dim)
+                        except Exception:
+                            pass
+                except Exception as exc:
+                    logger.debug(f"swap_dims early-return fallback for '{y_name}': {exc}")
+        return da, y_name
+
+    # Find the source variable in the dataset
+    src = None
+    if y_name in da.coords:
+        src = da.coords[y_name]
+    elif y_name in ds.coords:
+        src = ds[y_name]
+    elif y_name in ds.data_vars:
+        src = ds[y_name]
+
+    if src is None:
+        # y_name is just a dim name with no values (rare).
+        if y_name in da.dims and y_name == "range_sample":
+            _warn_range_sample_y(ds)
+        return da, y_name
+
+    # Reduce src to 1-D along the depth dim
+    depth_dim = None
+    for d in src.dims:
+        if d in da.dims and d != x_name:
+            depth_dim = d
+            break
+
+    if depth_dim is None:
+        return da, y_name
+
+    # Reduce src to 1-D along the depth dim. The depth/echo_range variable is
+    # often (channel, ping_time, range_sample) — same shape as Sv. We need a
+    # 1-D vector along range_sample.
+    #
+    # NaN-AWARE REDUCTION: aa-evr's masking applies xr.where(mask, da, NaN)
+    # to every variable with (time, depth) dims, which means depth and
+    # echo_range themselves get NaN'd outside the polygon. A naive isel(d=0)
+    # then produces a NaN-filled axis and hvplot's auto-range chokes (visible
+    # as a "zoomed in" plot showing only a fragment of the depth axis).
+    #
+    # Strategy: nanmean across non-depth dims. Echo-range and depth are
+    # roughly constant along ping_time anyway (transducer doesn't move
+    # much per cell), so the mean of finite values is essentially the same
+    # as picking any single ping. nanmean ignores the masked-out NaNs and
+    # returns the underlying physical depth axis.
+    reduced = src
+    nondepth_dims = [d for d in reduced.dims if d != depth_dim]
+    if nondepth_dims:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # ignore "Mean of empty slice"
+                reduced = reduced.mean(dim=nondepth_dims, skipna=True)
+        except Exception:
+            # Fallback to isel(0) if mean fails (e.g. non-numeric)
+            for d in nondepth_dims:
+                try:
+                    reduced = reduced.isel({d: 0})
+                except Exception:
+                    pass
+
+    # If the reduction still left coords on non-depth dims, drop them
+    for c in list(reduced.coords):
+        if c != depth_dim and c in reduced.coords:
+            try:
+                reduced = reduced.drop_vars(c)
+            except Exception:
+                pass
+
+    # Final NaN safety: if the reduced axis is still all-NaN (e.g. polygon
+    # masked the entire dataset), fall back to the integer dim so hvplot
+    # has SOMETHING to plot rather than a blank zoomed-in canvas.
+    reduced_vals = np.asarray(reduced.values)
+    if reduced_vals.dtype.kind == "f" and not np.any(np.isfinite(reduced_vals)):
+        logger.warning(
+            f"'{y_name}' is all-NaN after reducing to 1-D — every value was "
+            f"masked out. Falling back to '{depth_dim}' integer axis. The "
+            f"data itself may be empty downstream of an over-aggressive mask."
+        )
+        return da, depth_dim
+
+    if reduced.ndim != 1:
+        # Could not reduce cleanly; fall back to original dim
+        logger.warning(
+            f"Could not reduce '{y_name}' to a 1-D depth axis; falling back to '{depth_dim}'."
+        )
+        return da, depth_dim
+
+    # Assign reduced values as a coord on da's depth dim, then SWAP it onto
+    # the dim so it becomes the dimension coordinate. Holoviews/hvplot's
+    # quadmesh chokes when there's a dim coordinate AND a non-dim aux coord
+    # on the same axis (it tries to squeeze a non-singleton axis during
+    # canonicalization). Swapping makes the metre values the canonical axis.
+    #
+    # After the swap we also DROP the original integer dim coord (e.g.
+    # `range_sample` 0..2559) — it now lives as an aux coord on the new
+    # `depth` dim and confuses hvplot's auto-ranging because two coords
+    # with very different ranges (0..2559 vs 0..500) claim the same axis.
+    # That mismatch produces a visually zoomed-in plot where only part of
+    # the data is shown.
+    try:
+        vals = np.asarray(reduced.values)
+        da = da.assign_coords({y_name: (depth_dim, vals)})
+        if y_name != depth_dim:
+            try:
+                da = da.swap_dims({depth_dim: y_name})
+                # Drop the displaced dim coord if it became an aux coord
+                if depth_dim in da.coords and depth_dim not in da.dims:
+                    try:
+                        da = da.drop_vars(depth_dim)
+                    except Exception:
+                        pass
+            except Exception as exc:
+                # If swap fails (e.g. duplicate values), fall back to the
+                # plain assign-coord behavior. hvplot may still work if
+                # it picks the right coord.
+                logger.debug(f"swap_dims fallback for '{y_name}': {exc}")
+    except Exception as exc:
+        logger.warning(f"Could not promote '{y_name}' to a coord on '{depth_dim}': {exc}")
+        return da, depth_dim
+
+    return da, y_name
 
 
 def _should_flip_y(y_name: str) -> bool:
     return y_name.lower() in _DEPTH_RANGE_NAMES
+
+
+# Default-variable search order when --var is not given.  First hit wins.
+# Mirrors aa-graph's _DEFAULT_VAR_CANDIDATES so the two tools agree on
+# which variable a multi-var file plots by default.  Cluster outputs are
+# included so `aa-plot file_kmeans.nc` Just Works without --var.
+_DEFAULT_VAR_CANDIDATES = (
+    "Sv", "Sv_clean", "MVBS", "TS", "NASC",
+    "cluster_map",
+)
 
 
 def _ensure_variable(ds: xr.Dataset, var: Optional[str]) -> str:
@@ -160,8 +408,9 @@ def _ensure_variable(ds: xr.Dataset, var: Optional[str]) -> str:
         if var not in ds.data_vars:
             raise ValueError(f"Variable '{var}' not found. Available: {list(ds.data_vars)}")
         return var
-    if "Sv" in ds.data_vars:
-        return "Sv"
+    for cand in _DEFAULT_VAR_CANDIDATES:
+        if cand in ds.data_vars:
+            return cand
     if len(ds.data_vars) == 0:
         raise ValueError("No data variables found to plot.")
     return list(ds.data_vars)[0]
@@ -222,9 +471,41 @@ def _x_label(x_name: str) -> str:
     return nice.get(x_name, x_name)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+#  CATEGORICAL DETECTION (for cluster labels, masks, and similar)
+# ===========================================================================
+
+def _is_categorical(da: xr.DataArray, finite_vals: np.ndarray) -> bool:
+    """
+    Decide whether a variable should be summarized categorically.
+
+    Triggers as categorical when:
+      - dtype is integer/unsigned/bool, OR
+      - dtype is float but every finite value is integer-valued AND there are
+        fewer than ~50 unique values. This catches KMeans labels, region masks,
+        and similar discrete data stored as float (a common xarray quirk).
+    """
+    if da.dtype.kind in ("i", "u", "b"):
+        return True
+    if finite_vals.size == 0:
+        return False
+    # Subsample for the integer-valued check; full scan for unique-count below.
+    sample_size = min(50_000, finite_vals.size)
+    step = max(1, finite_vals.size // sample_size)
+    sample = finite_vals[::step]
+    try:
+        if np.all(np.equal(np.mod(sample, 1.0), 0.0)):
+            unique_count = int(np.unique(finite_vals).size)
+            if unique_count < 50:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+# ===========================================================================
 #  DATA SUMMARY PANEL
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 _SIDEBAR_CSS = """\
 <style>
@@ -264,6 +545,16 @@ _SIDEBAR_CSS = """\
     flex: 1 1 260px;
     box-sizing: border-box;
 }
+.aa-section.aa-section-pipeline {
+    background: #fef3c7;
+    border-left: 3px solid #f59e0b;
+}
+.aa-section.aa-section-pipeline .aa-section-head { color: #78350f; }
+.aa-section.aa-section-varinfo {
+    background: #ede9fe;
+    border-left: 3px solid #8b5cf6;
+}
+.aa-section.aa-section-varinfo .aa-section-head { color: #4c1d95; }
 .aa-section-head {
     color: #475569;
     font-weight: 600;
@@ -282,6 +573,23 @@ _SIDEBAR_CSS = """\
 .aa-chan-idx { color: #94a3b8; min-width: 24px; }
 .aa-chan-name { color: #1e293b; }
 .aa-chan-freq { color: #6366f1; margin-left: auto; }
+.aa-cluster-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 1px 0;
+}
+.aa-cluster-label { color: #94a3b8; min-width: 80px; }
+.aa-cluster-bar-wrap {
+    flex: 1;
+    background: #e2e8f0;
+    border-radius: 3px;
+    height: 10px;
+    overflow: hidden;
+    min-width: 60px;
+}
+.aa-cluster-bar { height: 100%; background: linear-gradient(90deg, #0369a1, #0ea5e9); }
+.aa-cluster-count { color: #334155; min-width: 90px; text-align: right; }
 .aa-divider { border: none; border-top: 1px solid #e2e8f0; margin: 4px 0; }
 .aa-copy-btn {
     background: #f1f5f9;
@@ -298,6 +606,25 @@ _SIDEBAR_CSS = """\
     text-align: center;
 }
 .aa-copy-btn:hover { background: #e2e8f0; color: #1e293b; border-color: #94a3b8; }
+.aa-details {
+    margin: 4px 14px 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    padding: 6px 10px;
+    background: #ffffff;
+}
+.aa-details summary {
+    cursor: pointer;
+    color: #475569;
+    font-weight: 600;
+    font-size: 0.86em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    user-select: none;
+    outline: none;
+}
+.aa-details summary:hover { color: #0369a1; }
+.aa-details-body { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f1f5f9; }
 </style>
 """
 
@@ -346,10 +673,39 @@ _COPY_JS_TEMPLATE = """\
 """
 
 
+def _esc(s: str) -> str:
+    """HTML-escape a string for safe insertion into the summary panel."""
+    return (
+        s.replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+    )
+
+
 def _html_row(key: str, val: str, em: bool = False) -> str:
     cls = "aa-val-em" if em else "aa-val"
-    val = val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f'<div class="aa-row"><span class="aa-key">{key}</span><span class="{cls}">{val}</span></div>'
+    return f'<div class="aa-row"><span class="aa-key">{_esc(key)}</span><span class="{cls}">{_esc(val)}</span></div>'
+
+
+def _format_attr_value(v: Any) -> str:
+    """Format an xarray attr value for display, truncating overly long strings."""
+    if isinstance(v, (bytes, bytearray)):
+        try:
+            v = v.decode("utf-8", errors="replace")
+        except Exception:
+            v = repr(v)
+    if isinstance(v, (list, tuple, np.ndarray)):
+        try:
+            arr = np.asarray(v)
+            if arr.size <= 10:
+                return ", ".join(_coord_to_str(x) for x in arr.tolist())
+            return f"[{arr.size} items: " + ", ".join(_coord_to_str(x) for x in arr.flat[:5]) + ", ...]"
+        except Exception:
+            pass
+    s = str(v)
+    if len(s) > 200:
+        s = s[:200] + " ..."
+    return s
 
 
 def _build_data_log(
@@ -362,29 +718,58 @@ def _build_data_log(
     sections: list[str] = []
     sections.append(f'<div class="aa-sidebar-title">{_CLIPBOARD_SVG} Data Summary</div>')
 
+    # ------------------------------------------------------------------
+    # Source
+    # ------------------------------------------------------------------
     src = ds.encoding.get("source", "(in-memory)")
     src_short = Path(src).name if src != "(in-memory)" else src
     sec = '<div class="aa-section"><div class="aa-section-head">Source</div>'
     sec += _html_row("file", src_short)
     sec += _html_row("variable", var, em=True)
+    sec += _html_row("dtype", str(ds[var].dtype))
     sec += _html_row("x-axis", x_name)
     sec += _html_row("y-axis", f"{y_name} \u2195 inverted" if flip_y else y_name)
     sec += '</div>'
     sections.append(sec)
 
     attrs = ds.attrs
+
+    # ------------------------------------------------------------------
+    # Pipeline provenance — any aa_* attrs left by upstream tools.
+    # This is the key context for KMeans / EVL / EVR / depth / etc:
+    # the parameters that produced this file live here.
+    # ------------------------------------------------------------------
+    aa_attrs = {k: v for k, v in attrs.items() if k.startswith("aa_") or k.lower() == "history"}
+    if aa_attrs:
+        sec = '<div class="aa-section aa-section-pipeline"><div class="aa-section-head">Pipeline / Provenance</div>'
+        for k in sorted(aa_attrs.keys()):
+            sec += _html_row(k, _format_attr_value(aa_attrs[k]),
+                             em=(k == "aa_tool"))
+        sec += '</div>'
+        sections.append(sec)
+
+    # ------------------------------------------------------------------
+    # Curated common metadata
+    # ------------------------------------------------------------------
     interesting_keys = [
         ("sonar_model", "sonar"), ("survey_name", "survey"), ("title", "title"),
         ("institution", "institution"), ("platform_name", "platform"),
         ("instrument_type", "instrument"), ("date_created", "created"),
         ("time_coverage_start", "time start"), ("time_coverage_end", "time end"),
     ]
-    attr_rows = [_html_row(lbl, str(attrs[ak])) for ak, lbl in interesting_keys if ak in attrs and attrs[ak]]
+    attr_rows = [
+        _html_row(lbl, _format_attr_value(attrs[ak]))
+        for ak, lbl in interesting_keys
+        if ak in attrs and attrs[ak] not in (None, "", b"")
+    ]
     if attr_rows:
         sec = '<div class="aa-section"><div class="aa-section-head">Metadata</div>'
         sec += "".join(attr_rows) + '</div>'
         sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Dimensions
+    # ------------------------------------------------------------------
     da = ds[var]
     sec = '<div class="aa-section"><div class="aa-section-head">Dimensions</div>'
     for d, s in da.sizes.items():
@@ -392,6 +777,9 @@ def _build_data_log(
     sec += '</div>'
     sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Coord ranges
+    # ------------------------------------------------------------------
     range_rows = []
     for cname in da.dims:
         if cname in ds.coords:
@@ -411,16 +799,17 @@ def _build_data_log(
         sec += "".join(range_rows) + '</div>'
         sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Channels
+    # ------------------------------------------------------------------
     chan_dim = "channel" if "channel" in da.dims else None
     f_on_chan = None
     if chan_dim:
         ccoord = ds[chan_dim]
-        for loc in (ds.data_vars, ds.coords):
-            if "frequency_nominal" in loc:
-                f = ds["frequency_nominal"]
-                if chan_dim in f.dims:
-                    f_on_chan = f
-                    break
+        if "frequency_nominal" in ds:
+            f = ds["frequency_nominal"]
+            if chan_dim in f.dims:
+                f_on_chan = f
 
         sec = '<div class="aa-section"><div class="aa-section-head">Channels</div>'
         for ci in range(ccoord.size):
@@ -438,55 +827,154 @@ def _build_data_log(
                         else f'<span class="aa-chan-freq">{fv_num:.0f} Hz</span>'
                     )
                 except Exception:
-                    freq_html = f'<span class="aa-chan-freq">{_coord_to_str(fv)}</span>'
+                    freq_html = f'<span class="aa-chan-freq">{_esc(_coord_to_str(fv))}</span>'
             sec += (
                 f'<div class="aa-chan-row">'
                 f'<span class="aa-chan-idx">[{ci}]</span>'
-                f'<span class="aa-chan-name">{ch_str}</span>'
+                f'<span class="aa-chan-name">{_esc(ch_str)}</span>'
                 f'{freq_html}</div>'
             )
         sec += '</div>'
         sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Active Variable Info — variable-level attrs (units, long_name,
+    # _FillValue, plus any aa_* / kmeans / clustering parameters set
+    # by upstream tools on the variable itself).
+    # ------------------------------------------------------------------
+    var_attrs = {k: v for k, v in da.attrs.items()}
+    if var_attrs:
+        sec = f'<div class="aa-section aa-section-varinfo"><div class="aa-section-head">{_esc(var)} Attributes</div>'
+        for k in sorted(var_attrs.keys()):
+            sec += _html_row(k, _format_attr_value(var_attrs[k]))
+        sec += '</div>'
+        sections.append(sec)
+
+    # ------------------------------------------------------------------
+    # Statistics — categorical or continuous
+    # ------------------------------------------------------------------
     finite = np.array([])
-    sec = f'<div class="aa-section"><div class="aa-section-head">{var} Statistics</div>'
+    cluster_summary_for_text: list[str] = []  # populated below for plain-text copy
+    sec = f'<div class="aa-section"><div class="aa-section-head">{_esc(var)} Statistics</div>'
     try:
-        vals = da.values
-        finite = vals[np.isfinite(vals)]
+        vals = np.asarray(da.values)
+        if vals.dtype.kind == "f":
+            finite = vals[np.isfinite(vals)]
+        else:
+            finite = vals.ravel()
         total = vals.size
         nan_count = total - finite.size
         sec += _html_row("samples", f"{total:,}")
         sec += _html_row("NaN / Inf", f"{nan_count:,} ({100 * nan_count / max(total, 1):.1f}%)")
+
         if finite.size > 0:
-            sec += '<hr class="aa-divider"/>'
-            sec += _html_row("min", f"{finite.min():.2f}", em=True)
-            sec += _html_row("max", f"{finite.max():.2f}", em=True)
-            sec += _html_row("mean", f"{finite.mean():.2f}")
-            sec += _html_row("std", f"{finite.std():.2f}")
-            sec += '<hr class="aa-divider"/>'
-            for q in (5, 25, 50, 75, 95):
-                sec += _html_row(f"P{q}", f"{np.percentile(finite, q):.2f}")
+            categorical = _is_categorical(da, finite)
+
+            if categorical:
+                # Cluster / class summary — for KMeans labels, region masks, etc.
+                sec += _html_row("kind", "categorical / discrete", em=True)
+                # Compute counts on the FULL data so percentages are exact.
+                if vals.dtype.kind == "f":
+                    flat = vals.ravel()
+                    flat = flat[np.isfinite(flat)]
+                else:
+                    flat = vals.ravel()
+                unique, counts = np.unique(flat, return_counts=True)
+                sec += _html_row("classes", f"{unique.size}", em=True)
+                sec += '<hr class="aa-divider"/>'
+                # Sort by count desc so largest cluster is on top.
+                order = np.argsort(-counts)
+                # Limit to top 20 to keep panel readable.
+                limit = min(20, unique.size)
+                max_count = int(counts.max()) if counts.size else 1
+                for j in order[:limit]:
+                    u = unique[j]
+                    c = int(counts[j])
+                    pct = 100.0 * c / finite.size
+                    label = _coord_to_str(u)
+                    if vals.dtype.kind == "f":
+                        try:
+                            label = str(int(u))
+                        except Exception:
+                            pass
+                    bar_pct = (c / max_count) * 100
+                    cluster_summary_for_text.append(f"  class {label}: {c:,} ({pct:.2f}%)")
+                    sec += (
+                        f'<div class="aa-cluster-row">'
+                        f'<span class="aa-cluster-label">class {_esc(label)}</span>'
+                        f'<span class="aa-cluster-bar-wrap">'
+                        f'<span class="aa-cluster-bar" style="width:{bar_pct:.1f}%"></span>'
+                        f'</span>'
+                        f'<span class="aa-cluster-count">{c:,} ({pct:.1f}%)</span>'
+                        f'</div>'
+                    )
+                if unique.size > limit:
+                    sec += _html_row("(truncated)", f"+ {unique.size - limit} more classes")
+            else:
+                # Continuous — existing min/max/mean/std/percentiles
+                sec += _html_row("kind", "continuous")
+                sec += '<hr class="aa-divider"/>'
+                sec += _html_row("min", f"{finite.min():.2f}", em=True)
+                sec += _html_row("max", f"{finite.max():.2f}", em=True)
+                sec += _html_row("mean", f"{finite.mean():.2f}")
+                sec += _html_row("std", f"{finite.std():.2f}")
+                sec += '<hr class="aa-divider"/>'
+                for q in (5, 25, 50, 75, 95):
+                    sec += _html_row(f"P{q}", f"{np.percentile(finite, q):.2f}")
     except Exception as exc:
         sec += _html_row("error", str(exc))
     sec += '</div>'
     sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # All Variables (just shapes + dtype)
+    # ------------------------------------------------------------------
     sec = '<div class="aa-section"><div class="aa-section-head">All Variables</div>'
     for dv in ds.data_vars:
         shape_str = ", ".join(f"{s}" for s in ds[dv].shape)
-        sec += _html_row(dv, f"({shape_str})")
+        dtype_str = str(ds[dv].dtype)
+        sec += _html_row(dv, f"({shape_str}) {dtype_str}")
     sec += '</div>'
     sections.append(sec)
 
+    # ------------------------------------------------------------------
+    # Collapsible: full dataset attributes (everything not shown above)
+    # ------------------------------------------------------------------
+    shown_keys = {ak for ak, _ in interesting_keys} | set(aa_attrs.keys())
+    other_attrs = {k: v for k, v in attrs.items() if k not in shown_keys}
+    if other_attrs:
+        det = '<details class="aa-details"><summary>All Dataset Attributes</summary><div class="aa-details-body">'
+        for k in sorted(other_attrs.keys()):
+            det += _html_row(k, _format_attr_value(other_attrs[k]))
+        det += '</div></details>'
+    else:
+        det = ""
+
+    # ------------------------------------------------------------------
+    # Plain-text copy
+    # ------------------------------------------------------------------
     plain_lines: list[str] = []
-    plain_lines.append(f"aa-plot Data Summary — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    plain_lines.append(f"aa-plot Data Summary - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     plain_lines.append(f"File: {ds.encoding.get('source', '(in-memory)')}")
-    plain_lines.append(f"Variable: {var}  |  X: {x_name}  |  Y: {y_name} {'(inverted)' if flip_y else ''}")
+    plain_lines.append(f"Variable: {var} (dtype={ds[var].dtype})")
+    plain_lines.append(f"Axes: x={x_name}  y={y_name}{' (inverted)' if flip_y else ''}")
+    if aa_attrs:
+        plain_lines.append("")
+        plain_lines.append("Pipeline / Provenance:")
+        for k in sorted(aa_attrs.keys()):
+            plain_lines.append(f"  {k}: {_format_attr_value(aa_attrs[k])}")
+    if var_attrs:
+        plain_lines.append("")
+        plain_lines.append(f"{var} Attributes:")
+        for k in sorted(var_attrs.keys()):
+            plain_lines.append(f"  {k}: {_format_attr_value(var_attrs[k])}")
     plain_lines.append("")
+    plain_lines.append("Dimensions:")
     for d, s in da.sizes.items():
         plain_lines.append(f"  {d}: {s}")
     if chan_dim:
         plain_lines.append("")
+        plain_lines.append("Channels:")
         ccoord = ds[chan_dim]
         for ci in range(ccoord.size):
             ch_str = _coord_to_str(ccoord.isel({chan_dim: ci}).values)
@@ -496,7 +984,11 @@ def _build_data_log(
                 freq_part = f"  ({_coord_to_str(fv)} Hz)"
             plain_lines.append(f"  [{ci}] {ch_str}{freq_part}")
     try:
-        if finite.size > 0:
+        if cluster_summary_for_text:
+            plain_lines.append("")
+            plain_lines.append(f"{var} Class Counts:")
+            plain_lines.extend(cluster_summary_for_text)
+        elif finite.size > 0 and not _is_categorical(da, finite):
             plain_lines.append("")
             plain_lines.append(
                 f"  {var}: min={finite.min():.4f}  max={finite.max():.4f}  "
@@ -509,7 +1001,7 @@ def _build_data_log(
 
     text_json = json.dumps("\n".join(plain_lines))
     copy_js = _COPY_JS_TEMPLATE.format(text_json=text_json)
-    copy_btn = f'<button class="aa-copy-btn" onclick="{copy_js.strip()}">Copy to clipboard</button>'
+    copy_btn = f'<button class="aa-copy-btn" onclick="{copy_js.strip()}">Copy summary</button>'
 
     html = (
         f'{_SIDEBAR_CSS}<div class="aa-sidebar">'
@@ -517,15 +1009,16 @@ def _build_data_log(
         + '<div class="aa-sections-grid">'
         + "".join(sections[1:])
         + '</div>'
+        + det
         + copy_btn
         + '</div>'
     )
     return pn.pane.HTML(html, sizing_mode="stretch_width")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  COLORMAP PICKER
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _get_bokeh_palette(name: str, n: int = 256) -> list[str]:
     from bokeh.palettes import all_palettes
@@ -589,9 +1082,9 @@ def _build_cmap_picker(default_cmap: str) -> pn.pane.Bokeh:
     return pn.pane.Bokeh(select, sizing_mode="fixed")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  HOVER + CROSSHAIR + TAP (click-to-pin)
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
     from bokeh.models import HoverTool, CrosshairTool, TapTool, CustomJS
@@ -646,9 +1139,9 @@ def _build_interaction_tools(var: str, x_name: str, y_name: str, pin_div):
     return hover, crosshair, tap
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  DRAWING TOOLS  (freehand · polyline · region polygon)
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+#  DRAWING TOOLS  (freehand / polyline / region polygon)
+# ===========================================================================
 
 _DRAW_CSS = """\
 <style>
@@ -705,12 +1198,13 @@ _DRAW_CSS = """\
     border-radius: 3px;
     flex-shrink: 0;
 }
-.aa-draw-btns {
+.aa-draw-btnrow {
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
     margin-top: 8px;
 }
+.aa-draw-btnrow + .aa-draw-btnrow { margin-top: 6px; }
 .aa-draw-btn {
     background: #f1f5f9;
     border: 1px solid #cbd5e1;
@@ -728,6 +1222,7 @@ _DRAW_CSS = """\
 .aa-draw-btn.evl:hover  { background:#e0f2fe; border-color:#0284c7; }
 .aa-draw-btn.evr  { border-color:#818CF8; color:#4338ca; }
 .aa-draw-btn.evr:hover  { background:#eef2ff; border-color:#6366f1; }
+.aa-draw-btn.txt  { background:#f8fafc; border-style:dashed; }
 .aa-draw-btn.clr  { border-color:#FCA5A5; color:#be123c; }
 .aa-draw-btn.clr:hover  { background:#fff1f2; border-color:#fb7185; }
 .aa-draw-hint {
@@ -735,6 +1230,17 @@ _DRAW_CSS = """\
     font-size: 0.82em;
     margin-top: 9px;
     line-height: 1.55;
+}
+.aa-draw-hint b { color: #475569; }
+.aa-draw-warn {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-left: 3px solid #f59e0b;
+    background: #fef3c7;
+    color: #78350f;
+    font-size: 0.82em;
+    line-height: 1.5;
+    border-radius: 0 4px 4px 0;
 }
 </style>
 """
@@ -756,13 +1262,26 @@ _DRAW_JS_HELPERS = """\
     return out;
   };
 
-  W._aaMsToEvl = function(ms) {
+  // ---------------------------------------------------------------
+  // Date / time formatters per Echoview spec.
+  //
+  // EVL/EVR date format: CCYYMMDD       (e.g. "20240315")
+  // EVL/EVR time format: HHmmSSssss     (e.g. "1530453205" = 15:30:45.3205)
+  //   ssss is fractional seconds in TEN-THOUSANDTHS, written as 4 integer
+  //   digits with no decimal point. JavaScript Date only resolves to
+  //   milliseconds, so we multiply ms x 10 and zero-pad to fill.
+  // ---------------------------------------------------------------
+  W._aaEvlDate = function(ms) {
     var d = new Date(ms);
     var p2 = function(n){ return String(n).padStart(2,'0'); };
-    var p3 = function(n){ return String(n).padStart(3,'0'); };
-    var date = String(d.getUTCFullYear()) + p2(d.getUTCMonth()+1) + p2(d.getUTCDate());
-    var time = p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + '.' + p3(d.getUTCMilliseconds()) + '0';
-    return date + ' ' + time;
+    return String(d.getUTCFullYear()) + p2(d.getUTCMonth()+1) + p2(d.getUTCDate());
+  };
+  W._aaEvlTime = function(ms) {
+    var d = new Date(ms);
+    var p2 = function(n){ return String(n).padStart(2,'0'); };
+    var p4 = function(n){ return String(n).padStart(4,'0'); };
+    var ssss = d.getUTCMilliseconds() * 10;
+    return p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + p4(ssss);
   };
 
   W._aaIsTime = function(xs) {
@@ -771,11 +1290,7 @@ _DRAW_JS_HELPERS = """\
     return typeof v === 'number' && v > 1e12;
   };
 
-  W._aaXStr = function(x, isTime) {
-    return isTime ? _aaMsToEvl(x) : x.toFixed(6);
-  };
-
-  // Collect sources whose names start with prefix, return arrays of {xs,ys}
+  // Collect sources whose names start with prefix
   W._aaCollect = function(prefix) {
     var result = [];
     _aaGetModels().forEach(function(m) {
@@ -788,9 +1303,231 @@ _DRAW_JS_HELPERS = """\
     return result;
   };
 
-  W._aaDownload = function(content, filename) {
-    // Strategy 1: data: URI anchor click — works in most iframe contexts
-    // (unlike blob: URLs which are blocked by GCP / JupyterLab sandbox).
+  // ---------------------------------------------------------------
+  // Diagnostic summary — collects the bounding ranges of the drawn
+  // geometry. Used in the show-text modal so the user can verify
+  // the polygon actually overlaps their echogram before they bother
+  // running the file through aa-evr/aa-evl.
+  // ---------------------------------------------------------------
+  W._aaSummariseSegs = function(segs) {
+    if (!segs || !segs.length) return null;
+    var isTime = _aaIsTime(segs[0].xs);
+    var minX = +Infinity, maxX = -Infinity, minY = +Infinity, maxY = -Infinity;
+    var totalPts = 0;
+    segs.forEach(function(seg) {
+      for (var i = 0; i < seg.xs.length; i++) {
+        var x = seg.xs[i], y = seg.ys[i];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        totalPts += 1;
+      }
+    });
+    function fmtX(x) {
+      if (isTime) {
+        var d = new Date(x);
+        return d.toISOString().replace('T', ' ').slice(0, 23) + ' UTC';
+      }
+      return x.toFixed(4);
+    }
+    return {
+      strokeCount: segs.length,
+      pointCount:  totalPts,
+      isTime:      isTime,
+      xMin:        fmtX(minX),
+      xMax:        fmtX(maxX),
+      yMin:        minY.toFixed(4),
+      yMax:        maxY.toFixed(4),
+      yMinRaw:     minY,
+      yMaxRaw:     maxY
+    };
+  };
+
+  // Format the summary as an HTML block for the modal header.
+  W._aaSummaryHtml = function(summary, kindLabel) {
+    if (!summary) return '';
+    var depthHint = '';
+    // Heuristic: if the y range looks like integer indices (0..N with small N),
+    // the user probably drew on a range_sample axis — flag this.
+    if (summary.yMaxRaw < 2000 && summary.yMaxRaw > 0 &&
+        Math.abs(summary.yMaxRaw - Math.round(summary.yMaxRaw)) < 0.001 &&
+        Math.abs(summary.yMinRaw - Math.round(summary.yMinRaw)) < 0.001) {
+      // Could be either depth-in-metres or range-sample — surface a warning.
+      depthHint = (
+        '<div style="margin-top:6px;padding:6px 8px;border-left:3px solid #f59e0b;'
+        + 'background:#fef3c7;color:#78350f;font-size:0.92em;line-height:1.4;">'
+        + '<b>Heads-up:</b> the y values look integer-like. If your plot used '
+        + '<code>range_sample</code> indices instead of metre-valued depth, '
+        + 'aa-evr/aa-evl will not find a match. Re-plot with the depth coordinate '
+        + '(or pass <code>--y depth</code>) before drawing.'
+        + '</div>'
+      );
+    }
+    var timeHint = summary.isTime
+      ? ''
+      : ('<div style="margin-top:6px;padding:6px 8px;border-left:3px solid #ef4444;'
+         + 'background:#fee2e2;color:#7f1d1d;font-size:0.92em;line-height:1.4;">'
+         + '<b>Cannot export:</b> the x-axis is not time-based. EVL/EVR require ping_time.'
+         + '</div>');
+    return (
+      '<div style="margin:6px 0;padding:8px 10px;background:#eff6ff;'
+      + 'border:1px solid #bfdbfe;border-radius:6px;font-size:0.92em;line-height:1.5;color:#1e3a5f;">'
+      + '<b>Polygon summary</b> &mdash; verify these match your echogram before importing'
+      + '<div style="font-family:Menlo,Consolas,monospace;font-size:0.92em;margin-top:4px;">'
+      + '&nbsp;&nbsp;' + kindLabel + ': ' + summary.strokeCount
+      + ' (' + summary.pointCount + ' points total)<br>'
+      + '&nbsp;&nbsp;time:&nbsp; ' + summary.xMin + '<br>'
+      + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&rarr;&nbsp; ' + summary.xMax + '<br>'
+      + '&nbsp;&nbsp;depth: ' + summary.yMin + ' &rarr; ' + summary.yMax
+      + '</div>'
+      + timeHint
+      + depthHint
+      + '</div>'
+    );
+  };
+  //
+  // Per Echoview spec
+  // (https://support.echoview.com/.../Exporting_line_data.htm):
+  //
+  //   Line 1:  "EVBD <format_version> <generator_version>"
+  //   Line 2:  <total point count>
+  //   Lines 3..N+2:  <date> <time> <depth> <line_status>
+  //                  fields separated by single space
+  //                  line_status: 0=none 1=unverified 2=bad 3=good
+  //   Line endings: CR/LF (DOS).
+  //
+  // Crucially: an EVL file represents EXACTLY ONE LINE — there is no
+  // "named line" concept. If the user has drawn multiple freehand strokes
+  // and/or polylines, we concatenate all points and sort by time, treating
+  // the strokes as pieces of a single boundary (which is the typical
+  // workflow when refining a bottom or surface line).
+  // ---------------------------------------------------------------
+  W.aaGenerateEvl = function() {
+    var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
+    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+    if (!segs.length) return null;
+    if (!_aaIsTime(segs[0].xs)) {
+      return { error: 'EVL export requires a time-based x-axis (e.g. ping_time). Re-plot with a time x-axis to enable export.' };
+    }
+
+    // Concatenate all points from all strokes, sort by time.
+    var pts = [];
+    segs.forEach(function(seg) {
+      for (var i = 0; i < seg.xs.length; i++) {
+        pts.push({ t: seg.xs[i], d: seg.ys[i] });
+      }
+    });
+    pts.sort(function(a, b) { return a.t - b.t; });
+
+    var LINE_STATUS = '1';  // 1 = unverified — safe default for user-drawn lines
+    var rows = [];
+    rows.push('EVBD 3 aa-plot-1.0');
+    rows.push(String(pts.length));
+    pts.forEach(function(p) {
+      rows.push(
+        _aaEvlDate(p.t) + ' ' + _aaEvlTime(p.t) + ' ' +
+        p.d.toFixed(4) + ' ' + LINE_STATUS
+      );
+    });
+    return rows.join('\\r\\n') + '\\r\\n';
+  };
+
+  // ---------------------------------------------------------------
+  // EVR — Echoview 2D Region Definition File
+  //
+  // Per Echoview spec
+  // (https://support.echoview.com/.../2D_Region_definition_file_format.htm):
+  //
+  //   Line 1:  "EVRG <format_version=7> <generator_version>"
+  //   Line 2:  <region count>
+  //
+  //   Then for each region:
+  //     <blank line>
+  //     <header line, 13 space-separated tokens, CR/LF>:
+  //         13 <pcount> <id> 0 <ctype> -1 1
+  //         <left_date> <left_time> <top_depth>
+  //         <right_date> <right_time> <bot_depth>
+  //     <#notes lines, CR/LF>
+  //     <#detection-settings lines, CR/LF>
+  //     <region classification, CR/LF>
+  //     <points line: date1 time1 depth1 date2 time2 depth2 ... <region_type>>
+  //     <region name, CR/LF>
+  //
+  // Region creation type 2 = polygon tool (matches what the user draws).
+  // Region type 1 = analysis (the typical use for polygon ROIs).
+  // ---------------------------------------------------------------
+  W.aaGenerateEvr = function() {
+    var segs = _aaCollect('aa_regions_');
+    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+    if (!segs.length) return null;
+    if (!_aaIsTime(segs[0].xs)) {
+      return { error: 'EVR export requires a time-based x-axis (e.g. ping_time). Re-plot with a time x-axis to enable export.' };
+    }
+
+    var REGION_STRUCT = '13';
+    var SELECTED      = '0';
+    var CREATION_TYPE = '2';   // polygon tool
+    var DUMMY         = '-1';
+    var REGION_TYPE   = '1';   // analysis
+
+    var rows = [];
+    rows.push('EVRG 7 aa-plot-1.0');
+    rows.push(String(segs.length));
+
+    segs.forEach(function(seg, idx) {
+      var rid = idx + 1;
+      var n = seg.xs.length;
+
+      // Bounding rectangle
+      var minX = seg.xs[0], maxX = seg.xs[0];
+      var minY = seg.ys[0], maxY = seg.ys[0];
+      for (var i = 1; i < n; i++) {
+        if (seg.xs[i] < minX) minX = seg.xs[i];
+        if (seg.xs[i] > maxX) maxX = seg.xs[i];
+        if (seg.ys[i] < minY) minY = seg.ys[i];
+        if (seg.ys[i] > maxY) maxY = seg.ys[i];
+      }
+
+      rows.push('');  // blank-line region separator
+
+      // Header line: 13 tokens (date and time count as separate tokens
+      // so the bounding-rectangle x-coords are 2 tokens each).
+      rows.push([
+        REGION_STRUCT, String(n), String(rid),
+        SELECTED, CREATION_TYPE, DUMMY, '1',
+        _aaEvlDate(minX), _aaEvlTime(minX), minY.toFixed(4),
+        _aaEvlDate(maxX), _aaEvlTime(maxX), maxY.toFixed(4)
+      ].join(' '));
+
+      rows.push('0');                       // # notes lines
+      rows.push('0');                       // # detection-settings lines
+      rows.push('Unclassified regions');    // region classification
+
+      // All polygon points on ONE line, region type at the end.
+      var tokens = [];
+      for (var i = 0; i < n; i++) {
+        tokens.push(_aaEvlDate(seg.xs[i]));
+        tokens.push(_aaEvlTime(seg.xs[i]));
+        tokens.push(seg.ys[i].toFixed(10));
+      }
+      tokens.push(REGION_TYPE);
+      rows.push(tokens.join(' '));
+
+      rows.push('aa-plot region ' + rid);   // region name
+    });
+
+    return rows.join('\\r\\n') + '\\r\\n';
+  };
+
+  // ---------------------------------------------------------------
+  // Delivery: try a real download, fall back to modal.
+  // ---------------------------------------------------------------
+  W._aaTryDownload = function(content, filename) {
+    // Strategy 1: data: URI anchor click — works in most contexts but
+    // is BLOCKED in JupyterLab's default sandboxed iframe (no allow-downloads).
+    // We can't detect this synchronously, so on Jupyter the user sees nothing
+    // happen — which is why we also expose explicit "Show text" buttons.
     try {
       var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
       var a = document.createElement('a');
@@ -800,24 +1537,29 @@ _DRAW_JS_HELPERS = """\
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      // Give the browser a moment; if nothing happened we fall through
-      // (we can't detect failure synchronously, so we just return here —
-      //  the user will see the modal if they click again after nothing downloaded).
       return;
     } catch(e1) { /* fall through */ }
 
-    // Strategy 2: open data: URI in a new tab — user can File > Save As
+    // Strategy 2: open data: URI in a new tab
     try {
       var uri2 = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
       var w = window.open(uri2, '_blank');
-      if (w) {
-        w.document && w.document.title && (w.document.title = filename);
-        return;
-      }
+      if (w) return;
     } catch(e2) { /* fall through */ }
 
-    // Strategy 3: modal textarea — always works; user copies the text manually.
-    // Styled to match the aa-plot sidebar palette.
+    // Strategy 3: modal
+    _aaShowTextModal(content, filename, 'Download blocked - copy text below');
+  };
+
+  // ---------------------------------------------------------------
+  // Always-show modal — used by the "Show ... text" buttons.
+  // Works in any environment, including sandboxed iframes.
+  //
+  // summary_html : optional HTML to inject between the title and the
+  //                copy-paste textarea (used to display the polygon's
+  //                time/depth ranges so the user can sanity-check).
+  // ---------------------------------------------------------------
+  W._aaShowTextModal = function(content, filename, title_text, summary_html) {
     var overlay = document.createElement('div');
     overlay.style.cssText = [
       'position:fixed','top:0','left:0','width:100%','height:100%',
@@ -828,23 +1570,27 @@ _DRAW_JS_HELPERS = """\
     var box = document.createElement('div');
     box.style.cssText = [
       'background:#f8fafc','border:1px solid #cbd5e1','border-radius:10px',
-      'padding:18px 20px','max-width:720px','width:92%','max-height:80vh',
+      'padding:18px 20px','max-width:760px','width:92%','max-height:80vh',
       'display:flex','flex-direction:column','gap:10px',
       'font-family:Menlo,Consolas,DejaVu Sans Mono,monospace','font-size:0.82em'
     ].join(';');
 
     var title = document.createElement('div');
     title.style.cssText = 'font-weight:700;color:#0369a1;font-size:1.05em;';
-    title.textContent = '\u26a0\ufe0f Download blocked \u2014 copy text below (' + filename + ')';
+    title.textContent = title_text + ' (suggested filename: ' + filename + ')';
 
     var hint = document.createElement('div');
-    hint.style.cssText = 'color:#64748b;font-size:0.92em;';
-    hint.textContent = 'Your browser or environment blocked the download (sandboxed iframe). Select all and copy, then paste into a plain .txt file and rename to ' + filename + '.';
+    hint.style.cssText = 'color:#64748b;font-size:0.92em;line-height:1.5;';
+    hint.innerHTML = (
+      'Select-all and copy the text below, then paste into a plain text file ' +
+      'and save as <b>' + filename + '</b>.<br>' +
+      '<span style="color:#94a3b8;">In JupyterLab: File &rarr; New &rarr; Text File &rarr; paste &rarr; rename.</span>'
+    );
 
     var ta = document.createElement('textarea');
     ta.value = content;
     ta.style.cssText = [
-      'width:100%','min-height:220px','resize:vertical',
+      'width:100%','min-height:240px','resize:vertical',
       'background:#0f172a','color:#e2e8f0',
       'border:1px solid #334155','border-radius:6px',
       'padding:8px 10px','font-family:inherit','font-size:1em',
@@ -854,7 +1600,7 @@ _DRAW_JS_HELPERS = """\
     ta.spellcheck = false;
 
     var btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:8px;';
+    btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
 
     var copyBtn = document.createElement('button');
     copyBtn.textContent = 'Copy to clipboard';
@@ -865,8 +1611,12 @@ _DRAW_JS_HELPERS = """\
     copyBtn.onclick = function() {
       ta.select();
       try {
-        if (navigator.clipboard) {
+        if (navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(content).then(function(){
+            copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
+            setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
+          }, function() {
+            document.execCommand('copy');
             copyBtn.textContent = 'Copied!'; copyBtn.style.color='#16a34a';
             setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
           });
@@ -876,6 +1626,21 @@ _DRAW_JS_HELPERS = """\
           setTimeout(function(){ copyBtn.textContent='Copy to clipboard'; copyBtn.style.color=''; }, 1800);
         }
       } catch(e) { copyBtn.textContent = 'Copy failed'; }
+    };
+
+    var dlBtn = document.createElement('button');
+    dlBtn.textContent = 'Try download';
+    dlBtn.style.cssText = [
+      'background:#f0fdf4','border:1px solid #86efac','border-radius:5px',
+      'color:#166534','padding:5px 14px','cursor:pointer','font-family:inherit'
+    ].join(';');
+    dlBtn.onclick = function() {
+      try {
+        var uri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+        var a = document.createElement('a');
+        a.href = uri; a.download = filename; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch(e) { dlBtn.textContent = 'Blocked'; }
     };
 
     var closeBtn = document.createElement('button');
@@ -888,9 +1653,15 @@ _DRAW_JS_HELPERS = """\
     overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
 
     btnRow.appendChild(copyBtn);
+    btnRow.appendChild(dlBtn);
     btnRow.appendChild(closeBtn);
     box.appendChild(title);
     box.appendChild(hint);
+    if (summary_html) {
+      var summaryDiv = document.createElement('div');
+      summaryDiv.innerHTML = summary_html;
+      box.appendChild(summaryDiv);
+    }
     box.appendChild(ta);
     box.appendChild(btnRow);
     overlay.appendChild(box);
@@ -898,56 +1669,56 @@ _DRAW_JS_HELPERS = """\
     setTimeout(function(){ ta.select(); }, 80);
   };
 
-  // Export EVL — collects from aa_freehand_* and aa_lines_* sources
-  // Format: Echoview Line File (EVBD 3)
-  // Each drawn stroke / polyline becomes one named EVL line.
+  // ---------------------------------------------------------------
+  // Public buttons
+  //
+  // The generator functions return one of:
+  //   - null              : nothing drawn
+  //   - { error: "..." }  : drawn but x-axis isn't time-based
+  //   - string            : valid EVL/EVR content
+  // ---------------------------------------------------------------
+  function _handleGenResult(content, kindLabel, onContent) {
+    if (content === null) {
+      alert('No ' + kindLabel + ' drawn yet.\\nActivate the relevant tool in the echogram toolbar, draw, then try again.');
+      return false;
+    }
+    if (typeof content === 'object' && content && content.error) {
+      alert(content.error);
+      return false;
+    }
+    onContent(content);
+    return true;
+  }
+
   W.aaExportEvl = function() {
-    var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
-    // Filter out empty segments
-    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
-    if (!segs.length) {
-      alert('No lines drawn yet.\\nActivate the Freehand (\\u270F) or Polyline (\\u26AA) tool in the echogram toolbar, draw some lines, then export.');
-      return;
-    }
-    var isTime = _aaIsTime(segs[0].xs);
-    var rows = ['EVBD 3 9.0.120.30842', String(segs.length)];
-    segs.forEach(function(seg, li) {
-      rows.push('aa-plot line ' + (li + 1));
-      rows.push('-10000.0000 0 0');
-      rows.push(String(seg.xs.length));
-      for (var i = 0; i < seg.xs.length; i++) {
-        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
-      }
+    _handleGenResult(aaGenerateEvl(), 'lines', function(c) {
+      _aaTryDownload(c, 'aa_lines.evl');
     });
-    _aaDownload(rows.join('\\n'), 'aa_lines.evl');
   };
-
-  // Export EVR — collects from aa_regions_* sources
-  // Format: Echoview Region File (EVBD 3)
-  // Each drawn polygon becomes one EVR region (type 1 = analysis).
+  W.aaShowEvlText = function() {
+    _handleGenResult(aaGenerateEvl(), 'lines', function(c) {
+      var segs = _aaCollect('aa_freehand_').concat(_aaCollect('aa_lines_'));
+      segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+      var summary = _aaSummariseSegs(segs);
+      var summaryHtml = _aaSummaryHtml(summary, 'strokes');
+      _aaShowTextModal(c, 'aa_lines.evl', 'EVL Line File', summaryHtml);
+    });
+  };
   W.aaExportEvr = function() {
-    var segs = _aaCollect('aa_regions_');
-    segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
-    if (!segs.length) {
-      alert('No regions drawn yet.\\nActivate the Region (\\u25A1) tool in the echogram toolbar, draw some polygons, then export.');
-      return;
-    }
-    var isTime = _aaIsTime(segs[0].xs);
-    var rows = ['EVBD 3 9.0.120.30842', String(segs.length) + ' 4'];
-    segs.forEach(function(seg, ri) {
-      rows.push('Region ' + (ri + 1));
-      rows.push('');          // notes
-      rows.push('');          // detection settings
-      rows.push('1');         // region type: 1 = analysis
-      rows.push(String(seg.xs.length));
-      for (var i = 0; i < seg.xs.length; i++) {
-        rows.push(_aaXStr(seg.xs[i], isTime) + '\\t' + seg.ys[i].toFixed(4));
-      }
+    _handleGenResult(aaGenerateEvr(), 'regions', function(c) {
+      _aaTryDownload(c, 'aa_regions.evr');
     });
-    _aaDownload(rows.join('\\n'), 'aa_regions.evr');
+  };
+  W.aaShowEvrText = function() {
+    _handleGenResult(aaGenerateEvr(), 'regions', function(c) {
+      var segs = _aaCollect('aa_regions_');
+      segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
+      var summary = _aaSummariseSegs(segs);
+      var summaryHtml = _aaSummaryHtml(summary, 'regions');
+      _aaShowTextModal(c, 'aa_regions.evr', 'EVR Region File', summaryHtml);
+    });
   };
 
-  // Clear all drawing layers
   W.aaClearDraw = function() {
     if (!confirm('Clear all drawn lines and regions?')) return;
     _aaGetModels().forEach(function(m) {
@@ -979,14 +1750,13 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
     aa_regions_{i}   Patches    blue  #4499FF   PolyDrawTool  (double-click to close)
 
     PolyEditTool is also added so drawn geometry can be edited (shift-click vertex to delete).
-    Sources are named so the JS export helpers can find them across all tabs.
     """
     from bokeh.models import (
         FreehandDrawTool, PolyDrawTool, PolyEditTool,
         ColumnDataSource,
     )
 
-    # ── Freehand (gold) — exports as EVL ──────────────────────────────────
+    # -- Freehand (gold) -- exports as EVL --
     fh_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_freehand_{draw_idx}")
     fh_rend = fig.multi_line(
         "xs", "ys", source=fh_src,
@@ -994,9 +1764,9 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
         line_cap="round", line_join="round",
     )
     freehand_tool = FreehandDrawTool(renderers=[fh_rend], num_objects=0)
-    freehand_tool.description = "Freehand line (→ EVL)"
+    freehand_tool.description = "Freehand line (-> EVL)"
 
-    # ── Polyline segments (cyan dashed) — exports as EVL ─────────────────
+    # -- Polyline segments (cyan dashed) -- exports as EVL --
     ln_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_lines_{draw_idx}")
     ln_rend = fig.multi_line(
         "xs", "ys", source=ln_src,
@@ -1004,9 +1774,9 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
     )
     ln_rend.glyph.line_dash = [8, 4]
     line_tool = PolyDrawTool(renderers=[ln_rend], num_objects=0)
-    line_tool.description = "Polyline segments (→ EVL, dbl-click to finish)"
+    line_tool.description = "Polyline segments (-> EVL, dbl-click to finish)"
 
-    # ── Region polygons (blue translucent) — exports as EVR ───────────────
+    # -- Region polygons (blue translucent) -- exports as EVR --
     rg_src = ColumnDataSource(data={"xs": [], "ys": []}, name=f"aa_regions_{draw_idx}")
     rg_rend = fig.patches(
         "xs", "ys", source=rg_src,
@@ -1014,13 +1784,16 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
         line_color="#4499FF", line_width=2.0, line_alpha=0.92,
     )
     region_tool = PolyDrawTool(renderers=[rg_rend], num_objects=0)
-    region_tool.description = "Region polygon (→ EVR, dbl-click to close)"
+    region_tool.description = "Region polygon (-> EVR, dbl-click to close)"
 
-    # ── Vertex editor — lets you drag / delete vertices after drawing ──────
+    # -- Vertex editor -- lets you drag / delete vertices after drawing --
+    # Using fig.scatter(marker="circle", size=...) instead of fig.circle(size=...)
+    # because the latter was deprecated in Bokeh 3.4.
     try:
         vtx_src = ColumnDataSource(data={"x": [], "y": []})
-        vtx_rend = fig.circle(
+        vtx_rend = fig.scatter(
             "x", "y", source=vtx_src,
+            marker="circle",
             size=9, color="white", fill_alpha=0.85,
             line_color="#64748b", line_width=1.2,
         )
@@ -1037,32 +1810,29 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
 
 def _build_annotation_panel() -> pn.pane.HTML:
     """
-    Build the annotation controls pane — consistent with the sidebar style.
+    Build the annotation controls pane.
 
-    The panel is purely HTML + a <script> block defining JS helpers and
-    download functions.  No server required; works in the static embedded HTML.
+    Two rows of buttons:
+      Row 1: download buttons (work in normal browser tabs)
+      Row 2: "Show text" buttons (work everywhere, including JupyterLab sandbox)
 
-    EVL format notes
-    ----------------
-    EVBD 3 9.0.120.30842
-    <n_lines>
-    <line_name>
-    -10000.0000 0 0          (bad_data_value  status  editable)
-    <n_points>
-    YYYYMMDD HHMMSS.ssss     depth_m          (tab-separated)
-    ...
+    EVL format
+      EVBD 3 9.0.120.30842
+      <n_lines>
+      <line_name>
+      -10000.0000 0 0          (bad_data_value  status  editable)
+      <n_points>
+      YYYYMMDD HHMMSS.ssss     depth_m
 
-    EVR format notes
-    ----------------
-    EVBD 3 9.0.120.30842
-    <n_regions> 4
-    <region_name>
-                             (notes — blank)
-                             (detection_settings — blank)
-    1                        (region type: 1=analysis)
-    <n_points>
-    YYYYMMDD HHMMSS.ssss     depth_m
-    ...
+    EVR format
+      EVBD 3 9.0.120.30842
+      <n_regions> 4
+      <region_name>
+                               (notes)
+                               (detection_settings)
+      1                        (region type: 1=analysis)
+      <n_points>
+      YYYYMMDD HHMMSS.ssss     depth_m
     """
     pencil_svg = (
         '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
@@ -1080,26 +1850,37 @@ def _build_annotation_panel() -> pn.pane.HTML:
     <div class="aa-draw-legend">
       <div class="aa-draw-legend-item">
         <div class="aa-swatch-freehand"></div>
-        <span><b>Freehand</b> &mdash; activate ✏ in toolbar, draw freely</span>
+        <span><b>Freehand</b> &mdash; activate &#9999; in toolbar, draw freely</span>
       </div>
       <div class="aa-draw-legend-item">
         <div class="aa-swatch-poly"></div>
-        <span><b>Polyline</b> &mdash; activate ⬤ in toolbar, click points, dbl-click to finish</span>
+        <span><b>Polyline</b> &mdash; activate in toolbar, click points, dbl-click to finish</span>
       </div>
       <div class="aa-draw-legend-item">
         <div class="aa-swatch-region"></div>
-        <span><b>Region</b> &mdash; activate ▭ in toolbar, click vertices, dbl-click to close</span>
+        <span><b>Region</b> &mdash; activate in toolbar, click vertices, dbl-click to close</span>
       </div>
     </div>
-    <div class="aa-draw-btns">
-      <button class="aa-draw-btn evl" onclick="aaExportEvl()">&#11015; Export EVL &nbsp;<span style="opacity:.65;font-size:.9em">(freehand + polylines)</span></button>
-      <button class="aa-draw-btn evr" onclick="aaExportEvr()">&#11015; Export EVR &nbsp;<span style="opacity:.65;font-size:.9em">(regions)</span></button>
+    <div class="aa-draw-btnrow">
+      <button class="aa-draw-btn evl" onclick="aaExportEvl()">&#11015; Download EVL</button>
+      <button class="aa-draw-btn evr" onclick="aaExportEvr()">&#11015; Download EVR</button>
       <button class="aa-draw-btn clr" onclick="aaClearDraw()">&#128465; Clear all</button>
     </div>
+    <div class="aa-draw-btnrow">
+      <button class="aa-draw-btn evl txt" onclick="aaShowEvlText()">&#128203; Show EVL text</button>
+      <button class="aa-draw-btn evr txt" onclick="aaShowEvrText()">&#128203; Show EVR text</button>
+    </div>
+    <div class="aa-draw-warn">
+      <b>JupyterLab / cloud workspace?</b> The Download buttons are blocked by the
+      iframe sandbox and may silently do nothing. Use the <b>Show text</b> buttons
+      instead &mdash; they open a copyable text view that works everywhere.
+    </div>
     <div class="aa-draw-hint">
-      <b>Tip:</b> tools appear in the plot toolbar above the echogram &mdash; switch freely between draw, zoom&nbsp;&#x1F50D; and pan&nbsp;&#x270B;.<br>
+      <b>Tip:</b> tools appear in the plot toolbar above the echogram &mdash; switch freely between draw, zoom and pan.<br>
       Drag any vertex with the <b>Edit</b> tool to adjust; shift-click a vertex to delete it.<br>
-      EVL / EVR files use Echoview line/region format and open directly in Echoview.
+      EVL / EVR files use Echoview line/region format and open directly in Echoview.<br>
+      <b>Note:</b> export requires a time-based x-axis (ping_time). Multiple freehand/polyline
+      strokes are merged into a single time-sorted EVL line; each polygon becomes a distinct EVR region.
     </div>
   </div>
 </div>
@@ -1107,9 +1888,9 @@ def _build_annotation_panel() -> pn.pane.HTML:
     return pn.pane.HTML(html, sizing_mode="stretch_width")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  PLOT CONSTRUCTION
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _plot_echogram(
     da: xr.DataArray,
@@ -1177,7 +1958,6 @@ def _plot_echogram(
             opts.Image(tools=extra_tools, active_tools=["wheel_zoom"]),
         )
 
-    # Combined hook: stretch_width + drawing tools
     _draw_idx = draw_idx
     _add_draw = show_draw
 
@@ -1276,6 +2056,7 @@ def _build_single_plot(
             f_val = ds[freq_dim].isel({freq_dim: 0}).values
             label = f"frequency={_coord_to_str(f_val)}"
 
+    da, y_name = _ensure_y_axis_coord(ds, da, y_name, x_name)
     da = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
     return _plot_echogram(
         da=da, var=var, x_name=x_name, y_name=y_name,
@@ -1315,12 +2096,10 @@ def _build_all_tabs(
         ccoord = ds[chan_dim]
 
         f_on_chan = None
-        for loc in (ds.data_vars, ds.coords):
-            if "frequency_nominal" in loc:
-                f = ds["frequency_nominal"]
-                if chan_dim in f.dims:
-                    f_on_chan = f
-                    break
+        if "frequency_nominal" in ds:
+            f = ds["frequency_nominal"]
+            if chan_dim in f.dims:
+                f_on_chan = f
 
         tabs = []
         for ci in range(ccoord.size):
@@ -1331,10 +2110,11 @@ def _build_all_tabs(
                 label = f"{_coord_to_str(c_val)} \u2022 {_coord_to_str(f_val)} Hz"
 
             da2 = da.isel({chan_dim: ci})
-            da2 = _prep_da(da2, x_name, y_name, decimate, ymin, ymax)
+            da2, y_name_resolved = _ensure_y_axis_coord(ds, da2, y_name, x_name)
+            da2 = _prep_da(da2, x_name, y_name_resolved, decimate, ymin, ymax)
 
             plot = _plot_echogram(
-                da=da2, var=var, x_name=x_name, y_name=y_name,
+                da=da2, var=var, x_name=x_name, y_name=y_name_resolved,
                 title=f"{var} \u2022 {label}", cmap=cmap, vmin=vmin, vmax=vmax,
                 min_width=min_width, height=height, toolbar=toolbar,
                 pin_div=pin_div, flip_y=flip_y,
@@ -1345,10 +2125,11 @@ def _build_all_tabs(
 
         return pn.Tabs(*tabs, sizing_mode="stretch_width", dynamic=False)
 
-    # Fallback — no channel dim
-    da2 = _prep_da(da, x_name, y_name, decimate, ymin, ymax)
+    # Fallback - no channel dim
+    da2, y_name_resolved = _ensure_y_axis_coord(ds, da, y_name, x_name)
+    da2 = _prep_da(da2, x_name, y_name_resolved, decimate, ymin, ymax)
     plot = _plot_echogram(
-        da=da2, var=var, x_name=x_name, y_name=y_name, title=var,
+        da=da2, var=var, x_name=x_name, y_name=y_name_resolved, title=var,
         cmap=cmap, vmin=vmin, vmax=vmax, min_width=min_width, height=height,
         toolbar=toolbar, pin_div=pin_div, flip_y=flip_y,
         show_hover=show_hover, show_crosshair=show_crosshair,
@@ -1360,9 +2141,9 @@ def _build_all_tabs(
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  HEADER
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool) -> pn.pane.Markdown:
     source = ds.encoding.get("source", "(in-memory)")
@@ -1370,12 +2151,15 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
     attrs = ds.attrs
     sonar_model = attrs.get("sonar_model", attrs.get("keywords", ""))
     survey_name = attrs.get("survey_name", attrs.get("title", ""))
+    aa_tool = attrs.get("aa_tool", "")
 
     meta_lines = []
     if survey_name:
         meta_lines.append(f"- **survey:** `{survey_name}`")
     if sonar_model:
         meta_lines.append(f"- **sonar:** `{sonar_model}`")
+    if aa_tool:
+        meta_lines.append(f"- **last pipeline step:** `{aa_tool}`")
 
     orient_note = "y-axis inverted (surface at top)" if flip_y else "y-axis normal"
     md = (
@@ -1383,7 +2167,7 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
         f"- **file:** `{source}`\n"
         f"- **var:** `{var}` \u00a0 ({dim_info})\n"
         f"- **x:** `{x_name}`  \u2022  **y:** `{y_name}` \u00a0 *({orient_note})*\n"
-        + "\n".join(meta_lines) + "\n\n"
+        + ("\n".join(meta_lines) + "\n" if meta_lines else "") + "\n"
         "<span style='color:#777; font-size:0.85em;'>"
         "Scroll to zoom \u00b7 Shift+drag to pan \u00b7 Click to pin coordinates \u00b7 "
         "Hover for values \u00b7 Colormap picker below \u00b7 "
@@ -1393,9 +2177,9 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
     return pn.pane.Markdown(md, sizing_mode="stretch_width")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  LAYOUT ASSEMBLY
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def _render_layout(
     ds: xr.Dataset,
@@ -1431,9 +2215,9 @@ def _render_layout(
     if flip_y:
         flip_y = _should_flip_y(y_name)
         if flip_y:
-            logger.info(f"Y-axis '{y_name}' recognised as range/depth \u2192 inverting (surface at top).")
+            logger.info(f"Y-axis '{y_name}' recognised as range/depth -> inverting (surface at top).")
         else:
-            logger.info(f"Y-axis '{y_name}' not in depth/range list \u2192 keeping default orientation.")
+            logger.info(f"Y-axis '{y_name}' not in depth/range list -> keeping default orientation.")
 
     min_width = max(width, 100)
 
@@ -1491,9 +2275,9 @@ def _render_layout(
     return pn.Column(*parts, sizing_mode="stretch_width")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  CLI
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 def main() -> None:
     if len(sys.argv) == 1:
@@ -1510,7 +2294,13 @@ def main() -> None:
     )
     p.add_argument("input_path", type=Path, nargs="?")
     p.add_argument("--var", default=None)
-    p.add_argument("--all", action="store_true")
+    p.add_argument("--all", action="store_true",
+                   help="(Default behavior — kept for backwards compat.) "
+                        "Plot every channel/frequency in tabs.")
+    p.add_argument("--single", action="store_true",
+                   help="Plot only one channel (default channel 0). "
+                        "Opt-out of the per-channel tab default. Use with "
+                        "--frequency or --channel to pick which one.")
     p.add_argument("--frequency", type=float, default=None)
     p.add_argument("--channel", type=str, default=None)
     p.add_argument("--group-by", type=str, default="auto", choices=["auto", "channel", "freq"])
@@ -1569,18 +2359,42 @@ def main() -> None:
     if args.all and (args.frequency is not None or args.channel is not None):
         logger.error("Use either --all OR a specific --frequency/--channel (not both).")
         raise SystemExit(2)
+    if args.single and args.all:
+        logger.error("Cannot combine --single and --all.")
+        raise SystemExit(2)
 
     try:
         buf = io.StringIO()
         with redirect_stdout(buf), redirect_stderr(buf):
-            ds = xr.open_dataset(args.input_path)
+            with xr.open_dataset(args.input_path) as ds_in:
+                ds = ds_in.load()
 
         ds.encoding["source"] = str(args.input_path)
         var = _ensure_variable(ds, args.var)
         logger.info(f"Plotting var='{var}' from {args.input_path.name}")
 
+        # New default: tabs across channels when there's a 'channel' dim
+        # with > 1 entry, unless --single is given or a specific channel/
+        # frequency is requested. --all stays as an explicit opt-in for
+        # backwards compatibility.
+        explicit_single = (
+            args.single
+            or args.frequency is not None
+            or args.channel is not None
+        )
+        chan_size = ds[var].sizes.get("channel", 1) if var in ds.data_vars else 1
+        all_plots = (
+            args.all
+            or (chan_size > 1 and not explicit_single)
+        )
+        if all_plots and not args.all:
+            logger.info(
+                f"Multi-channel dataset detected (channel size={chan_size}); "
+                f"plotting all channels in tabs. Pass --single to plot one."
+            )
+
         layout = _render_layout(
-            ds=ds, var=var, all_plots=args.all, group_by=args.group_by,
+            ds=ds, var=var, all_plots=all_plots, group_by=args.group_by,
             frequency=args.frequency, channel=args.channel,
             x_override=args.x_override, y_override=args.y_override,
             vmin=args.vmin, vmax=args.vmax, cmap=args.cmap,

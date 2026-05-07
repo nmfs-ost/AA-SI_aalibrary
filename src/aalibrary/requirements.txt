@@ -19,7 +19,7 @@ pytest
 pytz>=2024.1
 tqdm
 azure-storage-file-datalake>=12.7.0
-zarr==2.8.3
+zarr>=2.14
 inquirerpy
 loguru
 numcodecs==0.15.1; python_version>="3.11"
@@ -31,3 +31,7 @@ mkdocs-open-in-new-tab
 nbformat
 python-dotenv
 sqlparse
+google-genai>=0.3.0
+tomli-w>=1.0.0
+tomli>=2.0.0; python_version < "3.11"
+rich>=13.0.0

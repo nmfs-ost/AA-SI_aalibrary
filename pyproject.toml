@@ -30,7 +30,7 @@ maintainers = [
 ]
 description = "A data-fetching library created for NOAA's Active-Acoustics initiative."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 
 [project.urls]
@@ -40,10 +40,31 @@ Issues = "https://github.com/nmfs-ost/AA-SI_aalibrary/issues"
 Repository = "https://github.com/nmfs-ost/AA-SI_aalibrary"
 Changelog = "https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/CHANGELOG.md"
 
+[aa_help]
+project_id = "ggn-nmfs-aa-dev-1"
+location = "us-central1"
+model = "gemini-2.5-flash"
+temperature = 0.2
+max_output_tokens = 2048
+
+knowledge_dirs = [
+  "~/Documents/GitHub/AA-SI_aalibrary/docs/prompts",         # the JSON + TXT
+  "~/Documents/GitHub/AA-SI_aalibrary/docs/documentation",   # tool docs
+  "~/Documents/GitHub/AA-SI_aalibrary/docs/usage",           # usage examples
+  "~/aa-docs",                                                # personal notes
+]
+
+extra_system_prompt = ""
+rag_top_k = 6
+rag_max_chars = 30000
+
 [project.scripts]
 aa-raw = "aalibrary.console.aa_raw:main"
 aa-nc = "aalibrary.console.aa_nc:main"
+
 aa-plot = "aalibrary.console.aa_plot:main"
+aa-graph = "aalibrary.console.aa_graph:main"
+
 aa-help = "aalibrary.console.aa_help:main"
 aa-test = "aalibrary.console.aa_test:main"
 aa-find = "aalibrary.console.aa_find:main"
