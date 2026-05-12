@@ -337,6 +337,100 @@ class TugboatAPI:
         url = urllib.parse.urljoin(self.tugboat_api_url, f"jobs/{job_id}")
         return self._get_request_as_json(url)
 
+    ################################################################## PROJECTS
+    def get_all_projects(self) -> list:
+        """Fetches all projects from the Tugboat API."""
+
+        url = urllib.parse.urljoin(self.tugboat_api_url, "projects")
+        return self._get_request_as_json(url)["items"]
+
+    def get_project_by_id(self, project_id: str) -> dict:
+        """Fetches a project by its ID from the Tugboat API."""
+
+        url = urllib.parse.urljoin(
+            self.tugboat_api_url, f"projects/{project_id}"
+        )
+        return self._get_request_as_json(url)
+
+    def post_new_project(self, project_json: dict) -> dict:
+        """Posts a new project to the Tugboat API.
+
+                Args:
+                    project_json (dict): The dictionary containing the project's
+                        information.
+                        Example:
+                            {
+                            "name": "NEFSC SNE_Audio",
+                            "title": "NEFSC Southern New England Bottom-Moun",
+                            "description": "Passive Acoustic Monitoring d ...",
+                            "purpose": "This project is a combination of 
+                                        baseline information.",
+                            "scientists": [],
+                            "funders": [
+                                "NOAA NEFSC"
+                                ],
+                            "citation": "NOAA NEFSC. 2026. NEFSC Southern
+                                        New...",
+                            "credit": "This study was funded, in part, by the",
+                            "platforms": [
+                                "Mooring"
+                                ],
+                            "instruments": [
+                                "SoundTrap",
+                                "FPOD",
+                                "VR2AR"
+                                ],
+                            ...
+                            }
+
+                Returns:
+                    dict: The response from the Tugboat API after creating the
+                        project. This includes the ID of the newly created
+                        project, which can be used for future reference.
+        """
+
+        # Create the URL for the project endpoint
+        url = urllib.parse.urljoin(self.tugboat_api_url, "projects")
+
+        return self._post_request_as_json(url, project_json)
+
+    def update_project_by_id(
+        self, project_id: str, project_json: dict
+    ) -> dict:
+        """Updates a project by its ID in the Tugboat API.
+
+        Args:
+            project_id (str): The id of the project you are trying to update.
+            project_json (dict): The JSON payload containing the updated
+                project information.
+                Example:
+                    {
+                        "name": "Updated Project Name",
+                        "title": "Updated Project Title"
+                    }
+
+        Returns:
+            dict: The response from the Tugboat API after updating the project.
+        """
+        url = urllib.parse.urljoin(
+            self.tugboat_api_url, f"projects/{project_id}"
+        )
+        return self._put_request_as_json(url, project_json)
+
+    def search_projects_by_name(self, name: str) -> dict:
+        """Searches for projects by name in the Tugboat API.
+        NOTE: Make sure the name matches exactly (case-sensitive) with the name
+        in the Tugboat database, otherwise it will not return the project."""
+        url = urllib.parse.urljoin(
+            self.tugboat_api_url,
+            f"projects?name={urllib.parse.quote(name)}",
+        )
+        resp = self._get_request_as_json(url)
+        if resp["totalItems"] == 0:
+            return None
+        else:
+            return resp["items"]
+
     #################################################################### PEOPLE
     def get_all_people(self) -> list:
         """Fetches all people & their info from the Tugboat API."""
