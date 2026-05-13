@@ -27,6 +27,16 @@ and exits immediately (no BigQuery lookup, no download, no conversion).
 If only the .raw exists, the download is skipped but the conversion
 still runs. Pass --force to override both checks.
 
+Input shape: a bare filename triggers a full NCEI flow (BigQuery
+lookup + download) into --file_download_directory. A path with
+directory components (absolute or relative) is treated as a pointer
+to an existing local .raw — aa-ed uses that file as the source,
+writes the .nc alongside it, and does ZERO network work: no NCEI
+download, no BigQuery query, no GCP credentials required. Sonar
+model is taken from --sonar_model if provided, otherwise auto-
+detected from the .raw header via aalibrary's sonar_checker.
+--force never overwrites a user-provided .raw.
+
 Typical pipeline usage:
     echo HB1603_L1-D20160703-T183957.raw | aa-ed | aa-sv | aa-graph
     aa-ed HB1603_L1-D20160703-T183957.raw | aa-sv | aa-clean
@@ -91,13 +101,32 @@ def print_help() -> None:
     Usage: aa-ed [OPTIONS] [FILE_NAME]
 
     Arguments:
-      FILE_NAME                   Name of the raw file to fetch and convert
-                                  (e.g. HB1603_L1-D20160703-T183957.raw).
-                                  Must include the .raw extension. May be
-                                  a bare name or a full path — the directory
-                                  portion is ignored, only the basename is
-                                  used for the NCEI cache lookup. Optional;
-                                  falls back to stdin if not provided.
+      FILE_NAME                   The raw file to fetch and convert. Two
+                                  shapes accepted:
+
+                                  - Bare filename (e.g.
+                                    HB1603_L1-D20160703-T183957.raw)
+                                    -> aa-ed queries the NCEI BigQuery
+                                    cache for metadata, downloads the
+                                    file, and writes the .nc into
+                                    --file_download_directory.
+
+                                  - Path with directory components (e.g.
+                                    /home/me/data/HB1603_L1-D20160703-T183957.raw
+                                    or ./data/HB1603...raw) -> the
+                                    file MUST already exist there.
+                                    aa-ed uses it as-is, detects the
+                                    sonar model from the file header
+                                    (no BigQuery, no NCEI download, no
+                                    GCP credentials needed), and writes
+                                    the .nc ALONGSIDE the .raw.
+                                    --file_download_directory is
+                                    ignored. --sonar_model overrides
+                                    the auto-detection.
+
+                                  Either shape must end in .raw.
+                                  Optional; falls back to stdin if not
+                                  provided.
 
     Optional:
       -o, --output_path PATH      Path to save the converted NetCDF output.
@@ -289,19 +318,44 @@ def main() -> None:
         logger.error("Empty file name.")
         sys.exit(1)
 
-    # Accept either a bare file name or a full path. We only ever need
-    # the file name itself: the NCEI cache matches on the file_name
-    # column, and the downloaded copy lands under
-    # --file_download_directory regardless of where the input pointed.
-    # So if the user piped a path (from aa-raw, from a notebook variable
-    # holding an absolute path, from `find ... | aa-ed`, etc.) discard
-    # the directory portion and keep only the basename.
-    _raw_input = args.file_name
-    args.file_name = Path(args.file_name).name
-    if args.file_name != _raw_input:
-        logger.debug(
-            f"Stripped directory from input '{_raw_input}'; "
-            f"using basename '{args.file_name}'."
+    # Two acceptable input shapes:
+    #   1. Bare file name ("HB1603...raw") — aa-ed will download from
+    #      NCEI to --file_download_directory.
+    #   2. Path with directory components ("/home/me/data/HB1603...raw"
+    #      or "./data/HB1603...raw") — the user is telling us this
+    #      file ALREADY LIVES there. Use it as the authoritative .raw,
+    #      put the .nc alongside it, and skip the NCEI download
+    #      entirely. Re-downloading to CWD just because the user typed
+    #      a path would silently waste bandwidth and leave the user's
+    #      data sitting somewhere other than where they expect.
+    _user_input = args.file_name
+    _input_path = Path(_user_input).expanduser()
+    _has_directory = _user_input != _input_path.name
+
+    # The NCEI cache lookup always works on the basename only — even
+    # when the user gave us a path, the BigQuery file_name column
+    # stores just the filename.
+    args.file_name = _input_path.name
+
+    user_provided_raw_path: Optional[Path] = None
+    if _has_directory:
+        _input_path = _input_path.resolve()
+        if not _input_path.is_file():
+            # If the user gave us a path, they expect that path to
+            # resolve. Silently falling back to "download to CWD" here
+            # would be exactly the surprising behavior we're trying
+            # to fix — better to surface the mistake.
+            logger.error(
+                f"Path '{_input_path}' does not exist as a file. "
+                "If you intended for aa-ed to download from NCEI, pass "
+                f"just the filename ('{args.file_name}') without a "
+                "directory component."
+            )
+            sys.exit(1)
+        user_provided_raw_path = _input_path
+        logger.info(
+            f"Using user-provided .raw at '{user_provided_raw_path}'; "
+            "no NCEI download will be performed for this file."
         )
 
     # We deliberately keep this strict: aa-ed is a .raw → .nc tool. Other
@@ -322,15 +376,35 @@ def main() -> None:
             "only resolves and downloads from NCEI. Proceeding as NCEI."
         )
 
-    download_dir = Path(args.file_download_directory).expanduser().resolve()
-    try:
-        download_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logger.error(f"Could not create download directory '{download_dir}': {e}")
-        sys.exit(2)
+    if user_provided_raw_path is not None:
+        # The .raw is already on disk at the user-specified location;
+        # we never need to create a download directory. Set download_dir
+        # to the file's parent for symmetry / logging only — it won't
+        # be used to land any downloads. If the user ALSO passed
+        # --file_download_directory, the path-form input wins and we
+        # warn rather than silently ignoring it. ("." is the parser
+        # default, used as a sentinel for "user didn't actually set it".)
+        download_dir = user_provided_raw_path.parent
+        if args.file_download_directory != ".":
+            logger.warning(
+                f"--file_download_directory='{args.file_download_directory}' "
+                f"is being ignored: the .raw is already on disk at "
+                f"'{user_provided_raw_path}'. Drop the directory "
+                "component from the input if you want a fresh download."
+            )
+    else:
+        download_dir = Path(args.file_download_directory).expanduser().resolve()
+        try:
+            download_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Could not create download directory '{download_dir}': {e}")
+            sys.exit(2)
 
     args_summary = {
         "file_name": args.file_name,
+        "user_provided_raw_path": (
+            str(user_provided_raw_path) if user_provided_raw_path else None
+        ),
         "output_path": args.output_path,
         "file_download_directory": str(download_dir),
         "ship_name": args.ship_name,
@@ -353,7 +427,15 @@ def main() -> None:
     # Resolved up here (rather than after the metadata lookup) so the
     # cache-skip check below can short-circuit on an existing .nc
     # without ever touching BigQuery.
-    raw_path = download_dir / args.file_name
+    #
+    # When the user provided the .raw via a path, that path IS the
+    # raw_path — we never construct one under download_dir. The .nc
+    # then lands next to the user's .raw by default (-o still wins).
+    if user_provided_raw_path is not None:
+        raw_path = user_provided_raw_path
+    else:
+        raw_path = download_dir / args.file_name
+
     if args.output_path is None:
         nc_path = raw_path.with_suffix(".nc")
     else:
@@ -364,6 +446,12 @@ def main() -> None:
     if nc_path.resolve() == raw_path.resolve():
         logger.error(f"Refusing to overwrite input file: {raw_path.resolve()}")
         sys.exit(1)
+
+    # Explicit confirmation of where the .nc will land. The user
+    # complained about a previous version putting files in surprising
+    # places; this log makes the destination undeniable on stderr
+    # before any heavy work begins.
+    logger.info(f"Output .nc will be written to: {nc_path.resolve()}")
 
     # ---------------------------
     # Short-circuit: .nc already on disk
@@ -386,26 +474,66 @@ def main() -> None:
     # ---------------------------
     # Resolve metadata
     # ---------------------------
-    try:
-        metadata = resolve_metadata(
-            file_name=args.file_name,
-            ship_name=args.ship_name,
-            survey_name=args.survey_name,
-            sonar_model=args.sonar_model,
-        )
-    except SystemExit:
-        # resolve_metadata calls sys.exit with a useful message already.
-        raise
-    except Exception as e:
-        logger.exception(
-            f"Could not resolve metadata for '{args.file_name}': {e}\n"
-            "If BigQuery is unreachable or you lack credentials, supply "
-            "--ship_name, --survey_name, and --sonar_model to skip the lookup."
-        )
-        sys.exit(1)
+    # Critical branch: when the user supplied the .raw locally we do
+    # NOT touch BigQuery and do NOT touch aalibrary.ingestion at all.
+    # We only need sonar_model for echopype.open_raw; ship_name and
+    # survey_name exist purely for the NCEI download (which is skipped).
+    # Sonar model comes from --sonar_model if given, else is detected
+    # from the .raw file's header via aalibrary's sonar_checker — the
+    # same logic aa-sonar uses. This keeps the local-file path fully
+    # offline, no GCP creds required.
+    if user_provided_raw_path is not None:
+        if args.sonar_model:
+            sonar_model = args.sonar_model
+            logger.info(
+                f"Using explicit --sonar_model='{sonar_model}' "
+                "for user-provided .raw."
+            )
+        else:
+            logger.info(
+                f"Detecting sonar model from {raw_path.name} header "
+                "(no BigQuery query, no NCEI download)..."
+            )
+            sonar_model = _detect_sonar_model_from_file(raw_path)
+            if sonar_model == "UNKNOWN":
+                logger.error(
+                    f"Could not auto-detect a sonar model from '{raw_path}'. "
+                    "Pass --sonar_model explicitly (e.g. EK60, EK80, AZFP)."
+                )
+                sys.exit(1)
+            logger.info(f"Detected sonar model: {sonar_model}")
+
+        metadata = {
+            # ship_name / survey_name are only consumed by the NCEI
+            # download path, which we never enter here. Fill placeholders
+            # so anything that reads `metadata[...]` keeps working, but
+            # make it clear in logs that they're not authoritative.
+            "ship_name": args.ship_name or "<local>",
+            "survey_name": args.survey_name or "<local>",
+            "sonar_model": sonar_model,
+        }
+    else:
+        # Bare-filename input — full NCEI flow with BigQuery lookup.
+        try:
+            metadata = resolve_metadata(
+                file_name=args.file_name,
+                ship_name=args.ship_name,
+                survey_name=args.survey_name,
+                sonar_model=args.sonar_model,
+            )
+        except SystemExit:
+            # resolve_metadata calls sys.exit with a useful message already.
+            raise
+        except Exception as e:
+            logger.exception(
+                f"Could not resolve metadata for '{args.file_name}': {e}\n"
+                "If BigQuery is unreachable or you lack credentials, supply "
+                "--ship_name, --survey_name, and --sonar_model to skip the lookup."
+            )
+            sys.exit(1)
 
     logger.success(
-        f"Resolved metadata for {args.file_name}: "
+        f"Metadata resolved for {args.file_name}: "
         f"ship='{metadata['ship_name']}', "
         f"survey='{metadata['survey_name']}', "
         f"sonar='{metadata['sonar_model']}'."
@@ -424,6 +552,7 @@ def main() -> None:
             upload_to_gcp=args.upload_to_gcp,
             debug=args.debug,
             force=args.force,
+            user_provided_raw=(user_provided_raw_path is not None),
         )
     except SystemExit:
         raise
@@ -435,12 +564,23 @@ def main() -> None:
     # confirmed on disk inside process_file, so a conversion failure
     # never costs the user their downloaded raw data.
     if args.cleanup_raw:
-        try:
-            raw_path.unlink(missing_ok=True)
-            logger.info(f"Removed intermediate .raw: {raw_path}")
-        except Exception as e:
-            # Non-fatal — the .nc still exists and gets printed.
-            logger.warning(f"Could not delete '{raw_path}': {e}")
+        if user_provided_raw_path is not None:
+            # The "intermediate" .raw was actually the user's source
+            # data — they passed its path explicitly. Refusing here is
+            # the right call: --cleanup-raw is meant to clean up
+            # aa-ed's own downloads, not the user's source files.
+            logger.warning(
+                f"--cleanup-raw ignored: '{raw_path}' was provided by "
+                "the user, not downloaded by aa-ed. Delete it manually "
+                "if you really want it gone."
+            )
+        else:
+            try:
+                raw_path.unlink(missing_ok=True)
+                logger.info(f"Removed intermediate .raw: {raw_path}")
+            except Exception as e:
+                # Non-fatal — the .nc still exists and gets printed.
+                logger.warning(f"Could not delete '{raw_path}': {e}")
 
     logger.success(
         f"Generated {nc_path.resolve()} with aa-ed. "
@@ -568,6 +708,76 @@ def resolve_metadata(
     }
 
 
+def _detect_sonar_model_from_file(raw_path: Path) -> str:
+    """Detect the sonar model of a local file by inspecting its header.
+
+    Returns an echopype-normalized identifier (EK60, EK80, AZFP,
+    AD2CP) or "UNKNOWN" if detection fails.
+
+    Mirrors aa-sonar's detection logic: extension-only fast paths for
+    AD2CP/AZFP/AZFP6, header-byte inspection for Simrad .raw via
+    aalibrary's sonar_checker. ER60 is normalized to EK60 (echopype
+    shares a code path); AZFP6 is normalized to AZFP.
+
+    Used by aa-ed only when the user supplies the .raw locally — saves
+    a BigQuery roundtrip when all we need is the sonar_model that
+    echopype.open_raw expects, and keeps the whole local-file path
+    fully offline (no GCP credentials required).
+    """
+    try:
+        from aalibrary.utils.sonar_checker.sonar_checker import (
+            is_AD2CP,
+            is_AZFP,
+            is_AZFP6,
+            is_EK60,
+            is_EK80,
+            is_ER60,
+        )
+    except Exception as e:
+        # If sonar_checker isn't importable, the user just has to pass
+        # --sonar_model explicitly. Don't crash here — let the caller
+        # decide what to do with "UNKNOWN".
+        logger.debug(f"sonar_checker unavailable: {e}")
+        return "UNKNOWN"
+
+    path_str = str(raw_path)
+    storage_options: dict = {}  # local file, no fsspec creds needed
+    ext = raw_path.suffix.lower()
+
+    # ---- Extension-only fast paths --------------------------------
+    if ext == ".ad2cp" or is_AD2CP(path_str):
+        return "AD2CP"
+    if ext == ".azfp" or is_AZFP6(path_str):
+        return "AZFP"
+
+    # ---- AZFP XML sidecar -----------------------------------------
+    if ext == ".xml" and is_AZFP(path_str):
+        return "AZFP"
+
+    # ---- Simrad .raw header inspection ----------------------------
+    if ext == ".raw":
+        # EK80 has a 'configuration' block in its config datagram;
+        # EK60/ER60 expose 'sounder_name' instead. The two checks
+        # don't overlap on real files. ER60 normalizes to EK60.
+        try:
+            if is_EK80(path_str, storage_options):
+                return "EK80"
+        except Exception as e:
+            logger.debug(f"EK80 check raised on {raw_path}: {e}")
+        try:
+            if is_EK60(path_str, storage_options):
+                return "EK60"
+        except Exception as e:
+            logger.debug(f"EK60 check raised on {raw_path}: {e}")
+        try:
+            if is_ER60(path_str, storage_options):
+                return "EK60"  # ER60 → EK60 for echopype
+        except Exception as e:
+            logger.debug(f"ER60 check raised on {raw_path}: {e}")
+
+    return "UNKNOWN"
+
+
 def process_file(
     file_name: str,
     metadata: dict,
@@ -577,6 +787,7 @@ def process_file(
     upload_to_gcp: bool,
     debug: bool,
     force: bool = False,
+    user_provided_raw: bool = False,
 ) -> None:
     """Download the raw file from NCEI and convert it to NetCDF.
 
@@ -585,38 +796,61 @@ def process_file(
     is left on disk unless the caller deletes it (see --cleanup-raw).
 
     Idempotency:
-      - If raw_path is already on disk and force=False, the download is
-        skipped. The .raw is treated as authoritative; we trust whatever
-        is on disk to be the file the user wants. Pass force=True to
-        re-download regardless.
+      - If user_provided_raw is True, the .raw at raw_path is the
+        user's source file. It is never re-downloaded — not even when
+        force=True. --force only forces re-conversion of the .nc in
+        that case; the user's .raw is preserved verbatim.
+      - Otherwise, if raw_path is already on disk and force=False, the
+        download is skipped (cache hit). Pass force=True to invalidate.
       - The .nc-already-exists short-circuit lives upstream in main()
         because it also lets us skip the BigQuery lookup; by the time
         we get here, we know the .nc needs (re)building.
     """
-    # Heavy imports deferred so --help and resolve_metadata errors are
-    # fast — echopype in particular is slow to import.
-    try:
-        from aalibrary.ingestion import download_raw_file_from_ncei
-    except Exception as e:
-        logger.exception(f"Failed to import aalibrary.ingestion: {e}")
-        sys.exit(1)
-
+    # Echopype is needed in every branch (we always convert). Imported
+    # up front. The aalibrary.ingestion download is imported lazily
+    # ONLY inside the download branch below — when user_provided_raw is
+    # True, the download module is never even loaded, never mind called.
     try:
         import echopype as ep
     except Exception as e:
         logger.exception(f"Failed to import echopype: {e}")
         sys.exit(1)
 
-    # ---- Download .raw -------------------------------------------
-    if raw_path.exists() and not force:
-        # Trust the file on disk. We don't verify size or checksum
-        # against NCEI — that would defeat the purpose of caching.
+    # ---- .raw acquisition ----------------------------------------
+    if user_provided_raw:
+        # User-supplied source file. Belt-and-suspenders existence
+        # check — main() already validated this, but a race or an
+        # `rm` between validation and now shouldn't produce a
+        # confusing echopype error downstream.
+        if not raw_path.exists():
+            logger.error(
+                f"User-provided .raw '{raw_path}' has disappeared "
+                "since input validation."
+            )
+            sys.exit(1)
+        logger.info(
+            f"Using user-provided .raw: {raw_path} "
+            f"({raw_path.stat().st_size} bytes). "
+            "NCEI download SKIPPED (no aalibrary.ingestion import, "
+            "no network call)."
+        )
+    elif raw_path.exists() and not force:
+        # Cache hit — file from an earlier aa-ed run is still on disk.
         # --force is the escape hatch if the user suspects corruption.
         logger.info(
             f".raw already on disk, skipping NCEI download: {raw_path} "
             f"({raw_path.stat().st_size} bytes). Pass --force to re-download."
         )
     else:
+        # Genuine NCEI download path. Import the download function
+        # only here — that way the user-provided-raw branch above
+        # cannot accidentally trigger it.
+        try:
+            from aalibrary.ingestion import download_raw_file_from_ncei
+        except Exception as e:
+            logger.exception(f"Failed to import aalibrary.ingestion: {e}")
+            sys.exit(1)
+
         logger.info(
             f"Downloading {file_name} "
             f"({metadata['ship_name']} / {metadata['survey_name']} / "
@@ -633,11 +867,10 @@ def process_file(
             debug=debug,
         )
 
-        # Same sanity check as aa-raw: download_raw_file_from_ncei
-        # returns nothing useful, so we only know it worked by checking
-        # disk. Without this, a silent failure would let us hand a
-        # missing path to echopype and surface a confusing error from
-        # the open_raw layer instead.
+        # Sanity check: download_raw_file_from_ncei returns nothing
+        # useful, so we only know it worked by checking disk. Without
+        # this, a silent failure would let us hand a missing path to
+        # echopype and surface a confusing error from open_raw instead.
         if not raw_path.exists():
             logger.error(
                 f"Download appeared to succeed, but '{raw_path}' is not on "
