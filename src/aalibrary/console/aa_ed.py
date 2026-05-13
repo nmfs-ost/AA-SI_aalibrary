@@ -22,6 +22,11 @@ Pipeline contract (mirrors the rest of the aa-suite):
     output : .nc file on disk; absolute path printed to stdout
     logs   : stderr via loguru
 
+Idempotency: if the target .nc already exists, aa-ed prints its path
+and exits immediately (no BigQuery lookup, no download, no conversion).
+If only the .raw exists, the download is skipped but the conversion
+still runs. Pass --force to override both checks.
+
 Typical pipeline usage:
     echo HB1603_L1-D20160703-T183957.raw | aa-ed | aa-sv | aa-graph
     aa-ed HB1603_L1-D20160703-T183957.raw | aa-sv | aa-clean
@@ -121,6 +126,15 @@ def print_help() -> None:
                                   is produced. Off by default — the .raw is
                                   source data and is kept so re-running
                                   aa-ed (or aa-nc directly) is free.
+
+      --force, -f                 Re-download and re-convert even when the
+                                  .raw / .nc are already on disk. Default
+                                  behavior is to treat both as cached: an
+                                  existing .nc short-circuits everything
+                                  (including the BigQuery lookup), and an
+                                  existing .raw skips the NCEI download.
+                                  Use this if you suspect a cached file is
+                                  stale or corrupt.
 
       --upload_to_gcp             Also upload the downloaded .raw to GCP
                                   (passed through to aalibrary.ingestion).
@@ -224,6 +238,12 @@ def main() -> None:
         help="Delete the downloaded .raw after producing the .nc.",
     )
     parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        default=False,
+        help="Re-download and re-convert even if the .raw / .nc are on disk.",
+    )
+    parser.add_argument(
         "--upload_to_gcp",
         action="store_true",
         default=False,
@@ -317,6 +337,7 @@ def main() -> None:
         "survey_name": args.survey_name,
         "sonar_model": args.sonar_model,
         "cleanup_raw": args.cleanup_raw,
+        "force": args.force,
         "upload_to_gcp": args.upload_to_gcp,
         "data_source": args.data_source,
         "debug": args.debug,
@@ -325,6 +346,42 @@ def main() -> None:
         f"Executing aa-ed configured with [OPTIONS]:\n"
         f"{pprint.pformat(args_summary)}"
     )
+
+    # ---------------------------
+    # Resolve output paths
+    # ---------------------------
+    # Resolved up here (rather than after the metadata lookup) so the
+    # cache-skip check below can short-circuit on an existing .nc
+    # without ever touching BigQuery.
+    raw_path = download_dir / args.file_name
+    if args.output_path is None:
+        nc_path = raw_path.with_suffix(".nc")
+    else:
+        nc_path = args.output_path.expanduser().resolve().with_suffix(".nc")
+        nc_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Same guard aa-nc has — cheap insurance against -o pointing at the .raw.
+    if nc_path.resolve() == raw_path.resolve():
+        logger.error(f"Refusing to overwrite input file: {raw_path.resolve()}")
+        sys.exit(1)
+
+    # ---------------------------
+    # Short-circuit: .nc already on disk
+    # ---------------------------
+    # Conversion is the expensive step (echopype's open_raw on a multi-
+    # hundred-MB .raw dwarfs the NCEI download). If the .nc is already
+    # there, the user has nothing to gain from re-running anything —
+    # skip the BigQuery lookup, the download, and the conversion, and
+    # just hand the existing path to the next pipeline stage.
+    # --force overrides this for users who suspect the cached .nc is
+    # stale or corrupt.
+    if nc_path.exists() and not args.force:
+        logger.info(
+            f".nc already on disk; skipping lookup, download, and "
+            f"conversion: {nc_path.resolve()}"
+        )
+        print(nc_path.resolve())
+        return
 
     # ---------------------------
     # Resolve metadata
@@ -355,21 +412,6 @@ def main() -> None:
     )
 
     # ---------------------------
-    # Resolve output path
-    # ---------------------------
-    raw_path = download_dir / args.file_name
-    if args.output_path is None:
-        nc_path = raw_path.with_suffix(".nc")
-    else:
-        nc_path = args.output_path.expanduser().resolve().with_suffix(".nc")
-        nc_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Same guard aa-nc has — cheap insurance against -o pointing at the .raw.
-    if nc_path.resolve() == raw_path.resolve():
-        logger.error(f"Refusing to overwrite input file: {raw_path.resolve()}")
-        sys.exit(1)
-
-    # ---------------------------
     # Download + convert
     # ---------------------------
     try:
@@ -381,6 +423,7 @@ def main() -> None:
             download_dir=download_dir,
             upload_to_gcp=args.upload_to_gcp,
             debug=args.debug,
+            force=args.force,
         )
     except SystemExit:
         raise
@@ -533,12 +576,22 @@ def process_file(
     download_dir: Path,
     upload_to_gcp: bool,
     debug: bool,
+    force: bool = False,
 ) -> None:
     """Download the raw file from NCEI and convert it to NetCDF.
 
     Mirrors the work of aa-raw and aa-nc respectively, in-process, so
     we don't have to spawn subprocesses or re-parse arguments. The .raw
     is left on disk unless the caller deletes it (see --cleanup-raw).
+
+    Idempotency:
+      - If raw_path is already on disk and force=False, the download is
+        skipped. The .raw is treated as authoritative; we trust whatever
+        is on disk to be the file the user wants. Pass force=True to
+        re-download regardless.
+      - The .nc-already-exists short-circuit lives upstream in main()
+        because it also lets us skip the BigQuery lookup; by the time
+        we get here, we know the .nc needs (re)building.
     """
     # Heavy imports deferred so --help and resolve_metadata errors are
     # fast — echopype in particular is slow to import.
@@ -555,33 +608,45 @@ def process_file(
         sys.exit(1)
 
     # ---- Download .raw -------------------------------------------
-    logger.info(
-        f"Downloading {file_name} "
-        f"({metadata['ship_name']} / {metadata['survey_name']} / "
-        f"{metadata['sonar_model']}) from NCEI -> {download_dir}"
-    )
-    download_raw_file_from_ncei(
-        file_name=file_name,
-        file_type="raw",
-        ship_name=metadata["ship_name"],
-        survey_name=metadata["survey_name"],
-        echosounder=metadata["sonar_model"],
-        file_download_directory=str(download_dir),
-        upload_to_gcp=upload_to_gcp,
-        debug=debug,
-    )
-
-    # Same sanity check as aa-raw: download_raw_file_from_ncei returns
-    # nothing useful, so we only know it worked by checking disk. Without
-    # this, a silent failure would let us hand a missing path to echopype
-    # and surface a confusing error from the open_raw layer instead.
-    if not raw_path.exists():
-        logger.error(
-            f"Download appeared to succeed, but '{raw_path}' is not on "
-            "disk. Rerun with --debug for details."
+    if raw_path.exists() and not force:
+        # Trust the file on disk. We don't verify size or checksum
+        # against NCEI — that would defeat the purpose of caching.
+        # --force is the escape hatch if the user suspects corruption.
+        logger.info(
+            f".raw already on disk, skipping NCEI download: {raw_path} "
+            f"({raw_path.stat().st_size} bytes). Pass --force to re-download."
         )
-        sys.exit(1)
-    logger.success(f"Downloaded {raw_path.name} ({raw_path.stat().st_size} bytes).")
+    else:
+        logger.info(
+            f"Downloading {file_name} "
+            f"({metadata['ship_name']} / {metadata['survey_name']} / "
+            f"{metadata['sonar_model']}) from NCEI -> {download_dir}"
+        )
+        download_raw_file_from_ncei(
+            file_name=file_name,
+            file_type="raw",
+            ship_name=metadata["ship_name"],
+            survey_name=metadata["survey_name"],
+            echosounder=metadata["sonar_model"],
+            file_download_directory=str(download_dir),
+            upload_to_gcp=upload_to_gcp,
+            debug=debug,
+        )
+
+        # Same sanity check as aa-raw: download_raw_file_from_ncei
+        # returns nothing useful, so we only know it worked by checking
+        # disk. Without this, a silent failure would let us hand a
+        # missing path to echopype and surface a confusing error from
+        # the open_raw layer instead.
+        if not raw_path.exists():
+            logger.error(
+                f"Download appeared to succeed, but '{raw_path}' is not on "
+                "disk. Rerun with --debug for details."
+            )
+            sys.exit(1)
+        logger.success(
+            f"Downloaded {raw_path.name} ({raw_path.stat().st_size} bytes)."
+        )
 
     # ---- Convert .raw → .nc -------------------------------------
     logger.info(
