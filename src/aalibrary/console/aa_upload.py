@@ -22,11 +22,12 @@ Two upload modes (auto-detected, can be forced):
      directory uploader at that — keeps the path-convention logic
      inside aalibrary where it belongs.
 
-  2. As-is mode (--as-is) — wraps aalibrary.egress.upload_folder_as_is_to_gcp.
-     Uploads a directory tree verbatim under --destination_prefix. No
+  2. As-is mode (--as-is) — wraps aalibrary.egress.upload_folder_as_is_to_gcp
+     for directories, or aalibrary.utils.cloud_utils.upload_file_to_gcp_bucket
+     for single files. Uploads under --destination_prefix verbatim. No
      structure enforcement, no metadata flags. Use this for one-off
-     dumps that don't need to be retrievable through aalibrary's
-     ship/survey/echosounder views.
+     dumps (region files, scratch data, etc.) that don't need to be
+     retrievable through aalibrary's ship/survey/echosounder views.
 
 Pipeline contract (mirrors the rest of the aa-suite):
     input  : a single file or directory path, positional arg or stdin
@@ -134,14 +135,22 @@ def print_help() -> None:
                                   Other values: NCEI, OMAO, etc.
 
     As-is mode options:
-      --as-is, --as_is            Upload the input directory verbatim
-                                  to GCP using upload_folder_as_is_to_gcp.
-                                  Requires --destination_prefix. The
-                                  input must be a directory; single
-                                  files are not supported in this mode.
+      --as-is, --as_is            Upload the input verbatim to GCP under
+                                  --destination_prefix. Accepts EITHER
+                                  a single file or a directory:
+                                    - File      -> blob path is
+                                                   <destination_prefix>/<filename>
+                                                   (via cloud_utils'
+                                                   upload_file_to_gcp_bucket).
+                                    - Directory -> uploaded via
+                                                   egress.upload_folder_as_is_to_gcp.
+                                  No ship/survey/echosounder metadata
+                                  required — the prefix you supply IS
+                                  the path layout.
       --destination_prefix PFX    Bucket-relative prefix to drop the
-                                  folder under (e.g. other/scratch/).
-                                  REQUIRED in as-is mode.
+                                  file or folder under (e.g. other/scratch/).
+                                  REQUIRED in as-is mode. Trailing slash
+                                  is normalized.
 
     GCP environment:
       --gcp_env {prod,dev}        Switch the active aalibrary GCP env
@@ -195,6 +204,10 @@ def print_help() -> None:
 
       # Dump a folder anywhere in the bucket, ignoring conventions:
       aa-upload ./scratch_data --as-is --destination_prefix other/junk/
+
+      # Upload a single arbitrary file (e.g. a region file):
+      aa-upload region.evr --as-is \\
+        --destination_prefix HDD/Henry_B_Bigelow/HB1603/Echosounder/Data/Evr/
 
       # Dry-run before a long upload:
       aa-upload ./big_dir --ship_name X --survey_name Y \\
@@ -313,13 +326,10 @@ def main() -> None:
     # Mode dispatch + validation
     # ---------------------------
     if args.as_is:
-        if is_file:
-            logger.error(
-                "--as-is requires a directory input; "
-                f"'{input_path}' is a file. Drop --as-is, or point at a "
-                "directory."
-            )
-            sys.exit(2)
+        # --as-is now accepts either a file or a directory. For a single
+        # file the blob path is just `<prefix>/<filename>` — there's no
+        # path convention to preserve, since --as-is is by definition
+        # convention-free. The dispatch in _upload_as_is handles both.
         if not args.destination_prefix:
             logger.error(
                 "--as-is requires --destination_prefix "
@@ -619,7 +629,56 @@ def _upload_as_is(
     gcp_bucket,
     dry_run: bool,
 ) -> None:
-    """As-is folder upload via aalibrary.egress.upload_folder_as_is_to_gcp."""
+    """As-is upload to GCP. Despite the parameter name (kept for
+    backwards compatibility), local_folder may be either a file or a
+    directory:
+
+      - Directory -> aalibrary.egress.upload_folder_as_is_to_gcp.
+      - File      -> aalibrary.utils.cloud_utils.upload_file_to_gcp_bucket,
+                     blob path = `<destination_prefix>/<filename>`.
+
+    The file branch deliberately uses the low-level upload primitive
+    rather than wrapping the file in a temp directory: --as-is is
+    convention-free, so the blob path is fully determined by the
+    user's prefix and there's nothing aalibrary needs to "decide"
+    about the layout.
+    """
+    if local_folder.is_file():
+        # ---- Single-file as-is ----------------------------------
+        try:
+            from aalibrary.utils.cloud_utils import upload_file_to_gcp_bucket
+        except Exception as e:
+            logger.exception(
+                f"Failed to import aalibrary.utils.cloud_utils: {e}"
+            )
+            sys.exit(1)
+
+        # Normalize trailing slash so "other/scratch" and
+        # "other/scratch/" both produce ".../scratch/filename" rather
+        # than ".../scratchfilename".
+        prefix = destination_prefix.rstrip("/") + "/"
+        blob_path = f"{prefix}{local_folder.name}"
+
+        logger.info(
+            f"Uploading single file '{local_folder.name}' as-is to "
+            f"blob '{blob_path}' ({local_folder.stat().st_size} bytes)."
+        )
+
+        if dry_run:
+            logger.info(
+                f"[dry-run] Would upload '{local_folder}' -> '{blob_path}'."
+            )
+            return
+
+        upload_file_to_gcp_bucket(
+            bucket=gcp_bucket,
+            blob_file_path=blob_path,
+            local_file_path=str(local_folder),
+            debug=False,
+        )
+        return
+
+    # ---- Directory as-is ----------------------------------------
     try:
         from aalibrary.egress import upload_folder_as_is_to_gcp
     except Exception as e:
