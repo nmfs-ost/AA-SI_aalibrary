@@ -9,20 +9,20 @@ from . import config
 
 __version__ = "1.2.0"
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+# logging.basicConfig(
+#     level=logging.DEBUG,
+#     format="%(asctime)s [%(levelname)s] %(message)s",
+#     handlers=[logging.StreamHandler(sys.stdout)],
+# )
 
-# set up logging to console
-console = logging.StreamHandler()
-console.setLevel(logging.DEBUG)
-# set a format which is simpler for console use
-formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-console.setFormatter(formatter)
-# add the handler to the root logger
-logging.getLogger("").addHandler(console)
+# # set up logging to console
+# console = logging.StreamHandler()
+# console.setLevel(logging.DEBUG)
+# # set a format which is simpler for console use
+# formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+# console.setFormatter(formatter)
+# # add the handler to the root logger
+# logging.getLogger("").addHandler(console)
 
 def _disable_cloud_sdk_warning():
     """Disable the warning about missing Cloud SDK credentials."""
