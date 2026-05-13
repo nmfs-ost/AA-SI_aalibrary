@@ -27,15 +27,26 @@ and exits immediately (no BigQuery lookup, no download, no conversion).
 If only the .raw exists, the download is skipped but the conversion
 still runs. Pass --force to override both checks.
 
-Input shape: a bare filename triggers a full NCEI flow (BigQuery
-lookup + download) into --file_download_directory. A path with
-directory components (absolute or relative) is treated as a pointer
-to an existing local .raw — aa-ed uses that file as the source,
-writes the .nc alongside it, and does ZERO network work: no NCEI
-download, no BigQuery query, no GCP credentials required. Sonar
-model is taken from --sonar_model if provided, otherwise auto-
-detected from the .raw header via aalibrary's sonar_checker.
---force never overwrites a user-provided .raw.
+Input shape: aa-ed auto-detects three modes from the input:
+
+  - Bare filename ("HB1603...raw") -> full NCEI flow: BigQuery
+    lookup + download + convert. Output: .nc absolute path on stdout.
+
+  - Path to an existing .raw file ("/abs/path/file.raw") -> fully
+    offline single-file mode. Sonar model detected from header (or
+    --sonar_model), .nc lands next to the .raw, ZERO network calls.
+    Output: .nc absolute path on stdout. --force never overwrites
+    a user-provided .raw.
+
+  - Path to an existing directory ("/abs/path/dir/") -> batch mode.
+    Globs *.raw (or **/*.raw with --recursive), converts each via
+    the same offline path, passes through standalone .nc files,
+    keeps going on per-file failures. Output: the DIRECTORY path
+    on stdout (not a list of .nc paths) for aa-combine et al.
+
+Idempotency: if the target .nc already exists, aa-ed prints its path
+and exits (single-file modes) or counts it as a cache hit (directory
+mode). --force overrides.
 
 Typical pipeline usage:
     echo HB1603_L1-D20160703-T183957.raw | aa-ed | aa-sv | aa-graph
@@ -101,8 +112,8 @@ def print_help() -> None:
     Usage: aa-ed [OPTIONS] [FILE_NAME]
 
     Arguments:
-      FILE_NAME                   The raw file to fetch and convert. Two
-                                  shapes accepted:
+      FILE_NAME                   The raw file (or directory) to process.
+                                  THREE shapes accepted, auto-detected:
 
                                   - Bare filename (e.g.
                                     HB1603_L1-D20160703-T183957.raw)
@@ -111,20 +122,28 @@ def print_help() -> None:
                                     file, and writes the .nc into
                                     --file_download_directory.
 
-                                  - Path with directory components (e.g.
-                                    /home/me/data/HB1603_L1-D20160703-T183957.raw
-                                    or ./data/HB1603...raw) -> the
-                                    file MUST already exist there.
-                                    aa-ed uses it as-is, detects the
-                                    sonar model from the file header
-                                    (no BigQuery, no NCEI download, no
-                                    GCP credentials needed), and writes
-                                    the .nc ALONGSIDE the .raw.
-                                    --file_download_directory is
-                                    ignored. --sonar_model overrides
-                                    the auto-detection.
+                                  - Path to an existing .raw file (e.g.
+                                    /home/me/data/HB1603...raw or
+                                    ./data/HB1603...raw) -> aa-ed uses
+                                    it as-is, detects the sonar model
+                                    from the file header (no BigQuery,
+                                    no NCEI download, no GCP creds
+                                    needed), and writes the .nc
+                                    ALONGSIDE the .raw.
 
-                                  Either shape must end in .raw.
+                                  - Path to an existing directory (e.g.
+                                    /home/me/data/ or ./data/) ->
+                                    DIRECTORY BATCH MODE. aa-ed globs
+                                    *.raw inside (or **/*.raw with -r),
+                                    runs the same offline conversion
+                                    on each file, and prints the
+                                    DIRECTORY path on stdout (not
+                                    individual .nc paths). Standalone
+                                    .nc files pass through silently.
+                                    Per-file failures are logged but
+                                    don't abort the batch; exit code
+                                    is non-zero if any failed.
+
                                   Optional; falls back to stdin if not
                                   provided.
 
@@ -284,6 +303,13 @@ def main() -> None:
         help="Data source (default: NCEI; others currently ignored).",
     )
     parser.add_argument(
+        "--recursive", "-r",
+        action="store_true",
+        default=False,
+        help="In directory mode, recursively scan subdirectories for .raw "
+             "files. No effect when the input is a single file.",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         default=False,
@@ -318,45 +344,59 @@ def main() -> None:
         logger.error("Empty file name.")
         sys.exit(1)
 
-    # Two acceptable input shapes:
+    # Three acceptable input shapes:
     #   1. Bare file name ("HB1603...raw") — aa-ed will download from
-    #      NCEI to --file_download_directory.
-    #   2. Path with directory components ("/home/me/data/HB1603...raw"
-    #      or "./data/HB1603...raw") — the user is telling us this
-    #      file ALREADY LIVES there. Use it as the authoritative .raw,
-    #      put the .nc alongside it, and skip the NCEI download
-    #      entirely. Re-downloading to CWD just because the user typed
-    #      a path would silently waste bandwidth and leave the user's
-    #      data sitting somewhere other than where they expect.
+    #      NCEI to --file_download_directory. (NCEI single-file mode)
+    #   2. Path to an existing .raw file
+    #      ("/home/me/data/HB1603...raw" or "./data/HB1603...raw") —
+    #      use it as-is, skip NCEI download and BigQuery entirely.
+    #      (Local single-file mode)
+    #   3. Path to an existing directory ("/home/me/data/" or "./data/")
+    #      — convert every .raw inside (skipping cache hits, passing
+    #      through standalone .nc files) and print the directory path
+    #      on stdout for aa-combine et al. (Directory batch mode)
+    #
+    # Mode is auto-detected from the input shape — no flag needed.
+    # The directory branch dispatches BEFORE args.file_name gets set
+    # to a basename (which would be the directory's name, not a useful
+    # value) and before the .raw-extension check (irrelevant for dirs).
     _user_input = args.file_name
     _input_path = Path(_user_input).expanduser()
     _has_directory = _user_input != _input_path.name
 
-    # The NCEI cache lookup always works on the basename only — even
-    # when the user gave us a path, the BigQuery file_name column
-    # stores just the filename.
-    args.file_name = _input_path.name
-
     user_provided_raw_path: Optional[Path] = None
     if _has_directory:
         _input_path = _input_path.resolve()
+
+        # === Directory mode dispatch ===============================
+        if _input_path.is_dir():
+            _run_directory_mode(directory=_input_path, args=args)
+            return
+
         if not _input_path.is_file():
             # If the user gave us a path, they expect that path to
             # resolve. Silently falling back to "download to CWD" here
-            # would be exactly the surprising behavior we're trying
-            # to fix — better to surface the mistake.
+            # would be the surprising behavior we're trying to avoid.
             logger.error(
-                f"Path '{_input_path}' does not exist as a file. "
-                "If you intended for aa-ed to download from NCEI, pass "
-                f"just the filename ('{args.file_name}') without a "
-                "directory component."
+                f"Path '{_input_path}' does not exist as a file or "
+                "directory. If you intended for aa-ed to download from "
+                f"NCEI, pass just the filename ('{_input_path.name}') "
+                "without a directory component."
             )
             sys.exit(1)
+
         user_provided_raw_path = _input_path
         logger.info(
             f"Using user-provided .raw at '{user_provided_raw_path}'; "
             "no NCEI download will be performed for this file."
         )
+
+    # The NCEI cache lookup always works on the basename only — even
+    # when the user gave us a path, the BigQuery file_name column
+    # stores just the filename. We set args.file_name here, AFTER the
+    # directory check, so directory mode doesn't see a confusing
+    # basename-of-the-directory value.
+    args.file_name = _input_path.name
 
     # We deliberately keep this strict: aa-ed is a .raw → .nc tool. Other
     # extensions belong on aa-nc (for already-downloaded files) or aa-sonar
@@ -909,6 +949,294 @@ def process_file(
         sys.exit(1)
 
     logger.success(f"RAW → NetCDF conversion complete: {nc_path.resolve()}")
+
+
+def _convert_one_local(
+    raw_path: Path,
+    nc_path: Path,
+    sonar_model_override: Optional[str],
+    force: bool,
+) -> dict:
+    """Convert a single local .raw to .nc, fully offline.
+
+    No NCEI download, no BigQuery — assumes the .raw is already on
+    disk at raw_path. Sonar model comes from sonar_model_override if
+    given, otherwise auto-detected from the .raw file's header via
+    _detect_sonar_model_from_file().
+
+    Idempotent: if nc_path already exists and not force, returns
+    early with status="cached" — the existing .nc is treated as
+    authoritative.
+
+    Used by _run_directory_mode to process each file in a batch.
+    Returns a result dict instead of calling sys.exit so the caller
+    can aggregate results across many files (a single bad file at
+    file 47/100 shouldn't discard files 1-46).
+
+    Returns a dict shaped like:
+        {
+            "status": "converted" | "cached" | "failed",
+            "raw_path": Path,
+            "nc_path": Path,
+            "sonar_model": str,   # present when status == "converted"
+            "error": str,         # present when status == "failed"
+        }
+    """
+    # Cache check first — same idempotency contract as single-file mode.
+    if nc_path.exists() and not force:
+        return {
+            "status": "cached",
+            "raw_path": raw_path,
+            "nc_path": nc_path,
+        }
+
+    # Resolve sonar model.
+    if sonar_model_override:
+        sonar_model = sonar_model_override
+    else:
+        sonar_model = _detect_sonar_model_from_file(raw_path)
+        if sonar_model == "UNKNOWN":
+            return {
+                "status": "failed",
+                "raw_path": raw_path,
+                "nc_path": nc_path,
+                "error": (
+                    "could not auto-detect sonar model from header; "
+                    "pass --sonar_model to set it explicitly"
+                ),
+            }
+
+    # Echopype import. Import-once-per-call is wasteful in a loop but
+    # the import is cached after the first call, so the cost is paid
+    # once across the batch.
+    try:
+        import echopype as ep
+    except Exception as e:
+        return {
+            "status": "failed",
+            "raw_path": raw_path,
+            "nc_path": nc_path,
+            "error": f"echopype import failed: {e}",
+        }
+
+    try:
+        # If --force and the .nc already exists, remove it first.
+        # echopype's to_netcdf backend behavior on existing files is
+        # version-dependent (append vs error); removing up front
+        # makes the result predictable.
+        if nc_path.exists():
+            nc_path.unlink()
+        ed = ep.open_raw(raw_file=raw_path, sonar_model=sonar_model)
+        ed.to_netcdf(save_path=nc_path)
+    except Exception as e:
+        return {
+            "status": "failed",
+            "raw_path": raw_path,
+            "nc_path": nc_path,
+            "error": f"conversion error: {e}",
+        }
+
+    if not nc_path.exists():
+        # Defensive: to_netcdf returned without raising but the file
+        # isn't there. Treat as a failure rather than reporting
+        # spurious success.
+        return {
+            "status": "failed",
+            "raw_path": raw_path,
+            "nc_path": nc_path,
+            "error": "to_netcdf completed but .nc is not on disk",
+        }
+
+    return {
+        "status": "converted",
+        "raw_path": raw_path,
+        "nc_path": nc_path,
+        "sonar_model": sonar_model,
+    }
+
+
+def _run_directory_mode(directory: Path, args) -> None:
+    """Batch-convert every .raw in `directory` to .nc.
+
+    Dispatched from main() when the user's input path resolves to an
+    existing directory. The rest of main() is single-file-only, so
+    this function owns the entire directory pipeline end-to-end:
+    flag-combination guardrails, globbing, per-file conversion via
+    _convert_one_local, result aggregation, and the final stdout
+    print.
+
+    Per-file failure policy: keep going, log each failure, exit
+    non-zero at the end if any failed. Aborting the whole batch on
+    the first bad file would discard hours of completed work in a
+    long run; the user can rerun the failures alone afterward.
+
+    The directory path (not a list of .nc paths) is printed on stdout
+    so downstream tools like aa-combine — which already accepts a
+    directory and globs *.nc inside — can pick up where aa-ed left
+    off.
+    """
+    # ---- Flag-combination guardrails ----------------------------
+    if args.output_path is not None:
+        # In single-file mode, -o picks the .nc filename. In directory
+        # mode it would have to mean "target directory for all the
+        # .nc files," which is a different contract and would let
+        # users accidentally collide many .nc files into one path.
+        # Reject up front rather than guessing.
+        logger.error(
+            "-o / --output_path is not supported in directory mode. "
+            ".nc files always land alongside their source .raw inside "
+            "the input directory."
+        )
+        sys.exit(2)
+
+    if args.cleanup_raw:
+        # Single-file --cleanup-raw deletes one downloaded .raw the
+        # user has consented to discarding. Directory mode would
+        # delete N user-owned files at once — different scale of
+        # risk. Refuse outright.
+        logger.error(
+            "--cleanup-raw is not supported in directory mode. "
+            "Deleting many user-owned .raw files at once is too "
+            "risky for a single flag; remove them manually after "
+            "verifying the .nc outputs."
+        )
+        sys.exit(2)
+
+    if args.upload_to_gcp:
+        # Threading upload through the per-file loop would change
+        # the contract of aa-upload and isn't currently wired. Point
+        # the user at the clean composition.
+        logger.warning(
+            "--upload_to_gcp is ignored in directory mode. Pipe the "
+            "directory through aa-upload after aa-ed for that "
+            "(aa-ed ./dir/ | aa-upload --as-is ...)."
+        )
+
+    # ---- Glob inputs --------------------------------------------
+    raw_pattern = "**/*.raw" if args.recursive else "*.raw"
+    nc_pattern = "**/*.nc" if args.recursive else "*.nc"
+    raw_files = sorted(directory.glob(raw_pattern))
+    all_nc_files = sorted(directory.glob(nc_pattern))
+
+    if not raw_files and not all_nc_files:
+        hint = " Try --recursive." if not args.recursive else ""
+        logger.error(
+            f"No .raw or .nc files found in '{directory}' "
+            f"(pattern: '{raw_pattern}').{hint}"
+        )
+        sys.exit(1)
+
+    logger.info(
+        f"Directory mode: found {len(raw_files)} .raw and "
+        f"{len(all_nc_files)} .nc file(s) in '{directory}' "
+        f"(recursive={args.recursive})."
+    )
+
+    # Identify standalone .nc files — those without a matching .raw
+    # in the same directory. These count as already-converted and
+    # pass through to the directory output without us touching them.
+    # Matching is (parent, stem) to handle the recursive case where
+    # files in different subdirs might share a stem.
+    raw_stems_by_dir = {(p.parent, p.stem) for p in raw_files}
+    standalone_nc = [
+        n for n in all_nc_files
+        if (n.parent, n.stem) not in raw_stems_by_dir
+    ]
+
+    # Sonar model override applies uniformly to every .raw in the dir.
+    # Surveys are usually single-echosounder, so this is the common case.
+    sonar_override = args.sonar_model
+    if sonar_override:
+        logger.info(
+            f"Applying --sonar_model='{sonar_override}' uniformly to "
+            f"all {len(raw_files)} .raw file(s) in the directory."
+        )
+    elif raw_files:
+        logger.info(
+            "Auto-detecting sonar model per file from .raw headers."
+        )
+
+    if args.force and raw_files:
+        # --force in directory mode regenerates EVERY .nc, not just
+        # one. Easy to fire by accident with a stale flag from a
+        # prior single-file run, so warn loudly with the count.
+        existing_nc = sum(
+            1 for r in raw_files if r.with_suffix(".nc").exists()
+        )
+        if existing_nc:
+            logger.warning(
+                f"--force will regenerate {existing_nc} existing .nc "
+                f"file(s) in '{directory}'."
+            )
+
+    # ---- Per-file conversion loop -------------------------------
+    counts = {
+        "converted": 0,
+        "cached": 0,
+        "passthrough": len(standalone_nc),
+        "failed": 0,
+    }
+    failures: list = []
+
+    for i, raw_path in enumerate(raw_files, start=1):
+        nc_path = raw_path.with_suffix(".nc")
+        logger.info(f"[{i}/{len(raw_files)}] {raw_path.name}")
+
+        result = _convert_one_local(
+            raw_path=raw_path,
+            nc_path=nc_path,
+            sonar_model_override=sonar_override,
+            force=args.force,
+        )
+
+        status = result["status"]
+        counts[status] = counts.get(status, 0) + 1
+
+        if status == "converted":
+            logger.success(
+                f"  -> {nc_path.name} "
+                f"(sonar={result['sonar_model']}, "
+                f"{nc_path.stat().st_size:,} bytes)"
+            )
+        elif status == "cached":
+            logger.info(
+                "  .nc already exists, skipping "
+                "(--force to override)."
+            )
+        elif status == "failed":
+            logger.error(f"  FAILED: {result['error']}")
+            failures.append((raw_path, result["error"]))
+
+    # ---- Summary + stdout contract ------------------------------
+    total_outputs = (
+        counts["converted"] + counts["cached"] + counts["passthrough"]
+    )
+    if total_outputs > 0:
+        logger.success(
+            f"Directory mode complete in '{directory}': "
+            f"{counts['converted']} converted, "
+            f"{counts['cached']} cached (skipped), "
+            f"{counts['passthrough']} pre-existing .nc passed through, "
+            f"{counts['failed']} failed."
+        )
+
+    if failures:
+        logger.error(
+            f"--- {len(failures)} file(s) failed during conversion: ---"
+        )
+        for raw_path, err in failures:
+            logger.error(f"  {raw_path}: {err}")
+
+    # Pipeline contract: emit the directory path on stdout so aa-combine
+    # (which already accepts a directory and globs *.nc inside) can
+    # pick up where aa-ed left off. We print this even on partial
+    # failure — successful conversions are real and downstream may
+    # still want them. The non-zero exit code below signals "something
+    # failed" so a careful shell pipeline can react.
+    print(directory.resolve())
+
+    if failures:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

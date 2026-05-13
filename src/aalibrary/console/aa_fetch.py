@@ -11,12 +11,17 @@ metadata DB, and downloads matching files into a per-run directory under
 
 Pipeline contract:
 - stdin  : optional YAML path (one line)
-- stdout : NOTHING — this is the terminus of the build → fetch pipeline
+- stdout : on success, the absolute path of the download directory
+           (so aa-fetch can feed aa-ed and the rest of the chain);
+           empty on failure (non-zero exit)
 - stderr : all logs and errors
 
 Typical usage:
     aa-get -n request.yaml | aa-fetch
     aa-fetch ./request.yaml -o ./downloads -n run_001
+
+    # End-to-end build -> fetch -> convert -> combine -> Sv -> graph:
+    aa-get | aa-fetch | aa-ed | aa-combine | aa-sv | aa-graph
 """
 from __future__ import annotations
 
@@ -63,7 +68,10 @@ WHAT THIS TOOL DOES
   • Builds a SQL query and runs it against the metadata DB
   • Downloads matching files into a per-run directory
   • Logs progress and errors to stderr (loguru)
-  • Prints NOTHING to stdout — this is the terminus of the pipeline
+  • Prints the absolute path of the download directory to stdout on
+    success, so aa-ed (in directory mode) and the rest of the chain
+    can be piped after aa-fetch. On failure stdout is empty and the
+    exit code is non-zero.
 
 HOW YAML_PATH IS PROVIDED
   (A) Positional argument:
@@ -96,6 +104,10 @@ PIPELINE EXAMPLES
   aa-get | aa-fetch
   aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001
   aa-fetch ./request.yaml
+
+  # Full chain — build a YAML, fetch its files, convert each to .nc,
+  # combine into one transect, compute Sv, plot:
+  aa-get | aa-fetch | aa-ed | aa-combine | aa-sv | aa-graph
 
 TROUBLESHOOTING
   • "File does not exist" — check the YAML path or your pipeline output.
@@ -229,6 +241,12 @@ def main() -> int:
 
         if not results:
             logger.warning("No files matched the YAML criteria — nothing to download.")
+            # Still emit the (empty) download directory so the next
+            # pipeline stage sees a concrete path rather than empty
+            # stdin. aa-ed in directory mode will surface the empty
+            # directory as its own clear error — better than aa-ed
+            # printing its help screen because it got nothing.
+            print(download_dir, flush=True)
             return 0
 
         # IMPORTANT: do NOT wrap download_results in a "could not log cleanly"
@@ -242,6 +260,12 @@ def main() -> int:
             return 1
 
         logger.success(f"aa-fetch complete. Files in: {download_dir}")
+        # Pipeline contract: absolute path of the download directory on
+        # stdout. Lets `aa-fetch | aa-ed` (in directory mode) compose
+        # cleanly. flush=True so the path arrives at the downstream
+        # tool before this process exits — important when the next
+        # stage starts reading immediately.
+        print(download_dir, flush=True)
         return 0
 
     except Exception as e:
