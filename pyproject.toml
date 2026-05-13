@@ -107,3 +107,4 @@ aa-evl = "aalibrary.console.aa_evl:main"
 
 aa-sonar = "aalibrary.console.aa_sonar:main"
 aa-ed = "aalibrary.console.aa_ed:main"
+aa-upload = "aalibrary.console.aa_upload:main"
