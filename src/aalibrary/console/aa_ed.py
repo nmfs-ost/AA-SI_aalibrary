@@ -447,12 +447,6 @@ def main() -> None:
         logger.error(f"Refusing to overwrite input file: {raw_path.resolve()}")
         sys.exit(1)
 
-    # Explicit confirmation of where the .nc will land. The user
-    # complained about a previous version putting files in surprising
-    # places; this log makes the destination undeniable on stderr
-    # before any heavy work begins.
-    logger.info(f"Output .nc will be written to: {nc_path.resolve()}")
-
     # ---------------------------
     # Short-circuit: .nc already on disk
     # ---------------------------
@@ -463,13 +457,23 @@ def main() -> None:
     # just hand the existing path to the next pipeline stage.
     # --force overrides this for users who suspect the cached .nc is
     # stale or corrupt.
+    logger.debug(
+        f"Checking for existing .nc at {nc_path.resolve()}: "
+        f"exists={nc_path.exists()}, force={args.force}"
+    )
     if nc_path.exists() and not args.force:
-        logger.info(
-            f".nc already on disk; skipping lookup, download, and "
-            f"conversion: {nc_path.resolve()}"
+        logger.success(
+            f".nc already exists; NOT overwriting. Reusing: "
+            f"{nc_path.resolve()} (pass --force to regenerate)."
         )
         print(nc_path.resolve())
         return
+
+    # Only log "will be written" once we know we're actually going to
+    # write — i.e. past the short-circuit. The previous version logged
+    # this unconditionally, which made successful cache hits look like
+    # writes in the stderr stream.
+    logger.info(f"Output .nc will be written to: {nc_path.resolve()}")
 
     # ---------------------------
     # Resolve metadata
