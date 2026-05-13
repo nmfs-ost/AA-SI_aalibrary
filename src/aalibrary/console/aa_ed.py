@@ -88,7 +88,10 @@ def print_help() -> None:
     Arguments:
       FILE_NAME                   Name of the raw file to fetch and convert
                                   (e.g. HB1603_L1-D20160703-T183957.raw).
-                                  Must include the .raw extension. Optional;
+                                  Must include the .raw extension. May be
+                                  a bare name or a full path — the directory
+                                  portion is ignored, only the basename is
+                                  used for the NCEI cache lookup. Optional;
                                   falls back to stdin if not provided.
 
     Optional:
@@ -265,6 +268,21 @@ def main() -> None:
     if not args.file_name:
         logger.error("Empty file name.")
         sys.exit(1)
+
+    # Accept either a bare file name or a full path. We only ever need
+    # the file name itself: the NCEI cache matches on the file_name
+    # column, and the downloaded copy lands under
+    # --file_download_directory regardless of where the input pointed.
+    # So if the user piped a path (from aa-raw, from a notebook variable
+    # holding an absolute path, from `find ... | aa-ed`, etc.) discard
+    # the directory portion and keep only the basename.
+    _raw_input = args.file_name
+    args.file_name = Path(args.file_name).name
+    if args.file_name != _raw_input:
+        logger.debug(
+            f"Stripped directory from input '{_raw_input}'; "
+            f"using basename '{args.file_name}'."
+        )
 
     # We deliberately keep this strict: aa-ed is a .raw → .nc tool. Other
     # extensions belong on aa-nc (for already-downloaded files) or aa-sonar
