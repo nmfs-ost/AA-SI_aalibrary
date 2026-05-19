@@ -18,7 +18,7 @@ setup_info = dict(
     project_urls={
         'Documentation': 'https://nmfs-ost.github.io/AA-SI_aalibrary/',
         "Source": "https://github.com/nmfs-ost/AA-SI_aalibrary",
-        # 'Tracker': 'https://github.com/pyglet/pyglet/issues',
+        'Tracker': 'https://github.com/nmfs-ost/AA-SI_aalibrary/issues',
     },
     description="A python library used for fetching acoustics data.",
     long_description=open("README.md", encoding="utf-8").read(),
@@ -48,6 +48,7 @@ setup_info = dict(
     ),
     package_dir={"": "src"},
     # Requirements
+    python_requires='>=3.13',
     install_requires=[
         "echopype>=0.9.0",
         "zarr==2.8.3"

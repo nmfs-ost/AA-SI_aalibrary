@@ -24,13 +24,15 @@ dynamic = [
 
 authors = [
   { name="Hannan Khan", email="hannan.khan@noaa.gov" },
+  { name="Michael Ryan", email="michael.c.ryan@noaa.gov" },
 ]
 maintainers = [
   { name="Hannan Khan", email="hannan.khan@noaa.gov" },
+  { name="Michael Ryan", email="michael.c.ryan@noaa.gov" },
 ]
 description = "A data-fetching library created for NOAA's Active-Acoustics initiative."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 
 
 [project.urls]
