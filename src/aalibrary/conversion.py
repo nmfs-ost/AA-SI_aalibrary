@@ -347,7 +347,7 @@ def convert_raw_to_netcdf(
             is_metadata=False,
             debug=rf.debug,
         )
-        # Upload the metadata file associated with this
+        # Upload the BQ metadata for this file
         metadata.create_and_upload_metadata_df_for_netcdf(
             rf=rf,
             debug=rf.debug,
@@ -473,7 +473,7 @@ def convert_raw_to_netcdf_ices(
             is_metadata=False,
             debug=rf.debug,
         )
-        # Upload the metadata file associated with this
+        # Upload the BQ metadata for this file
         metadata.create_and_upload_metadata_df_for_netcdf(
             rf=rf,
             debug=rf.debug,

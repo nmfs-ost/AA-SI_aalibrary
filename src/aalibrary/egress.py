@@ -231,6 +231,7 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 verbose=False,
                 debug=debug,
             )
+            # Upload the BQ metadata for this file
             metadata.create_and_upload_metadata_df_for_netcdf(
                 rf=RawFile(
                     file_name=file_name,
