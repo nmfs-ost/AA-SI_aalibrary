@@ -21,8 +21,6 @@ class TestNCEIIngestion:
 
         self.rf = RawFile(
             file_name="2107RL_CW-D20210919-T172430.raw",
-            file_name_idx="2107RL_CW-D20210919-T172430.idx",
-            file_name_nc="2107RL_CW-D20210919-T172430.nc",
             file_type="raw",
             ship_name="Reuben_Lasker",
             survey_name="RL2107",
@@ -32,9 +30,6 @@ class TestNCEIIngestion:
             is_metadata=False,
         )
 
-        self.local_raw_file_path = self.rf.raw_file_download_path
-        self.local_idx_file_path = self.rf.idx_file_download_path
-        self.local_bot_file_path = self.rf.bot_file_download_path
         self.gcp_storage_bucket_location_raw = (
             self.rf.raw_gcp_storage_bucket_location
         )
@@ -76,12 +71,12 @@ class TestNCEIIngestion:
             )
 
         # Delete locally if it exists
-        if os.path.exists(self.local_raw_file_path):
-            os.remove(self.local_raw_file_path)
-        if os.path.exists(self.local_idx_file_path):
-            os.remove(self.local_idx_file_path)
-        if os.path.exists(self.local_bot_file_path):
-            os.remove(self.local_bot_file_path)
+        if os.path.exists(self.rf.raw_file_download_path):
+            os.remove(self.rf.raw_file_download_path)
+        if os.path.exists(self.rf.idx_file_download_path):
+            os.remove(self.rf.idx_file_download_path)
+        if os.path.exists(self.rf.bot_file_download_path):
+            os.remove(self.rf.bot_file_download_path)
 
         # Download and upload to GCP using one function.
         ingestion.download_raw_file_from_ncei(
@@ -89,14 +84,14 @@ class TestNCEIIngestion:
             ship_name=self.rf.ship_name,
             survey_name=self.rf.survey_name,
             echosounder=self.rf.echosounder,
-            file_download_directory=self.rf.raw_file_download_path,
+            file_download_directory=self.rf.file_download_directory,
             upload_to_gcp=True,
             debug=False,
         )
 
         # assert that raw file exists after it have been downloaded.
         assert os.path.exists(
-            self.local_raw_file_path
+            self.rf.raw_file_download_path
         ), "Raw file has not been downloaded locally."
 
         # Assert that the raw file have been uploaded to GCP
@@ -139,10 +134,10 @@ class TestNCEIIngestion:
             )
 
         # Delete locally if it exists
-        if os.path.exists(self.local_raw_file_path):
-            os.remove(self.local_raw_file_path)
-        if os.path.exists(self.local_idx_file_path):
-            os.remove(self.local_idx_file_path)
+        if os.path.exists(self.rf.raw_file_download_path):
+            os.remove(self.rf.raw_file_download_path)
+        if os.path.exists(self.rf.idx_file_download_path):
+            os.remove(self.rf.idx_file_download_path)
 
         ingestion.download_raw_file(
             file_name=self.rf.file_name,
@@ -150,24 +145,24 @@ class TestNCEIIngestion:
             survey_name=self.rf.survey_name,
             echosounder=self.rf.echosounder,
             data_source=self.rf.data_source,
-            file_download_directory=self.rf.raw_file_download_path,
+            file_download_directory=self.rf.file_download_directory,
             debug=False,
         )
 
         # assert that both raw and idx files exist after they have been
         # downloaded.
-        assert os.path.exists(self.local_raw_file_path) and os.path.exists(
-            self.local_idx_file_path
+        assert os.path.exists(self.rf.raw_file_download_path) and os.path.exists(
+            self.rf.idx_file_download_path
         ), "Raw or Idx file has not been downloaded locally."
 
     def test_download_raw_idx_from_gcp(self):
         """Tests downloading the raw and idx files from GCP
         (cached versions)."""
         # Delete locally if it exists
-        if os.path.exists(self.local_raw_file_path):
-            os.remove(self.local_raw_file_path)
-        if os.path.exists(self.local_idx_file_path):
-            os.remove(self.local_idx_file_path)
+        if os.path.exists(self.rf.raw_file_download_path):
+            os.remove(self.rf.raw_file_download_path)
+        if os.path.exists(self.rf.idx_file_download_path):
+            os.remove(self.rf.idx_file_download_path)
 
         ingestion.download_raw_file(
             file_name=self.rf.file_name,
@@ -175,14 +170,14 @@ class TestNCEIIngestion:
             survey_name=self.rf.survey_name,
             echosounder=self.rf.echosounder,
             data_source=self.rf.data_source,
-            file_download_directory=self.rf.raw_file_download_path,
+            file_download_directory=self.rf.file_download_directory,
             debug=False,
         )
 
         # assert that both raw and idx files exist after they have been
         # downloaded.
-        assert os.path.exists(self.local_raw_file_path) and os.path.exists(
-            self.local_idx_file_path
+        assert os.path.exists(self.rf.raw_file_download_path) and os.path.exists(
+            self.rf.idx_file_download_path
         ), "Raw or Idx file has not been downloaded locally."
 
     def test_parse_correct_gcp_location(self):
@@ -199,10 +194,12 @@ class TestNCEIIngestion:
     def teardown_class(self):
         """Tears-down any temporary files, variables, or anything that was used
         for testing."""
-        if os.path.exists(self.local_raw_file_path):
-            os.remove(self.local_raw_file_path)
-        if os.path.exists(self.local_idx_file_path):
-            os.remove(self.local_idx_file_path)
+        if os.path.exists(self.rf.raw_file_download_path):
+            os.remove(self.rf.raw_file_download_path)
+        if os.path.exists(self.rf.idx_file_download_path):
+            os.remove(self.rf.idx_file_download_path)
+        if os.path.exists(self.rf.bot_file_download_path):
+            os.remove(self.rf.bot_file_download_path)
 
 
 class TestNCEIIngestionUserErrors:
@@ -211,27 +208,23 @@ class TestNCEIIngestionUserErrors:
 
     def setup_class(self):
         """Used for setting up the class."""
-        self.file_name = "2107RL_CW-D20210919-T172430.raw"
-        self.file_type = "raw"
-        self.ship_name = "Reuben_Lasker"
-        self.survey_name = "RL2107"
-        self.echosounder = "EK80"
-        self.data_source = "TEST"
-        self.file_download_location = "."
-        self.local_raw_file_path = os.sep.join(
-            [self.file_download_location, self.file_name]
-        )
-        self.local_idx_file_path = (
-            ".".join(self.local_raw_file_path.split(".")[:-1]) + ".idx"
-        )
-        self.local_nc_file_path = (
-            ".".join(self.local_raw_file_path.split(".")[:-1]) + ".nc"
+        self.rf = RawFile(
+                file_name="2107RL_CW-D20210919-T172430.raw",
+                file_type="raw",
+                ship_name="Reuben_Lasker",
+                survey_name="RL2107",
+                echosounder="EK80",
+                data_source="NCEI",
+                file_download_directory=".",
+                is_metadata=False,
         )
 
         # set up storage objects
-        _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs()
+        self.gcp_bucket = self.rf.gcp_bucket
         self.s3_client, self.s3_resource, self.s3_bucket = (
-            cloud_utils.create_s3_objs()
+            self.rf.s3_client,
+            self.rf.s3_resource,
+            self.rf.s3_bucket,
         )
 
     def raw_file_null_file_name(self):
@@ -240,10 +233,10 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_raw_file(
                 file_name="",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                file_download_directory=self.file_download_location,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -253,11 +246,11 @@ class TestNCEIIngestionUserErrors:
         there is an empty `file_type` param."""
         with pytest.raises(Exception):
             ingestion.download_raw_file(
-                file_name=self.file_name,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                file_download_directory=self.file_download_location,
+                file_name=self.rf.file_name,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -267,11 +260,11 @@ class TestNCEIIngestionUserErrors:
         there is an invalid `file_type` param."""
         with pytest.raises(Exception):
             ingestion.download_raw_file(
-                file_name=self.file_name,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                file_download_directory=self.file_download_location,
+                file_name=self.rf.file_name,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -281,11 +274,11 @@ class TestNCEIIngestionUserErrors:
         there is an empty `ship_name` param."""
         with pytest.raises(Exception):
             ingestion.download_raw_file(
-                file_name=self.file_name,
+                file_name=self.rf.file_name,
                 ship_name="",
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                file_download_directory=self.file_download_location,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -295,11 +288,11 @@ class TestNCEIIngestionUserErrors:
         there is an empty `survey_name` param."""
         with pytest.raises(Exception):
             ingestion.download_raw_file(
-                file_name=self.file_name,
-                ship_name=self.ship_name,
+                file_name=self.rf.file_name,
+                ship_name=self.rf.ship_name,
                 survey_name="",
-                echosounder=self.echosounder,
-                file_download_directory=self.file_download_location,
+                echosounder=self.rf.echosounder,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -309,11 +302,11 @@ class TestNCEIIngestionUserErrors:
         there is an empty `echosounder` param."""
         with pytest.raises(Exception):
             ingestion.download_raw_file(
-                file_name=self.file_name,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
+                file_name=self.rf.file_name,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
                 echosounder="",
-                file_download_directory=self.file_download_location,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -323,11 +316,11 @@ class TestNCEIIngestionUserErrors:
         there is an invalid `echosounder` param."""
         with pytest.raises(Exception):
             ingestion.download_raw_file(
-                file_name=self.file_name,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
+                file_name=self.rf.file_name,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
                 echosounder="abc",
-                file_download_directory=self.file_download_location,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -337,10 +330,10 @@ class TestNCEIIngestionUserErrors:
         there is an empty `file_download_location` param."""
         with pytest.raises(Exception):
             ingestion.download_raw_file(
-                file_name=self.file_name,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
+                file_name=self.rf.file_name,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
                 file_download_directory="",
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
@@ -355,10 +348,10 @@ class TestNCEIIngestionUserErrors:
                 os.utime("file.temp", None)
 
             ingestion.download_raw_file(
-                file_name=self.file_name,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
+                file_name=self.rf.file_name,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
                 file_download_directory="file.temp",
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
@@ -370,12 +363,12 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
                 raw_file_name="",
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -385,13 +378,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `file_type` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                raw_file_name=self.file_name,
+                raw_file_name=self.rf.file_name,
                 file_type="",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -401,13 +394,13 @@ class TestNCEIIngestionUserErrors:
         when there is an invalid `file_type` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                raw_file_name=self.file_name,
+                raw_file_name=self.rf.file_name,
                 file_type="abc",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -417,13 +410,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `ship_name` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                raw_file_name=self.file_name,
-                file_type=self.file_type,
+                raw_file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
                 ship_name="",
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -433,13 +426,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `survey_name` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                raw_file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
+                raw_file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
                 survey_name="",
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -449,13 +442,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `echosounder` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                raw_file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
+                raw_file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
                 echosounder="",
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -465,13 +458,13 @@ class TestNCEIIngestionUserErrors:
         when there is an invalid `echosounder` param."""
         with pytest.raises(Exception):
             ingestion.download_netcdf_file(
-                raw_file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
+                raw_file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
                 echosounder="abc",
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
             )
@@ -485,12 +478,12 @@ class TestNCEIIngestionUserErrors:
                 os.utime("file.temp", None)
 
             ingestion.download_netcdf_file(
-                raw_file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
+                raw_file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
                 file_download_directory="file.temp",
                 gcp_bucket=self.gcp_bucket,
                 debug=False,
@@ -502,12 +495,12 @@ class TestNCEIIngestionUserErrors:
         with pytest.raises(Exception):
             aalibrary.conversion.convert_raw_to_netcdf(
                 file_name="",
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -518,13 +511,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `file_type` param."""
         with pytest.raises(Exception):
             aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
+                file_name=self.rf.file_name,
                 file_type="",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -535,13 +528,13 @@ class TestNCEIIngestionUserErrors:
         when there is an invalid `file_type` param."""
         with pytest.raises(Exception):
             aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
+                file_name=self.rf.file_name,
                 file_type="abc",
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -552,13 +545,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `ship_name` param."""
         with pytest.raises(Exception):
             aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
-                file_type=self.file_type,
+                file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
                 ship_name="",
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -569,13 +562,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `survey_name` param."""
         with pytest.raises(Exception):
             aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
+                file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
                 survey_name="",
-                echosounder=self.echosounder,
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -586,13 +579,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `echosounder` param."""
         with pytest.raises(Exception):
             aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
+                file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
                 echosounder="",
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -603,13 +596,13 @@ class TestNCEIIngestionUserErrors:
         when there is an invalid `echosounder` param."""
         with pytest.raises(Exception):
             aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
+                file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
                 echosounder="abc",
-                data_source=self.data_source,
-                file_download_directory=self.file_download_location,
+                data_source=self.rf.data_source,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -620,13 +613,13 @@ class TestNCEIIngestionUserErrors:
         when there is an empty `data_source` param."""
         with pytest.raises(Exception):
             aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
+                file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
                 data_source="",
-                file_download_directory=self.file_download_location,
+                file_download_directory=self.rf.file_download_directory,
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
                 debug=False,
@@ -641,12 +634,12 @@ class TestNCEIIngestionUserErrors:
                 os.utime("file.temp", None)
 
             aalibrary.conversion.convert_raw_to_netcdf(
-                file_name=self.file_name,
-                file_type=self.file_type,
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                echosounder=self.echosounder,
-                data_source=self.data_source,
+                file_name=self.rf.file_name,
+                file_type=self.rf.file_type,
+                ship_name=self.rf.ship_name,
+                survey_name=self.rf.survey_name,
+                echosounder=self.rf.echosounder,
+                data_source=self.rf.data_source,
                 file_download_directory="file.temp",
                 gcp_bucket=self.gcp_bucket,
                 is_metadata=False,
@@ -656,14 +649,17 @@ class TestNCEIIngestionUserErrors:
     def teardown_class(self):
         """Tears-down any temporary files, variables, or anything that was used
         for testing."""
+        self.rf.raw_file_download_path = os.path.normpath(self.rf.raw_file_download_path)
+        self.rf.idx_file_download_path = os.path.normpath(self.rf.idx_file_download_path)
+        self.rf.netcdf_file_download_path = os.path.normpath(self.rf.netcdf_file_download_path)
         if os.path.exists("file.temp"):
             os.remove("file.temp")
-        if os.path.exists(self.local_raw_file_path):
-            os.remove(self.local_raw_file_path)
-        if os.path.exists(self.local_idx_file_path):
-            os.remove(self.local_idx_file_path)
-        if os.path.exists(self.local_nc_file_path):
-            os.remove(self.local_nc_file_path)
+        if os.path.exists(self.rf.raw_file_download_path):
+            os.remove(self.rf.raw_file_download_path)
+        if os.path.exists(self.rf.idx_file_download_path):
+            os.remove(self.rf.idx_file_download_path)
+        if os.path.exists(self.rf.netcdf_file_download_path):
+            os.remove(self.rf.netcdf_file_download_path)
 
 
 class TestOMAOIngestion:
