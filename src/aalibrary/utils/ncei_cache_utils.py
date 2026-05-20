@@ -613,6 +613,47 @@ def get_echosounder_from_raw_file(
     return df["echosounder_name"].iloc[0]
 
 
+def get_echosounders_in_survey(
+    ship_name: str = "",
+    survey_name: str = "",
+    gcp_bq_client: bigquery.Client = None,
+) -> List[str]:
+    """Gets the echosounder names associated with a specific survey of a
+    specific ship in the NCEI cache in BigQuery.
+
+    Args:
+        ship_name (str): The name of the ship to get the echosounder names for.
+            NOTE: The ship's name MUST be spelled exactly as it is in NCEI. Use
+            the `get_all_ship_names_in_ncei` function to see all possible NCEI
+            ship names.
+        survey_name (str): The name of the survey to get the echosounder names
+            for.
+            NOTE: The survey's name MUST be spelled exactly as it is in NCEI.
+            Use  the `get_all_surveys_in_ncei` function to see all possible
+            NCEI survey names.
+        gcp_bq_client (bigquery.Client, optional): A GCP BigQuery client
+            object. If not provided, one will be created.
+            NOTE: By default, the created object will be using a connection to
+            the `ggn-nmfs-aa-dev-1` project.
+
+    Returns:
+        List[str]: A list of strings, each being an echosounder name associated
+            with the survey and ship. If no echosounder names are found, an
+            empty list is returned.
+    """
+    gcp_bq_client = (
+        setup_gbq_client_objs()[0] if gcp_bq_client is None else gcp_bq_client
+    )
+    ship_name_normalized = normalize_ship_name(ship_name=ship_name)
+
+    query = f"""SELECT DISTINCT(echosounder_name)
+    FROM `metadata.ncei_cache`
+    WHERE ship_name_normalized = '{ship_name_normalized}'
+    AND survey_name = '{survey_name}'"""
+    df = bq_query_to_pandas(gcp_bq_client, query)
+    return df["echosounder_name"].dropna().unique().tolist()
+
+
 def check_if_tugboat_metadata_exists_in_survey_in_ncei_cache(
     ship_name: str = "",
     survey_name: str = "",
