@@ -2,6 +2,8 @@
 It contains useful functions related to survey data management, including a
 Survey class that can be used to manage surveys."""
 
+# pylint: disable=attribute-defined-outside-init
+
 import sys
 import logging
 import os
@@ -16,13 +18,13 @@ if __package__ is None or __package__ == "":
     # uses current directory visibility
     import utils
     import ices_ship_names
-    from utils import ncei_utils
+    from utils import ncei_cache_utils
     from raw_file import RawFile
 else:
     # uses current package visibility
     from aalibrary import utils
     from aalibrary import ices_ship_names
-    from aalibrary.utils import ncei_utils
+    from aalibrary.utils import ncei_cache_utils
     from aalibrary.raw_file import RawFile
 
 
@@ -72,15 +74,12 @@ class Survey:
                     self.file_download_directory,
                 )
 
-        # Convert locations into directories as needed.
-        if (
-            "file_download_directory" in self.__dict__
-            and self.file_download_directory != "."
+        # Take care of an empty file_download_directory and treat it like the
+        # cwd.
+        if (self.__dict__["file_download_directory"] == "") or (
+            "file_download_directory" not in self.__dict__
         ):
-            # Edge-case: when dirname is passed ".", it responds with ""
-            self.file_download_directory = (
-                os.path.dirname(self.file_download_directory) + os.sep
-            )
+            self.file_download_directory = "."
             if self.debug:
                 logging.debug(
                     "converted file_download_directory to directory %s",
@@ -96,12 +95,6 @@ class Survey:
 
     def _create_vars_for_use_later(self):
         """Creates vars that will add value and can be utilized later."""
-
-        # Creating RawFile objects for all raw files in this survey takes a lot
-        # of time and memory, so we will implement a boolean to check if
-        # we have created them or not.
-        self.raw_file_objects = []
-        self._raw_file_objects_created = False
 
         # Normalize ship name
         if "ship_name" in self.__dict__:
@@ -141,26 +134,41 @@ class Survey:
                 utils.cloud_utils.create_s3_objs()
             )
 
+        # Creating RawFile objects for all raw files in this survey takes a lot
+        # of time and memory, so we will implement a boolean to check if
+        # we have created them or not.
+        self.raw_file_objects = []
+        self._raw_file_objects_created = False
+
         # Get all echosounders in this survey.
         if self.data_source == "NCEI":
-            self.echosounders = ncei_utils.get_all_echosounders_in_a_survey(
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                s3_client=self.s3_client,
-                return_full_paths=False,
+            self.echosounders = (
+                ncei_cache_utils.get_all_echosounders_in_a_survey(
+                    ship_name=self.ship_name,
+                    survey_name=self.survey_name,
+                    s3_client=self.s3_client,
+                    return_full_paths=False,
+                )
             )
+        else:
+            self.echosounders = None
 
         # Get all files that exist in the survey.
         if self.data_source == "NCEI":
-            self.all_files_paths = ncei_utils.get_all_file_names_from_survey(
-                ship_name=self.ship_name,
-                survey_name=self.survey_name,
-                s3_resource=self.s3_resource,
-                return_full_paths=True,
+            self.all_files_paths = (
+                ncei_cache_utils.get_all_file_names_from_survey(
+                    ship_name=self.ship_name,
+                    survey_name=self.survey_name,
+                    s3_resource=self.s3_resource,
+                    return_full_paths=True,
+                )
             )
             self.all_files = [
                 file.split("/")[-1] for file in self.all_files_paths
             ]
+        else:
+            self.all_files_paths = None
+            self.all_files = None
 
         # Get all raw files in this survey
         if self.data_source == "NCEI":
@@ -170,11 +178,84 @@ class Survey:
             self.raw_files = [
                 file.split("/")[-1] for file in self.raw_files_paths
             ]
+        else:
+            self.raw_files_paths = None
+            self.raw_files = None
 
-        # TODO: Get all metadata files in this survey.
-        self.metadata_files = None
+        # Get all idx files in this survey
+        if self.data_source == "NCEI":
+            self.idx_files_paths = [
+                file for file in self.all_files_paths if file.endswith(".idx")
+            ]
+            self.idx_files = [
+                file.split("/")[-1] for file in self.idx_files_paths
+            ]
+        else:
+            self.idx_files_paths = None
+            self.idx_files = None
 
-        # TODO:
+        # Get all bot files in this survey
+        if self.data_source == "NCEI":
+            self.bot_files_paths = [
+                file for file in self.all_files_paths if file.endswith(".bot")
+            ]
+            self.bot_files = [
+                file.split("/")[-1] for file in self.bot_files_paths
+            ]
+        else:
+            self.bot_files_paths = None
+            self.bot_files = None
+
+        # Get all netcdf files in this survey
+        if self.data_source == "NCEI":
+            self.netcdf_files_paths = [
+                file for file in self.all_files_paths if file.endswith(".nc")
+            ]
+            self.netcdf_files = [
+                file.split("/")[-1] for file in self.netcdf_files_paths
+            ]
+        else:
+            self.netcdf_files_paths = None
+            self.netcdf_files = None
+
+        # Get all metadata files in this survey.
+        if self.data_source == "NCEI":
+            self.metadata_files_paths = [
+                file
+                for file in self.all_files_paths
+                if file.contains("/metadata/")
+            ]
+            self.metadata_files = [
+                file.split("/")[-1] for file in self.metadata_files_paths
+            ]
+        else:
+            self.metadata_files = None
+
+        # Get all calibration files in this survey.
+        if self.data_source == "NCEI":
+            self.calibration_files_paths = [
+                file
+                for file in self.all_files_paths
+                if file.contains("calibration")
+            ]
+            self.calibration_files = [
+                file.split("/")[-1] for file in self.calibration_files_paths
+            ]
+        else:
+            self.calibration_files = None
+
+        # Get all auxiliary files in this survey.
+        if self.data_source == "NCEI":
+            self.auxiliary_files_paths = [
+                file
+                for file in self.all_files_paths
+                if file.contains("auxiliary")
+            ]
+            self.auxiliary_files = [
+                file.split("/")[-1] for file in self.auxiliary_files_paths
+            ]
+        else:
+            self.auxiliary_files = None
 
     def _check_for_assertion_errors(self):
         """Check for assertion errors in the survey object."""
@@ -189,13 +270,13 @@ class Survey:
                     self.raw_files, desc="Creating RawFile Objects"
                 ):
                     # Get the echosounder for this raw file
-                    echosounder = ncei_utils.get_echosounder_from_raw_file(
-                        file_name=raw_file,
-                        ship_name=self.ship_name,
-                        survey_name=self.survey_name,
-                        echosounders=self.echosounders,
-                        s3_client=self.s3_client,
-                        s3_resource=self.s3_resource,
+                    echosounder = (
+                        ncei_cache_utils.get_echosounder_from_raw_file(
+                            file_name=raw_file,
+                            ship_name=self.ship_name,
+                            survey_name=self.survey_name,
+                            gcp_bq_client=self.gcp_bq_client,
+                        )
                     )
                     raw_file_obj = RawFile(
                         file_name=raw_file,
