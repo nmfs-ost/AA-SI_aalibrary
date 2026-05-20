@@ -16,7 +16,7 @@ if __package__ is None or __package__ == "":
 else:
     # uses current package visibility
     from aalibrary import ingestion
-    from aalibrary.utils import cloud_utils, helpers
+    from aalibrary.utils import cloud_utils, helpers, ncei_utils
 
 
 def time_ingestion_and_upload_from_ncei(
