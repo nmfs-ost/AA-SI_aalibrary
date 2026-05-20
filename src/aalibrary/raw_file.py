@@ -21,7 +21,7 @@ if __package__ is None or __package__ == "":
     from utils.get_datagram_data import (
         stream_datagram_dict_from_ncei,
     )
-    from utils.ncei_utils import (
+    from aalibrary.utils.ncei_utils import (
         check_if_tugboat_metadata_json_exists_in_survey,
     )
 else:
@@ -75,7 +75,7 @@ class RawFile:
     survey_name: str = None
     echosounder: str = None
     data_source: str = None
-    file_download_directory: str = None
+    file_download_directory: str = ""
     is_metadata: bool = False
     upload_to_gcp: bool = False
     debug: bool = False
@@ -110,9 +110,31 @@ class RawFile:
 
         # Normalize paths
         if "file_download_directory" in self.__dict__:
-            self.file_download_directory = os.path.normpath(
-                os.sep.join([os.path.abspath(self.file_download_directory)])
+            self.file_download_directory = (
+                os.path.normpath(self.file_download_directory) + os.sep
             )
+            if self.debug:
+                logging.debug(
+                    "normalized file download directory = %s",
+                    self.file_download_directory,
+                )
+
+        # Take care of an empty file_download_directory and treat it like the
+        # cwd.
+        if (
+            (self.__dict__["file_download_directory"] == "")
+            or ("file_download_directory" not in self.__dict__)
+            or (self.__dict__["file_download_directory"] == "./")
+            or (self.__dict__["file_download_directory"] == ".\\")
+        ):
+            self.file_download_directory = os.path.normpath(
+                os.getcwd() + os.sep
+            )
+            if self.debug:
+                logging.debug(
+                    "converted file_download_directory to directory %s",
+                    self.file_download_directory,
+                )
 
     def _create_download_directories_if_not_exists(self):
         """Create the download directory (path) if it doesn't exist."""
@@ -167,13 +189,6 @@ class RawFile:
             )
         else:
             self.ices_code = ""
-
-        # Take care of an empty file_download_directory and treat it like the
-        # cwd.
-        if (self.__dict__["file_download_directory"] == "") or (
-            "file_download_directory" not in self.__dict__
-        ):
-            self.file_download_directory = "."
 
         # Create connection objects if they dont exist
         self.s3_bucket_name = "noaa-wcsd-pds"
