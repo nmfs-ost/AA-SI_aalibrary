@@ -299,6 +299,43 @@ class Survey:
                 self._raw_file_objects_created = True
 
 
+class LocalSurvey:
+    """Used to represent surveys that exist on your local machine. You can use
+    this object to automatically parse through a directory that contains
+    survey data, add metadata to the survey, and ultimately upload the data
+    to the appropriate location in GCP."""
+
+    ship_name: str = ""
+    survey_name: str = ""
+    data_source: str = "HDD"
+    directory_path: str = ""
+    debug: bool = False
+    gcp_bucket: storage.Client.bucket = None
+    # Get all valid and normalized ICES ship names
+    valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
+        normalize_ship_names=True
+    )
+
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+        self._handle_paths()
+        self._create_vars_for_use_later()
+
+    def _handle_paths(): ...
+
+    def _create_vars_for_use_later(): ...
+
+    def _parse_raw_files_in_directory(): ...
+
+    def _parse_metadata_files_in_directory(): ...
+
+    def _parse_calibration_files_in_directory(): ...
+
+    def _parse_auxiliary_files_in_directory(): ...
+
+    def _parse_unknown_files_in_directory(): ...
+
+
 if __name__ == "__main__":
     # set logging config
     for handler in logging.root.handlers[:]:
