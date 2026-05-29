@@ -34,44 +34,36 @@ class TugboatAPI:
     empty_submission_file_path: str = (
         "other/tugboat_empty_submission_template.json"
     )
-    __tugboat_cred: str = None
-    tugboat_api_url: str = (
-        "https://nih-uat-tugboat.nesdis-hq.noaa.gov:5443/api/v1/"
-    )
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
+
+    # Set to False to use the production Tugboat API.
+    use_dev = True
 
     def __init__(self, **kwargs):
         """
         Initializes the TugboatAPI class.
         """
         self.__dict__.update(kwargs)
-        self._create_vars()
+        self._set_dev()
         self._set_tugboat_credentials()
 
-    def _create_vars(self):
-        """Creates vars for use later."""
-
-        # Create google connection objects to download the Tugboat creds
-        # if (
-        #     ("gcp_stor_client" not in self.__dict__)
-        #     or ("gcp_bucket_name" not in self.__dict__)
-        #     or ("gcp_bucket" not in self.__dict__)
-        # ):
-        #     self.gcp_stor_client, self.gcp_bucket_name, self.gcp_bucket = (
-        #         cloud_utils.setup_gcp_storage_objs(
-        #             project_id=self.project_id,
-        #             gcp_bucket_name=self.gcp_bucket_name,
-        #         )
-        #     )
+    def _set_dev(self):
+        """Sets the appropriate API URL and credentials for the environment."""
+        self.headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        if self.use_dev:
+            self.tugboat_api_url = "https://ccog.colorado.edu/tugboat/api/v1/"
+        else:
+            self.tugboat_api_url = (
+                "https://nih-uat-tugboat.nesdis-hq.noaa.gov:5443/api/v1/"
+            )
 
     def _set_tugboat_credentials(self):
         """Sets the tugboat credentials for AALibrary from the google storage
         bucket as an environment var."""
 
-        if self.__tugboat_cred is None:
+        if "__tugboat_cred" not in self.__dict__:
             # If there is a dot-env file in the current directory, load it.
             if os.path.exists(".env"):
                 load_dotenv()
@@ -87,7 +79,10 @@ class TugboatAPI:
                 # )
                 ...
             # Set the credentials
-            self.__tugboat_cred = os.environ.get("TUGBOAT_CREDENTIALS")
+            if self.use_dev:
+                self.__tugboat_cred = os.environ.get("TUGBOAT_DEV_CREDENTIALS")
+            else:
+                self.__tugboat_cred = os.environ.get("TUGBOAT_CREDENTIALS")
         self.headers["Authorization"] = f"Bearer {self.__tugboat_cred}"
 
     def _get_request_as_json(self, url: str) -> dict:
@@ -355,38 +350,38 @@ class TugboatAPI:
     def post_new_project(self, project_json: dict) -> dict:
         """Posts a new project to the Tugboat API.
 
-                Args:
-                    project_json (dict): The dictionary containing the project's
-                        information.
-                        Example:
-                            {
-                            "name": "NEFSC SNE_Audio",
-                            "title": "NEFSC Southern New England Bottom-Moun",
-                            "description": "Passive Acoustic Monitoring d ...",
-                            "purpose": "This project is a combination of 
-                                        baseline information.",
-                            "scientists": [],
-                            "funders": [
-                                "NOAA NEFSC"
-                                ],
-                            "citation": "NOAA NEFSC. 2026. NEFSC Southern
-                                        New...",
-                            "credit": "This study was funded, in part, by the",
-                            "platforms": [
-                                "Mooring"
-                                ],
-                            "instruments": [
-                                "SoundTrap",
-                                "FPOD",
-                                "VR2AR"
-                                ],
-                            ...
-                            }
+        Args:
+            project_json (dict): The dictionary containing the project's
+                information.
+                Example:
+                    {
+                    "name": "NEFSC SNE_Audio",
+                    "title": "NEFSC Southern New England Bottom-Moun",
+                    "description": "Passive Acoustic Monitoring d ...",
+                    "purpose": "This project is a combination of
+                                baseline information.",
+                    "scientists": [],
+                    "funders": [
+                        "NOAA NEFSC"
+                        ],
+                    "citation": "NOAA NEFSC. 2026. NEFSC Southern
+                                New...",
+                    "credit": "This study was funded, in part, by the",
+                    "platforms": [
+                        "Mooring"
+                        ],
+                    "instruments": [
+                        "SoundTrap",
+                        "FPOD",
+                        "VR2AR"
+                        ],
+                    ...
+                    }
 
-                Returns:
-                    dict: The response from the Tugboat API after creating the
-                        project. This includes the ID of the newly created
-                        project, which can be used for future reference.
+        Returns:
+            dict: The response from the Tugboat API after creating the
+                project. This includes the ID of the newly created
+                project, which can be used for future reference.
         """
 
         # Create the URL for the project endpoint
@@ -736,7 +731,7 @@ class TugboatAPI:
 
 
 if __name__ == "__main__":
-    tb_api = TugboatAPI()
+    tb_api = TugboatAPI(use_dev=True)
     print(tb_api.check_connection())
     # tb_api.create_empty_submission_file(
     #     file_download_directory=".",
