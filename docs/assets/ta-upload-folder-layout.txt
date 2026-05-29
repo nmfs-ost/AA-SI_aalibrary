@@ -1,0 +1,30 @@
+website: https://www.folder2image.com/
+background: (26,153,136)
+foreground: (233,237,238)
+text-font: inconsolata
+icon: font awesome 6 (solid)
+file name: ta-upload-folder-layout
+
+^ ta_upload (the 'bucket')
+-o {science_center} (e.g. AFSC/NEFSC/NWFSC/...)
+--o {ship_name}
+---o {survey_name}
+-----o auxiliary (for supplemental files)
+------o ev_files
+-------+ XYZ.ev
+-----o metadata (for cruise-level metadata)
+------+ {survey_name}_metadata.json
+-----o {echosounder} (e.g. 'EK80')
+------o calibration
+-------o standardized_reports
+-------o manufacturer_reports
+--------+ channel_mapping.yaml
+-------o other
+-------o raw (for raw calibration files)
+------o data
+-------o netcdf
+--------+ XYZ.nc
+-------o raw
+--------+ XYZ.raw
+--------+ XYZ.idx
+--------+ XYZ.bot
