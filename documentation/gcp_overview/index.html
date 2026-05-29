@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/noaa_favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -1445,14 +1445,26 @@ This library provides also provides advanced methods for interacting with the GC
 <h3 id="dev-environment-layout">Dev Environment Layout</h3>
 <p>Below is the hierarchical layout for the development environment's storage bucket. As you can see, data is organized based on it's metadata. For example, any file relating to a specific survey will only exist within that survey's folder.</p>
 <p>This also means that this layout has a 1:1 mapping of each file to its location in the storage bucket. This makes files easily searchable using AALibrary.</p>
+<div class="admonition note">
+<p class="admonition-title">NOTE: On folder names</p>
+<p>You can replace any parameter that is located within brackets <code>{}</code> with its appropriate name. For example, <code>{survey_name}</code> can be replaced with <code>HB2407</code>, and so on.</p>
+</div>
 <p><img alt="dev-env-folder-layout.png" src="../../assets/dev-env-folder-layout.png" /></p>
 <h3 id="prod-environment-layout">Prod Environment Layout</h3>
 <p>The production environments storage bucket also utilizes a similar layout.</p>
-<p><img alt="prod_env_folder_layout.png" src="../../assets/prod_env_folder_layout.png" /></p>
+<div class="admonition note">
+<p class="admonition-title">NOTE: On folder names</p>
+<p>You can replace any parameter that is located within brackets <code>{}</code> with its appropriate name. For example, <code>{survey_name}</code> can be replaced with <code>HB2407</code>, and so on.</p>
+</div>
+<p><img alt="prod_env_folder_layout.png" src="../../assets/prod-env-folder-layout.png" /></p>
 <h3 id="transfer-appliance-layout">Transfer Appliance Layout</h3>
-<p>This storage bucket (ta_upload) exists within the production environment. The layout is different here compared to the other two storage buckets. There is a hierarchical order present, but instead of viewing <code>/data_source/</code> as a storage entity, it is viewed as a Science Center entity.</p>
+<p>This storage bucket (ta_upload) exists within the production environment. The layout is different here compared to the other two storage buckets. There is a hierarchical order present, but instead of viewing <code>/data_source/</code> as a storage entity, it is viewed as a Science Center (FMC) entity.</p>
 <p>There are two layouts possible here. The first refers to a similar layout that we have in the other storage buckets. This is ideally the layout we would like to reach as a strategic initiative.</p>
-<p><img alt="ta_upload_folder_layout.png" src="../../assets/ta_upload_folder_layout.png" /></p>
+<div class="admonition note">
+<p class="admonition-title">NOTE: On folder names</p>
+<p>You can replace any parameter that is located within brackets <code>{}</code> with its appropriate name. For example, <code>{science_center}</code> can be replaced with <code>NEFSC</code>, and so on.</p>
+</div>
+<p><img alt="ta_upload_folder_layout.png" src="../../assets/ta-upload-folder-layout.png" /></p>
 <p>The second layout is <code>dealer's choice</code>. This means that the organization of the folders within this layout is dependent on the FMC that is uploading data. Keep in mind, our goal is to upload all of the data to the cloud, so organization and file naming conventions can be corrected after the upload is done.</p>
 <p><img alt="ta_upload_dealers_choice_layout.png" src="../../assets/ta_upload_dealers_choice_layout.png" /></p>
 <h2 id="file-naming-conventions">File Naming Conventions</h2>
@@ -1490,7 +1502,7 @@ If you would like access to the metadata DB, please see the <a href="../../getti
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="March 18, 2026 13:07:01 UTC">March 18, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="May 29, 2026 01:59:18 UTC">May 29, 2026</span>
   </span>
 
     
