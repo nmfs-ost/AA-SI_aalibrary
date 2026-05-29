@@ -19,7 +19,7 @@ file name: ta-upload-folder-layout
 -------o standardized_reports
 -------o manufacturer_reports
 --------+ channel_mapping.yaml
--------o other
+-------o Other
 -------o raw (for raw calibration files)
 ------o data
 -------o netcdf
