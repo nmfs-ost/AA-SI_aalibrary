@@ -12,6 +12,11 @@ Usage:
     aa-help --index-stats                    # show what's indexed
     aa-help --model MODEL                    # override model
 
+Navigating menus:
+    When aa-help offers you a list of options, it's keyboard-driven:
+    use the up/down arrow keys to move the highlight, Enter to choose
+    the highlighted option, and Ctrl-C to cancel that one plan.
+
 Exit:
     Ctrl-D, Ctrl-C, or /exit at the REPL prompt always quit cleanly with
     a one-line goodbye -- no tracebacks. Ctrl-C inside a menu just cancels
@@ -48,6 +53,26 @@ from aalibrary.utils._help.ui import (
     thinking,
 )
 
+# How many clarify-style follow-ups we allow before giving up, used by both
+# the REPL and one-shot paths. (1 initial plan + up to 3 follow-up rounds.)
+MAX_CLARIFY_ROUNDS = 4
+
+# Printed at the bottom of `aa-help --help`, and echoed in short form when the
+# REPL starts, so people know the menus are driven with the arrow keys.
+NAV_HELP = """\
+interactive menus -- when aa-help asks you to pick an option:
+  up / down arrows   move the highlight between options
+  Enter              select the highlighted option
+  Ctrl-C             cancel the current plan and go back to the prompt
+  Ctrl-D, /exit      quit aa-help (also accepts /quit or :q)
+
+examples:
+  aa-help                                start the interactive prompt
+  aa-help "convert my .raw to netcdf"    plan and run, in one shot
+  aa-help --no-execute "summarize ..."   plan only; don't run anything
+  aa-help --setup                        (re)configure project, location, model
+"""
+
 
 def silence_all_logs():
     """Re-apply suppression after google-genai / httpx attach handlers lazily."""
@@ -60,40 +85,95 @@ def silence_all_logs():
     logger.add(sys.stderr, level="WARNING")
 
 
+def _pkg_version() -> str:
+    """Best-effort version string for --version; never raises."""
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+        try:
+            return version("aalibrary")
+        except PackageNotFoundError:
+            return "unknown"
+    except Exception:
+        return "unknown"
+
+
 def _build_parser():
     p = argparse.ArgumentParser(
         prog="aa-help",
-        description="Vertex AI planner & assistant for the aalibrary suite.",
+        # RawDescription keeps our hand-laid description/epilog from being
+        # re-wrapped; per-argument help text still wraps normally.
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Vertex AI planner & assistant for the aalibrary acoustics suite.\n"
+            "Give it a question or a goal and it works out which aalibrary\n"
+            "pipeline to run -- and, by default, runs it for you."
+        ),
+        epilog=NAV_HELP,
     )
-    p.add_argument("question", nargs="*",
-                   help="One-shot question/goal. Omit to enter REPL mode.")
-    # Execute is now the DEFAULT. `--no-execute` opts into dry-run mode.
+
+    p.add_argument(
+        "question", nargs="*",
+        help="One-shot question or goal. Omit it to drop into the interactive REPL.",
+    )
+    p.add_argument(
+        "--version", action="version",
+        version=f"%(prog)s (aalibrary {_pkg_version()})",
+        help="Show the version and exit.",
+    )
+
+    run = p.add_argument_group("running")
+    # Execute is the DEFAULT. `--no-execute` opts into dry-run mode.
     # BooleanOptionalAction (py3.9+) gives us both `--execute` and
     # `--no-execute` automatically, so old muscle memory of typing
     # `--execute` still works -- it's just a no-op now.
-    p.add_argument(
+    run.add_argument(
         "--execute", action=argparse.BooleanOptionalAction, default=True,
-        help="Allow the planner to run pipelines (default: on; "
-             "use --no-execute for dry-run).",
+        help="Allow the planner to run pipelines "
+             "(default: on; pass --no-execute for a dry-run).",
     )
-    p.add_argument("--setup", action="store_true",
-                   help="Run the configuration wizard.")
-    p.add_argument("--config", action="store_true",
-                   help="Print the config file path and exit.")
-    p.add_argument("--edit", action="store_true",
-                   help="Open the config file in $EDITOR.")
-    p.add_argument("--reindex", action="store_true",
-                   help="Rebuild the local knowledge DB from scratch.")
-    p.add_argument("--refresh-index", action="store_true",
-                   help="Incrementally update the knowledge DB.")
-    p.add_argument("--index-stats", action="store_true",
-                   help="Show how many files/chunks are indexed.")
-    p.add_argument("--refresh-files", action="store_true",
-                   help="Re-walk the home dir and refresh the file index now.")
-    p.add_argument("--files-stats", action="store_true",
-                   help="Show what's in the cached file index.")
-    p.add_argument("--model",
-                   help="Override the configured model for this run.")
+    run.add_argument(
+        "--model",
+        help="Override the configured model for this run.",
+    )
+
+    knowledge = p.add_argument_group("knowledge index")
+    knowledge.add_argument(
+        "--reindex", action="store_true",
+        help="Rebuild the local knowledge DB from scratch.",
+    )
+    knowledge.add_argument(
+        "--refresh-index", action="store_true",
+        help="Incrementally update the knowledge DB.",
+    )
+    knowledge.add_argument(
+        "--index-stats", action="store_true",
+        help="Show how many files/chunks are indexed.",
+    )
+
+    files = p.add_argument_group("file index")
+    files.add_argument(
+        "--refresh-files", action="store_true",
+        help="Re-walk the home dir and refresh the file index now.",
+    )
+    files.add_argument(
+        "--files-stats", action="store_true",
+        help="Show what's in the cached file index.",
+    )
+
+    conf = p.add_argument_group("configuration")
+    conf.add_argument(
+        "--setup", action="store_true",
+        help="Run the configuration wizard.",
+    )
+    conf.add_argument(
+        "--config", action="store_true",
+        help="Print the config file path and exit.",
+    )
+    conf.add_argument(
+        "--edit", action="store_true",
+        help="Open the config file in $EDITOR.",
+    )
+
     return p
 
 
@@ -157,6 +237,8 @@ def _do_files_stats(settings: cfg.Settings) -> int:
 def _run_repl(planner: Planner, allow_execute: bool) -> int:
     """Interactive loop. Returns 0 always; errors print but don't kill."""
     print_banner(mode="execute" if allow_execute else "dry-run")
+    print_info("Tip: use the up/down arrow keys to move through menu choices, "
+               "Enter to select, Ctrl-C to cancel, and /exit to quit.")
     while True:
         try:
             line = input("\naa-help> ").strip()
@@ -168,12 +250,16 @@ def _run_repl(planner: Planner, allow_execute: bool) -> int:
         if line in ("/exit", "/quit", ":q"):
             print_goodbye()
             return 0
+        if line in ("/help", "?"):
+            print_info(NAV_HELP)
+            continue
 
         # Plan, then if the user picked a clarify option, re-plan with that
-        # answer until we get a pipeline/answer/cancel. Cap at 3 follow-ups
-        # to prevent runaway clarify loops if the planner misbehaves.
+        # answer until we get a pipeline/answer/cancel. Cap the number of
+        # rounds (MAX_CLARIFY_ROUNDS) to prevent runaway clarify loops if
+        # the planner misbehaves.
         prompt = line
-        for _ in range(4):
+        for _ in range(MAX_CLARIFY_ROUNDS):
             try:
                 with thinking("planning"):
                     plan = planner.plan(prompt)
@@ -195,13 +281,13 @@ def _run_repl(planner: Planner, allow_execute: bool) -> int:
 def _run_one_shot(planner: Planner, question: str, allow_execute: bool) -> int:
     """One-shot mode. Returns the plan/exec exit code.
 
-    Like the REPL, allows up to 3 clarify-option follow-ups so a
-    one-shot invocation can still resolve through the menu UI.
+    Like the REPL, allows up to MAX_CLARIFY_ROUNDS - 1 clarify-option
+    follow-ups so a one-shot invocation can still resolve through the menu UI.
     """
     prompt = question
     last_rc = 0
     try:
-        for _ in range(4):
+        for _ in range(MAX_CLARIFY_ROUNDS):
             with thinking("planning"):
                 plan = planner.plan(prompt)
             last_rc, follow_up = handle_plan(plan, allow_execute=allow_execute)

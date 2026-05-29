@@ -21,9 +21,10 @@ logger.add(sys.stderr, level="WARNING")
 import argparse
 import pprint
 from pathlib import Path
+from typing import Optional
 
 import xarray as xr
-import echopype as ep  # noqa: F401  (kept in case you re-enable .ep accessor use)
+import echopype as ep  # used for ep.open_converted when --echodata is supplied
 from echopype.consolidate import add_depth
 
 
@@ -48,17 +49,37 @@ def print_help():
                                Optional. Defaults to stdin if not provided.
 
     Options:
-    -o, --output_path          Path to save processed output.
-                               Default: same directory as input, with '_depth'
+    -o, --output_path          Path to save processed output. If provided, it is
+                               used as-is (a .nc suffix is added only when missing).
+                               If omitted, defaults to the input path with '_depth'
                                appended to the stem and a .nc suffix.
 
-    --depth-offset             Offset along depth to account for transducer
-                               position in water (default: 0.0).
+    --depth-offset             Offset (meters) along depth to account for transducer
+                               position in water. Default: None (transducer at the
+                               surface). If set, Platform vertical offsets are ignored.
 
-    --tilt                     Transducer tilt angle in degrees (default: 0.0).
+    --tilt                     Transducer tilt angle in degrees (0 = vertical).
+                               Default: None. If set, Platform/Beam angles are ignored.
 
     --downward / --no-downward Whether transducers point downward.
                                Default: --downward (True).
+
+    --echodata                 Path to the converted EchoData file (.nc/.netcdf4/.zarr)
+                               that the Sv dataset originated from. Required when using
+                               any of the --use-* options below.
+
+    --use-platform-vertical-offsets
+                               Use the EchoData Platform group vertical offsets to
+                               compute transducer depth (EK60/EK80 only). Ignored if
+                               --depth-offset is given.
+
+    --use-platform-angles      Use the EchoData Platform group angles to scale
+                               echo_range (EK60/EK80 only). Ignored if --tilt is given.
+                               Cannot be combined with --use-beam-angles.
+
+    --use-beam-angles          Use the EchoData Beam group angles to scale echo_range
+                               (EK60/EK80 only). Ignored if --tilt is given.
+                               Cannot be combined with --use-platform-angles.
 
     Description:
     Loads a NetCDF Sv dataset, adds a depth coordinate via
@@ -67,6 +88,8 @@ def print_help():
 
     Example:
     aa-depth /path/to/input_Sv.nc --depth-offset 1.5 --tilt 5
+    aa-depth /path/to/input_Sv.nc --echodata /path/to/converted.zarr \\
+             --use-platform-vertical-offsets --use-beam-angles
     """
     print(help_text)
 
@@ -103,19 +126,28 @@ def main():
     parser.add_argument(
         "-o", "--output_path",
         type=Path,
-        help="Path to save processed output. Default appends '_depth' to the input stem.",
+        help=(
+            "Path to save processed output. Used as-is if provided; "
+            "otherwise defaults to the input stem with '_depth' appended."
+        ),
     )
     parser.add_argument(
         "--depth-offset",
         type=float,
-        default=0.0,
-        help="Offset along depth to account for transducer position in water (default: 0.0).",
+        default=None,
+        help=(
+            "Offset (m) along depth for transducer position in water "
+            "(default: None = surface). Overrides Platform vertical offsets if set."
+        ),
     )
     parser.add_argument(
         "--tilt",
         type=float,
-        default=0.0,
-        help="Transducer tilt angle in degrees (default: 0.0).",
+        default=None,
+        help=(
+            "Transducer tilt angle in degrees, 0 = vertical (default: None). "
+            "Overrides Platform/Beam angles if set."
+        ),
     )
     parser.add_argument(
         "--downward",
@@ -128,6 +160,44 @@ def main():
         dest="downward",
         action="store_false",
         help=argparse.SUPPRESS,
+    )
+
+    # --- New parameters mirroring the current echopype.consolidate.add_depth API ---
+    parser.add_argument(
+        "--echodata",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the converted EchoData file (.nc/.netcdf4/.zarr) the Sv "
+            "originated from. Required for the --use-* options."
+        ),
+    )
+    parser.add_argument(
+        "--use-platform-vertical-offsets",
+        action="store_true",
+        default=False,
+        help=(
+            "Use EchoData Platform vertical offsets to compute transducer depth "
+            "(EK60/EK80 only). Ignored if --depth-offset is given."
+        ),
+    )
+    parser.add_argument(
+        "--use-platform-angles",
+        action="store_true",
+        default=False,
+        help=(
+            "Use EchoData Platform angles to scale echo_range (EK60/EK80 only). "
+            "Ignored if --tilt is given. Cannot be combined with --use-beam-angles."
+        ),
+    )
+    parser.add_argument(
+        "--use-beam-angles",
+        action="store_true",
+        default=False,
+        help=(
+            "Use EchoData Beam angles to scale echo_range (EK60/EK80 only). "
+            "Ignored if --tilt is given. Cannot be combined with --use-platform-angles."
+        ),
     )
 
     args = parser.parse_args()
@@ -156,19 +226,71 @@ def main():
         sys.exit(1)
 
     # ---------------------------
+    # Validate EchoData + option combinations
+    # ---------------------------
+    if args.echodata is not None:
+        if not args.echodata.exists():
+            logger.error(f"EchoData file '{args.echodata}' does not exist.")
+            sys.exit(1)
+        ed_ext = args.echodata.suffix.lower()
+        allowed_ed = {".nc", ".netcdf4", ".zarr"}
+        if ed_ext not in allowed_ed:
+            logger.error(
+                f"'{args.echodata.name}' is not a supported EchoData type. "
+                f"Allowed: {', '.join(sorted(allowed_ed))}"
+            )
+            sys.exit(1)
+
+    needs_echodata = (
+        args.use_platform_vertical_offsets
+        or args.use_platform_angles
+        or args.use_beam_angles
+    )
+    if needs_echodata and args.echodata is None:
+        logger.error(
+            "--use-platform-vertical-offsets, --use-platform-angles, and "
+            "--use-beam-angles require --echodata to be provided."
+        )
+        sys.exit(1)
+
+    # Per echopype: platform and beam angles cannot be used in tandem.
+    if args.use_platform_angles and args.use_beam_angles:
+        logger.error(
+            "--use-platform-angles and --use-beam-angles cannot be used together."
+        )
+        sys.exit(1)
+
+    # Soft warnings: explicit values override the corresponding Platform/Beam data.
+    if args.depth_offset is not None and args.use_platform_vertical_offsets:
+        logger.warning(
+            "Both --depth-offset and --use-platform-vertical-offsets given; "
+            "the explicit --depth-offset takes precedence."
+        )
+    if args.tilt is not None and (args.use_platform_angles or args.use_beam_angles):
+        logger.warning(
+            "Both --tilt and platform/beam angles given; "
+            "the explicit --tilt takes precedence."
+        )
+
+    # ---------------------------
     # Resolve output path
     # ---------------------------
     if args.output_path is None:
-        args.output_path = args.input_path
+        # Derive from input: append '_depth' to the stem and force a .nc suffix.
+        args.output_path = args.input_path.with_stem(
+            args.input_path.stem + "_depth"
+        ).with_suffix(".nc")
+    elif args.output_path.suffix == "":
+        # Respect an explicit path; only default the suffix when one is missing.
+        args.output_path = args.output_path.with_suffix(".nc")
 
-    args.output_path = args.output_path.with_stem(args.output_path.stem + "_depth")
-    args.output_path = args.output_path.with_suffix(".nc")
-
-    # Guard against clobbering the input
-    if args.output_path.resolve() == args.input_path.resolve():
-        logger.error(
-            f"Refusing to overwrite input file: {args.input_path.resolve()}"
-        )
+    # Guard against clobbering files we read from.
+    out_resolved = args.output_path.resolve()
+    if out_resolved == args.input_path.resolve():
+        logger.error(f"Refusing to overwrite input file: {args.input_path.resolve()}")
+        sys.exit(1)
+    if args.echodata is not None and out_resolved == args.echodata.resolve():
+        logger.error(f"Refusing to overwrite EchoData file: {args.echodata.resolve()}")
         sys.exit(1)
 
     # ---------------------------
@@ -184,6 +306,10 @@ def main():
             depth_offset=args.depth_offset,
             tilt=args.tilt,
             downward=args.downward,
+            echodata_path=args.echodata,
+            use_platform_vertical_offsets=args.use_platform_vertical_offsets,
+            use_platform_angles=args.use_platform_angles,
+            use_beam_angles=args.use_beam_angles,
         )
 
         logger.success(f"Desired data generated and saved to\n\t{args.output_path.resolve()}")
@@ -198,9 +324,13 @@ def main():
 def process_file(
     input_path: Path,
     output_path: Path,
-    depth_offset: float = 0.0,
-    tilt: float = 0.0,
+    depth_offset: Optional[float] = None,
+    tilt: Optional[float] = None,
     downward: bool = True,
+    echodata_path: Optional[Path] = None,
+    use_platform_vertical_offsets: bool = False,
+    use_platform_angles: bool = False,
+    use_beam_angles: bool = False,
 ):
     """
     Load Sv from NetCDF, add a depth coordinate, and save back to NetCDF.
@@ -212,11 +342,22 @@ def process_file(
     with xr.open_dataset(input_path) as ds_in:
         ds_Sv = ds_in.load()
 
+    # Open the source EchoData object only when requested. Kept in scope through
+    # to_netcdf so any lazily-read Platform/Beam values resolve during the write.
+    echodata = None
+    if echodata_path is not None:
+        logger.info(f"Opening EchoData file {echodata_path}")
+        echodata = ep.open_converted(echodata_path)
+
     ds_Sv = add_depth(
         ds_Sv,
+        echodata=echodata,
         depth_offset=depth_offset,
         tilt=tilt,
         downward=downward,
+        use_platform_vertical_offsets=use_platform_vertical_offsets,
+        use_platform_angles=use_platform_angles,
+        use_beam_angles=use_beam_angles,
     )
 
     ds_Sv.to_netcdf(output_path)
