@@ -59,9 +59,17 @@ def stream_datagram_dict_from_ncei(s3_object_key: str = None) -> dict:
         raise ValueError("s3_object_key must be provided.")
     # Create S3 client
     s3_client, _, _ = create_s3_objs()
+    # Get datagram/header size by reading first 4 bytes
+    response = s3_client.get_object(
+        Bucket=NCEI_BUCKET_NAME, Key=s3_object_key, Range="bytes=0-3"
+    )
+    # datagram_size = struct.unpack("=l", buf)[0]
+    datagram_size = int.from_bytes(response["Body"].read(), byteorder="big")
     # Create streamingBody object
     response = s3_client.get_object(
-        Bucket=NCEI_BUCKET_NAME, Key=s3_object_key, Range="bytes=0-5999"
+        Bucket=NCEI_BUCKET_NAME,
+        Key=s3_object_key,
+        Range=f"bytes=0-{datagram_size-1}",
     )
     # Read in the contents of the streamingBody object
     response_body = response["Body"].read()
@@ -109,19 +117,30 @@ def stream_datagram_dict_from_ncei(s3_object_key: str = None) -> dict:
 if __name__ == "__main__":
     file_path = r"C:\Users\Hannah Khan\Desktop\repos\AA-SI_aalibrary\other\test_data_dir\L0010-D20060603-T011017-ES60.raw"
     storage_options = {}
-    # (
-    #     random_ship_name,
-    #     random_survey_name,
-    #     random_echosounder,
-    #     random_raw_file,
-    # ) = get_random_raw_file_from_ncei_cache_with_search_param(
-    #     search_param="L0010-D20060603-T011017-ES60.raw"
-    # )
+    datagram_dict = {}
+    i = 0
+    while datagram_dict == [] or datagram_dict == {}:
+        print(f"Attempt {i+1}: Streaming datagram from NCEI...")
+        (
+            random_ship_name,
+            random_survey_name,
+            random_echosounder,
+            random_raw_file,
+        ) = get_random_raw_file_from_ncei_cache_with_search_param(
+            search_param="EK80"
+        )
+        datagram_dict = stream_datagram_dict_from_ncei(
+            f"data/raw/{random_ship_name}/{random_survey_name}/{random_echosounder}/{random_raw_file}"
+        )
     # print(search_ncei_object_keys_for_string("L0010-D20060603-T011017-ES60.raw"))
-    datagram_dict = stream_datagram_dict_from_ncei(
-        s3_object_key="data/raw/Arcturus/EBS06AR/ES60/L0010-D20060603-T011017-ES60.raw",
-    )
-
+    # ES60 datagram example:
+    # datagram_dict = stream_datagram_dict_from_ncei(
+    #     s3_object_key="data/raw/Arcturus/EBS06AR/ES60/L0010-D20060603-T011017-ES60.raw",
+    # )
+    # EK80 datagram example:
+    # datagram_dict = stream_datagram_dict_from_ncei(
+    #     s3_object_key="data/raw/Endeavor/EN727_Towed_Array/EK80/Endeavor2025Jan-D20250127-T154119.raw",
+    # )
     # download_raw_file_from_ncei(
     #     file_name=random_raw_file,
     #     file_type="raw",
@@ -130,7 +149,7 @@ if __name__ == "__main__":
     #     echosounder=random_echosounder,
     #     file_download_directory=os.sep.join(file_path.split(os.sep)[:-1]),
     # )
-    datagram_dict = get_datagram_dict_from_raw_file(file_path, storage_options)
+    # datagram_dict = get_datagram_dict_from_raw_file(file_path, storage_options)
     pprint(datagram_dict)
     print(datagram_dict["timestamp"])
     print(type(datagram_dict["timestamp"]))
