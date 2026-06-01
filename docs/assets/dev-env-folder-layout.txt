@@ -4,27 +4,28 @@ foreground: (233,237,238)
 text-font: inconsolata
 icon: font awesome 6 (solid)
 file name: dev-env-folder-layout
+folder-closed-character: =
 
 ^ ggn-nmfs-aa-dev-1-data (the 'bucket')
--o {data_source} (e.g. NCEI/OMAO/HDD)
---o {ship_name}
----o {survey_name}
------o auxiliary (for supplemental files)
-------o ev_files
+-= {data_source} (e.g. NCEI/OMAO/HDD)
+--= {ship_name}
+---= {survey_name}
+-----= auxiliary (supplemental files)
+------= ev_files
 -------+ XYZ.ev
------o metadata (for cruise-level metadata)
+-----= metadata (cruise-level metadata)
 ------+ {survey_name}_metadata.json
------o {echosounder} (e.g. 'EK80')
-------o calibration
--------o standardized_reports
--------o manufacturer_reports
---------+ channel_mapping.yaml
--------o Other
--------o raw (for raw calibration files)
-------o data
--------o netcdf
+-----= {echosounder} (e.g. 'EK80')
+------= calibration
+-------+ channel_mapping.yaml
+-------= standardized_reports
+-------= manufacturer_reports
+-------= other
+-------= raw (raw calibration files)
+------= data
+-------= netcdf
 --------+ XYZ.nc
--------o raw
+-------= raw
 --------+ XYZ.raw
 --------+ XYZ.idx
 --------+ XYZ.bot
