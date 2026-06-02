@@ -96,7 +96,7 @@ class TugboatAPI:
             # Raise an HTTPError for bad responses(4xx or 5xx)
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError:
             print(
                 f"GET request to {url} failed with status code: {response.status_code}"
             )
@@ -139,12 +139,30 @@ class TugboatAPI:
             print("Response JSON:")
             print(response.json())
             return response.json()
-        except Exception as e:
+        except requests.exceptions.HTTPError:
+            print(
+                f"GET request to {url} failed with status code: {response.status_code}"
+            )
+            print(response.text)
+            return response
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error occurred while connecting to {url}: {e}")
+            return response
+        except requests.exceptions.Timeout as e:
+            print(f"Request to {url} timed out: {e}")
+            return response
+        except ValueError as e:
+            print(f"Error decoding JSON response from {url}: {e}")
+            return response
+        except requests.exceptions.RequestException as e:
+            print(f"Error during GET request: {e}")
+            return response
+        except Exception:
             print(
                 f"POST request failed with status code: {response.status_code}"
             )
             print(response.text)
-            raise requests.exceptions.RequestException from e
+            raise response
 
     def _put_request_as_json(self, url: str, payload: dict) -> dict:
         """Helper function to make a PUT request and return the response as
