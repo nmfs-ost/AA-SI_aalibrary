@@ -96,9 +96,24 @@ class TugboatAPI:
             # Raise an HTTPError for bad responses(4xx or 5xx)
             response.raise_for_status()
             return response.json()
+        except requests.exceptions.HTTPError as e:
+            print(
+                f"GET request to {url} failed with status code: {response.status_code}"
+            )
+            print(response.text)
+            return e
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error occurred while connecting to {url}: {e}")
+            return e
+        except requests.exceptions.Timeout as e:
+            print(f"Request to {url} timed out: {e}")
+            return e
+        except ValueError as e:
+            print(f"Error decoding JSON response from {url}: {e}")
+            return e
         except requests.exceptions.RequestException as e:
             print(f"Error during GET request: {e}")
-            raise requests.exceptions.RequestException
+            return e
 
     def _post_request_as_json(self, url: str, payload: dict) -> dict:
         """Helper function to make a POST request and return the response as
@@ -731,7 +746,8 @@ class TugboatAPI:
 
 
 if __name__ == "__main__":
-    tb_api = TugboatAPI(use_dev=True)
+    tb_api = TugboatAPI(use_dev=False)
+    tb_api_dev = TugboatAPI(use_dev=True)
     print(tb_api.check_connection())
     # tb_api.create_empty_submission_file(
     #     file_download_directory=".",
