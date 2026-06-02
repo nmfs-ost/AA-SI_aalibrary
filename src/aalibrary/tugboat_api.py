@@ -6,6 +6,7 @@ import urllib
 import warnings
 import requests
 from dotenv import load_dotenv
+from pprint import pprint
 
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
@@ -368,9 +369,18 @@ class TugboatAPI:
     ################################################################## PROJECTS
     def get_all_projects(self) -> list:
         """Fetches all projects from the Tugboat API."""
-
-        url = urllib.parse.urljoin(self.tugboat_api_url, "projects")
-        return self._get_request_as_json(url)["items"]
+        page = 1
+        all_projects = []
+        while True:
+            url = urllib.parse.urljoin(
+                self.tugboat_api_url, f"projects?page={page}"
+            )
+            projects = self._get_request_as_json(url)["items"]
+            if projects == []:
+                break
+            all_projects.extend(projects)
+            page += 1
+        return all_projects
 
     def get_project_by_id(self, project_id: str) -> dict:
         """Fetches a project by its ID from the Tugboat API."""
@@ -488,6 +498,10 @@ class TugboatAPI:
             person_id (str): The id of the person you are trying to update.
             person_json (dict): The JSON payload containing the updated person
                 information.
+                NOTE: You will need to provide the entire person JSON payload,
+                not just the fields you want to update, otherwise the fields
+                that are not included in the payload will be deleted from the
+                person's information in the Tugboat database.
                 Example:
                     {
                         "name": "John Smith",
@@ -766,7 +780,7 @@ class TugboatAPI:
 if __name__ == "__main__":
     tb_api = TugboatAPI(use_dev=False)
     tb_api_dev = TugboatAPI(use_dev=True)
-    print(tb_api.check_connection())
+    # print(tb_api.check_connection())
     # tb_api.create_empty_submission_file(
     #     file_download_directory=".",
     #     file_name="tugboat_test_submission.json",
@@ -784,11 +798,29 @@ if __name__ == "__main__":
     # )
     # print(tb_api.search_people_by_name("Elias Capriles"))
     # print(tb_api.get_all_people())
+    # pprint(tb_api_dev.search_people_by_name("Micheal Jech"))
+    # print(
+    #     tb_api_dev.update_person_by_id(
+    #         person_id="1852",
+    #         person_json={
+    #             "city": "Woods Hole",
+    #             "country": "USA",
+    #             "name": "Michael Jech",
+    #             "organization": "NOAA NEFSC",
+    #             "position": "Fisheries Research Biologist",
+    #             "state": "MA",
+    #             "street": "166 Water Street",
+    #             "zip": "02543",
+    #         },
+    #     )
+    # )
+    # pprint(tb_api_dev.search_people_by_name("Michael Jech"))
+    print(tb_api.get_all_platforms())
 
     # print(tb_api.get_all_instruments())
     # print(tb_api.get_all_platforms())
     # print(tb_api.get_all_people())
-    print(tb_api.get_all_sea_areas())
+    # print(tb_api.get_all_sea_areas())
     # print(tb_api.get_all_submissions())
     # print(tb_api.get_all_jobs())
     # print(tb_api.get_all_organizations())
