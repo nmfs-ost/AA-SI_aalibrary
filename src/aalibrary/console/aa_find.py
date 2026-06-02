@@ -7,6 +7,10 @@ NCEI (and, eventually, OMAO). Drills down vessel → survey → sonar model →
 raw file → operation, with hooks into the rest of the aa-pipeline
 (`aa-raw`, `aa-plot`).
 
+Navigation: it's a keyboard-driven menu — use the up/down arrow keys to
+move the highlight, Enter to select, start typing to filter long lists,
+and Ctrl-C to quit. Run `aa-find --help` for the full rundown.
+
 This is a TUI — it does NOT participate in the aa-pipeline `|` chain.
 It calls those tools as subprocesses on your behalf when you pick an
 operation that needs them.
@@ -25,6 +29,7 @@ logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
 # Heavy imports
+import argparse
 import os
 import subprocess
 from contextlib import contextmanager
@@ -63,6 +68,72 @@ def _make_console() -> "Console | None":
 
 
 # ----------------------------
+# CLI / argument parsing
+# ----------------------------
+
+# Shown at the bottom of `aa-find --help`, and reused by the in-app
+# "How to Navigate" menu entry, so the navigation story lives in one place.
+NAV_HELP = """\
+navigating aa-find -- the whole tool is a keyboard-driven menu:
+  up / down arrows   move the highlight between options
+  Enter              open or select the highlighted item
+  type to filter     on long lists (vessels, surveys, files) just start
+                     typing to fuzzy-search, then keep typing to narrow it
+  Back               every menu has a Back entry to step up one level
+  Ctrl-C             cancel the current prompt, or quit from the main menu
+
+what you can do:
+  Browse NCEI vessel data, drilling down through
+    vessel -> survey -> sonar model -> .raw file -> operation
+  On a .raw file you can download it, plot an echogram, or check its size
+  on S3. (NetCDF download and KMeans/DBScan are stubbed for a later release.)
+  You can also authenticate with Google Cloud and list project resources.
+
+note:
+  aa-find is interactive only. Unlike aa-raw / aa-plot it does NOT take part
+  in the aa-pipeline `|` chain; it runs those tools for you when an operation
+  needs them.
+"""
+
+
+def _pkg_version() -> str:
+    """Best-effort version string for --version; never raises."""
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+        try:
+            return version("aalibrary")
+        except PackageNotFoundError:
+            return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="aa-find",
+        # RawDescription keeps our hand-laid description/epilog from being
+        # re-wrapped; per-argument help text still wraps normally.
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Interactive console browser for NCEI (and, later, OMAO) vessel\n"
+            "acoustics data. Drill down to a .raw file and hand it off to the\n"
+            "rest of the aa-pipeline (aa-raw, aa-plot)."
+        ),
+        epilog=NAV_HELP,
+    )
+    p.add_argument(
+        "--version", action="version",
+        version=f"%(prog)s (aalibrary {_pkg_version()})",
+        help="Show the version and exit.",
+    )
+    p.add_argument(
+        "--no-color", "--plain", dest="no_color", action="store_true",
+        help="Disable colors, panels, and spinners (plain-text output).",
+    )
+    return p
+
+
+# ----------------------------
 # Pretty-print helpers
 # ----------------------------
 
@@ -93,6 +164,16 @@ def _print_banner() -> None:
     else:
         print(f"\n  {title}")
         print(f"  {subtitle}\n")
+
+
+def _print_nav_hint() -> None:
+    """One-line reminder, under the banner, that the menus are arrow-driven."""
+    msg = "↑/↓ move · Enter select · type to filter · Ctrl-C to quit"
+    if _console is not None:
+        _console.print(f"[dim]{msg}[/dim]")
+        _console.print()
+    else:
+        print(f"  {msg}\n")
 
 
 def _breadcrumb(*parts: str) -> None:
@@ -237,6 +318,24 @@ def _show_resources() -> None:
     _press_enter("Press Enter to return to the main menu")
 
 
+def _show_nav_help() -> None:
+    """Print the same navigation guide as `aa-find --help`, from the menu."""
+    if _console is not None:
+        _console.print()
+        _console.print(
+            Panel(
+                NAV_HELP.rstrip(),
+                title="How to navigate aa-find",
+                border_style="cyan",
+                padding=(0, 2),
+            )
+        )
+        _console.print()
+    else:
+        print("\n" + NAV_HELP)
+    _press_enter("Press Enter to return to the main menu")
+
+
 # ----------------------------
 # Main menu
 # ----------------------------
@@ -246,17 +345,22 @@ _MAIN_CHOICES = [
     {"name": "Search OMAO Vessel Data",        "value": "omao"},
     {"name": "Authenticate with Google",       "value": "google"},
     {"name": "View Resources & Documentation", "value": "docs"},
+    {"name": "How to Navigate (help)",         "value": "help"},
     {"name": "Exit Application",               "value": "exit"},
 ]
 
 
-def main() -> None:
+def main(argv=None) -> None:
     """Top-level loop."""
+    args = _build_parser().parse_args(argv)
+
     global _console
-    _console = _make_console()
+    # --no-color forces the plain-text path even when rich is installed.
+    _console = None if args.no_color else _make_console()
 
     _clear()
     _print_banner()
+    _print_nav_hint()
 
     try:
         while True:
@@ -270,6 +374,8 @@ def main() -> None:
                 _handle_google_auth()
             elif mode == "docs":
                 _show_resources()
+            elif mode == "help":
+                _show_nav_help()
             elif mode == "exit":
                 _farewell()
                 return
