@@ -101,19 +101,19 @@ class TugboatAPI:
                 f"GET request to {url} failed with status code: {response.status_code}"
             )
             print(response.text)
-            return e
+            return response
         except requests.exceptions.ConnectionError as e:
             print(f"Connection error occurred while connecting to {url}: {e}")
-            return e
+            return response
         except requests.exceptions.Timeout as e:
             print(f"Request to {url} timed out: {e}")
-            return e
+            return response
         except ValueError as e:
             print(f"Error decoding JSON response from {url}: {e}")
-            return e
+            return response
         except requests.exceptions.RequestException as e:
             print(f"Error during GET request: {e}")
-            return e
+            return response
 
     def _post_request_as_json(self, url: str, payload: dict) -> dict:
         """Helper function to make a POST request and return the response as
