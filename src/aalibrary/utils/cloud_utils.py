@@ -353,6 +353,51 @@ def download_file_from_gcp_as_string(
         raise
 
 
+def download_folder_from_gcs(
+    bucket_name: str = "",
+    gcs_folder_prefix: str = "",
+    local_destination_folder: str = ".",
+):
+    """Downloads a folder (blob-prefix) from GCS to a local directory.
+
+    Args:
+        bucket_name (str): The name of the GCS bucket.
+        gcs_folder_prefix (str): The prefix of the folder in GCS to download.
+            Ex. "NCEI/Reuben_Lasker/RL2107/EK80/data/netcdf/"
+        local_destination_folder (str): The local directory to download the
+            folder to.
+                Ex. "./downloads/RL2107_netcdfs/"
+
+    Returns:
+        None
+    """
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+
+    # Clean up the gcs folder prefix if it contains the bucket name.
+    if bucket_name + "/" in gcs_folder_prefix:
+        gcs_folder_prefix = gcs_folder_prefix.replace(bucket_name + "/", "")
+
+    # List all blobs with the specified prefix
+    blobs = bucket.list_blobs(prefix=gcs_folder_prefix)
+
+    for blob in blobs:
+        # Skip if the blob is just the folder placeholder (ends with '/')
+        if blob.name.endswith("/"):
+            continue
+
+        # Create local path, maintaining the folder structure
+        local_file_path = os.path.join(local_destination_folder, blob.name)
+
+        # Ensure the local directory exists
+        os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+
+        # Download the file
+        blob.download_to_filename(local_file_path)
+        print(f"Downloaded: {blob.name} to {local_file_path}")
+
+
 def delete_file_from_gcp(
     gcp_bucket: storage.Client.bucket, blob_file_path: str
 ):
@@ -595,7 +640,7 @@ def bq_query_to_pandas(client: bigquery.Client = None, query: str = ""):
     """Takes a SQL query and returns the end result as a DataFrame."""
 
     job = client.query(query)
-    return job.result().to_dataframe()
+    return job.result().to_dataframe(create_bqstorage_client=False)
 
 
 def list_all_objects_in_gcp_bucket_location(
