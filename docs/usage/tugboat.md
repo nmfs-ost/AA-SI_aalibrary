@@ -14,6 +14,9 @@ The general process works by creating a Metadata JSON file, uploading it to GCS 
 
 The first step is to associate a Tugboat Metadata JSON file with our submission. To do this, you will need to create a JSON file where all of the submission fields are empty. This is possible using the following code:
 
+!!! note "NOTE: Example Tugboat Submission File"
+    You can use an [example submission file](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/test_tugboat_validation_submission.json) or [template](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/tugboat_empty_submission_template.json) to get a starting point for your Tugboat submission.
+
 ```python
 from aalibrary.tugboat_api import TugboatAPI
 
@@ -61,38 +64,17 @@ We should upload this file to Google Cloud Storage Buckets as backup.
 We can use the following code to accomplish that.
 
 ```python
-from aalibrary.utils.cloud_utils import setup_gcp_storage_objs, upload_file_to_gcp_bucket
-from aalibrary.utils.helpers import parse_correct_gcp_storage_bucket_location
+from aalibrary.metadata import upload_survey_level_metadata_json_to_gcp
 
-# Set the GCS connection variables.
-gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs(
-    project_id = "ggn-nmfs-aa-dev-1",
-    gcp_bucket_name = "ggn-nmfs-aa-dev-1-data"
-)
-
-# Parse the correct location for the file.
-gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
-    file_name = "tugboat_test_submission.json",
-    file_type = "json",
-    ship_name = "test_ship",
-    survey_name = "test1203",
-    echosounder = "EK80",
-    data_source = "HDD",
-    is_metadata = False,
-    is_survey_metadata = True, # NOTE: It is important to set this to True.
-    debug = True,
-)
-
-# Upload the file to the correct location.
-upload_file_to_gcp_bucket(
-    bucket = gcp_bucket,
-    blob_file_path = gcp_storage_bucket_location,
-    local_file_path = "./tugboat_test_submission.json,
-    debug = True,
+upload_survey_level_metadata_json_to_gcp(
+    ship_name = "your_ship_name",
+    survey_name = "your_survey_name",
+    submission_json_file_path = "./tugboat_test_submission.json",
+    debug = False,
 )
 ```
 
-After running this snippet of code, your Tugboat Metadata JSON will be backed-up to Google Cloud Storage.
+After running this snippet of code, your Tugboat Metadata JSON will be backed-up to Google Cloud Storage at the correct location.
 
 ### Step 4. Submitting The JSON File To Tugboat For Archival
 
@@ -101,6 +83,7 @@ Use the code below, and read the output to double-check that the file has been s
 
 ```python
 from aalibrary.tugboat_api import TugboatAPI
+
 tb_api = TugboatAPI()
 tb_api.post_new_submission(
     submission_json_file_path="./tugboat_test_submission.json"

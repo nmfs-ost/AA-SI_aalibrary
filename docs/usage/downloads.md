@@ -160,7 +160,6 @@ gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
     survey_name="RL2107",
     echosounder="EK80",
     data_source="NCEI",
-    is_metadata=False,
     debug=False,
 )
 
