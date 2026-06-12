@@ -112,3 +112,5 @@ aa-ed = "aalibrary.console.aa_ed:main"
 aa-upload = "aalibrary.console.aa_upload:main"
 
 aa-combine = "aalibrary.console.aa_combine:main"
+
+aa-cruisepack = "aalibrary.console.aa_cruisepack:main"
