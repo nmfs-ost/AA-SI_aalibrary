@@ -82,6 +82,12 @@ def get_database_folder_paths(debug=False):
     cruise_pack_paths = search_computer_files(
         search_pattern="cruise_pack_*", debug=debug
     )
+    cruise_pack_paths.extend(search_computer_files(
+        search_pattern="CruisePack_*", debug=debug
+    ))
+    cruise_pack_paths.extend(search_computer_files(
+        search_pattern="packager_*", debug=debug
+    ))
     database_folder_paths = []
     for cruise_pack_path in cruise_pack_paths:
         cruise_pack_path = Path(cruise_pack_path)
@@ -112,8 +118,11 @@ def find_local_cruisepack_sqlite_files(debug=False):
     cruise_data_sqlite_paths = []
     for database_folder_path in database_folder_paths:
         cruise_data_sqlite_path = database_folder_path / "cruiseData.sqlite"
+        package_data_sqlite_path = database_folder_path / "packageData.sqlite"
         if cruise_data_sqlite_path.exists():
             cruise_data_sqlite_paths.append(cruise_data_sqlite_path)
+        if package_data_sqlite_path.exists():
+            cruise_data_sqlite_paths.append(package_data_sqlite_path)
     print(f"Found {len(cruise_data_sqlite_paths)} `cruiseData.sqlite` files.")
     return cruise_data_sqlite_paths
 
