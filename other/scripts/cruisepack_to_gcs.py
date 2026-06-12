@@ -193,7 +193,7 @@ def upload_file_to_gcp_bucket(
         raise
 
 
-if __name__ == "__main__":
+def main():
     debug = False
     print_header()
     # Get the persons name for personalized file name in GCS.
@@ -250,3 +250,7 @@ if __name__ == "__main__":
             local_file_path=str(path),
         )
         print(f"Finished uploading '{path}' to '{gcp_location}'.")
+
+
+if __name__ == "__main__":
+    main()
