@@ -64,7 +64,7 @@ def search_computer_files(search_pattern, debug=False):
         print(f"Permission denied for the base directory: '{start_dir}'")
 
     if not matching_paths:
-        raise FileNotFoundError(
+        print(
             f"No items found matching '{search_pattern}' in '{start_dir}'."
         )
     else:
