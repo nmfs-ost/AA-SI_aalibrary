@@ -2,6 +2,7 @@
 resides in BigQuery."""
 
 import sys
+import os
 from datetime import datetime, timezone, timedelta
 import subprocess
 import logging
@@ -28,6 +29,14 @@ if __package__ is None or __package__ == "":
     from utils.ncei_utils import (
         check_if_tugboat_metadata_json_exists_in_survey,
     )
+    from utils.cloud_utils import (
+        setup_gcp_storage_objs,
+        upload_file_to_gcp_bucket,
+    )
+    from aalibrary.utils.helpers import (
+        parse_correct_gcp_storage_bucket_location,
+        normalize_ship_name,
+    )
 else:
     # uses current package visibility
     from aalibrary import utils
@@ -38,6 +47,14 @@ else:
     # from aalibrary.utils import nc_reader
     from aalibrary.utils.ncei_utils import (
         check_if_tugboat_metadata_json_exists_in_survey,
+    )
+    from aalibrary.utils.cloud_utils import (
+        setup_gcp_storage_objs,
+        upload_file_to_gcp_bucket,
+    )
+    from aalibrary.utils.helpers import (
+        parse_correct_gcp_storage_bucket_location,
+        normalize_ship_name,
     )
 
 
@@ -531,6 +548,55 @@ def delay_file_deletion(
     except Exception as e:
         print(f"Could not update DELETION_DATETIME due to:\n{e}")
         return
+
+
+def upload_survey_level_metadata_json_to_gcp(
+    ship_name: str = "",
+    survey_name: str = "",
+    submission_json_file_path: str = "",
+    debug: bool = False,
+):
+    """Uploads the survey level metadata json file to GCP, in the correct
+    location.
+
+    Args:
+        ship_name (str, optional): The ship name. Defaults to "".
+        survey_name (str, optional): The survey name. Defaults to "".
+        submission_json_file_path (str, optional): The local file location for
+            the submission json file. Defaults to "".
+        debug (bool, optional): Whether or not to print debug statements.
+    """
+
+    # Normalize the ship name to ensure correct parsing of the bucket location.
+    normalized_ship_name = normalize_ship_name(ship_name)
+
+    # Get file name
+    if os.sep in submission_json_file_path:
+        file_name = submission_json_file_path.split(os.sep)[-1]
+    else:
+        file_name = submission_json_file_path.split("\\")[-1]
+
+    # Set the GCS connection variables.
+    _, _, gcp_bucket = setup_gcp_storage_objs()
+
+    # Parse the correct location for the file.
+    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name,
+        file_type="json",
+        ship_name=normalized_ship_name,
+        survey_name=survey_name,
+        data_source="HDD",
+        is_survey_metadata=True,  # NOTE: It is important to set this to True.
+        debug=debug,
+    )
+
+    # Upload the file to the correct location.
+    upload_file_to_gcp_bucket(
+        bucket=gcp_bucket,
+        blob_file_path=gcp_storage_bucket_location,
+        local_file_path=submission_json_file_path,
+        debug=debug,
+    )
 
 
 if __name__ == "__main__":
