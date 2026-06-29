@@ -865,6 +865,15 @@ def copy_folder_contents_within_gcs_bucket(
             folder or object to.
             NOTE: If copying a folder, make sure to include the trailing slash.
             Defaults to "".
+    Ex.
+        gcp_utils.copy_folder_contents_within_gcs_bucket(
+            gcp_bucket_name="ggn-nmfs-aa-prod-1-data",
+            source_prefix="HDD/Sette/SE2505/ADCP/",
+            destination_prefix="HDD/Sette/SE2505/auxiliary/ADCP/"
+        )
+
+    Returns:
+        None
     """
 
     storage_client = storage.Client()
