@@ -21,3 +21,7 @@ This script is located [here](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/m
 
 This script is located [here](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/scripts/cruisepack_to_gcs.py
 ). It is used for scanning a computer for CruisePack database files. The files are then uploaded (automatically) to Google Cloud Storage Buckets. You will need to have `gcloud` installed on the computer (you will also need to sign into it), however, the script takes care of installing everything else.
+To run this script, install the AALibrary according to the installation page. Then you can issue the following command in the terminal and follow the outputs:
+```bash
+aa-cruisepack
+```
