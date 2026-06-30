@@ -6,6 +6,8 @@ from typing import List
 import json
 import logging
 import string
+import platform
+import subprocess
 import requests
 
 import boto3
@@ -27,6 +29,34 @@ from aalibrary import config
 #     file_download_location.split(os.sep)
 #     file_download_location_directory = os.sep.join([
 #                        os.path.normpath(file_download_location), file_name])
+
+
+def get_current_gcp_user_email() -> str:
+    """Gets the current gcloud user's email.
+
+    Returns:
+        str: A string containing the current gcloud user's email.
+    """
+
+    # Gets the current gcloud user's email
+    get_curr_user_email_cmd = ["gcloud", "config", "get-value", "account"]
+    if platform.system() == "Windows":
+        email = subprocess.run(
+            get_curr_user_email_cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout
+    else:
+        email = subprocess.run(
+            get_curr_user_email_cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout
+    email = email.replace("\n", "")
+    return email
 
 
 def get_file_name_from_url(url: str = "") -> str:
@@ -214,6 +244,10 @@ def create_ncei_url_from_variables(
         raise FileNotFoundError
 
 
+# TODO:
+def parse_correct_gcp_storage_bucket_location_based_on_file_type(): ...
+
+
 def parse_correct_gcp_storage_bucket_location(
     file_name: str = "",
     file_type: str = "",
@@ -221,18 +255,19 @@ def parse_correct_gcp_storage_bucket_location(
     survey_name: str = "",
     echosounder: str = "",
     data_source: str = "",
-    is_metadata: bool = False,
     is_survey_metadata: bool = False,
     is_calibration_file: bool = False,
     is_calibration_mapping_file: bool = False,
     is_auxiliary_file: bool = False,
+    is_derived_product: bool = False,
     debug: bool = False,
 ) -> str:
     """Calculates the correct gcp storage location based on data source, file
     type, and if the file is metadata or not.
     NOTE: Make sure that only one of the following params is set to True, or
         that all are set to False:
-        [is_metadata,is_survey_metadata,is_calibration_file,is_auxiliary_file]
+        [is_survey_metadata,is_calibration_file,is_calibration_mapping_file,
+        is_auxiliary_file]
 
     Args:
         file_name (str, optional): The file name (includes extension).
@@ -247,10 +282,6 @@ def parse_correct_gcp_storage_bucket_location(
             Defaults to "".
         data_source (str, optional): The source of the data. Can be one of
             ["NCEI", "OMAO"]. Defaults to "".
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
         is_survey_metadata (bool, optional): Whether or not the file is a
             metadata file associated with a survey. The files are stored at
             the survey level, in the `metadata/` folder. Defaults to False.
@@ -263,6 +294,10 @@ def parse_correct_gcp_storage_bucket_location(
         is_auxiliary_file (bool, optional): Whether or not the file is an
             auxiliary file associated with the survey. These files can be of
             any extension. And do not necessarily have to be data files.
+        is_derived_product (bool, optional): Whether or not the file is a
+            derived product. These can be analysis work products or anything
+            else that is not a file that analysis can be derived from (netcdf).
+            Defaults to False.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
 
@@ -271,28 +306,29 @@ def parse_correct_gcp_storage_bucket_location(
     """
 
     # Use XOR operator to assert that only one of these values is True.
-    # [is_metadata,is_survey_metadata,is_calibration_file,is_auxiliary_file]
+    # [is_survey_metadata,is_calibration_file,is_auxiliary_file]
     assert (
-        is_metadata
-        ^ is_survey_metadata
+        is_survey_metadata
         ^ is_calibration_file
         ^ is_calibration_mapping_file
         ^ is_auxiliary_file
+        ^ is_derived_product
     ) or not any(
         [
-            is_metadata,
             is_survey_metadata,
             is_calibration_file,
             is_calibration_mapping_file,
             is_auxiliary_file,
+            is_derived_product,
         ]
     ), (
         "Make sure that only one of the following params is set to True:\n"
-        "[is_metadata,is_survey_metadata,is_calibration_file,"
-        "is_calibration_mapping_file,is_auxiliary_file]"
+        "[is_survey_metadata,is_calibration_file,"
+        "is_calibration_mapping_file,is_auxiliary_file,is_derived_product]"
         "\nor that all are set to false."
-        f"[{is_metadata} {is_survey_metadata} {is_calibration_file}"
-        f" {is_calibration_mapping_file} {is_auxiliary_file}]"
+        f"[{is_survey_metadata} {is_calibration_file}"
+        f" {is_calibration_mapping_file} {is_auxiliary_file}"
+        f" {is_derived_product}]"
     )
 
     # Creating the correct upload location
@@ -300,30 +336,18 @@ def parse_correct_gcp_storage_bucket_location(
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/metadata/{file_name}"
         )
-    elif is_metadata:
-        gcp_storage_bucket_location = (
-            f"{data_source}/{ship_name}/{survey_name}/{echosounder}/metadata/"
-        )
-        # TODO: what are the exact file extensions for metadata files?
-        # Figure out if its a raw or idx file (belongs in raw folder)
-        if file_type.lower() in config.RAW_DATA_FILE_TYPES:
-            gcp_storage_bucket_location = (
-                gcp_storage_bucket_location + f"raw/{file_name}.json"
-            )
-        elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
-            gcp_storage_bucket_location = (
-                gcp_storage_bucket_location + f"netcdf/{file_name}.json"
-            )
     elif is_calibration_file:
-        gcp_storage_bucket_location = (
-            f"{data_source}/{ship_name}/{survey_name}/calibration/{file_name}"
-        )
+        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/calibration/{file_name}"
     elif is_calibration_mapping_file:
-        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/calibration/mappings/{file_name}"
+        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/calibration/{file_name}"
     elif is_auxiliary_file:
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/auxiliary/{file_name}"
         )
+    elif is_derived_product:
+        user_name = get_current_gcp_user_email()
+        user_name = user_name.split("@")[0]
+        gcp_storage_bucket_location = f"derived_products/{user_name}/{ship_name}/{survey_name}/{file_name}"
     else:
         # Figure out if its a raw or idx file (belongs in raw folder)
         if file_type.lower() in config.RAW_DATA_FILE_TYPES:

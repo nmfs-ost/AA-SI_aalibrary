@@ -36,6 +36,7 @@ if __package__ is None or __package__ == "":
     from aalibrary.utils.helpers import (
         parse_correct_gcp_storage_bucket_location,
         normalize_ship_name,
+        get_current_gcp_user_email,
     )
 else:
     # uses current package visibility
@@ -55,35 +56,8 @@ else:
     from aalibrary.utils.helpers import (
         parse_correct_gcp_storage_bucket_location,
         normalize_ship_name,
+        get_current_gcp_user_email,
     )
-
-
-def get_current_gcp_user_email() -> str:
-    """Gets the current gcloud user's email.
-
-    Returns:
-        str: A string containing the current gcloud user's email.
-    """
-
-    # Gets the current gcloud user's email
-    get_curr_user_email_cmd = ["gcloud", "config", "get-value", "account"]
-    if platform.system() == "Windows":
-        email = subprocess.run(
-            get_curr_user_email_cmd,
-            shell=True,
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout
-    else:
-        email = subprocess.run(
-            get_curr_user_email_cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout
-    email = email.replace("\n", "")
-    return email
 
 
 def create_metadata_json_for_raw_files(
