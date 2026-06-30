@@ -147,7 +147,6 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 file_location=idx_file,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
-                is_metadata=False,
                 verbose=False,
                 debug=debug,
             )
@@ -169,7 +168,6 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 file_location=bot_file,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
-                is_metadata=False,
                 verbose=False,
                 debug=debug,
             )
@@ -192,7 +190,6 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 file_location=raw_file,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
-                is_metadata=False,
                 verbose=False,
                 debug=debug,
             )
@@ -227,7 +224,6 @@ def upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
                 file_location=netcdf_file,
                 gcp_bucket=gcp_bucket,
                 data_source=data_source,
-                is_metadata=False,
                 verbose=False,
                 debug=debug,
             )
@@ -347,7 +343,6 @@ def upload_local_calibration_files_from_directory_to_gcp_storage_bucket(
                     file_location=file,
                     gcp_bucket=gcp_bucket,
                     data_source=data_source,
-                    is_metadata=False,
                     is_survey_metadata=False,
                     is_calibration_file=True,
                     is_calibration_mapping_file=False,
@@ -455,7 +450,6 @@ def upload_local_auxiliary_files_from_directory_to_gcp_storage_bucket(
                     file_location=file,
                     gcp_bucket=gcp_bucket,
                     data_source=data_source,
-                    is_metadata=False,
                     is_survey_metadata=False,
                     is_calibration_file=False,
                     is_calibration_mapping_file=False,
