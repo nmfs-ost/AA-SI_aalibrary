@@ -1,17 +1,63 @@
 """This script is used to upload local Cruisepack database files to Google
 Cloud Storage (GCS)."""
 
+# pylint: disable=wrong-import-position
+# flake8: noqa: E402
+
+
+### Check and install required packages before running script.
 import sys
 import os
-from pathlib import Path
 import platform
-from typing import Tuple
-
-from google.cloud import storage
+from pathlib import Path
+from pprint import pprint
 import traceback
+import subprocess
+import pip
 
-from InquirerPy import inquirer
-from InquirerPy.base import Choice
+REQUIRED_PACKAGES = [
+    "google-cloud",
+    "google-api-python-client",
+    "inquirerpy",
+    "google-cloud-storage",
+]
+
+
+def check_and_install_missing_pkgs():
+    """Checks and installs missing packages."""
+
+    missing_packages = []
+    # for package in REQUIRED_PACKAGES:
+    #     # Look up the module specification without actually importing it
+    #     if importlib.util.find_spec(package) is None:
+    #         missing_packages.append(package)
+    for package in REQUIRED_PACKAGES:
+        try:
+            __import__(package)
+        except ImportError:
+            print(f"Installing {package}...")
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", package]
+            )
+
+    if missing_packages:
+        print(
+            f"Error: Missing required packages: {', '.join(missing_packages)}"
+        )
+        for package in missing_packages:
+            print(f"Installing `{package}`")
+            pip.main(["install", package])
+
+    print("All dependencies are satisfied. Running script...")
+
+
+def clear_screen():
+    """Clears the terminal screen"""
+    if platform.system() == "Windows":
+        os.system("cls")
+    else:
+        os.system("clear")
+
 
 GCP_PROJECT_IDS = ["ggn-nmfs-aa-dev-1", "ggn-nmfs-aa-prod-1"]
 GCS_BUCKET_NAMES = ["ggn-nmfs-aa-dev-1-data", "ggn-nmfs-aa-prod-1-data"]
@@ -43,7 +89,7 @@ def search_computer_files(search_pattern, debug=False):
     else:
         start_dir = "/"
 
-    print("Finding Cruisepack on your computer...")
+    print(f"Finding Cruisepack on your computer (`{search_pattern}`)...")
     if debug:
         print(f"Starting directory: '{start_dir}'")
         print(f"Search pattern: '{search_pattern}'")
@@ -64,9 +110,7 @@ def search_computer_files(search_pattern, debug=False):
         print(f"Permission denied for the base directory: '{start_dir}'")
 
     if not matching_paths:
-        print(
-            f"No items found matching '{search_pattern}' in '{start_dir}'."
-        )
+        print(f"No items found matching '{search_pattern}' in '{start_dir}'.")
     else:
         # Keep only the directories.
         matching_paths = [x for x in matching_paths if x.is_dir()]
@@ -82,12 +126,12 @@ def get_database_folder_paths(debug=False):
     cruise_pack_paths = search_computer_files(
         search_pattern="cruise_pack_*", debug=debug
     )
-    cruise_pack_paths.extend(search_computer_files(
-        search_pattern="CruisePack_*", debug=debug
-    ))
-    cruise_pack_paths.extend(search_computer_files(
-        search_pattern="packager_*", debug=debug
-    ))
+    cruise_pack_paths.extend(
+        search_computer_files(search_pattern="CruisePack_*", debug=debug)
+    )
+    cruise_pack_paths.extend(
+        search_computer_files(search_pattern="packager_*", debug=debug)
+    )
     database_folder_paths = []
     for cruise_pack_path in cruise_pack_paths:
         cruise_pack_path = Path(cruise_pack_path)
@@ -129,7 +173,7 @@ def find_local_cruisepack_sqlite_files(debug=False):
 
 def setup_gcp_storage_objs(
     project_id: str = None, gcp_bucket_name: str = None, verbose: bool = False
-) -> Tuple[storage.Client, str, storage.Client.bucket]:
+):
     """Sets up Google Cloud Platform storage objects for use in accessing and
     modifying storage buckets.
 
@@ -151,6 +195,8 @@ def setup_gcp_storage_objs(
             object itself (which will be executing the commands used in this
             api).
     """
+    from google.cloud import storage
+
     gcp_stor_client = storage.Client(project=project_id)
 
     gcp_bucket = gcp_stor_client.bucket(gcp_bucket_name)
@@ -165,7 +211,7 @@ def setup_gcp_storage_objs(
 
 
 def upload_file_to_gcp_bucket(
-    bucket: storage.Client.bucket = None,
+    bucket=None,
     blob_file_path: str = "",
     local_file_path: str = "",
     debug: bool = False,
@@ -194,10 +240,17 @@ def upload_file_to_gcp_bucket(
 
 
 def main():
+    check_and_install_missing_pkgs()
+    clear_screen()
+
+    from InquirerPy.prompts.input import InputPrompt
+    from InquirerPy.prompts.list import ListPrompt
+    from InquirerPy.base import Choice
+
     debug = False
     print_header()
     # Get the persons name for personalized file name in GCS.
-    name = inquirer.text(
+    name = InputPrompt(
         message="Enter your name (so you can find your files in GCS):",
     ).execute()
     name = (
@@ -206,7 +259,7 @@ def main():
 
     # Set correct GCP project and bucket names based on user input.
     gcp_project_choices = [Choice(id, name=id) for id in GCP_PROJECT_IDS]
-    gcp_project_id = inquirer.select(
+    gcp_project_id = ListPrompt(
         message="Select the GCP project to upload to:",
         choices=gcp_project_choices,
         default="ggn-nmfs-aa-dev-1",
@@ -219,7 +272,7 @@ def main():
     science_center_choices = [
         Choice(name, name=name) for name in SCIENCE_CENTERS
     ]
-    science_center = inquirer.select(
+    science_center = ListPrompt(
         message="Select the science center you belong to:",
         choices=science_center_choices,
         default="AFSC",
@@ -233,7 +286,7 @@ def main():
     cruise_data_sqlite_paths = find_local_cruisepack_sqlite_files(debug=debug)
 
     # Create bucket object to use for uploading.
-    gcp_stor_client, gcs_bucket_name, gcp_bucket = setup_gcp_storage_objs(
+    _, gcs_bucket_name, gcp_bucket = setup_gcp_storage_objs(
         project_id=gcp_project_id, gcp_bucket_name=gcs_bucket_name
     )
 
@@ -250,6 +303,10 @@ def main():
             local_file_path=str(path),
         )
         print(f"Finished uploading '{path}' to '{gcp_location}'.")
+
+    print("\n\n")
+    print("Done.")
+    print(f"Uploaded {len(cruise_data_sqlite_paths)} found file(s) to GCS.")
 
 
 if __name__ == "__main__":
