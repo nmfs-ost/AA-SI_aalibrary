@@ -268,7 +268,6 @@ class RawFile:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                is_metadata=self.is_metadata,
                 debug=self.debug,
             )
         )
@@ -280,7 +279,6 @@ class RawFile:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                is_metadata=self.is_metadata,
                 debug=self.debug,
             )
         )
@@ -292,7 +290,6 @@ class RawFile:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                is_metadata=self.is_metadata,
                 debug=self.debug,
             )
         )
@@ -304,7 +301,6 @@ class RawFile:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                is_metadata=self.is_metadata,
                 debug=self.debug,
             )
         )
