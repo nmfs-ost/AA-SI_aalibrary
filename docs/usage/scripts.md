@@ -16,3 +16,8 @@ This script is located [here](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/m
 ## Comparing Local Files To NCEI
 
 This script is located [here](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/compare_local_to_NCEI.ipynb). It is used for comparing the files of a local survey's echosounder to the files that exist in NCEI. It compares file names, file sizes, and file checksums. An executive summary is generated (printed to console), and an Excel report can be saved if the param is set. There is also an option to upload the files to GCP for intermittent storage until they are ready to be archived at NCEI. To begin, download a copy of the notebook, fill out the first cell with your variables, and follow the directions in the script. Note: You might run into authorization errors which you can use [these](../getting-started/installation.md) instructions to fix.
+
+## Uploading Local CruisePack Files to GCS Buckets
+
+This script is located [here](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/scripts/cruisepack_to_gcs.py
+). It is used for scanning a computer for CruisePack database files. The files are then uploaded (automatically) to Google Cloud Storage Buckets. You will need to have `gcloud` installed on the computer (you will also need to sign into it), however, the script takes care of installing everything else.
