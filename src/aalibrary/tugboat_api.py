@@ -158,12 +158,12 @@ class TugboatAPI:
         except requests.exceptions.RequestException as e:
             print(f"Error during GET request: {e}")
             return response
-        except Exception:
+        except Exception as e:
             print(
                 f"POST request failed with status code: {response.status_code}"
             )
             print(response.text)
-            raise response
+            raise response from e
 
     def _put_request_as_json(self, url: str, payload: dict) -> dict:
         """Helper function to make a PUT request and return the response as
@@ -815,7 +815,9 @@ if __name__ == "__main__":
     #     )
     # )
     # pprint(tb_api_dev.search_people_by_name("Michael Jech"))
-    print(tb_api.get_all_platforms())
+    # print(tb_api.get_all_platforms())
+    pprint(tb_api_dev.get_all_submissions())
+    pprint(tb_api_dev.get_all_jobs())
 
     # print(tb_api.get_all_instruments())
     # print(tb_api.get_all_platforms())
