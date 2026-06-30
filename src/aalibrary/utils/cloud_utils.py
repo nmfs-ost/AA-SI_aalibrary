@@ -353,6 +353,31 @@ def download_file_from_gcp_as_string(
         raise
 
 
+def download_file_from_gcp_as_bytes(
+    gcp_bucket: storage.Client.bucket, blob_file_path: str
+) -> bytes:
+    """Downloads a file from the blob storage bucket as a bytes object.
+
+    Args:
+        gcp_bucket (storage.Client.bucket): The bucket object used for
+            downloading from.
+        blob_file_path (str): The blob's file path.
+            Ex. "data/itds/logs/execute_rasp_ii/temp.csv"
+            NOTE: This must include the file name as well as the extension.
+
+    Returns:
+        bytes-like-object: The bytes representation of the file.
+    """
+
+    blob = gcp_bucket.blob(blob_file_path, chunk_size=1024 * 1024 * 1)
+    # Download from blob
+    try:
+        return blob.download_as_bytes()
+    except Exception:
+        print(traceback.format_exc())
+        raise
+
+
 def download_folder_from_gcs(
     bucket_name: str = "",
     gcs_folder_prefix: str = "",
