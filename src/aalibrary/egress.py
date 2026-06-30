@@ -550,7 +550,6 @@ def upload_file_to_gcp_storage_bucket(
     file_location: str = "",
     gcp_bucket: storage.Client.bucket = None,
     data_source: str = "",
-    is_metadata: bool = False,
     is_survey_metadata: bool = False,
     is_calibration_file: bool = False,
     is_calibration_mapping_file: bool = False,
@@ -578,10 +577,6 @@ def upload_file_to_gcp_storage_bucket(
             used to upload the file. Defaults to None.
         data_source (str, optional): The source of the data. Can be one of
             ["NCEI", "OMAO", "HDD", "TEST"]. Defaults to "".
-        is_metadata (bool, optional): Whether or not the file is a metadata
-            file. Necessary since files that are considered metadata (metadata
-            json, or readmes) are stored in a separate directory. Defaults to
-            False.
         is_survey_metadata (bool, optional): Whether or not the file is a
             metadata file associated with a survey. The files are stored at
             the survey level, in the `metadata/` folder. Defaults to False.
@@ -610,7 +605,6 @@ def upload_file_to_gcp_storage_bucket(
             survey_name=survey_name,
             echosounder=echosounder,
             data_source=data_source,
-            is_metadata=is_metadata,
             is_survey_metadata=is_survey_metadata,
             is_calibration_file=is_calibration_file,
             is_calibration_mapping_file=is_calibration_mapping_file,
