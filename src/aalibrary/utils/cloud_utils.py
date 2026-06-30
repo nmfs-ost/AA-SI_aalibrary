@@ -568,7 +568,6 @@ def check_if_netcdf_file_exists_in_gcp(
                 ship_name=ship_name,
                 echosounder=echosounder,
                 data_source=data_source,
-                is_metadata=False,
                 debug=debug,
             )
         )
