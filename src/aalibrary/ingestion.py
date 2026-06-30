@@ -1063,7 +1063,6 @@ if __name__ == "__main__":
     #                                                 survey_name=survey_name,
     #                                                 echosounder=echosounder,
     #                                                 data_source="NCEI",
-    #                                                 is_metadata=False,
     #                                                 debug=True))
     # https://noaa-wcsd-pds.s3.amazonaws.com/data/raw/Reuben_Lasker/RL2107/EK80/2107RL_CW-D20210706-T172335.idx
     # print(utils.cloud_utils.check_if_file_exists_in_s3(object_key="data/raw/"
