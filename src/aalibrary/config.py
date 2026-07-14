@@ -30,6 +30,8 @@ AUXILIARY_SA_FILE_FILE_ENDINGS = [
     "Cells_sa.csv",
     "_sa.csv",
 ]
+CALIBRATION_MANUFACTURER_REPORT_FILE_BEGINNINGS = ["CalibrationDataFile"]
+CALIBRATION_STANDARDIZED_REPORT_FILE_ENDINGS = ["config-1.yaml"]
 VALID_FILETYPES = ["raw", "idx", "netcdf", "nc", "json", "bot", "evi"]
 VALID_FILE_ENDINGS = (
     RAW_DATA_FILE_TYPES
