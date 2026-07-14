@@ -244,8 +244,71 @@ def create_ncei_url_from_variables(
         raise FileNotFoundError
 
 
-# TODO:
-def parse_correct_gcp_storage_bucket_location_based_on_file_type(): ...
+def parse_correct_gcp_storage_bucket_location_based_on_file_type(
+    file_name: str = "",
+    file_type: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "",
+    debug: bool = False,
+) -> str:
+    """This function will parse the correct GCP storage bucket location based
+    on the file type. This is necessary because different file types are stored
+    in different locations within the GCP storage bucket.
+
+    Args:
+        file_name (str, optional): The file name (includes extension).
+            Defaults to "".
+
+    Returns:
+        str: The correctly parsed GCP storage bucket location according to
+            AALibrary standards.
+    """
+
+    file_name_lower = file_name.lower()
+    file_type = file_name.split(".")[-1]
+    if file_type.lower() in config.RAW_DATA_FILE_TYPES:
+        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/raw/{file_name}"
+    elif file_type.lower() in config.CONVERTED_DATA_FILE_TYPES:
+        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/data/netcdf/{file_name}"
+    elif file_type.lower() in config.AUXILIARY_EV_FILE_TYPES:
+        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/ev_files/{file_name}"
+    else:
+        # Check for file endings
+        # Check for region defs files
+        for ending in config.AUXILIARY_REGION_DEFS_FILE_ENDINGS:
+            ending = ending.lower()
+            if file_name_lower.endswith(ending):
+                gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/ev_region_defs/{file_name}"
+                break
+        # Check for seabed lines files
+        for ending in config.AUXILIARY_SEABED_LINES_FILE_ENDINGS:
+            ending = ending.lower()
+            if file_name_lower.endswith(ending):
+                gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/ev_seabed_lines/{file_name}"
+                break
+        # Check for template files
+        for ending in config.AUXILIARY_TEMPLATE_FILE_FILE_ENDINGS:
+            ending = ending.lower()
+            if file_name_lower.endswith(ending):
+                gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/ev_templates/{file_name}"
+                break
+        # Check for sa files
+        for ending in config.AUXILIARY_SA_FILE_FILE_ENDINGS:
+            ending = ending.lower()
+            if file_name_lower.endswith(ending):
+                gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/sa_files/{file_name}"
+                break
+        # Place all unknown files in `other` folder
+        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/other/{file_name}"
+
+    if debug:
+        logging.debug(
+            "PARSED GCP_STORAGE_BUCKET_LOCATION: %s",
+            gcp_storage_bucket_location,
+        )
+    return gcp_storage_bucket_location
 
 
 def parse_correct_gcp_storage_bucket_location(
