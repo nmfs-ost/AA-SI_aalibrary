@@ -277,6 +277,12 @@ def parse_correct_gcp_storage_bucket_location_based_on_file_type(
         gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/ev_files/{file_name}"
     else:
         # Check for file endings
+        # Check for EV files
+        for ending in config.AUXILIARY_EV_FILE_TYPES:
+            ending = ending.lower()
+            if file_name_lower.endswith(ending):
+                gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/ev_files/{file_name}"
+                break
         # Check for region defs files
         for ending in config.AUXILIARY_REGION_DEFS_FILE_ENDINGS:
             ending = ending.lower()
