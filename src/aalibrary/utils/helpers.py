@@ -301,6 +301,24 @@ def parse_correct_gcp_storage_bucket_location_based_on_file_type(
             if file_name_lower.endswith(ending):
                 gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/sa_files/{file_name}"
                 break
+        # Check for calibration manufacturer reports
+        for (
+            beginning
+        ) in config.CALIBRATION_MANUFACTURER_REPORT_FILE_BEGINNINGS:
+            beginning = beginning.lower()
+            if file_name_lower.startswith(beginning):
+                gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/calibration/manufacturer_reports/{file_name}"
+                break
+        # Check for calibration standardized reports
+        for ending in config.CALIBRATION_STANDARDIZED_REPORT_FILE_ENDINGS:
+            ending = ending.lower()
+            if file_name_lower.endswith(ending):
+                gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/calibration/standardized_reports/{file_name}"
+                break
+        # Check for channel mapping file
+        if file_name_lower == "channel_mapping.yaml":
+            gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/calibration/{file_name}"
+        # If the file path still cannot be deduced.
         if gcp_storage_bucket_location is None:
             # Place all unknown files in `other` folder
             gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/other/{file_name}"
