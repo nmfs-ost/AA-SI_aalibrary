@@ -17,7 +17,7 @@ GCP_DEV_BUCKET_NAME = "ggn-nmfs-aa-dev-1-data"
 GCP_PROD_BUCKET_NAME = "ggn-nmfs-aa-prod-1-data"
 NCEI_BUCKET_NAME = "noaa-wcsd-pds"
 
-RAW_DATA_FILE_TYPES = ["raw", "idx", "bot"]
+RAW_DATA_FILE_TYPES = ["raw", "idx", "bot", "evi"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
 METADATA_FILE_TYPES = ["json"]
 VALID_FILETYPES = ["raw", "idx", "netcdf", "nc", "json", "bot"]
