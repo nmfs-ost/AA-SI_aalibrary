@@ -266,6 +266,7 @@ def parse_correct_gcp_storage_bucket_location_based_on_file_type(
             AALibrary standards.
     """
 
+    gcp_storage_bucket_location = None
     file_name_lower = file_name.lower()
     file_type = file_name.split(".")[-1]
     if file_type.lower() in config.RAW_DATA_FILE_TYPES:
@@ -300,8 +301,9 @@ def parse_correct_gcp_storage_bucket_location_based_on_file_type(
             if file_name_lower.endswith(ending):
                 gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/sa_files/{file_name}"
                 break
-        # Place all unknown files in `other` folder
-        gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/other/{file_name}"
+        if gcp_storage_bucket_location is None:
+            # Place all unknown files in `other` folder
+            gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/auxiliary/other/{file_name}"
 
     if debug:
         logging.debug(
