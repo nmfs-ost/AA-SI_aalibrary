@@ -58,22 +58,21 @@ else:
     )
 
 
-def create_metadata_json_for_raw_files(
+def create_and_upload_metadata_df_for_raw(
     rf: RawFile = None,
     debug: bool = False,
-) -> pd.DataFrame:
-    """Creates a JSON object containing metadata for the current user.
+):
+    """Creates a metadata file with appropriate information. Then uploads it
+    to the correct table in GCP. Used for .raw files.
 
     Args:
         rf (RawFile, optional): The RawFile object associated with this file.
             Defaults to None.
-        debug (bool, optional): Whether or not to print out the metadata json.
+        debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
-
-    Returns:
-        pd.DataFrame: The metadata dataframe for the `aalibrary_file_metadata`
-            database table.
     """
+
+    # Create the metadata file to be uploaded.
     # Get the current user's email
     email = get_current_gcp_user_email()
 
@@ -150,43 +149,40 @@ def create_metadata_json_for_raw_files(
         print(aalibrary_metadata_df)
         logging.debug(aalibrary_metadata_df)
 
-    return aalibrary_metadata_df
+    # Upload to GCP BigQuery
+    pandas_gbq.to_gbq(
+        dataframe=aalibrary_metadata_df,
+        destination_table="metadata.aalibrary_file_metadata",
+        project_id=config.get_current_gcp_project_id(),
+        if_exists="append",
+    )
+
+    return
 
 
-def create_metadata_json_for_all_files(
+def create_and_upload_metadata_df_for_derived_files(
     file_name: str = "",
     survey_name: str = "",
-    file_s3_object_key: str = "",
     gcp_bucket_name: str = "",
     gcp_storage_bucket_location: str = "",
-    file_datetime: str = "",
     ices_code: str = "",
     ship_name: str = "",
     echosounder: str = "",
-    file_exists_in_ncei: bool = None,
     file_exists_in_gcp: bool = None,
-    file_exists_in_omao: bool = None,
     debug: bool = False,
-) -> pd.DataFrame:
-    """Creates a JSON object containing metadata for the current user.
+):
+    """Creates a metadata file with appropriate information. Then uploads it
+    to the correct table in GCP. Used for derived files.
 
     Args:
         rf (RawFile, optional): The RawFile object associated with this file.
             Defaults to None.
-        debug (bool, optional): Whether or not to print out the metadata json.
+        debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
-
-    Returns:
-        pd.DataFrame: The metadata dataframe for the `aalibrary_file_metadata`
-            database table.
     """
+
     # Get the current user's email
     email = get_current_gcp_user_email()
-
-    # get the survey datetime.
-    file_datetime = datetime.strptime(
-        rf.get_file_datetime_str(), "%Y-%m-%d %H:%M:%S"
-    )
 
     # calculate the deletion datetime
     curr_datetime = datetime.now()
@@ -205,48 +201,20 @@ def create_metadata_json_for_all_files(
         "NUMPY_VERSION": np.version.version,
         # maybe just add in echopype's reqs.
         # pip lock file - for current environment
-        "NCEI_CRUISE_ID": survey_name,
-        "NCEI_URI": file_s3_object_key,
         "GCP_BUCKET_NAME": gcp_bucket_name,
         "GCP_URI": gcp_storage_bucket_location,
-        "FILE_DATETIME": file_datetime,
-        "FILE_DATETIME_TIMEZONE": None,
         "DELETION_DATETIME": deletion_datetime,
         "ICES_CODE": ices_code,
         "SHIP_NAME": ship_name,
         "SURVEY_NAME": survey_name,
         "ECHOSOUNDER": echosounder,
-        "EXISTS_IN_NCEI": file_exists_in_ncei,
         "EXISTS_IN_GCP": file_exists_in_gcp,
-        "EXISTS_IN_OMAO": file_exists_in_omao,
-        "IDX_FILE_NCEI_URI": None,
-        "IDX_FILE_GCP_URI": None,
-        "IDX_FILE_OMAO_URI": None,
-        "IDX_FILE_EXISTS_IN_NCEI": None,
-        "IDX_FILE_EXISTS_IN_GCP": None,
-        "IDX_FILE_EXISTS_IN_OMAO": None,
-        "BOT_FILE_NCEI_URI": None,
-        "BOT_FILE_GCP_URI": None,
-        "BOT_FILE_OMAO_URI": None,
-        "BOT_FILE_EXISTS_IN_NCEI": None,
-        "BOT_FILE_EXISTS_IN_GCP": None,
-        "BOT_FILE_EXISTS_IN_OMAO": None,
-        "METADATA_JSON_FILE_GCP_URI": None,
-        "METADATA_JSON_FILE_NCEI_URI": None,
-        "METADATA_JSON_FILE_EXISTS_IN_GCP": None,
-        "METADATA_JSON_FILE_EXISTS_IN_NCEI": None,
-        "TUGBOAT_METADATA_JSON_SUBMISSION_STATUS": None,  # TODO: add this info if possible in rf object.
-        "FM_FILE_TYPE": None,  # TODO: add this info if possible in rf object.
-        "TRANSECT": rf.transect_name,
     }
 
     aalibrary_metadata_df = pd.json_normalize(metadata_json)
     # make sure data types are conserved before upload to BigQuery.
     aalibrary_metadata_df["DATE_CREATED"] = pd.to_datetime(
         aalibrary_metadata_df["DATE_CREATED"], format="%Y-%m-%d %H:%M:%S"
-    )
-    aalibrary_metadata_df["FILE_DATETIME"] = pd.to_datetime(
-        aalibrary_metadata_df["FILE_DATETIME"], format="%Y-%m-%d %H:%M:%S"
     )
     aalibrary_metadata_df["DELETION_DATETIME"] = pd.to_datetime(
         aalibrary_metadata_df["DELETION_DATETIME"], format="%Y-%m-%d %H:%M:%S"
@@ -256,24 +224,29 @@ def create_metadata_json_for_all_files(
         print(aalibrary_metadata_df)
         logging.debug(aalibrary_metadata_df)
 
-    return aalibrary_metadata_df
+    # Upload to GCP BigQuery
+    pandas_gbq.to_gbq(
+        dataframe=aalibrary_metadata_df,
+        destination_table="metadata.aalibrary_derived_file_metadata",
+        project_id=config.get_current_gcp_project_id(),
+        if_exists="append",
+    )
+
+    return
 
 
-def create_metadata_json_for_netcdf_files(
+def create_and_upload_metadata_df_for_netcdf(
     rf: RawFile = None,
     debug: bool = False,
-) -> pd.DataFrame:
-    """Creates a JSON object containing metadata for the current user.
+):
+    """Creates a metadata file with appropriate information for netcdf files.
+    Then uploads it to the correct table in GCP.
 
     Args:
         rf (RawFile, optional): The RawFile object associated with this file.
             Defaults to None.
-        debug (bool, optional): Whether or not to print out the metadata json.
+        debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
-
-    Returns:
-        pd.DataFrame: The metadata dataframe for the `aalibrary_file_metadata`
-            database table.
     """
 
     # Get the current user's email
@@ -322,116 +295,9 @@ def create_metadata_json_for_netcdf_files(
     if debug:
         print(aalibrary_metadata_df)
         logging.debug(aalibrary_metadata_df)
-
-    return aalibrary_metadata_df
-
-
-def create_and_upload_metadata_df_for_raw(
-    rf: RawFile = None,
-    debug: bool = False,
-):
-    """Creates a metadata file with appropriate information. Then uploads it
-    to the correct table in GCP. Used for .raw files.
-
-    Args:
-        rf (RawFile, optional): The RawFile object associated with this file.
-            Defaults to None.
-        debug (bool, optional): Whether or not to print debug statements.
-            Defaults to False.
-    """
-
-    # Create the metadata file to be uploaded.
-    metadata_df = create_metadata_json_for_raw_files(
-        rf=rf,
-        debug=debug,
-    )
-
     # Upload to GCP BigQuery
     pandas_gbq.to_gbq(
-        dataframe=metadata_df,
-        destination_table="metadata.aalibrary_file_metadata",
-        project_id=config.get_current_gcp_project_id(),
-        if_exists="append",
-    )
-
-    return
-
-
-def create_and_upload_metadata_df_for_all_files(
-    file_name: str = "",
-    survey_name: str = "",
-    file_s3_object_key: str = "",
-    gcp_bucket_name: str = "",
-    gcp_storage_bucket_location: str = "",
-    file_datetime: str = "",
-    ices_code: str = "",
-    ship_name: str = "",
-    echosounder: str = "",
-    file_exists_in_ncei: bool = None,
-    file_exists_in_gcp: bool = None,
-    file_exists_in_omao: bool = None,
-    debug: bool = False,
-):
-    """Creates a metadata file with appropriate information. Then uploads it
-    to the correct table in GCP. Used for .raw files.
-
-    Args:
-        rf (RawFile, optional): The RawFile object associated with this file.
-            Defaults to None.
-        debug (bool, optional): Whether or not to print debug statements.
-            Defaults to False.
-    """
-
-    # Create the metadata file to be uploaded.
-    metadata_df = create_metadata_json_for_all_files(
-        file_name=file_name,
-        survey_name=survey_name,
-        file_s3_object_key=file_s3_object_key,
-        gcp_bucket_name=gcp_bucket_name,
-        gcp_storage_bucket_location=gcp_storage_bucket_location,
-        file_datetime=file_datetime,
-        ices_code=ices_code,
-        ship_name=ship_name,
-        echosounder=echosounder,
-        file_exists_in_ncei=file_exists_in_ncei,
-        file_exists_in_gcp=file_exists_in_gcp,
-        file_exists_in_omao=file_exists_in_omao,
-        debug=debug,
-    )
-
-    # Upload to GCP BigQuery
-    pandas_gbq.to_gbq(
-        dataframe=metadata_df,
-        destination_table="metadata.aalibrary_file_metadata",
-        project_id=config.get_current_gcp_project_id(),
-        if_exists="append",
-    )
-
-    return
-
-
-def create_and_upload_metadata_df_for_netcdf(
-    rf: RawFile = None,
-    debug: bool = False,
-):
-    """Creates a metadata file with appropriate information for netcdf files.
-    Then uploads it to the correct table in GCP.
-
-    Args:
-        rf (RawFile, optional): The RawFile object associated with this file.
-            Defaults to None.
-        debug (bool, optional): Whether or not to print debug statements.
-            Defaults to False.
-    """
-
-    metadata_df = create_metadata_json_for_netcdf_files(
-        rf=rf,
-        debug=debug,
-    )
-
-    # Upload to GCP BigQuery
-    pandas_gbq.to_gbq(
-        dataframe=metadata_df,
+        dataframe=aalibrary_metadata_df,
         destination_table="metadata.aalibrary_netcdf_metadata",
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",
