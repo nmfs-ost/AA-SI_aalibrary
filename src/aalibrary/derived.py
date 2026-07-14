@@ -31,7 +31,38 @@ def get_all_derived_products_for_current_user():
         location=blob_path, bucket_name=config.get_current_gcp_bucket_name()
     )
 
-def search_derived_products_in_gcp():...
+
+def search_derived_products_in_gcp(): ...
+
+
+def get_all_submission_save_states_for_current_user():
+    """Gets a list of URIs for all submission save states for the current user
+    (the one that is logged into gcloud).
+
+    Returns:
+        dict: A dictionary where the keys are the survey_names that have
+            submission save states available, and the values are the GCS paths.
+    """
+
+    user_name = get_current_gcp_user_email()
+    user_name = user_name.split("@")[0]
+
+    blob_path = f"derived_products/{user_name}/"
+
+    all_objects_in_users_derived_products = (
+        list_all_objects_in_gcp_bucket_location(
+            location=blob_path,
+            bucket_name=config.get_current_gcp_bucket_name(),
+        )
+    )
+    all_submission_save_states = {}
+    for obj in all_objects_in_users_derived_products:
+        if obj.endswith("tugboat_submission_save_state.json"):
+            # Get the ship folder.
+            survey_name = obj.split("/")[-2]
+            all_submission_save_states[survey_name] = obj
+
+    return all_submission_save_states
 
 
 def upload_derived_product_to_gcp(
