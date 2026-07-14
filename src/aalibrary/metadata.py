@@ -175,8 +175,21 @@ def create_and_upload_metadata_df_for_derived_files(
     to the correct table in GCP. Used for derived files.
 
     Args:
-        rf (RawFile, optional): The RawFile object associated with this file.
-            Defaults to None.
+        file_name (str, optional): The name of the file. Defaults to "".
+        survey_name (str, optional): The survey name associated with this file.
+            Defaults to "".
+        gcp_bucket_name (str, optional): The GCP bucket name associated with
+            this file. Defaults to "".
+        gcp_storage_bucket_location (str, optional): The GCP storage bucket
+            location associated with this file. Defaults to "".
+        ices_code (str, optional): The ICES code associated with this file.
+            Defaults to "".
+        ship_name (str, optional): The ship name associated with this file.
+            Defaults to "".
+        echosounder (str, optional): The echosounder associated with this file.
+            Defaults to "".
+        file_exists_in_gcp (bool, optional): Whether or not the file exists in
+            GCP. Defaults to None.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
