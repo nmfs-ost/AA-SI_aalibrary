@@ -50,8 +50,13 @@ Known fixes in this version:
 """
 
 # === Silence logs BEFORE any heavy imports ===
+import atexit
 import logging
+import os
+import re
+import shutil
 import sys
+import tempfile
 import warnings
 
 logging.disable(logging.CRITICAL)
@@ -114,7 +119,10 @@ MODES
                               Saves both a new .evr and a masked .nc.
 
 REQUIRED (EVR mode only)
-  --evr EVR [EVR ...]     One or more .evr paths.
+  --evr EVR [EVR ...]     One or more .evr sources. Each may be a local path
+                          or a remote URI, e.g. gs://bucket/regions.evr
+                          (remote URIs need fsspec + the matching backend,
+                          e.g. gcsfs for gs://).
 
 INPUT
   INPUT_PATH [INPUT_PATH ...]
@@ -173,6 +181,85 @@ def _configure_logging(debug: bool) -> None:
     Keeps standard logging fully disabled."""
     logger.remove()
     logger.add(sys.stderr, level="DEBUG" if debug else "INFO")
+
+
+# ---------------------------
+# Remote EVR / URI handling
+# ---------------------------
+
+# Matches a leading URI scheme like "gs://", "s3://", "http://".  A bare local
+# path, a relative path, a Windows drive path (C:\...) or a UNC path
+# (\\server\share) has no "<scheme>://" prefix and so is left untouched.
+_URI_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*://")
+
+
+def _looks_like_uri(s: str) -> bool:
+    """True if *s* carries a URI scheme (gs://, s3://, http(s)://, ...)."""
+    return bool(_URI_RE.match(s))
+
+
+def _safe_unlink(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _download_to_temp(uri: str) -> Path:
+    """Download a remote EVR *uri* to a local temp .evr file and return its Path.
+
+    echoregions.read_evr only reads local files, so a remote object has to be
+    materialised first.  fsspec handles gs://, s3://, http(s)://, etc.; the
+    matching backend (e.g. gcsfs for gs://) must be installed.  The temp file is
+    removed automatically when the process exits.
+    """
+    try:
+        import fsspec
+    except ImportError as exc:
+        raise RuntimeError(
+            f"Reading a remote EVR ({uri}) needs fsspec plus the backend for its "
+            f"scheme. Install, e.g.:\n"
+            f"    pip install fsspec gcsfs   # for gs://\n"
+            f"    pip install fsspec s3fs    # for s3://\n"
+            f"(import error: {exc})"
+        ) from exc
+
+    # Preserve the original extension (strip any ?query/#fragment first).
+    clean = uri.split("?", 1)[0].split("#", 1)[0]
+    suffix = os.path.splitext(clean)[1] or ".evr"
+
+    fd, tmp = tempfile.mkstemp(prefix="aa_evr_", suffix=suffix)
+    os.close(fd)
+    atexit.register(_safe_unlink, tmp)
+
+    try:
+        with fsspec.open(uri, "rb") as remote, open(tmp, "wb") as out:
+            shutil.copyfileobj(remote, out)
+    except Exception as exc:
+        _safe_unlink(tmp)
+        raise RuntimeError(f"Failed to download EVR {uri}: {exc}") from exc
+
+    logger.debug(f"Downloaded remote EVR {uri} -> {tmp}")
+    return Path(tmp)
+
+
+def _resolve_evr_sources(sources: List[str]) -> List[Path]:
+    """Map raw --evr arguments to local Paths, preserving order.
+
+    Local paths behave exactly as before (expanduser + resolve).  file:// URIs
+    are treated as local.  Any other URI scheme is downloaded to a temp file.
+    """
+    resolved: List[Path] = []
+    for src in sources:
+        if not _looks_like_uri(src):
+            resolved.append(Path(src).expanduser().resolve())
+            continue
+        if src.lower().startswith("file://"):
+            from urllib.parse import unquote, urlparse
+            resolved.append(Path(unquote(urlparse(src).path)).expanduser().resolve())
+            continue
+        resolved.append(_download_to_temp(src))
+    return resolved
 
 
 # ---------------------------
@@ -848,6 +935,7 @@ def _process_file(
     write_mask: bool,
     fail_empty: bool,
     debug: bool,
+    evr_sources: Optional[List[str]] = None,
 ) -> Optional[Path]:
     if output_path.exists() and not overwrite:
         logger.error(f"Output exists (use --overwrite): {output_path}")
@@ -917,7 +1005,9 @@ def _process_file(
         ds, mask=mask, time_dim=tdim, depth_dim=ddim, write_mask=write_mask
     )
     ds_out.attrs["aa_tool"] = "aa-evr"
-    ds_out.attrs["aa_evr_files"] = ",".join(str(p) for p in evr_files)
+    ds_out.attrs["aa_evr_files"] = ",".join(
+        str(s) for s in (evr_sources if evr_sources is not None else evr_files)
+    )
 
     ds_out.to_netcdf(output_path)
 
@@ -947,8 +1037,11 @@ def main() -> int:
 
     # -- EVR mode --
     parser.add_argument(
-        "--evr", required=False, default=None, nargs="+", type=Path, metavar="EVR",
-        help="One or more .evr paths (omit to enter interactive drawing mode).",
+        "--evr", required=False, default=None, nargs="+", type=str, metavar="EVR",
+        help=(
+            "One or more .evr sources: local paths and/or remote URIs such as "
+            "gs://bucket/regions.evr (omit to enter interactive drawing mode)."
+        ),
     )
 
     # -- Drawing mode --
@@ -1104,7 +1197,25 @@ def main() -> int:
         return 1
 
     input_paths = [p.expanduser().resolve() for p in input_paths]
-    evr_files = [p.expanduser().resolve() for p in args.evr]
+
+    # --evr may now be a local path OR a remote URI (gs://, s3://, http(s)://).
+    # Local paths behave exactly as before; remote URIs are downloaded to temp
+    # files for the duration of the run (echoregions reads local files only).
+    evr_args = [str(s) for s in args.evr]
+    try:
+        evr_files = _resolve_evr_sources(evr_args)
+    except Exception as exc:
+        logger.error(str(exc))
+        return 2
+
+    # Provenance written into the output NetCDF: keep the original URI for remote
+    # sources, and the resolved local path for local ones (unchanged from before).
+    evr_provenance = [
+        raw if (_looks_like_uri(raw) and not raw.lower().startswith("file://"))
+        else str(local)
+        for raw, local in zip(evr_args, evr_files)
+    ]
+
     _validate_inputs(input_paths, evr_files)
 
     if args.output_path is not None and len(input_paths) != 1:
@@ -1144,6 +1255,7 @@ def main() -> int:
                 write_mask=args.write_mask,
                 fail_empty=args.fail_empty,
                 debug=args.debug,
+                evr_sources=evr_provenance,
             )
             if produced:
                 logger.success(f"Saved masked NetCDF:\n\t{produced}")

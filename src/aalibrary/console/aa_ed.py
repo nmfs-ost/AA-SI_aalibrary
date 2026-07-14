@@ -51,6 +51,37 @@ mode). --force overrides.
 Typical pipeline usage:
     echo HB1603_L1-D20160703-T183957.raw | aa-ed | aa-sv | aa-graph
     aa-ed HB1603_L1-D20160703-T183957.raw | aa-sv | aa-clean
+
+Cloud output & URI caching (opt-in, fully additive):
+    With --gcs-uri gs://bucket/path/file.nc (or --gcs-prefix PFX), aa-ed
+    treats that object as a cache for the derived .nc:
+
+      - Before doing any work it checks whether the object already exists.
+        If it does, the asset is REUSED instead of recomputed — either
+        passed straight through as a gs:// URI (--print-uri), moving no
+        bytes, or DOWNLOADED to the local .nc so a not-yet-URI-aware
+        pipeline keeps working. This skips the BigQuery lookup, the NCEI
+        download, and the echopype conversion entirely.
+      - On a miss, aa-ed converts locally exactly as it always has, then
+        UPLOADS the resulting .nc to that object using the same GCP
+        primitive as aa-upload (aalibrary.utils.cloud_utils.
+        upload_file_to_gcp_bucket), so aa-ed and aa-upload write objects
+        identically. Bucket / credentials resolve the same way too
+        (--gcp_env / --project_id / --gcp_bucket_name / ambient env vars).
+
+    NetCDF is HDF5 underneath and needs a seekable local file, so aa-ed
+    writes the .nc to disk first and then PUTs the whole object; the
+    local copy is kept unless --cloud-only is given. --force bypasses the
+    cache check and regenerates.
+
+    None of this activates unless --gcs-uri or --gcs-prefix is passed —
+    every existing local, offline, and directory-batch path below is
+    unchanged.
+
+    Cloud example:
+        aa-ed HB1603_L1-D20160703-T183957.raw \\
+              --gcs-prefix derived/nc/ --gcp_bucket_name my-bucket --print-uri
+        # -> gs://my-bucket/derived/nc/HB1603_L1-D20160703-T183957.nc
 """
 from __future__ import annotations
 
@@ -191,6 +222,35 @@ def print_help() -> None:
                                   other values log a warning and proceed
                                   as NCEI.
 
+    Cloud output & URI caching (opt-in; all off by default):
+      --gcs-uri URI               Use gs://bucket/path/file.nc as a cache for
+                                  the derived .nc. If the object already
+                                  exists it is reused instead of recomputed
+                                  (downloaded, or passed through with
+                                  --print-uri); on a miss the new .nc is
+                                  uploaded here after conversion, using the
+                                  same GCP primitive as aa-upload.
+
+      --gcs-prefix PREFIX         Like --gcs-uri, but aa-ed names the object
+                                  <prefix>/<stem>.nc; the bucket comes from
+                                  --gcp_bucket_name / --gcp_env / env.
+                                  Mutually exclusive with --gcs-uri.
+
+      --print-uri                 With a GCS destination set, print the gs://
+                                  URI on stdout instead of the local path. On
+                                  a cache hit no download happens — the URI
+                                  is passed straight through.
+
+      --cloud-only                Delete the local .nc after a successful
+                                  upload (keeps local storage minimal).
+                                  Implies --print-uri.
+
+      --gcp_env {prod,dev}        Select the aalibrary GCP env for cloud
+                                  output (mirrors aa-upload).
+      --project_id ID             Explicit GCP project id (overrides --gcp_env).
+      --gcp_bucket_name NAME      Explicit GCP bucket (overrides --gcp_env;
+                                  ignored if a bucket is given in --gcs-uri).
+
       --debug                     Verbose logging (DEBUG level on stderr).
       --quiet                     Suppress INFO logs; final path still
                                   prints on stdout.
@@ -218,6 +278,12 @@ def print_help() -> None:
     Direct example:
       aa-ed HB1603_L1-D20160703-T183957.raw \\
             --file_download_directory ./downloads -o ./out/HB1603.nc
+
+    Cloud example (reuse-if-exists, else convert-and-upload):
+      aa-ed HB1603_L1-D20160703-T183957.raw \\
+            --gcs-prefix derived/nc/ --gcp_bucket_name my-bucket --print-uri
+      # hit  -> prints gs://my-bucket/derived/nc/HB1603...nc (no work done)
+      # miss -> converts locally, uploads, prints the same gs:// URI
     """
     print(help_text)
 
@@ -320,6 +386,66 @@ def main() -> None:
         action="store_true",
         default=False,
         help="Suppress INFO logs.",
+    )
+
+    # ------------------------------------------------------------------
+    # Cloud output & URI caching (additive). All off by default; when
+    # none of these are set, aa-ed behaves exactly as before — local .nc
+    # written to disk, local path printed on stdout, zero GCP imports.
+    # ------------------------------------------------------------------
+    parser.add_argument(
+        "--gcs-uri", "--gcs_uri",
+        dest="gcs_uri",
+        default=None,
+        help="Full gs://bucket/path/file.nc destination for the derived "
+             ".nc, used as a cache. If the object already exists it is "
+             "reused (downloaded, or passed through with --print-uri) "
+             "instead of recomputed; on a miss the freshly-made .nc is "
+             "uploaded here after conversion.",
+    )
+    parser.add_argument(
+        "--gcs-prefix", "--gcs_prefix",
+        dest="gcs_prefix",
+        default=None,
+        help="Bucket-relative prefix; the derived object becomes "
+             "<prefix>/<stem>.nc. The bucket comes from --gcp_bucket_name "
+             "/ --gcp_env / ambient env. Mutually exclusive with --gcs-uri.",
+    )
+    parser.add_argument(
+        "--print-uri", "--print_uri",
+        dest="print_uri",
+        action="store_true",
+        default=False,
+        help="When a GCS destination is set, print the gs:// URI on stdout "
+             "instead of the local path. On a cache hit this moves no bytes "
+             "— the URI is passed straight through.",
+    )
+    parser.add_argument(
+        "--cloud-only", "--cloud_only",
+        dest="cloud_only",
+        action="store_true",
+        default=False,
+        help="After a successful upload, delete the local .nc so the "
+             "workstation keeps minimal storage. Implies --print-uri "
+             "(no local file is left to hand downstream).",
+    )
+    parser.add_argument(
+        "--gcp_env",
+        choices=["prod", "dev"],
+        default=None,
+        help="Switch the aalibrary GCP env before any cloud operation "
+             "(mirrors aa-upload).",
+    )
+    parser.add_argument(
+        "--project_id",
+        default=None,
+        help="Explicit GCP project id for cloud output (overrides --gcp_env).",
+    )
+    parser.add_argument(
+        "--gcp_bucket_name",
+        default=None,
+        help="Explicit GCP bucket name for cloud output (overrides "
+             "--gcp_env; ignored if a bucket is given inside --gcs-uri).",
     )
 
     args = parser.parse_args()
@@ -455,6 +581,13 @@ def main() -> None:
         "upload_to_gcp": args.upload_to_gcp,
         "data_source": args.data_source,
         "debug": args.debug,
+        "gcs_uri": args.gcs_uri,
+        "gcs_prefix": args.gcs_prefix,
+        "print_uri": args.print_uri,
+        "cloud_only": args.cloud_only,
+        "gcp_env": args.gcp_env,
+        "project_id": args.project_id,
+        "gcp_bucket_name": args.gcp_bucket_name,
     }
     logger.debug(
         f"Executing aa-ed configured with [OPTIONS]:\n"
@@ -488,6 +621,59 @@ def main() -> None:
         sys.exit(1)
 
     # ---------------------------
+    # Cloud output / URI-cache setup (additive; inert without a
+    # --gcs-uri / --gcs-prefix destination)
+    # ---------------------------
+    # When no cloud destination is set, cloud_target stays None and every
+    # branch below is skipped — aa-ed's original local behavior is
+    # untouched, and no GCP module is imported.
+    cloud_target = _resolve_cloud_target(args, nc_path)
+    gcp_bucket = None
+    gcs_uri = None
+    blob_path = None
+    if cloud_target is not None:
+        _bucket_name, blob_path, gcs_uri = cloud_target
+        gcp_bucket, _resolved_bucket = _resolve_gcp_bucket(
+            gcp_env=args.gcp_env,
+            project_id=args.project_id,
+            gcp_bucket_name=_bucket_name,
+        )
+        # --gcs-prefix doesn't carry a bucket, so fold the resolved name
+        # back into the URI we print/log.
+        if gcs_uri.startswith("gs://<bucket>/"):
+            gcs_uri = f"gs://{_resolved_bucket}/{blob_path}"
+
+        # --- URI cache check: found -> reuse instead of recompute -------
+        # This is the whole point of the feature: if someone already made
+        # this asset, discover it and reuse it rather than re-running the
+        # (expensive) download + conversion. --force bypasses the check.
+        if not args.force and _gcs_blob_exists(gcp_bucket, blob_path):
+            logger.success(
+                f"Cache hit: {gcs_uri} already exists. Skipping BigQuery "
+                "lookup, NCEI download, and conversion (pass --force to "
+                "regenerate)."
+            )
+            if args.print_uri or args.cloud_only:
+                # URI-aware downstream: hand back the URI, move no bytes.
+                print(gcs_uri)
+                return
+            # Otherwise honor the request literally — fetch the existing
+            # asset and continue with a local path so the current
+            # (not-yet-URI-aware) pipeline keeps working.
+            _gcs_download_blob(gcp_bucket, blob_path, nc_path)
+            print(nc_path.resolve())
+            return
+    elif (args.print_uri or args.cloud_only or args.gcp_env
+          or args.project_id or args.gcp_bucket_name):
+        # Cloud-ish flags with no destination to act on — warn rather than
+        # silently ignoring them, then fall through to local behavior.
+        logger.warning(
+            "Cloud flags were given but neither --gcs-uri nor --gcs-prefix "
+            "was set; cloud output is disabled and aa-ed will behave "
+            "locally."
+        )
+
+    # ---------------------------
     # Short-circuit: .nc already on disk
     # ---------------------------
     # Conversion is the expensive step (echopype's open_raw on a multi-
@@ -506,6 +692,17 @@ def main() -> None:
             f".nc already exists; NOT overwriting. Reusing: "
             f"{nc_path.resolve()} (pass --force to regenerate)."
         )
+        if cloud_target is not None:
+            # We have the product locally, but the cache check above missed
+            # in the bucket. Register it so the next person gets a hit,
+            # then emit per --print-uri / --cloud-only.
+            _gcs_upload_nc(gcp_bucket, blob_path, nc_path, args.debug)
+            logger.success(f"Registered existing .nc in the bucket: {gcs_uri}")
+            if args.cloud_only:
+                _maybe_remove_local(nc_path)
+            print(gcs_uri if (args.print_uri or args.cloud_only)
+                  else nc_path.resolve())
+            return
         print(nc_path.resolve())
         return
 
@@ -626,10 +823,26 @@ def main() -> None:
                 # Non-fatal — the .nc still exists and gets printed.
                 logger.warning(f"Could not delete '{raw_path}': {e}")
 
-    logger.success(
-        f"Generated {nc_path.resolve()} with aa-ed. "
-        "Passing .nc path to stdout..."
-    )
+    logger.success(f"Generated {nc_path.resolve()} with aa-ed.")
+
+    # Cloud output (additive): on a cache miss we've just built the .nc
+    # locally; upload it (registering it for the next person), then emit
+    # either the gs:// URI or the local path. Without a cloud target this
+    # is exactly the original behavior — print the local .nc path.
+    if cloud_target is not None:
+        _gcs_upload_nc(gcp_bucket, blob_path, nc_path, args.debug)
+        logger.success(f"Uploaded derived .nc to {gcs_uri}")
+        if args.cloud_only:
+            _maybe_remove_local(nc_path)
+        emit = (
+            gcs_uri if (args.print_uri or args.cloud_only)
+            else nc_path.resolve()
+        )
+        logger.info("Passing reference to stdout...")
+        print(emit)
+        return
+
+    logger.info("Passing .nc path to stdout...")
     # Pipeline contract: print the absolute .nc path on stdout.
     print(nc_path.resolve())
 
@@ -820,6 +1033,226 @@ def _detect_sonar_model_from_file(raw_path: Path) -> str:
             logger.debug(f"ER60 check raised on {raw_path}: {e}")
 
     return "UNKNOWN"
+
+
+# ============================================================
+# Cloud output & URI caching helpers (additive).
+#
+# Everything here is INERT unless the user passes --gcs-uri or
+# --gcs-prefix. Uploads deliberately route through the SAME
+# aalibrary primitive aa-upload uses, so the two tools write
+# objects identically; existence-check and download use the
+# standard google-cloud-storage Bucket/Blob API on the object
+# setup_gcp_storage_objs returns (the same object aa-upload
+# calls blob.upload_from_filename on).
+# ============================================================
+
+def _parse_gcs_uri(uri: str):
+    """Split 'gs://bucket/path/to/obj.nc' into ('bucket', 'path/to/obj.nc').
+
+    Raises ValueError on a malformed URI so the caller can emit a clean
+    error and exit.
+    """
+    if not uri.startswith("gs://"):
+        raise ValueError(f"Not a gs:// URI: {uri!r}")
+    rest = uri[len("gs://"):]
+    if "/" not in rest:
+        raise ValueError(
+            f"gs:// URI {uri!r} is missing an object path "
+            "(expected gs://<bucket>/<path>.nc)."
+        )
+    bucket_name, blob_path = rest.split("/", 1)
+    if not bucket_name or not blob_path:
+        raise ValueError(
+            f"gs:// URI {uri!r} has an empty bucket or object path."
+        )
+    return bucket_name, blob_path
+
+
+def _resolve_cloud_target(args, nc_path: Path):
+    """Decide where the derived .nc should live in GCS, if anywhere.
+
+    Returns None when neither --gcs-uri nor --gcs-prefix is set (the
+    normal local-only path). Otherwise returns
+    (bucket_name, blob_path, gs_uri):
+
+      --gcs-uri gs://bucket/a/b/file.nc  -> exact object; bucket parsed
+                                            from the URI.
+      --gcs-prefix a/b/                  -> object is '<prefix>/<stem>.nc';
+                                            bucket comes from
+                                            --gcp_bucket_name/--gcp_env/env
+                                            (bucket_name may be None here
+                                            and is filled in by the bucket
+                                            resolver).
+
+    --gcs-uri and --gcs-prefix are mutually exclusive.
+
+    Note on the cache key: this is the simple "deterministic URI" scheme
+    — the object path IS the key. aa-ed's conversion has no tunable
+    parameters beyond sonar_model (which the file's own header pins
+    down), so <stem>.nc is a stable name for "the EchoData NetCDF of this
+    raw file." If you want finer cache invalidation (e.g. per echopype
+    version), bake that into the prefix; --force always bypasses the
+    check.
+    """
+    if args.gcs_uri and args.gcs_prefix:
+        logger.error("Use --gcs-uri OR --gcs-prefix, not both.")
+        sys.exit(2)
+
+    if args.gcs_uri:
+        try:
+            bucket_name, blob_path = _parse_gcs_uri(args.gcs_uri)
+        except ValueError as e:
+            logger.error(str(e))
+            sys.exit(2)
+        # Explicit URI bucket wins over --gcp_bucket_name; warn on conflict
+        # rather than silently ignoring the flag.
+        if args.gcp_bucket_name and args.gcp_bucket_name != bucket_name:
+            logger.warning(
+                f"--gcp_bucket_name='{args.gcp_bucket_name}' disagrees with "
+                f"the bucket in --gcs-uri ('{bucket_name}'); using the URI's "
+                "bucket."
+            )
+        return bucket_name, blob_path, f"gs://{bucket_name}/{blob_path}"
+
+    if args.gcs_prefix:
+        prefix = args.gcs_prefix.strip().lstrip("/")
+        prefix = (prefix.rstrip("/") + "/") if prefix else ""
+        blob_path = f"{prefix}{nc_path.stem}.nc"
+        bucket_name = args.gcp_bucket_name  # may be None -> env default
+        gs_uri = (
+            f"gs://{bucket_name}/{blob_path}" if bucket_name
+            else f"gs://<bucket>/{blob_path}"
+        )
+        return bucket_name, blob_path, gs_uri
+
+    return None
+
+
+def _resolve_gcp_bucket(gcp_env, project_id, gcp_bucket_name):
+    """Set up and return (bucket, resolved_bucket_name), mirroring aa-upload.
+
+    Precedence matches aa-upload's resolver:
+      1. Explicit --project_id / --gcp_bucket_name win.
+      2. Else --gcp_env switches the aalibrary env
+         (use_gcp_prod() / use_gcp_dev()).
+      3. Else whatever AALIBRARY_GCP_* env vars are already exported.
+
+    The bucket object comes from
+    aalibrary.utils.cloud_utils.setup_gcp_storage_objs — the same call
+    aa-upload makes.
+    """
+    try:
+        from aalibrary.utils.cloud_utils import setup_gcp_storage_objs
+    except Exception as e:
+        logger.exception(f"Failed to import aalibrary.utils.cloud_utils: {e}")
+        sys.exit(1)
+
+    if gcp_env and (project_id or gcp_bucket_name):
+        # Explicit project/bucket already pins the target; the env switch
+        # would be a no-op at best and confusing at worst. Say so.
+        logger.warning(
+            f"--gcp_env '{gcp_env}' is ignored because an explicit "
+            "--project_id / --gcp_bucket_name (or a --gcs-uri bucket) was "
+            "provided."
+        )
+    elif gcp_env:
+        try:
+            from aalibrary import config as aalibrary_config
+        except Exception as e:
+            logger.exception(
+                f"Failed to import aalibrary.config for --gcp_env: {e}"
+            )
+            sys.exit(1)
+        if gcp_env == "prod" and hasattr(aalibrary_config, "use_gcp_prod"):
+            aalibrary_config.use_gcp_prod()
+        elif gcp_env == "dev" and hasattr(aalibrary_config, "use_gcp_dev"):
+            aalibrary_config.use_gcp_dev()
+        else:
+            logger.error(
+                f"--gcp_env {gcp_env} requested but aalibrary.config lacks "
+                "the corresponding switch. Pass --project_id / "
+                "--gcp_bucket_name instead."
+            )
+            sys.exit(1)
+        logger.info(f"Switched aalibrary GCP env to '{gcp_env}'.")
+
+    _client, resolved_name, bucket = setup_gcp_storage_objs(
+        project_id=project_id,
+        gcp_bucket_name=gcp_bucket_name,
+    )
+    logger.info(f"Targeting GCP bucket '{resolved_name}'.")
+    return bucket, resolved_name
+
+
+def _gcs_blob_exists(gcp_bucket, blob_path: str) -> bool:
+    """True if `blob_path` already exists in the bucket (the cache check).
+
+    A failed existence check must NOT masquerade as a hit — that would
+    skip a needed conversion — so on error we warn and treat it as a
+    miss.
+    """
+    try:
+        return gcp_bucket.blob(blob_path).exists()
+    except Exception as e:
+        logger.warning(
+            f"Could not check whether '{blob_path}' exists in the bucket "
+            f"({e}); proceeding as a cache miss."
+        )
+        return False
+
+
+def _gcs_download_blob(gcp_bucket, blob_path: str, dest: Path) -> None:
+    """Download an existing bucket object to `dest` (found-and-downloaded)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Downloading cached asset gs://.../{blob_path} -> {dest}")
+    try:
+        gcp_bucket.blob(blob_path).download_to_filename(str(dest))
+    except Exception as e:
+        logger.exception(f"Failed to download cached asset '{blob_path}': {e}")
+        sys.exit(1)
+    if not dest.exists():
+        logger.error(
+            f"Download of '{blob_path}' reported success but '{dest}' is "
+            "not on disk."
+        )
+        sys.exit(1)
+    logger.success(f"Reused cached asset -> {dest.resolve()}")
+
+
+def _gcs_upload_nc(gcp_bucket, blob_path: str, local_nc: Path,
+                   debug: bool) -> None:
+    """Upload the local .nc to the bucket via aa-upload's primitive.
+
+    Routes through aalibrary.utils.cloud_utils.upload_file_to_gcp_bucket —
+    the same single-file primitive aa-upload's --as-is mode uses — so
+    aa-ed and aa-upload write objects the same way. NetCDF is HDF5 (needs
+    a seekable local file), so we upload the already-written local .nc as
+    a whole object rather than streaming.
+    """
+    try:
+        from aalibrary.utils.cloud_utils import upload_file_to_gcp_bucket
+    except Exception as e:
+        logger.exception(f"Failed to import aalibrary.utils.cloud_utils: {e}")
+        sys.exit(1)
+    logger.info(f"Uploading {local_nc.name} -> gs://.../{blob_path}")
+    upload_file_to_gcp_bucket(
+        bucket=gcp_bucket,
+        blob_file_path=blob_path,
+        local_file_path=str(local_nc),
+        debug=debug,
+    )
+
+
+def _maybe_remove_local(nc_path: Path) -> None:
+    """Delete the local .nc after a successful upload (--cloud-only)."""
+    try:
+        nc_path.unlink(missing_ok=True)
+        logger.info(
+            f"Removed local .nc after upload (--cloud-only): {nc_path}"
+        )
+    except Exception as e:
+        logger.warning(f"Could not remove local .nc '{nc_path}': {e}")
 
 
 def process_file(
@@ -1110,6 +1543,17 @@ def _run_directory_mode(directory: Path, args) -> None:
             "--upload_to_gcp is ignored in directory mode. Pipe the "
             "directory through aa-upload after aa-ed for that "
             "(aa-ed ./dir/ | aa-upload --as-is ...)."
+        )
+
+    if getattr(args, "gcs_uri", None) or getattr(args, "gcs_prefix", None):
+        # Cloud output / URI caching is single-file only: a directory
+        # would need N distinct object paths, which is exactly what
+        # aa-upload is for. Keep the contracts separate and point the
+        # user at the clean composition rather than guessing a layout.
+        logger.warning(
+            "--gcs-uri / --gcs-prefix are ignored in directory mode. "
+            "Convert locally with aa-ed, then pipe the directory through "
+            "aa-upload (aa-ed ./dir/ | aa-upload ...)."
         )
 
     # ---- Glob inputs --------------------------------------------
