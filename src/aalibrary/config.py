@@ -20,7 +20,7 @@ NCEI_BUCKET_NAME = "noaa-wcsd-pds"
 RAW_DATA_FILE_TYPES = ["raw", "idx", "bot", "evi"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
 METADATA_FILE_TYPES = ["json"]
-VALID_FILETYPES = ["raw", "idx", "netcdf", "nc", "json", "bot"]
+VALID_FILETYPES = ["raw", "idx", "netcdf", "nc", "json", "bot", "evi"]
 
 VALID_ECHOSOUNDERS = [
     "ar040-hat-55145",
