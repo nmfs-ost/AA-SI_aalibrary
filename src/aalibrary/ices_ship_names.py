@@ -119,24 +119,29 @@ def get_ices_code_from_ship_name(
     try:
         return all_codes_and_names[ship_name]
     except KeyError:
-        # Here the ship name does not exactly match any in the ICES DB.
-        # Check for spell check using custom list
-        spell_check_list = get_close_matches(
-            ship_name, valid_ices_ship_names, n=3, cutoff=0.6
-        )
-        if len(spell_check_list) > 0:
-            print(
-                f"This `ship_name` {ship_name} does not"
-                " exist in the ICES database. Did you mean one of the"
-                f" following?\n{spell_check_list}"
+        try:
+            # Retry with the ship name in all upper case (as it is in the ICES
+            # DB)
+            return all_codes_and_names[ship_name.upper()]
+        except KeyError:
+            # Here the ship name does not exactly match any in the ICES DB.
+            # Check for spell check using custom list
+            spell_check_list = get_close_matches(
+                ship_name, valid_ices_ship_names, n=3, cutoff=0.6
             )
-        else:
-            print(
-                f"This `ship_name` {ship_name} does not"
-                " exist in the ICES database. A close match could not be "
-                "found."
-            )
-        return ""
+            if len(spell_check_list) > 0:
+                print(
+                    f"This ship_name `{ship_name}` does not"
+                    " exist in the ICES database. Did you mean one of the"
+                    f" following?\n{spell_check_list}"
+                )
+            else:
+                print(
+                    f"This ship_name `{ship_name}` does not"
+                    " exist in the ICES database. A close match could not be "
+                    "found."
+                )
+            return ""
 
 
 if __name__ == "__main__":
