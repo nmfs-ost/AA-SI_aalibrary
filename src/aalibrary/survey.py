@@ -4,7 +4,6 @@ Survey class that can be used to manage surveys."""
 
 # pylint: disable=attribute-defined-outside-init
 
-import sys
 import logging
 import os
 import pprint
@@ -19,16 +18,22 @@ from tqdm import tqdm
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
-    import utils
     import ices_ship_names
-    from utils import ncei_cache_utils, cloud_utils, helpers
+    from utils import ncei_cache_utils, cloud_utils
+    from utils.helpers import (
+        normalize_ship_name,
+        parse_correct_gcp_storage_bucket_location_based_on_file_type,
+    )
     from raw_file import RawFile
     from config import VALID_ECHOSOUNDERS
 else:
     # uses current package visibility
-    from aalibrary import utils
     from aalibrary import ices_ship_names
-    from aalibrary.utils import ncei_cache_utils, cloud_utils, helpers
+    from aalibrary.utils import ncei_cache_utils, cloud_utils
+    from aalibrary.utils.helpers import (
+        normalize_ship_name,
+        parse_correct_gcp_storage_bucket_location_based_on_file_type,
+    )
     from aalibrary.raw_file import RawFile
     from aalibrary.config import VALID_ECHOSOUNDERS
 
@@ -104,7 +109,7 @@ class Survey:
         # Normalize ship name
         if "ship_name" in self.__dict__:
             self.ship_name_unnormalized = self.ship_name
-            self.ship_name = helpers.normalize_ship_name(self.ship_name)
+            self.ship_name = normalize_ship_name(self.ship_name)
         # If the ship name exists in ICES, get the ICES code for it.
         if self.ship_name in self.valid_ICES_ship_names:
             self.ices_code = ices_ship_names.get_ices_code_from_ship_name(
@@ -371,7 +376,7 @@ class LocalSurvey:
         # Normalize ship name
         if "ship_name" in self.__dict__:
             self.ship_name_unnormalized = self.ship_name
-            self.ship_name = helpers.normalize_ship_name(self.ship_name)
+            self.ship_name = normalize_ship_name(self.ship_name)
         # If the ship name exists in ICES, get the ICES code for it.
         if self.ship_name in self.valid_ICES_ship_names:
             self.ices_code = ices_ship_names.get_ices_code_from_ship_name(
