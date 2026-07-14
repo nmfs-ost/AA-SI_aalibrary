@@ -1,0 +1,141 @@
+"""This file contains functions for interacting with derived products in GCS."""
+
+import sys
+import os
+from aalibrary import config
+from aalibrary.utils.helpers import (
+    get_current_gcp_user_email,
+    parse_correct_gcp_storage_bucket_location,
+    normalize_ship_name,
+)
+from aalibrary.utils.cloud_utils import (
+    list_all_objects_in_gcp_bucket_location,
+    setup_gcp_storage_objs,
+    check_if_file_exists_in_gcp,
+)
+from aalibrary.egress import upload_file_to_gcp_storage_bucket
+from aalibrary.metadata import create_and_upload_metadata_df_for_derived_files
+from aalibrary.ices_ship_names import get_ices_code_from_ship_name
+
+
+def get_all_derived_products_for_current_user():
+    """Gets a list of URIs for all derived products for the current user (
+    the one that is logged into gcloud)."""
+
+    user_name = get_current_gcp_user_email()
+    user_name = user_name.split("@")[0]
+
+    blob_path = f"derived_products/{user_name}/"
+
+    return list_all_objects_in_gcp_bucket_location(
+        location=blob_path, bucket_name=config.get_current_gcp_bucket_name()
+    )
+
+def search_derived_products_in_gcp():...
+
+
+def upload_derived_product_to_gcp(
+    file_name: str = "",
+    file_type: str = "",
+    file_location: str = "",
+    ship_name: str = "",
+    survey_name: str = "",
+    echosounder: str = "",
+    data_source: str = "",
+    debug: bool = False,
+):
+    """Uploads a derived product file to GCP as well as its metadata to BQ.
+
+    Args:
+        file_name (str, optional): The name of the file. Defaults to "".
+        file_type (str, optional): The file type. Defaults to "".
+        file_location (str, optional): The local file path. Defaults to "".
+        ship_name (str, optional): The ship name associated with this file.
+            Defaults to "".
+        survey_name (str, optional): The survey name associated with this file.
+            Defaults to "".
+        echosounder (str, optional): The echosounder associated with this file.
+            Defaults to "".
+        data_source (str, optional): The data source associated with this file.
+            Defaults to "".
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+    """
+
+    print("Uploading derived file...")
+
+    # Get the gcp storage bucket location
+    gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location(
+        file_name=file_name,
+        file_type=file_type,
+        ship_name=ship_name,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        data_source=data_source,
+        is_derived_product=True,
+        debug=debug,
+    )
+
+    # Normalize the ship name
+    ship_name_normalized = normalize_ship_name(ship_name=ship_name)
+
+    # Get the ICES code
+    ices_code = get_ices_code_from_ship_name(
+        ship_name=ship_name_normalized, is_normalized=True
+    )
+
+    # Create storage objects
+    _, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
+
+    # Upload to the GCP location
+    upload_file_to_gcp_storage_bucket(
+        file_name=file_name,
+        file_type="raw",
+        ship_name=ship_name_normalized,
+        survey_name=survey_name,
+        echosounder=echosounder,
+        file_location=file_location,
+        gcp_bucket=gcp_bucket,
+        data_source=data_source,
+        is_derived_product=True,
+        verbose=False,
+        debug=debug,
+    )
+
+    # Check that the file exists
+    file_exists_in_gcp = check_if_file_exists_in_gcp(
+        bucket=gcp_bucket,
+        file_path=gcp_storage_bucket_location,
+    )
+
+    # Upload associated metadata to BQ.
+    create_and_upload_metadata_df_for_derived_files(
+        file_name=file_name,
+        survey_name=survey_name,
+        gcp_bucket_name=gcp_bucket_name,
+        gcp_storage_bucket_location=gcp_storage_bucket_location,
+        ices_code=ices_code,
+        ship_name=ship_name,
+        echosounder=echosounder,
+        file_exists_in_gcp=file_exists_in_gcp,
+        debug=debug,
+    )
+
+    print("Uploaded.")
+
+
+if __name__ == "__main__":
+    file_path = r"C:\Users\Hannah Khan\Desktop\repos\AA-SI_aalibrary\HDD\Henry_B_Bigelow\HB2407\Derived\img.png"
+
+    # upload_derived_product_to_gcp(
+    #     file_name="img.png",
+    #     file_type="png",
+    #     file_location=file_path,
+    #     ship_name="Henry B. Bigelow",
+    #     survey_name="HB2407",
+    #     echosounder="EK80",
+    #     data_source="HDD",
+    #     debug=False,
+    # )
+
+    print(get_all_derived_products_for_current_user())
