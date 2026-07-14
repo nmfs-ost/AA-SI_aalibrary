@@ -319,6 +319,7 @@ class LocalSurvey:
     survey_name: str = ""
     data_source: str = "HDD"
     directory_path: str = ""
+    relocation_path: str = ""
     debug: bool = False
     gcp_bucket: storage.Client.bucket = None
     gcp_project_id: str = None
@@ -369,6 +370,17 @@ class LocalSurvey:
                 logging.debug(
                     "normalized directory path = %s", self.directory_path
                 )
+        if "relocation_path" in self.__dict__:
+            self.relocation_path = (
+                os.path.normpath(self.relocation_path) + os.sep
+            )
+            if self.debug:
+                logging.debug(
+                    "normalized relocation path = %s", self.relocation_path
+                )
+            # Create the relocation path if it does not exist.
+            if not os.path.exists(self.relocation_path):
+                os.makedirs(self.relocation_path)
 
     def _create_vars_for_use_later(self):
         """Creates vars for use later."""
@@ -427,7 +439,6 @@ class LocalSurvey:
 
         # Get number of all files in this directory.
         self.num_all_files_in_directory = len(self.all_file_paths_in_directory)
-        pprint.pprint(self.all_file_paths_in_directory)
         # Get all file types in this directory.
         self.all_file_types_in_directory = list(
             set(
@@ -460,6 +471,10 @@ class LocalSurvey:
         self._parse_calibration_files_in_directory()
         self._parse_auxiliary_files_in_directory()
         self._parse_unknown_files_in_directory()
+        self._parse_all_gcp_storage_bucket_locations_for_all_files_in_directory()
+        # Create relocation paths if specified.
+        if self.relocation_path != "":
+            self._parse_relocation_paths_for_all_files_in_directory()
 
     def _parse_raw_files_in_directory(self):
         """Parses through all of raw data files in the directory."""
@@ -516,6 +531,70 @@ class LocalSurvey:
 
     def _parse_unknown_files_in_directory(self): ...
 
+    def _parse_all_gcp_storage_bucket_locations_for_all_files_in_directory(
+        self,
+    ):
+        """Parses through all of the files in the directory and gets the
+        correct GCP storage bucket location for each file."""
+
+        for file_path in self.all_file_paths_in_directory:
+            file_name = os.path.basename(file_path)
+            file_type = self.all_file_paths_in_directory[file_path]["type"]
+            gcp_storage_bucket_location = (
+                parse_correct_gcp_storage_bucket_location_based_on_file_type(
+                    file_name=file_name,
+                    file_type=file_type,
+                    ship_name=self.ship_name,
+                    survey_name=self.survey_name,
+                    echosounder=self.all_file_paths_in_directory[file_path][
+                        "echosounder"
+                    ],
+                    data_source=self.data_source,
+                    debug=self.debug,
+                )
+            )
+            self.all_file_paths_in_directory[file_path][
+                "gcp_storage_bucket_location"
+            ] = gcp_storage_bucket_location
+
+    def _parse_relocation_paths_for_all_files_in_directory(
+        self,
+    ):
+        """Parses through all of the files in the directory and gets the
+        correct relocation path for each file."""
+        for file_path in self.all_file_paths_in_directory:
+            file_name = os.path.basename(file_path)
+            file_type = self.all_file_paths_in_directory[file_path]["type"]
+            gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location_based_on_file_type(
+                file_name=file_name,
+                file_type=file_type,
+                ship_name=self.ship_name,
+                survey_name=self.survey_name,
+                echosounder=self.all_file_paths_in_directory[file_path][
+                    "echosounder"
+                ],
+                # This is on purpose!
+                data_source=self.relocation_path,
+                debug=self.debug,
+            )
+            self.all_file_paths_in_directory[file_path][
+                "relocation_path"
+            ] = gcp_storage_bucket_location
+        # Normalize the relocation paths
+        for file_path in self.all_file_paths_in_directory:
+            self.all_file_paths_in_directory[file_path]["relocation_path"] = (
+                os.path.normpath(
+                    self.all_file_paths_in_directory[file_path][
+                        "relocation_path"
+                    ]
+                )
+                + os.sep
+            )
+
+    def print_all_files_in_directory(self):
+        """Prints all the files in the directory."""
+        pprint.pprint(self.all_file_paths_in_directory)
+
     def _upload_to_gcp(self): ...
 
 
@@ -559,16 +638,18 @@ if __name__ == "__main__":
         survey_name="HB2407",
         data_source="HDD",
         directory_path="./HDD/",
+        relocation_path="./Copy_HDD/",
         upload_to_gcp=False,
         debug=True,
         gcp_bucket=gcp_bucket,
         gcp_bucket_name=gcp_bucket_name,
     )
-    i = 0
-    for file_path in local_survey.all_file_paths_in_directory:
-        if (
-            local_survey.all_file_paths_in_directory[file_path]["type"].lower()
-            == ".yaml"
-        ):
-            i += 1
-    print(i)
+    local_survey.print_all_files_in_directory()
+    # i = 0
+    # for file_path in local_survey.all_file_paths_in_directory:
+    #     if (
+    #         local_survey.all_file_paths_in_directory[file_path]["type"].lower()
+    #         == ".yaml"
+    #     ):
+    #         i += 1
+    # print(i)
