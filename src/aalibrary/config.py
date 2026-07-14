@@ -20,7 +20,27 @@ NCEI_BUCKET_NAME = "noaa-wcsd-pds"
 RAW_DATA_FILE_TYPES = ["raw", "idx", "bot", "evi"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
 METADATA_FILE_TYPES = ["json"]
+AUXILIARY_EV_FILE_TYPES = ["EV", "evb"]
+AUXILIARY_REGION_DEFS_FILE_ENDINGS = ["rdefs.evr", "regiondefs.csv"]
+AUXILIARY_SEABED_LINES_FILE_ENDINGS = [".evl"]
+AUXILIARY_TEMPLATE_FILE_FILE_ENDINGS = ["template.ev"]
+AUXILIARY_SA_FILE_FILE_ENDINGS = [
+    "sa_Cells.csv",
+    "sa_RegionsByCells.csv",
+    "Cells_sa.csv",
+    "_sa.csv",
+]
 VALID_FILETYPES = ["raw", "idx", "netcdf", "nc", "json", "bot", "evi"]
+VALID_FILE_ENDINGS = (
+    RAW_DATA_FILE_TYPES
+    + CONVERTED_DATA_FILE_TYPES
+    + METADATA_FILE_TYPES
+    + AUXILIARY_EV_FILE_TYPES
+    + AUXILIARY_REGION_DEFS_FILE_ENDINGS
+    + AUXILIARY_SEABED_LINES_FILE_ENDINGS
+    + AUXILIARY_TEMPLATE_FILE_FILE_ENDINGS
+    + AUXILIARY_SA_FILE_FILE_ENDINGS
+)
 
 VALID_ECHOSOUNDERS = [
     "ar040-hat-55145",
