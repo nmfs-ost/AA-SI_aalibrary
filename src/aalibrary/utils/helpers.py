@@ -260,6 +260,7 @@ def parse_correct_gcp_storage_bucket_location(
     is_calibration_mapping_file: bool = False,
     is_auxiliary_file: bool = False,
     is_derived_product: bool = False,
+    is_tugboat_submission: bool = False,
     debug: bool = False,
 ) -> str:
     """Calculates the correct gcp storage location based on data source, file
@@ -298,6 +299,9 @@ def parse_correct_gcp_storage_bucket_location(
             derived product. These can be analysis work products or anything
             else that is not a file that analysis can be derived from (netcdf).
             Defaults to False.
+        is_tugboat_submission (bool, optional): Whether or not the file is a
+            tugboat submission. These are stored in a separate directory called
+            `tugboat_submissions/` within the survey. Defaults to False.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
 
@@ -313,6 +317,7 @@ def parse_correct_gcp_storage_bucket_location(
         ^ is_calibration_mapping_file
         ^ is_auxiliary_file
         ^ is_derived_product
+        ^ is_tugboat_submission
     ) or not any(
         [
             is_survey_metadata,
@@ -320,15 +325,17 @@ def parse_correct_gcp_storage_bucket_location(
             is_calibration_mapping_file,
             is_auxiliary_file,
             is_derived_product,
+            is_tugboat_submission,
         ]
     ), (
         "Make sure that only one of the following params is set to True:\n"
         "[is_survey_metadata,is_calibration_file,"
-        "is_calibration_mapping_file,is_auxiliary_file,is_derived_product]"
+        "is_calibration_mapping_file,is_auxiliary_file,is_derived_product,"
+        "is_tugboat_submission]\n"
         "\nor that all are set to false."
         f"[{is_survey_metadata} {is_calibration_file}"
         f" {is_calibration_mapping_file} {is_auxiliary_file}"
-        f" {is_derived_product}]"
+        f" {is_derived_product} {is_tugboat_submission}]"
     )
 
     # Creating the correct upload location
@@ -345,6 +352,10 @@ def parse_correct_gcp_storage_bucket_location(
             f"{data_source}/{ship_name}/{survey_name}/auxiliary/{file_name}"
         )
     elif is_derived_product:
+        user_name = get_current_gcp_user_email()
+        user_name = user_name.split("@")[0]
+        gcp_storage_bucket_location = f"derived_products/{user_name}/{ship_name}/{survey_name}/{file_name}"
+    elif is_tugboat_submission:
         user_name = get_current_gcp_user_email()
         user_name = user_name.split("@")[0]
         gcp_storage_bucket_location = f"derived_products/{user_name}/{ship_name}/{survey_name}/{file_name}"
