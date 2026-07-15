@@ -32,7 +32,7 @@ from aalibrary import config
 
 
 def get_current_gcp_user_email() -> str:
-    """Gets the current gcloud user's email.
+    """Gets the current gcloud user's email using the `gcloud` command.
 
     Returns:
         str: A string containing the current gcloud user's email.
