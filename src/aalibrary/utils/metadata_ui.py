@@ -9,6 +9,8 @@ import json
 
 from google.cloud import storage
 
+from aalibrary import config
+
 # For pytests-sake
 # if __package__ is None or __package__ == "":
 #     # from config import get_current_gcp_bucket_name
@@ -162,6 +164,7 @@ def get_users_save_state_for_survey(survey_name: str = "") -> Union[dict, None]:
 
 
 if __name__ == "__main__":
+    # config.use_gcp_dev()
     # Example usage
     example_submission = {
         "platform": "Henry B. Bigelow",
