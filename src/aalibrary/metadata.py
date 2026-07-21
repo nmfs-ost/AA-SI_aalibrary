@@ -60,6 +60,7 @@ else:
 
 def create_and_upload_metadata_df_for_raw(
     rf: RawFile = None,
+    user_email: str = "",
     debug: bool = False,
 ):
     """Creates a metadata file with appropriate information. Then uploads it
@@ -68,13 +69,18 @@ def create_and_upload_metadata_df_for_raw(
     Args:
         rf (RawFile, optional): The RawFile object associated with this file.
             Defaults to None.
+        user_email (str, optional): The user email as a string. Defaults to "".
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
 
     # Create the metadata file to be uploaded.
     # Get the current user's email
-    email = get_current_gcp_user_email()
+    if user_email == "":
+        user_name = get_current_gcp_user_email()
+        email = user_name.split("@")[0]
+    else:
+        email = user_email.split("@")[0]
 
     # get the survey datetime.
     file_datetime = datetime.strptime(
@@ -168,6 +174,7 @@ def create_and_upload_metadata_df_for_derived_files(
     ices_code: str = "",
     ship_name: str = "",
     echosounder: str = "",
+    user_email: str = "",
     file_exists_in_gcp: bool = None,
     debug: bool = False,
 ):
@@ -188,6 +195,7 @@ def create_and_upload_metadata_df_for_derived_files(
             Defaults to "".
         echosounder (str, optional): The echosounder associated with this file.
             Defaults to "".
+        user_email (str, optional): The user email as a string. Defaults to "".
         file_exists_in_gcp (bool, optional): Whether or not the file exists in
             GCP. Defaults to None.
         debug (bool, optional): Whether or not to print debug statements.
@@ -195,7 +203,11 @@ def create_and_upload_metadata_df_for_derived_files(
     """
 
     # Get the current user's email
-    email = get_current_gcp_user_email()
+    if user_email == "":
+        user_name = get_current_gcp_user_email()
+        email = user_name.split("@")[0]
+    else:
+        email = user_email.split("@")[0]
 
     # calculate the deletion datetime
     curr_datetime = datetime.now()
@@ -250,6 +262,7 @@ def create_and_upload_metadata_df_for_derived_files(
 
 def create_and_upload_metadata_df_for_netcdf(
     rf: RawFile = None,
+    user_email: str = "",
     debug: bool = False,
 ):
     """Creates a metadata file with appropriate information for netcdf files.
@@ -258,12 +271,17 @@ def create_and_upload_metadata_df_for_netcdf(
     Args:
         rf (RawFile, optional): The RawFile object associated with this file.
             Defaults to None.
+        user_email (str, optional): The user email as a string. Defaults to "".
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
 
     # Get the current user's email
-    email = get_current_gcp_user_email()
+    if user_email == "":
+        user_name = get_current_gcp_user_email()
+        email = user_name.split("@")[0]
+    else:
+        email = user_email.split("@")[0]
 
     # get the survey datetime.
     file_datetime = datetime.strptime(
