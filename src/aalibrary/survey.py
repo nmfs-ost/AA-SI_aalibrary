@@ -9,7 +9,7 @@ import os
 import pprint
 from glob import glob
 from pathlib import Path
-import pprint
+from datetime import datetime, timedelta
 
 from google.cloud import storage
 import boto3
@@ -26,6 +26,7 @@ if __package__ is None or __package__ == "":
     )
     from raw_file import RawFile
     from config import VALID_ECHOSOUNDERS
+    from egress import upload_file_to_gcp_storage_bucket
 else:
     # uses current package visibility
     from aalibrary import ices_ship_names
@@ -36,6 +37,7 @@ else:
     )
     from aalibrary.raw_file import RawFile
     from aalibrary.config import VALID_ECHOSOUNDERS
+    from aalibrary.egress import upload_file_to_gcp_storage_bucket
 
 
 class Survey:
@@ -340,7 +342,9 @@ class LocalSurvey:
             "ship_name": self.ship_name,
             "survey_name": self.survey_name,
             "num_all_files_in_directory": self.num_all_files_in_directory,
-            "total_file_size_bytes_in_directory": self.total_file_size_bytes_in_directory,
+            "total_file_size_bytes_in_directory": (
+                self.total_file_size_bytes_in_directory
+            ),
             "total_file_size_mb_in_directory": round(
                 self.total_file_size_mb_in_directory, 2
             ),
@@ -681,11 +685,42 @@ class LocalSurvey:
         )
 
         # TODO: upload with timings to calculate upload speeds in megabytes.
+        file_upload_timings = []  # in seconds
+        file_upload_speeds = []  # Megabytes/sec (MiB/s)
+        for file in files_to_upload:
+            # Start timer.
+            start_time = datetime.now()
+            upload_file_to_gcp_storage_bucket(
+                gcp_storage_bucket_location=self.all_file_paths_in_directory[
+                    file
+                ]["gcp_storage_bucket_location"],
+                gcp_bucket=self.gcp_bucket,
+            )
+            # End the timer.
+            end_time = datetime.now()
+            elapsed_time_seconds = (end_time - start_time).total_seconds()
+            file_upload_timings.append(elapsed_time_seconds)
+            file_size_in_mb = (
+                self.all_file_paths_in_directory[file]["size"] / 1024**2
+            )
+            speed = file_size_in_mb / elapsed_time_seconds
+            file_upload_speeds.append(speed)
+
+        # Calculate total elapsed time for uploads:
+        total_elapsed_time_in_seconds = sum(file_upload_timings)
+        total_elapsed_time_formatted_str = str(
+            timedelta(seconds=total_elapsed_time_in_seconds)
+        )
+        # Average out the upload speeds:
+        avg_upload_speed = sum(file_upload_speeds) / len(file_upload_speeds)
+
+        print("Uploads complete.")
+        print(f"Total Elapsed Time: {total_elapsed_time_formatted_str}")
+        print(f"Average Upload Speed: {avg_upload_speed} Megabytes/second")
 
     def _upload_to_gcp(self):
         """Uploads all files to GCP according to their GCP storage bucket
         locations."""
-        ...
 
     def relocate(self):
         """Relocates all of the files in the directory to the relocation path."""
@@ -704,6 +739,10 @@ if __name__ == "__main__":
     # set logging config
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
+
+    from aalibrary import config
+
+    config.use_gcp_dev()
 
     # logging.basicConfig(
     #     level=logging.DEBUG,
