@@ -374,7 +374,11 @@ def parse_correct_gcp_storage_bucket_location(
             ["NCEI", "OMAO"]. Defaults to "".
         is_survey_metadata (bool, optional): Whether or not the file is a
             metadata file associated with a survey. The files are stored at
-            the survey level, in the `metadata/` folder. Defaults to False.
+            the survey level, in the `metadata/` folder.
+            Defaults to False.
+            NOTE: This flag should only apply to tugboat submissions that have
+            been submitted. For all tugboat submission save states, use the
+            `is_tugboat_submission` flag.
         is_calibration_file (bool, optional): Whether of not the file is a
             calibration file. These files are stored within their own
             `calibration/` sub-directory within the survey.
@@ -390,13 +394,22 @@ def parse_correct_gcp_storage_bucket_location(
             Defaults to False.
         is_tugboat_submission (bool, optional): Whether or not the file is a
             tugboat submission. These are stored in a separate directory called
-            `tugboat_submissions/` within the survey. Defaults to False.
+            `tugboat_submissions/` within the survey of a user's
+            `derived_products` folder.
+            Defaults to False.
+            NOTE: This flag should only apply to tugboat submission save states
+            . All actual tugboat submissions must be flagged as
+            `is_survey_metadata` instead.
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
 
     Returns:
         str: The correctly parsed GCP storage bucket location.
     """
+    # Assert that a file_name exists.
+    assert (
+        file_name != ""
+    ), f"Uploading files requires a `file_name`. Value: {file_name}"
 
     # Use XOR operator to assert that only one of these values is True.
     # [is_survey_metadata,is_calibration_file,is_auxiliary_file]
@@ -429,26 +442,93 @@ def parse_correct_gcp_storage_bucket_location(
 
     # Creating the correct upload location
     if is_survey_metadata:
+        # These  params are needed for Survey Metadata files.
+        assert (
+            (ship_name != "") and (survey_name != "") and (data_source != "")
+        ), (
+            "Survey Metadata files need to have a `ship_name`, `survey_name`"
+            f" and `data_source` specified. Values given: {ship_name} and"
+            f" {survey_name} and {data_source}."
+        )
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/metadata/{file_name}"
         )
     elif is_calibration_file:
+        # These  params are needed for calibration files.
+        assert (
+            (ship_name != "")
+            and (survey_name != "")
+            and (echosounder != "")
+            and (data_source != "")
+        ), (
+            "Calibration files need to have a `ship_name`, `survey_name`"
+            " `echosounder` and `data_source` specified. Values given: "
+            f"{ship_name} and {survey_name} and {echosounder} and "
+            f"{data_source}."
+        )
         gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/calibration/{file_name}"
     elif is_calibration_mapping_file:
+        # These  params are needed for calibration mapping files.
+        assert (
+            (ship_name != "")
+            and (survey_name != "")
+            and (echosounder != "")
+            and (data_source != "")
+        ), (
+            "Calibration mapping files need to have a `ship_name`, "
+            "`survey_name`, `echosounder` and `data_source` specified. "
+            "Values given: "
+            f"{ship_name} and {survey_name} and {echosounder} and "
+            f"{data_source}."
+        )
         gcp_storage_bucket_location = f"{data_source}/{ship_name}/{survey_name}/{echosounder}/calibration/{file_name}"
     elif is_auxiliary_file:
+        # These  params are needed for auxiliary files.
+        assert (
+            (ship_name != "") and (survey_name != "") and (data_source != "")
+        ), (
+            "Auxiliary files need to have a `ship_name`, "
+            "`survey_name` and `data_source` specified. "
+            "Values given: "
+            f"{ship_name} and {survey_name} and "
+            f"{data_source}."
+        )
         gcp_storage_bucket_location = (
             f"{data_source}/{ship_name}/{survey_name}/auxiliary/{file_name}"
         )
     elif is_derived_product:
+        # Only these two params are needed for derived products.
+        assert (ship_name != "") and (survey_name != ""), (
+            "Derived products need to have a `ship_name` and `survey_name`"
+            f" specified. Values given: {ship_name} and {survey_name}."
+        )
         user_name = get_current_gcp_user_email()
         user_name = user_name.split("@")[0]
         gcp_storage_bucket_location = f"derived_products/{user_name}/{ship_name}/{survey_name}/{file_name}"
     elif is_tugboat_submission:
+        # Only these two params are needed for tugboat submission save states.
+        assert (ship_name != "") and (survey_name != ""), (
+            "Tugboat submission save states need to have a `ship_name` and "
+            "`survey_name`"
+            f" specified. Values given: {ship_name} and {survey_name}."
+        )
         user_name = get_current_gcp_user_email()
         user_name = user_name.split("@")[0]
         gcp_storage_bucket_location = f"derived_products/{user_name}/{ship_name}/{survey_name}/{file_name}"
     else:
+        # These  params are needed for all other raw/converted files.
+        assert (
+            (ship_name != "")
+            and (survey_name != "")
+            and (echosounder != "")
+            and (data_source != "")
+        ), (
+            "Raw/converted files need to have a `ship_name`, "
+            "`survey_name`, `echosounder` and `data_source` specified. "
+            "Values given: "
+            f"{ship_name} and {survey_name} and {echosounder} and "
+            f"{data_source}."
+        )
         # Figure out if its a raw or idx file (belongs in raw folder)
         if file_type.lower() in config.RAW_DATA_FILE_TYPES:
             gcp_storage_bucket_location = (
