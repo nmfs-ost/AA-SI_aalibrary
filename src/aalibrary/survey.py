@@ -370,6 +370,9 @@ class LocalSurvey:
             self.directory_path = (
                 os.path.normpath(self.directory_path) + os.sep
             )
+            assert os.path.exists(self.directory_path), (
+                "The directory provided does not exist or could not be found:"
+                f" `{self.directory_path}`")
             if self.debug:
                 logging.debug(
                     "normalized directory path = %s", self.directory_path
@@ -716,18 +719,24 @@ class LocalSurvey:
         )
         # Average out the upload speeds:
         avg_upload_speed = sum(file_upload_speeds) / len(file_upload_speeds)
+        upload_speed_in_mbitsps = (
+            (avg_upload_speed * (1024**2)) * 8
+        ) / 1000000
 
         print("Uploads complete.")
         print(f"Total Elapsed Time: {total_elapsed_time_formatted_str}")
-        print(f"Average Upload Speed: {avg_upload_speed} Megabytes/second")
+        print(f"Average Upload Speed: {avg_upload_speed:.2f} Megabytes/second")
+        print(
+            f"Average Upload Speed: {upload_speed_in_mbitsps:.2f}"
+            " megabits/second"
+        )
 
     def _upload_to_gcp(self):
         """Uploads all files to GCP according to their GCP storage bucket
         locations."""
 
     def relocate(self):
-        """Relocates all of the files in the directory to the relocation path.
-        """
+        """Relocates all of the files in the directory to the relocation path."""
         for file_path in self.all_file_paths_in_directory:
             relocation_path = self.all_file_paths_in_directory[file_path][
                 "relocation_path"
