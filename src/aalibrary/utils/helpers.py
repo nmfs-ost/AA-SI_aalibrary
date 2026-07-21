@@ -260,11 +260,23 @@ def parse_correct_gcp_storage_bucket_location_based_on_file_type(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
+        file_type (str, optional): The file type (not include the dot ".").
+            Defaults to "".
+        ship_name (str, optional): The ship name associated with this survey.
+            Defaults to "".
+        survey_name (str, optional): The survey name/identifier. Defaults
+            to "".
+        echosounder (str, optional): The echosounder used to gather the data.
+            Defaults to "".
+        data_source (str, optional): The source of the data. Can be one of
+            ["NCEI", "OMAO"]. Defaults to "".
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
 
     Returns:
         str: The correctly parsed GCP storage bucket location according to
             AALibrary standards.
-    """
+    """    
 
     gcp_storage_bucket_location = None
     file_name_lower = file_name.lower()
