@@ -131,7 +131,7 @@ class Survey:
         # Create connection objects if they dont exist
         self.s3_bucket_name = "noaa-wcsd-pds"
         if (
-            ("gcp_bucket" not in self.__dict__)
+            (("gcp_bucket" not in self.__dict__) or (self.gcp_bucket is None))
             or ("gcp_bucket_name" not in self.__dict__)
             or ("gcp_stor_client" not in self.__dict__)
         ):
@@ -419,9 +419,9 @@ class LocalSurvey:
         # 'C:\\Users\\Hannan\\AmSam2HawaiiSE2602L3\\D20260717-T000432.raw.evi':
         # {'echosounder': None,
         # 'gcp_storage_bucket_location':
-        #   'HDD/Oscar_Sette/SE2602/None/data/raw/D20260717-T000432.raw.evi',
+        #   'HDD/Sette/SE2602/None/data/raw/D20260717-T000432.raw.evi',
         # 'size': 500698,
-        # 'type': '.evi'}
+        # 'type': '.evi'}, ...
         # }
         self.all_file_paths_in_directory = glob(
             directory_path_glob, recursive=True
