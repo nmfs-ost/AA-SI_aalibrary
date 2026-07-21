@@ -542,6 +542,7 @@ def upload_file_to_gcp_storage_bucket(
     survey_name: str = "",
     echosounder: str = "",
     file_location: str = "",
+    gcp_storage_bucket_location: str = "",
     gcp_bucket: storage.Client.bucket = None,
     data_source: str = "",
     is_survey_metadata: bool = False,
@@ -568,6 +569,11 @@ def upload_file_to_gcp_storage_bucket(
             Defaults to "".
         file_location (str, optional): The local location of the file.
             Defaults to "".
+        gcp_storage_bucket_location (str, optional): The location of the file
+            within GCP Storage Buckets.
+            Defaults to "".
+            NOTE: If this is not provided, a gcp_storage_bucket_location will
+            be parsed from the other parameters provided.
         gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
             used to upload the file. Defaults to None.
         data_source (str, optional): The source of the data. Can be one of
@@ -596,22 +602,23 @@ def upload_file_to_gcp_storage_bucket(
             Defaults to False.
     """
 
-    gcp_storage_bucket_location = (
-        helpers.parse_correct_gcp_storage_bucket_location(
-            file_name=file_name,
-            file_type=file_type,
-            ship_name=ship_name,
-            survey_name=survey_name,
-            echosounder=echosounder,
-            data_source=data_source,
-            is_survey_metadata=is_survey_metadata,
-            is_calibration_file=is_calibration_file,
-            is_calibration_mapping_file=is_calibration_mapping_file,
-            is_auxiliary_file=is_auxiliary_file,
-            is_derived_product=is_derived_product,
-            debug=debug,
+    if gcp_storage_bucket_location == "":
+        gcp_storage_bucket_location = (
+            helpers.parse_correct_gcp_storage_bucket_location(
+                file_name=file_name,
+                file_type=file_type,
+                ship_name=ship_name,
+                survey_name=survey_name,
+                echosounder=echosounder,
+                data_source=data_source,
+                is_survey_metadata=is_survey_metadata,
+                is_calibration_file=is_calibration_file,
+                is_calibration_mapping_file=is_calibration_mapping_file,
+                is_auxiliary_file=is_auxiliary_file,
+                is_derived_product=is_derived_product,
+                debug=debug,
+            )
         )
-    )
 
     # Check if the file exists in GCP
     file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
