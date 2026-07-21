@@ -10,6 +10,7 @@ import pprint
 from glob import glob
 from pathlib import Path
 from datetime import datetime, timedelta
+from typing import List
 
 from google.cloud import storage
 import boto3
@@ -372,7 +373,8 @@ class LocalSurvey:
             )
             assert os.path.exists(self.directory_path), (
                 "The directory provided does not exist or could not be found:"
-                f" `{self.directory_path}`")
+                f" `{self.directory_path}`"
+            )
             if self.debug:
                 logging.debug(
                     "normalized directory path = %s", self.directory_path
@@ -688,10 +690,22 @@ class LocalSurvey:
             f" {megabytes_to_upload:.2f} mb total."
         )
 
-        # TODO: upload with timings to calculate upload speeds in megabytes.
+        self._upload_to_gcp(files_to_upload=files_to_upload)
+
+    def _upload_to_gcp(
+        self, files_to_upload: List[str] = None, save_results_loc: str = ""
+    ):
+        """Uploads all files to GCP according to their GCP storage bucket
+        locations."""
+        if files_to_upload is None:
+            # Upload all files.
+            files_to_upload = [
+                k for k in self.all_file_paths_in_directory.keys()
+            ]
+        # Upload with timings to calculate upload speeds in megabytes.
         file_upload_timings = []  # in seconds
         file_upload_speeds = []  # Megabytes/sec (MiB/s)
-        print("BEGINNING UPLOADS...")
+        print("BEGINNING UPLOAD(S)...")
         for file in tqdm(files_to_upload):
             # Start timer.
             start_time = datetime.now()
@@ -730,10 +744,27 @@ class LocalSurvey:
             f"Average Upload Speed: {upload_speed_in_mbitsps:.2f}"
             " megabits/second"
         )
-
-    def _upload_to_gcp(self):
-        """Uploads all files to GCP according to their GCP storage bucket
-        locations."""
+        if save_results_loc != "":
+            # Add current datetime to upload results file name.
+            now = datetime.now()
+            date_string = now.strftime("D%Y%m%dT%H%M%S")
+            save_file_name = f"{date_string}_aalibrary_upload_results.txt"
+            save_results_loc = os.sep.join([save_results_loc, save_file_name])
+            save_results_loc = os.path.normpath(save_results_loc) + os.sep
+            # Create the file if it doesn't exist
+            with open(save_results_loc, "w", encoding="utf-8") as f:
+                f.write("Uploads complete.\n")
+                f.write(
+                    f"Total Elapsed Time: {total_elapsed_time_formatted_str}\n"
+                )
+                f.write(
+                    f"Average Upload Speed: {avg_upload_speed:.2f} "
+                    "Megabytes/second\n"
+                )
+                f.write(
+                    f"Average Upload Speed: {upload_speed_in_mbitsps:.2f}"
+                    " megabits/second\n"
+                )
 
     def relocate(self):
         """Relocates all of the files in the directory to the relocation path."""
