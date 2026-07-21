@@ -615,6 +615,7 @@ class LocalSurvey:
             num_files (int, optional): _description_. Defaults to 0.
             megabytes (int, optional): _description_. Defaults to 0.
         """
+        print("TESTING GCP UPLOAD SPEEDS")
 
         # Use XOR operator to assert that only one of these values is True.
         # [num_files,megabytes]
@@ -687,10 +688,12 @@ class LocalSurvey:
         # TODO: upload with timings to calculate upload speeds in megabytes.
         file_upload_timings = []  # in seconds
         file_upload_speeds = []  # Megabytes/sec (MiB/s)
-        for file in files_to_upload:
+        print("BEGINNING UPLOADS...")
+        for file in tqdm(files_to_upload):
             # Start timer.
             start_time = datetime.now()
             upload_file_to_gcp_storage_bucket(
+                file_location=file,
                 gcp_storage_bucket_location=self.all_file_paths_in_directory[
                     file
                 ]["gcp_storage_bucket_location"],
@@ -723,7 +726,8 @@ class LocalSurvey:
         locations."""
 
     def relocate(self):
-        """Relocates all of the files in the directory to the relocation path."""
+        """Relocates all of the files in the directory to the relocation path.
+        """
         for file_path in self.all_file_paths_in_directory:
             relocation_path = self.all_file_paths_in_directory[file_path][
                 "relocation_path"
@@ -786,7 +790,7 @@ if __name__ == "__main__":
         gcp_bucket_name=gcp_bucket_name,
     )
     # local_survey.print_all_files_in_directory()
-    local_survey._test_upload_to_gcp_speeds(megabytes=50)
+    local_survey._test_upload_to_gcp_speeds(megabytes=100)
     # i = 0
     # for file_path in local_survey.all_file_paths_in_directory:
     #     if (
