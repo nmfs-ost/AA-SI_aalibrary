@@ -5,7 +5,10 @@ import warnings
 
 # Import sub-packages
 # flake8: noqa
-import config
+if __package__ is None or __package__ == "":
+    import config
+else:
+    from . import config
 
 __version__ = "1.2.0"
 
