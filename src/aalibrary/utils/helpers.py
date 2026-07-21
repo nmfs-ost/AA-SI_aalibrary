@@ -276,7 +276,7 @@ def parse_correct_gcp_storage_bucket_location_based_on_file_type(
     Returns:
         str: The correctly parsed GCP storage bucket location according to
             AALibrary standards.
-    """    
+    """
 
     gcp_storage_bucket_location = None
     file_name_lower = file_name.lower()
