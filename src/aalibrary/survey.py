@@ -320,6 +320,7 @@ class LocalSurvey:
 
     ship_name: str = ""
     survey_name: str = ""
+    echosounder: str = ""
     data_source: str = "HDD"
     directory_path: str = ""
     relocation_path: str = ""
@@ -442,14 +443,17 @@ class LocalSurvey:
             self.all_file_paths_in_directory[file_path][
                 "size"
             ] = p.stat().st_size
-            # Assign echosounder used based on folder name.
-            # Get parent folders
-            parent_dirs = [
-                parent.name
-                for parent in p.parents
-                if parent.name and parent.name in VALID_ECHOSOUNDERS
-            ]
-            echosounder = parent_dirs[0] if parent_dirs else None
+            if self.echosounder = "":
+                # Assign echosounder used based on folder name.
+                # Get parent folders
+                parent_dirs = [
+                    parent.name
+                    for parent in p.parents
+                    if parent.name and parent.name in VALID_ECHOSOUNDERS
+                ]
+                echosounder = parent_dirs[0] if parent_dirs else None
+            else:
+                echosounder = self.echosounder
             self.all_file_paths_in_directory[file_path][
                 "echosounder"
             ] = echosounder
