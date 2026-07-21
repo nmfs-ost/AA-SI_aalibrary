@@ -548,6 +548,7 @@ def upload_file_to_gcp_storage_bucket(
     is_calibration_file: bool = False,
     is_calibration_mapping_file: bool = False,
     is_auxiliary_file: bool = False,
+    is_derived_product: bool = False,
     verbose: bool = True,
     debug: bool = False,
 ):
@@ -583,6 +584,10 @@ def upload_file_to_gcp_storage_bucket(
         is_auxiliary_file (bool, optional): Whether or not the file is an
             auxiliary file associated with the survey. These files can be of
             any extension. And do not necessarily have to be data files.
+        is_derived_product (bool, optional): Whether or not the file is a
+            derived product. These can be analysis work products or anything
+            else that is not a file that analysis can be derived from (netcdf).
+            Defaults to False.
         verbose (bool, optional): Whether or not you want to print intermediate
             statements about uploads. Helpful for if you are using progress
             bars.
@@ -603,6 +608,7 @@ def upload_file_to_gcp_storage_bucket(
             is_calibration_file=is_calibration_file,
             is_calibration_mapping_file=is_calibration_mapping_file,
             is_auxiliary_file=is_auxiliary_file,
+            is_derived_product=is_derived_product,
             debug=debug,
         )
     )
