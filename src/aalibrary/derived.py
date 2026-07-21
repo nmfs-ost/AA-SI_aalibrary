@@ -1,7 +1,6 @@
 """This file contains functions for interacting with derived products in GCS."""
 
-import sys
-import os
+from typing import List
 from aalibrary import config
 from aalibrary.utils.helpers import (
     get_current_gcp_user_email,
@@ -18,12 +17,25 @@ from aalibrary.metadata import create_and_upload_metadata_df_for_derived_files
 from aalibrary.ices_ship_names import get_ices_code_from_ship_name
 
 
-def get_all_derived_products_for_current_user():
+def get_all_derived_products_for_current_user(
+    user_email: str = "",
+) -> List[str]:
     """Gets a list of URIs for all derived products for the current user (
-    the one that is logged into gcloud)."""
+    based on provided email, or the user that is logged into `gcloud`).
 
-    user_name = get_current_gcp_user_email()
-    user_name = user_name.split("@")[0]
+    Args:
+        user_email (str, optional): The user email as a string. Defaults to "".
+
+    Returns:
+        List[str]: A list of URIs of all the derived products for the current
+            user.
+    """
+
+    if user_email == "":
+        user_name = get_current_gcp_user_email()
+        user_name = user_name.split("@")[0]
+    else:
+        user_name = user_email.split("@")[0]
 
     blob_path = f"derived_products/{user_name}/"
 
@@ -35,17 +47,25 @@ def get_all_derived_products_for_current_user():
 def search_derived_products_in_gcp(): ...
 
 
-def get_all_submission_save_states_for_current_user():
+def get_all_submission_save_states_for_current_user(
+    user_email: str = "",
+) -> List[str]:
     """Gets a list of URIs for all submission save states for the current user
     (the one that is logged into gcloud).
+
+    Args:
+        user_email (str, optional): The user email as a string. Defaults to "".
 
     Returns:
         dict: A dictionary where the keys are the survey_names that have
             submission save states available, and the values are the GCS paths.
     """
 
-    user_name = get_current_gcp_user_email()
-    user_name = user_name.split("@")[0]
+    if user_email == "":
+        user_name = get_current_gcp_user_email()
+        user_name = user_name.split("@")[0]
+    else:
+        user_name = user_email.split("@")[0]
 
     blob_path = f"derived_products/{user_name}/"
 
