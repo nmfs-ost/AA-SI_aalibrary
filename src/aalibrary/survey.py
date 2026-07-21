@@ -443,7 +443,7 @@ class LocalSurvey:
             self.all_file_paths_in_directory[file_path][
                 "size"
             ] = p.stat().st_size
-            if self.echosounder = "":
+            if self.echosounder == "":
                 # Assign echosounder used based on folder name.
                 # Get parent folders
                 parent_dirs = [
