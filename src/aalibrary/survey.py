@@ -709,12 +709,18 @@ class LocalSurvey:
         for file in tqdm(files_to_upload):
             # Start timer.
             start_time = datetime.now()
+            file_name = file.split(os.sep)[-1]
             upload_file_to_gcp_storage_bucket(
+                file_name=file_name,
+                file_type=self.all_file_paths_in_directory[file][
+                    "type"
+                ].replace(".", ""),
                 file_location=file,
                 gcp_storage_bucket_location=self.all_file_paths_in_directory[
                     file
                 ]["gcp_storage_bucket_location"],
                 gcp_bucket=self.gcp_bucket,
+                verbose=False,
             )
             # End the timer.
             end_time = datetime.now()
