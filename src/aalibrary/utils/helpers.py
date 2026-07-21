@@ -356,6 +356,7 @@ def parse_correct_gcp_storage_bucket_location(
     survey_name: str = "",
     echosounder: str = "",
     data_source: str = "",
+    user_email: str = "",
     is_survey_metadata: bool = False,
     is_calibration_file: bool = False,
     is_calibration_mapping_file: bool = False,
@@ -384,6 +385,7 @@ def parse_correct_gcp_storage_bucket_location(
             Defaults to "".
         data_source (str, optional): The source of the data. Can be one of
             ["NCEI", "OMAO"]. Defaults to "".
+        user_email (str, optional): The user email as a string. Defaults to "".
         is_survey_metadata (bool, optional): Whether or not the file is a
             metadata file associated with a survey. The files are stored at
             the survey level, in the `metadata/` folder.
@@ -514,8 +516,11 @@ def parse_correct_gcp_storage_bucket_location(
             "Derived products need to have a `ship_name` and `survey_name`"
             f" specified. Values given: {ship_name} and {survey_name}."
         )
-        user_name = get_current_gcp_user_email()
-        user_name = user_name.split("@")[0]
+        if user_email == "":
+            user_name = get_current_gcp_user_email()
+            user_name = user_name.split("@")[0]
+        else:
+            user_name = user_email.split("@")[0]
         gcp_storage_bucket_location = f"derived_products/{user_name}/{ship_name}/{survey_name}/{file_name}"
     elif is_tugboat_submission:
         # Only these two params are needed for tugboat submission save states.
@@ -524,8 +529,11 @@ def parse_correct_gcp_storage_bucket_location(
             "`survey_name`"
             f" specified. Values given: {ship_name} and {survey_name}."
         )
-        user_name = get_current_gcp_user_email()
-        user_name = user_name.split("@")[0]
+        if user_email == "":
+            user_name = get_current_gcp_user_email()
+            user_name = user_name.split("@")[0]
+        else:
+            user_name = user_email.split("@")[0]
         gcp_storage_bucket_location = f"derived_products/{user_name}/{ship_name}/{survey_name}/{file_name}"
     else:
         # These  params are needed for all other raw/converted files.

@@ -92,6 +92,7 @@ def upload_derived_product_to_gcp(
     ship_name: str = "",
     survey_name: str = "",
     echosounder: str = "",
+    user_email: str = "",
     data_source: str = "",
     debug: bool = False,
 ):
@@ -107,6 +108,7 @@ def upload_derived_product_to_gcp(
             Defaults to "".
         echosounder (str, optional): The echosounder associated with this file.
             Defaults to "".
+        user_email (str, optional): The user email as a string. Defaults to "".
         data_source (str, optional): The data source associated with this file.
             Defaults to "".
         debug (bool, optional): Whether or not to print debug statements.
@@ -123,6 +125,7 @@ def upload_derived_product_to_gcp(
         survey_name=survey_name,
         echosounder=echosounder,
         data_source=data_source,
+        user_email=user_email,
         is_derived_product=True,
         debug=debug,
     )
@@ -168,6 +171,7 @@ def upload_derived_product_to_gcp(
         ices_code=ices_code,
         ship_name=ship_name,
         echosounder=echosounder,
+        user_email=user_email,
         file_exists_in_gcp=file_exists_in_gcp,
         debug=debug,
     )

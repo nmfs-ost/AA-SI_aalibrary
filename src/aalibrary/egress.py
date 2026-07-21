@@ -545,6 +545,7 @@ def upload_file_to_gcp_storage_bucket(
     gcp_storage_bucket_location: str = "",
     gcp_bucket: storage.Client.bucket = None,
     data_source: str = "",
+    user_email: str = "",
     is_survey_metadata: bool = False,
     is_calibration_file: bool = False,
     is_calibration_mapping_file: bool = False,
@@ -578,6 +579,7 @@ def upload_file_to_gcp_storage_bucket(
             used to upload the file. Defaults to None.
         data_source (str, optional): The source of the data. Can be one of
             ["NCEI", "OMAO", "HDD", "TEST"]. Defaults to "".
+        user_email (str, optional): The user email as a string. Defaults to "".
         is_survey_metadata (bool, optional): Whether or not the file is a
             metadata file associated with a survey. The files are stored at
             the survey level, in the `metadata/` folder. Defaults to False.
@@ -612,6 +614,7 @@ def upload_file_to_gcp_storage_bucket(
                 survey_name=survey_name,
                 echosounder=echosounder,
                 data_source=data_source,
+                user_email=user_email,
                 is_survey_metadata=is_survey_metadata,
                 is_calibration_file=is_calibration_file,
                 is_calibration_mapping_file=is_calibration_mapping_file,

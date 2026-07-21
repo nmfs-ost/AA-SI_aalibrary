@@ -127,23 +127,32 @@ def upload_submission_save_state_to_gcs(
     print(f"Submission save state uploaded to {gcs_path}.")
 
 
-def get_all_save_states_for_user() -> dict:
+def get_all_save_states_for_user(user_email: str = "") -> dict:
     """Gets all of the submission save states for the current user from GCS.
+
+    Args:
+        user_email (str, optional): The user email as a string. Defaults to "".
 
     Returns:
         dict: A dictionary where the keys are the survey_names that have
             submission save states available, and the values are the GCS paths.
     """
 
-    return get_all_submission_save_states_for_current_user()
+    return get_all_submission_save_states_for_current_user(
+        user_email=user_email
+    )
 
 
-def get_users_save_state_for_survey(survey_name: str = "") -> Union[dict, None]:
+def get_users_save_state_for_survey(
+    survey_name: str = "",
+    user_email: str = "",
+) -> Union[dict, None]:
     """Gets the submission save state for the current user for a specific
     survey from GCS.
 
     Args:
         survey_name (str, optional): The survey name string. Defaults to "".
+        user_email (str, optional): The user email as a string. Defaults to "".
 
     Returns:
         dict: The submission save state dict if one has been found. Returns
@@ -151,7 +160,7 @@ def get_users_save_state_for_survey(survey_name: str = "") -> Union[dict, None]:
     """
 
     survey_name = survey_name.upper()
-    all_save_states = get_all_save_states_for_user()
+    all_save_states = get_all_save_states_for_user(user_email=user_email)
     save_state_gcs_path = all_save_states.get(survey_name, "")
     # Download the save state as a JSON
     if save_state_gcs_path:
