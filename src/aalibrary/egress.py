@@ -601,6 +601,7 @@ def upload_file_to_gcp_storage_bucket(
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
     """
+    assert file_location != "", "A `file_location` is needed to upload."
 
     if gcp_storage_bucket_location == "":
         gcp_storage_bucket_location = (
