@@ -406,6 +406,14 @@ class LocalSurvey:
 
         # Get all files in this directory.
         directory_path_glob = os.sep.join([self.directory_path, "**", "*"])
+        # EX. self.all_file_paths_in_directory = {
+        # 'C:\\Users\\Hannan\\AmSam2HawaiiSE2602L3\\D20260717-T000432.raw.evi':
+        # {'echosounder': None,
+        # 'gcp_storage_bucket_location':
+        #   'HDD/Oscar_Sette/SE2602/None/data/raw/D20260717-T000432.raw.evi',
+        # 'size': 500698,
+        # 'type': '.evi'}
+        # }
         self.all_file_paths_in_directory = glob(
             directory_path_glob, recursive=True
         )
@@ -436,6 +444,16 @@ class LocalSurvey:
             self.all_file_paths_in_directory[file_path][
                 "echosounder"
             ] = echosounder
+
+        # Keep track of all files sorted by ascending size (list of keys for
+        # self.all_file_paths_in_directory)
+        self.all_files_sorted_by_size = [
+            k
+            for k, v in sorted(
+                self.all_file_paths_in_directory.items(),
+                key=lambda item: item[1]["size"],
+            )
+        ]
 
         # Get number of all files in this directory.
         self.num_all_files_in_directory = len(self.all_file_paths_in_directory)
@@ -595,7 +613,36 @@ class LocalSurvey:
         """Prints all the files in the directory."""
         pprint.pprint(self.all_file_paths_in_directory)
 
-    def _upload_to_gcp(self): ...
+    def _upload_to_gcp(self):
+        """Uploads to GCP at the correct location."""
+        self.all_files_sorted_by_size = [
+            k
+            for k, v in sorted(
+                self.all_file_paths_in_directory.items(),
+                key=lambda item: item[1]["size"],
+            )
+        ]
+        # self.all_files_sorted_by_size = dict(
+        #     sorted(
+        #         self.all_file_paths_in_directory,
+        #         key=lambda item: item[1]["size"],
+        #     )
+        # )
+        for file in self.all_files_sorted_by_size:
+            print(file, self.all_file_paths_in_directory[file]["size"])
+        # pprint.pprint(self.all_files_sorted_by_size)
+
+    def relocate(self):
+        """Relocates all of the files in the directory to the relocation path."""
+        for file_path in self.all_file_paths_in_directory:
+            relocation_path = self.all_file_paths_in_directory[file_path][
+                "relocation_path"
+            ]
+            # Create the directory if it doesn't exist.
+            if not os.path.exists(os.path.dirname(relocation_path)):
+                os.makedirs(os.path.dirname(relocation_path))
+            # Move the file to the relocation path.
+            os.rename(file_path, relocation_path)
 
 
 if __name__ == "__main__":
@@ -644,7 +691,8 @@ if __name__ == "__main__":
         gcp_bucket=gcp_bucket,
         gcp_bucket_name=gcp_bucket_name,
     )
-    local_survey.print_all_files_in_directory()
+    # local_survey.print_all_files_in_directory()
+    local_survey._upload_to_gcp()
     # i = 0
     # for file_path in local_survey.all_file_paths_in_directory:
     #     if (
