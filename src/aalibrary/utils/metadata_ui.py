@@ -34,6 +34,7 @@ from aalibrary.derived import get_all_submission_save_states_for_current_user
 
 def upload_submission_save_state_to_gcs(
     submission: Union[str, dict] = None,
+    user_email: str = "",
     debug: bool = False,
 ):
     """Uploads the submission save state to the current GCS bucket.
@@ -42,6 +43,7 @@ def upload_submission_save_state_to_gcs(
         submission (Union[str, dict], optional): The submission dict, if a file
             path has been provided, then the dict will be loaded from the file.
             Defaults to None.
+        user_email (str, optional): The user email as a string. Defaults to "".
         debug (bool, optional): Whether or not to print debug statements.
             Defaults to False.
 
@@ -117,6 +119,7 @@ def upload_submission_save_state_to_gcs(
         gcp_storage_bucket_location=gcs_path,
         ices_code=ices_code,
         ship_name=ship_name_normalized,
+        user_email=user_email,
         file_exists_in_gcp=file_exists_in_gcp,
         debug=debug,
     )
