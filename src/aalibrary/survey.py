@@ -703,9 +703,7 @@ class LocalSurvey:
         locations."""
         if files_to_upload is None:
             # Upload all files.
-            files_to_upload = [
-                k for k in self.all_file_paths_in_directory.keys()
-            ]
+            files_to_upload = self.all_files_sorted_by_size
         # Upload with timings to calculate upload speeds in megabytes.
         file_upload_timings = []  # in seconds
         file_upload_speeds = []  # Megabytes/sec (MiB/s)
