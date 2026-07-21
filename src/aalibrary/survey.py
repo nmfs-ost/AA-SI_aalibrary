@@ -466,7 +466,6 @@ class LocalSurvey:
                 ]
             )
         )
-        print(self.all_file_types_in_directory)
         # Get file sizes in bytes.
         for file_path in self.all_file_paths_in_directory:
             self.all_file_paths_in_directory[file_path]["size"] = (
@@ -485,11 +484,7 @@ class LocalSurvey:
         )
 
         self._parse_raw_files_in_directory()
-        self._parse_metadata_files_in_directory()
-        self._parse_calibration_files_in_directory()
-        self._parse_auxiliary_files_in_directory()
-        self._parse_unknown_files_in_directory()
-        self._parse_all_gcp_storage_bucket_locations_for_all_files_in_directory()
+        self._parse_gcp_storage_bucket_locations_for_all_files_in_directory()
         # Create relocation paths if specified.
         if self.relocation_path != "":
             self._parse_relocation_paths_for_all_files_in_directory()
@@ -541,15 +536,7 @@ class LocalSurvey:
         # Get num of all evi files in directory.
         self.num_evi_files_in_directory = len(self.evi_files)
 
-    def _parse_metadata_files_in_directory(self): ...
-
-    def _parse_calibration_files_in_directory(self): ...
-
-    def _parse_auxiliary_files_in_directory(self): ...
-
-    def _parse_unknown_files_in_directory(self): ...
-
-    def _parse_all_gcp_storage_bucket_locations_for_all_files_in_directory(
+    def _parse_gcp_storage_bucket_locations_for_all_files_in_directory(
         self,
     ):
         """Parses through all of the files in the directory and gets the
@@ -613,24 +600,92 @@ class LocalSurvey:
         """Prints all the files in the directory."""
         pprint.pprint(self.all_file_paths_in_directory)
 
-    def _upload_to_gcp(self):
-        """Uploads to GCP at the correct location."""
-        self.all_files_sorted_by_size = [
-            k
-            for k, v in sorted(
-                self.all_file_paths_in_directory.items(),
-                key=lambda item: item[1]["size"],
+    def _test_upload_to_gcp_speeds(
+        self, num_files: int = 0, megabytes: int = 0
+    ):
+        """Tests a small batch upload to GCP storage buckets using a specified
+        number of files or number of megabytes. Prints out the average upload
+        speed given the current network.
+
+        Args:
+            num_files (int, optional): _description_. Defaults to 0.
+            megabytes (int, optional): _description_. Defaults to 0.
+        """
+
+        # Use XOR operator to assert that only one of these values is True.
+        # [num_files,megabytes]
+        assert (num_files ^ megabytes) or not any(
+            [
+                num_files,
+                megabytes,
+            ]
+        ), (
+            "Make sure that only one of the following params is set to True:\n"
+            "[num_files,megabytes]\n"
+            "\nor that all are set to false."
+            f"[{num_files} {megabytes}"
+        )
+
+        # Get the files needed for upload.
+        if num_files != 0:
+            # Get the smallest `num_files` number of files.
+            files_to_upload = self.all_files_sorted_by_size[:num_files]
+        elif megabytes != 0:
+            # Get the minimum number of files needed to upload `megabytes`
+            # number of MBs to GCP.
+            mb_in_bytes = (1024**2) * megabytes
+            print(
+                f"Calculating number of file(s) needed to reach {megabytes}"
+                f" mbs ({mb_in_bytes} bytes)..."
             )
-        ]
-        # self.all_files_sorted_by_size = dict(
-        #     sorted(
-        #         self.all_file_paths_in_directory,
-        #         key=lambda item: item[1]["size"],
-        #     )
-        # )
-        for file in self.all_files_sorted_by_size:
-            print(file, self.all_file_paths_in_directory[file]["size"])
-        # pprint.pprint(self.all_files_sorted_by_size)
+            # Edge condition where the lowest file size is equal to or bigger
+            # than the specified megabytes. Use only that one file in this case
+            if (
+                self.all_file_paths_in_directory[
+                    self.all_files_sorted_by_size[0]
+                ]["size"]
+                >= mb_in_bytes
+            ):
+                print(
+                    "The smallest file is larger than the specified number "
+                    "of `megabytes`. Using this single file for upload"
+                    " testing."
+                )
+                files_to_upload = [self.all_files_sorted_by_size[0]]
+            else:
+                # Calculate the number of files needed to reach at least
+                # `megabytes` bytes.
+                bytes_allocated = 0
+                all_files_sorted_by_size_idx = 0
+                files_to_upload = []
+                while bytes_allocated <= mb_in_bytes:
+                    # get the next smallest file by size
+                    next_file = self.all_files_sorted_by_size[
+                        all_files_sorted_by_size_idx
+                    ]
+                    # Add the file to the list of files_to_upload.
+                    files_to_upload.append(next_file)
+                    # Update the bytes allocated.
+                    bytes_allocated += self.all_file_paths_in_directory[
+                        next_file
+                    ]["size"]
+                    all_files_sorted_by_size_idx += 1
+        # Print statement with files and size allocated.
+        bytes_allocated = 0
+        for file in files_to_upload:
+            bytes_allocated += self.all_file_paths_in_directory[file]["size"]
+        megabytes_to_upload = bytes_allocated / (1024**2)
+        print(
+            f"`{len(files_to_upload)}` file(s) selected to upload."
+            f" {megabytes_to_upload:.2f} mb total."
+        )
+
+        # TODO: upload with timings to calculate upload speeds in megabytes.
+
+    def _upload_to_gcp(self):
+        """Uploads all files to GCP according to their GCP storage bucket
+        locations."""
+        ...
 
     def relocate(self):
         """Relocates all of the files in the directory to the relocation path."""
@@ -692,7 +747,7 @@ if __name__ == "__main__":
         gcp_bucket_name=gcp_bucket_name,
     )
     # local_survey.print_all_files_in_directory()
-    local_survey._upload_to_gcp()
+    local_survey._test_upload_to_gcp_speeds(megabytes=50)
     # i = 0
     # for file_path in local_survey.all_file_paths_in_directory:
     #     if (
