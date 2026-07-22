@@ -93,6 +93,7 @@ def upload_submission_save_state_to_gcs(
         file_type="json",
         ship_name=ship_name_normalized,
         survey_name=survey_name,
+        user_email=user_email,
         is_tugboat_submission=True,
         debug=debug,
     )
