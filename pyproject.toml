@@ -113,6 +113,5 @@ aa-upload = "aalibrary.console.aa_upload:main"
 
 aa-combine = "aalibrary.console.aa_combine:main"
 aa-store = "aalibrary.console.aa_store:main"
-aa-request = "aalibrary.console.aa_request:main"
 
 aa-cruisepack = "aalibrary.console.aa_cruisepack:main"
