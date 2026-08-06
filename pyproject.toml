@@ -100,9 +100,11 @@ aa-abundance = "aalibrary.console.aa_abundance:main"
 aa-detect-shoal = "aalibrary.console.aa_detect_shoal:main"
 aa-detect-seafloor = "aalibrary.console.aa_detect_seafloor:main"
 
+aa-refresh = "aalibrary.console.aa_refresh:main"
+
 aa-get = "aalibrary.console.aa_get:main"
 aa-fetch = "aalibrary.console.aa_fetch:main"
-aa-refresh = "aalibrary.console.aa_refresh:main"
+aa-request = "aalibrary.console.aa_request:main"
 
 aa-evr = "aalibrary.console.aa_evr:main"
 aa-evl = "aalibrary.console.aa_evl:main"
@@ -112,5 +114,6 @@ aa-ed = "aalibrary.console.aa_ed:main"
 aa-upload = "aalibrary.console.aa_upload:main"
 
 aa-combine = "aalibrary.console.aa_combine:main"
+aa-store = "aalibrary.console.aa_store:main"
 
 aa-cruisepack = "aalibrary.console.aa_cruisepack:main"
