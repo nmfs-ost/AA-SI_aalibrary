@@ -100,6 +100,8 @@ aa-abundance = "aalibrary.console.aa_abundance:main"
 aa-detect-shoal = "aalibrary.console.aa_detect_shoal:main"
 aa-detect-seafloor = "aalibrary.console.aa_detect_seafloor:main"
 
+aa-refresh = "aalibrary.console.aa_refresh:main"
+
 aa-get = "aalibrary.console.aa_get:main"
 aa-fetch = "aalibrary.console.aa_fetch:main"
 aa-request = "aalibrary.console.aa_request:main"
