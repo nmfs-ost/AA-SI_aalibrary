@@ -16,6 +16,7 @@ from aalibrary.utils import helpers
 from aalibrary.utils.helpers import (
     get_netcdf_gcp_location_from_raw_gcp_location,
 )
+from aalibrary.config import get_current_gcp_project_id
 
 
 def setup_gbq_client_objs(
@@ -93,6 +94,43 @@ def setup_gcp_storage_objs(
 
     return (gcp_stor_client, gcp_bucket_name, gcp_bucket)
 
+
+def get_schema_from_bigquery_table(
+    bq_client: bigquery.Client = None,
+    gcp_project_id: str = None,
+    dataset_name: str = "metadata",
+    table_name: str = "",
+) -> List[Tuple[str, str]]:
+    """Gets the schema of a big query table.
+
+    Args:
+        bq_client (bigquery.Client, optional): The big query client
+            object. Defaults to None.
+        gcp_project_id (str, optional): The project id that the big query
+            instance belongs to. Defaults to
+            os.environ["AALIBRARY_GCP_PROJECT_ID"] set at runtime.
+        dataset_name (str, optional): The name of the dataset you want to get
+            the schema for. Defaults to "metadata".
+        table_name (str, optional): The name of the table you want to get the
+            schema for. Defaults to "".
+
+    Returns:
+        List[Tuple[str, str]]: A list of tuples representing the schema of the
+        table. Each tuple contains the field name and field type.
+    """
+
+    if bq_client is None:
+        bq_client, _ = setup_gbq_client_objs()
+    if gcp_project_id is None:
+        gcp_project_id = get_current_gcp_project_id()
+
+    assert gcp_project_id, "The project ID must be provided."
+    assert dataset_name, "Dataset name must be provided."
+    assert table_name, "Table name must be provided."
+
+    table = bq_client.get_table(f"{gcp_project_id}.{dataset_name}.{table_name}")
+
+    return [(field.name, field.field_type) for field in table.schema]
 
 def upload_file_to_gcp_bucket(
     bucket: storage.Client.bucket = None,
@@ -857,8 +895,13 @@ if __name__ == "__main__":
     #         file_path="ggn-nmfs-aa-dev-1-data/NCEI/Reuben_Lasker/RL2107/EK80/data/netcdf/",
     #     )
     # )
+    # print(
+    #     check_if_folder_exists_in_s3(
+    #         prefix="data/raw/Reuben_Lasker/", s3_resource=s3_resource
+    #     )
+    # )
     print(
-        check_if_folder_exists_in_s3(
-            prefix="data/raw/Reuben_Lasker/", s3_resource=s3_resource
+        get_schema_from_bigquery_table(
+            bq_client=None, table_name="aalibrary_file_metadata"
         )
     )
