@@ -706,7 +706,7 @@ class LocalSurvey:
             files_to_upload = self.all_files_sorted_by_size
         # Upload with timings to calculate upload speeds in megabytes.
         file_upload_timings = []  # in seconds
-        file_upload_speeds = []  # Megabytes/sec (MiB/s)
+        file_sizes_in_bytes = []  # in bytes
         print("BEGINNING UPLOAD(S)...")
         for file in tqdm(files_to_upload):
             # Start timer.
@@ -728,26 +728,27 @@ class LocalSurvey:
             end_time = datetime.now()
             elapsed_time_seconds = (end_time - start_time).total_seconds()
             file_upload_timings.append(elapsed_time_seconds)
-            file_size_in_mb = (
-                self.all_file_paths_in_directory[file]["size"] / 1024**2
+            file_sizes_in_bytes.append(
+                self.all_file_paths_in_directory[file]["size"]
             )
-            speed = file_size_in_mb / elapsed_time_seconds
-            file_upload_speeds.append(speed)
 
         # Calculate total elapsed time for uploads:
+        total_file_size_uploaded_in_bytes = sum(file_sizes_in_bytes)
         total_elapsed_time_in_seconds = sum(file_upload_timings)
         total_elapsed_time_formatted_str = str(
             timedelta(seconds=total_elapsed_time_in_seconds)
         )
         # Average out the upload speeds:
-        avg_upload_speed = sum(file_upload_speeds) / len(file_upload_speeds)
-        upload_speed_in_mbitsps = (
-            (avg_upload_speed * (1024**2)) * 8
-        ) / 1000000
+        upload_speed_bytes_per_sec = (
+            total_file_size_uploaded_in_bytes / total_elapsed_time_in_seconds
+        )
+        upload_speed_in_mbitsps = (upload_speed_bytes_per_sec) / 125000
 
         print("Uploads complete.")
+        print(
+            f"Total Size Uploaded in Bytes: {total_file_size_uploaded_in_bytes}"
+        )
         print(f"Total Elapsed Time: {total_elapsed_time_formatted_str}")
-        print(f"Average Upload Speed: {avg_upload_speed:.2f} Megabytes/second")
         print(
             f"Average Upload Speed: {upload_speed_in_mbitsps:.2f}"
             " megabits/second"
@@ -763,11 +764,10 @@ class LocalSurvey:
             with open(save_results_loc, "w", encoding="utf-8") as f:
                 f.write("Uploads complete.\n")
                 f.write(
-                    f"Total Elapsed Time: {total_elapsed_time_formatted_str}\n"
+                    f"Total Size Uploaded in Bytes: {total_file_size_uploaded_in_bytes}\n"
                 )
                 f.write(
-                    f"Average Upload Speed: {avg_upload_speed:.2f} "
-                    "Megabytes/second\n"
+                    f"Total Elapsed Time: {total_elapsed_time_formatted_str}\n"
                 )
                 f.write(
                     f"Average Upload Speed: {upload_speed_in_mbitsps:.2f}"
