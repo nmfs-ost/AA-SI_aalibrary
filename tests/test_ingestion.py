@@ -697,7 +697,6 @@ class TestOMAOIngestion:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                is_metadata=self.is_metadata,
             )
         )
         self.gcp_storage_bucket_location_idx = (
@@ -708,7 +707,6 @@ class TestOMAOIngestion:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                is_metadata=self.is_metadata,
             )
         )
         self.gcp_storage_bucket_location_bot = (
@@ -719,7 +717,6 @@ class TestOMAOIngestion:
                 survey_name=self.survey_name,
                 echosounder=self.echosounder,
                 data_source=self.data_source,
-                is_metadata=self.is_metadata,
             )
         )
 
