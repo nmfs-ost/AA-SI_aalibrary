@@ -9,7 +9,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from tugboat_api import TugboatAPI
+# For pytests-sake
+if __package__ is None or __package__ == "":
+    from tugboat_api import TugboatAPI
+else:
+    # uses current package visibility
+    from aalibrary.tugboat_api import TugboatAPI
 
 
 class TugboatArchivalVerifier:
