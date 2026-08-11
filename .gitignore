@@ -19,9 +19,12 @@ dist/
 
 # For dirs that hold test data
 test_data_dir/
+HDD/
+temp/
 
 # For VSCode files
 .vscode/
+.VSCodeCounter/
 
 # For files that store azure account credentials
 azure_config.ini
