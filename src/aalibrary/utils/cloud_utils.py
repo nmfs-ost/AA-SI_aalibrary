@@ -128,9 +128,12 @@ def get_schema_from_bigquery_table(
     assert dataset_name, "Dataset name must be provided."
     assert table_name, "Table name must be provided."
 
-    table = bq_client.get_table(f"{gcp_project_id}.{dataset_name}.{table_name}")
+    table = bq_client.get_table(
+        f"{gcp_project_id}.{dataset_name}.{table_name}"
+    )
 
     return [(field.name, field.field_type) for field in table.schema]
+
 
 def upload_file_to_gcp_bucket(
     bucket: storage.Client.bucket = None,
@@ -660,7 +663,7 @@ def check_if_netcdf_file_exists_in_gcp(
 #     Args:
 #         file_name (str, optional): The file name (includes extension).
 #             Defaults to "".
-#         file_type (str, optional): The file type (do not include the dot ".").
+#         file_type (str, optional): The file type (do not include the dot ".")
 #             Defaults to "".
 #         ship_name (str, optional): The ship name associated with this survey.
 #             Defaults to "".
@@ -900,8 +903,17 @@ if __name__ == "__main__":
     #         prefix="data/raw/Reuben_Lasker/", s3_resource=s3_resource
     #     )
     # )
+    # print(
+    #     get_schema_from_bigquery_table(
+    #         bq_client=None, table_name="aalibrary_file_metadata"
+    #     )
+    # )
+
     print(
-        get_schema_from_bigquery_table(
-            bq_client=None, table_name="aalibrary_file_metadata"
+        len(
+            list_all_objects_in_gcp_bucket_location(
+                location="HDD/Oscar_Elton_Sette/SE2602/None/data/raw",
+                bucket_name="ggn-nmfs-aa-prod-1-data",
+            )
         )
     )
