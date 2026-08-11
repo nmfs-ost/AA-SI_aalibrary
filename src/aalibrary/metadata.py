@@ -205,9 +205,8 @@ def create_and_upload_metadata_df_for_derived_files(
     # Get the current user's email
     if user_email == "":
         user_name = get_current_gcp_user_email()
-        email = user_name.split("@")[0]
-    else:
-        email = user_email.split("@")[0]
+        email = user_name
+    email = user_email
 
     # calculate the deletion datetime
     curr_datetime = datetime.now()
