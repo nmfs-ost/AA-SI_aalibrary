@@ -700,6 +700,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#uploading-local-cruisepack-files-to-gcs-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading Local CruisePack Files to GCS Buckets
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1272,6 +1283,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#uploading-local-cruisepack-files-to-gcs-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading Local CruisePack Files to GCS Buckets
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1304,6 +1326,11 @@
 <p>This script is located <a href="https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/nncei_metadata_backfilling.ipynb">here</a>. It is used for backfilling metadata from NCEI to the Metadata DB located in our GCP environment. You will need to extract all metadata from the NCEI database into an Excel file. The script will then automatically parse through the data in the Excel file and populate the Metadata DB in GCP.</p>
 <h2 id="comparing-local-files-to-ncei">Comparing Local Files To NCEI</h2>
 <p>This script is located <a href="https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/compare_local_to_NCEI.ipynb">here</a>. It is used for comparing the files of a local survey's echosounder to the files that exist in NCEI. It compares file names, file sizes, and file checksums. An executive summary is generated (printed to console), and an Excel report can be saved if the param is set. There is also an option to upload the files to GCP for intermittent storage until they are ready to be archived at NCEI. To begin, download a copy of the notebook, fill out the first cell with your variables, and follow the directions in the script. Note: You might run into authorization errors which you can use <a href="../../getting-started/installation/">these</a> instructions to fix.</p>
+<h2 id="uploading-local-cruisepack-files-to-gcs-buckets">Uploading Local CruisePack Files to GCS Buckets</h2>
+<p>This script is located <a href="https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/scripts/cruisepack_to_gcs.py">here</a>. It is used for scanning a computer for CruisePack database files. The files are then uploaded (automatically) to Google Cloud Storage Buckets. You will need to have <code>gcloud</code> installed on the computer (you will also need to sign into it), however, the script takes care of installing everything else.
+To run this script, install the AALibrary according to the installation page. Then you can issue the following command in the terminal and follow the outputs:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>aa-cruisepack
+</span></code></pre></div>
 
 
 
@@ -1324,7 +1351,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 9, 2025 18:58:08 UTC">October 9, 2025</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="June 30, 2026 01:19:26 UTC">June 30, 2026</span>
   </span>
 
     
