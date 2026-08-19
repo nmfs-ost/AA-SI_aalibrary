@@ -9,8 +9,10 @@ import string
 import platform
 import subprocess
 import requests
+import base64
 
 import boto3
+import google_crc32c
 
 from aalibrary import config
 
@@ -812,6 +814,28 @@ def get_parsed_datetime_from_filename(
             return datetime_str
         except AttributeError:
             return ""
+
+
+def calculate_local_crc32c_checksum(file_path: str = "") -> str:
+    """Calculates the CRC32C checksum of a local file. Used for comparison with
+    the crc32c checksum of a file in GCP storage. This is necessary to ensure
+    that the file was not corrupted during upload/download.
+
+    Args:
+        file_path (str, optional): The path to the local file. Defaults to "".
+
+    Returns:
+        str: The Base64-encoded CRC32C checksum of the file.
+    """
+
+    crc = google_crc32c.Checksum()
+
+    with open(file_path, "rb") as f:
+        while chunk := f.read(8192):
+            crc.update(chunk)
+
+    # GCS expects the raw bytes of the checksum to be Base64 encoded
+    return base64.b64encode(crc.digest()).decode("utf-8")
 
 
 if __name__ == "__main__":
