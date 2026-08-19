@@ -1120,7 +1120,7 @@ def get_num_objects_in_folder(
     return num_objects
 
 
-def get_file_checksum(blob_name: str = "", bucket_name: str = "") -> str:
+def get_gcp_file_checksum(blob_name: str = "", bucket_name: str = "") -> str:
     """Gets the crc32c checksum of a file in a GCS bucket.
 
     Args:
