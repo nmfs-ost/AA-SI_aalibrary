@@ -19,6 +19,7 @@ if __package__ is None or __package__ == "":
         list_all_objects_in_gcp_bucket_location,
     )
     from helpers import normalize_ship_name
+    from config import get_current_gcp_bucket_name
 else:
     from aalibrary.utils.cloud_utils import (
         setup_gcp_storage_objs,
@@ -26,6 +27,7 @@ else:
         list_all_objects_in_gcp_bucket_location,
     )
     from aalibrary.utils.helpers import normalize_ship_name
+    from aalibrary.config import get_current_gcp_bucket_name
 
 
 def get_all_ship_names_in_gcp_bucket(
@@ -1116,6 +1118,37 @@ def get_num_objects_in_folder(
     num_objects = sum(1 for _ in blobs)
 
     return num_objects
+
+
+def get_file_checksum(blob_name: str = "", bucket_name: str = "") -> str:
+    """Gets the crc32c checksum of a file in a GCS bucket.
+
+    Args:
+        blob_name (str, optional): The blob file path. Defaults to "".
+        bucket_name (str, optional): The GCS bucket name. Defaults to the
+            default bucket set by aalibrary.config.
+
+    Returns:
+        str: The crc32c checksum of the file.
+    """
+
+    # Use default bucket if none is provided
+    if bucket_name == "":
+        bucket_name = get_current_gcp_bucket_name()
+    # Create storage client
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    # Get blob details
+    blob = bucket.get_blob(blob_name)  # API call to refresh metadata
+
+    if blob is None:
+        print("Blob file path not found.")
+        return
+
+    # GCS returns these as Base64 encoded strings
+    # print(f"CRC32C (Base64): {blob.crc32c}")
+    # print(f"MD5 (Base64):    {blob.md5_hash}")
+    return blob.crc32c
 
 
 if __name__ == "__main__":
