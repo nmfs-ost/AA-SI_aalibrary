@@ -1129,7 +1129,8 @@ def get_file_checksum(blob_name: str = "", bucket_name: str = "") -> str:
             default bucket set by aalibrary.config.
 
     Returns:
-        str: The crc32c checksum of the file.
+        str, None: The crc32c checksum of the file. None if blob does not'
+            exist.
     """
 
     # Use default bucket if none is provided
@@ -1141,9 +1142,8 @@ def get_file_checksum(blob_name: str = "", bucket_name: str = "") -> str:
     # Get blob details
     blob = bucket.get_blob(blob_name)  # API call to refresh metadata
 
-    if blob is None:
-        print("Blob file path not found.")
-        return
+    if (blob is None) or (blob.exists() is False):
+        return None
 
     # GCS returns these as Base64 encoded strings
     # print(f"CRC32C (Base64): {blob.crc32c}")
