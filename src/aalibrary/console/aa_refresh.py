@@ -124,7 +124,7 @@ def refresh_one(
     rc, tail = stream_command(
         [
             sys.executable, "-m", "pip", "install",
-            "--no-cache-dir", "--force-reinstall", repo_url,
+             "--force-reinstall", repo_url,
         ],
         on_line=lambda line: update(stage_install, line),
     )
