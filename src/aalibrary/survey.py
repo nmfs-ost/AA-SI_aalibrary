@@ -24,7 +24,9 @@ if __package__ is None or __package__ == "":
     from utils.helpers import (
         normalize_ship_name,
         parse_correct_gcp_storage_bucket_location_based_on_file_type,
+        calculate_local_crc32c_checksum,
     )
+    from utils.gcp_utils import get_gcp_file_checksum
     from raw_file import RawFile
     from config import VALID_ECHOSOUNDERS
     from egress import upload_file_to_gcp_storage_bucket
@@ -35,7 +37,9 @@ else:
     from aalibrary.utils.helpers import (
         normalize_ship_name,
         parse_correct_gcp_storage_bucket_location_based_on_file_type,
+        calculate_local_crc32c_checksum,
     )
+    from aalibrary.utils.gcp_utils import get_gcp_file_checksum
     from aalibrary.raw_file import RawFile
     from aalibrary.config import VALID_ECHOSOUNDERS
     from aalibrary.egress import upload_file_to_gcp_storage_bucket
@@ -430,6 +434,8 @@ class LocalSurvey:
         self.all_file_paths_in_directory = {
             file_path: {} for file_path in self.all_file_paths_in_directory
         }
+        # Remove directories from the list of files and assign attributes to
+        # each file.
         # List to get rid of deleting while iterating error.
         for file_path in list(self.all_file_paths_in_directory):
             p: Path = Path(file_path)
@@ -786,6 +792,77 @@ class LocalSurvey:
             # Move the file to the relocation path.
             os.rename(file_path, relocation_path)
 
+    def verify_gcp_uploads(self):
+        """Verifies the files that have been uploaded to GCP using file
+        checksums. Gives a printout of the number of files that have/haven't
+        been uploaded."""
+
+        # Go through all files in the directory and verify their checksums with
+        # the files in GCP.
+        files_uploaded = 0
+        files_uploaded_size_in_bytes = 0
+        files_uploaded_incorrectly = 0
+        files_uploaded_incorrectly_size_in_bytes = 0
+        files_not_uploaded = 0
+        files_not_uploaded_size_in_bytes = 0
+        print("VERIFYING FILES...")
+        for file_path in tqdm(self.all_file_paths_in_directory):
+            # Get the local file checksum.
+            local_file_checksum = calculate_local_crc32c_checksum(
+                file_path=file_path
+            )
+            gcp_crc32c_checksum = get_gcp_file_checksum(
+                bucket_name=self.gcp_bucket_name,
+                blob_name=self.all_file_paths_in_directory[file_path][
+                    "gcp_storage_bucket_location"
+                ],
+            )
+            # In the case the blob does not exist (hasn't been uploaded or is
+            # None)
+            if gcp_crc32c_checksum is None:
+                files_not_uploaded += 1
+                files_not_uploaded_size_in_bytes += (
+                    self.all_file_paths_in_directory[file_path]["size"]
+                )
+            # In the case the blob exists but the checksums do not match (has been uploaded incorrectly)
+            elif gcp_crc32c_checksum != local_file_checksum:
+                files_uploaded_incorrectly += 1
+                files_uploaded_incorrectly_size_in_bytes += (
+                    self.all_file_paths_in_directory[file_path]["size"]
+                )
+            # In the case the blob exists and the checksums match (has been uploaded correctly)
+            else:
+                files_uploaded += 1
+                files_uploaded_size_in_bytes += (
+                    self.all_file_paths_in_directory[file_path]["size"]
+                )
+
+        # Print the results of the verification.
+        print("VERIFICATION COMPLETE.")
+        print("RESULTS:")
+        print(f"Files uploaded correctly: {files_uploaded}")
+        print(f"Files uploaded incorrectly: {files_uploaded_incorrectly}")
+        print(f"Files not uploaded: {files_not_uploaded}")
+        print(
+            f"Total size of uploaded files (correctly):\n"
+            f"\t{files_uploaded_size_in_bytes / (1024**2):.2f} megabytes"
+            f"\t{files_uploaded_size_in_bytes / (1024**3):.2f} gigabytes"
+        )
+        print(
+            f"Total size of uploaded files (incorrectly):\n"
+            f"\t{files_uploaded_incorrectly_size_in_bytes / (1024**2):.2f} megabytes"
+            f"\t{files_uploaded_incorrectly_size_in_bytes / (1024**3):.2f} gigabytes"
+        )
+        print(
+            f"Total size of not uploaded files:\n"
+            f"\t{files_not_uploaded_size_in_bytes / (1024**2):.2f} megabytes"
+            f"\t{files_not_uploaded_size_in_bytes / (1024**3):.2f} gigabytes"
+        )
+        print(
+            "NOTE: Files uploaded incorrectly are counted based on "
+            "mismatched checksums."
+        )
+
 
 if __name__ == "__main__":
     # set logging config
@@ -831,14 +908,15 @@ if __name__ == "__main__":
         survey_name="HB2407",
         data_source="HDD",
         directory_path="./HDD/",
-        relocation_path="./Copy_HDD/",
+        # relocation_path="./Copy_HDD/",
         upload_to_gcp=False,
         debug=True,
         gcp_bucket=gcp_bucket,
         gcp_bucket_name=gcp_bucket_name,
     )
+    local_survey.verify_gcp_uploads()
     # local_survey.print_all_files_in_directory()
-    local_survey._test_upload_to_gcp_speeds(megabytes=100)
+    # local_survey._test_upload_to_gcp_speeds(megabytes=100)
     # i = 0
     # for file_path in local_survey.all_file_paths_in_directory:
     #     if (
