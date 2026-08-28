@@ -15,7 +15,7 @@ from typing import List
 from google.cloud import storage
 import boto3
 from tqdm import tqdm
-from tqdm.contrib.concurrent import thread_map
+from tqdm.contrib.concurrent import thread_map, process_map
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -26,6 +26,7 @@ if __package__ is None or __package__ == "":
         normalize_ship_name,
         parse_correct_gcp_storage_bucket_location_based_on_file_type,
         calculate_local_crc32c_checksum,
+        _get_single_local_file_crc32c_checksum_multi_process,
     )
     from utils.gcp_utils import get_gcp_file_checksum
     from raw_file import RawFile
@@ -39,6 +40,7 @@ else:
         normalize_ship_name,
         parse_correct_gcp_storage_bucket_location_based_on_file_type,
         calculate_local_crc32c_checksum,
+        _get_single_local_file_crc32c_checksum_multi_process,
     )
     from aalibrary.utils.gcp_utils import get_gcp_file_checksum
     from aalibrary.raw_file import RawFile
@@ -844,7 +846,7 @@ class LocalSurvey:
                 "gcp_storage_bucket_location"
             ],
             bucket_name=self.gcp_bucket_name,
-            gcp_bucket=self.gcp_bucket
+            gcp_bucket=self.gcp_bucket,
         )
         self.all_file_paths_in_directory[file_path][
             "gcp_crc32c_checksum"
@@ -864,48 +866,78 @@ class LocalSurvey:
         files_not_uploaded = 0
         files_not_uploaded_size_in_bytes = 0
         print("VERIFYING FILES...")
-        # Get the GCP CRC32C checksums for all files in the directory.
+        # Get the GCP CRC32C checksums for all files in the directory using
+        # a multi-threaded approach.
         thread_map(
             self._get_single_file_gcp_checksum,
             list(self.all_file_paths_in_directory.keys()),
             chunksize=1,
             desc="Getting GCP CRC32C Checksums",
-            leave=False
+            leave=False,
         )
-        pprint.pprint(
-            [
-                self.all_file_paths_in_directory[file_path].get(
-                    "gcp_crc32c_checksum", None
-                )
-                for file_path in self.all_file_paths_in_directory
+        # pprint.pprint(
+        #     [
+        #         self.all_file_paths_in_directory[file_path].get(
+        #             "gcp_crc32c_checksum", None
+        #         )
+        #         for file_path in self.all_file_paths_in_directory
+        #     ]
+        # )
+        # Get the CRC32C checksums for all local files in the directory using
+        # a multi-processing approach.
+        # Only calculate CRC32C checksums for files that have already been
+        # uploaded to GCP. This offers a slight improvement in time.
+        uploaded_file_paths = [
+            file_path
+            for file_path in self.all_file_paths_in_directory.keys()
+            if self.all_file_paths_in_directory[file_path][
+                "gcp_crc32c_checksum"
             ]
+            is not None
+        ]
+        # multiprocessing_results is [(file_path, checksum),(...]
+        multi_processing_results = process_map(
+            _get_single_local_file_crc32c_checksum_multi_process,
+            uploaded_file_paths,
+            chunksize=1,
+            desc="Calculating Local CRC32C Checksums for Uploaded Files",
+            leave=False,
         )
+        # Update the main dict with the resulting checksums.
+        for file_path, checksum in multi_processing_results:
+            self.all_file_paths_in_directory[file_path][
+                "local_crc32c_checksum"
+            ] = checksum
+
         # Calculate local checksums and compare with GCP checksums.
         for file_path in tqdm(self.all_file_paths_in_directory):
-            # Get the local file checksum.
-            local_file_checksum = calculate_local_crc32c_checksum(
-                file_path=file_path
-            )
             gcp_crc32c_checksum = self.all_file_paths_in_directory[file_path][
                 "gcp_crc32c_checksum"
             ]
-            # In the case the blob does not exist (hasn't been uploaded or is
-            # None)
+            # If the gcp crc32c checksum is None, then the object does not
+            # exist in GCP. Add it to the files not uploaded.
             if gcp_crc32c_checksum is None:
                 files_not_uploaded += 1
                 files_not_uploaded_size_in_bytes += (
                     self.all_file_paths_in_directory[file_path]["size"]
                 )
+                # Continue to avoid wasting time calculating local checksum.
+                continue
+
+            # Get the local file checksum.
+            local_file_checksum = self.all_file_paths_in_directory[file_path][
+                "local_crc32c_checksum"
+            ]
             # In the case the blob exists but the checksums do not match (has
             # been uploaded incorrectly)
-            elif gcp_crc32c_checksum != local_file_checksum:
+            if gcp_crc32c_checksum != local_file_checksum:
                 files_uploaded_incorrectly += 1
                 files_uploaded_incorrectly_size_in_bytes += (
                     self.all_file_paths_in_directory[file_path]["size"]
                 )
             # In the case the blob exists and the checksums match (has been
             # uploaded correctly)
-            else:
+            elif gcp_crc32c_checksum == local_file_checksum:
                 files_uploaded += 1
                 files_uploaded_size_in_bytes += (
                     self.all_file_paths_in_directory[file_path]["size"]

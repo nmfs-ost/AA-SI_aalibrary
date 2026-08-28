@@ -838,6 +838,22 @@ def calculate_local_crc32c_checksum(file_path: str = "") -> str:
     return base64.b64encode(crc.digest()).decode("utf-8")
 
 
+def _get_single_local_file_crc32c_checksum_multi_process(file_path):
+    """Gets a single local file's crc32c checksum. Returns a tuple to aid in
+    multiprocessing approaches.
+
+    Returns:
+        Tuple[str, str]: The local file_path, along with its crc32c
+            checksum."""
+
+    # Get the local file checksum.
+    local_file_checksum = calculate_local_crc32c_checksum(
+        file_path=file_path
+    )
+
+    return file_path, local_file_checksum
+
+
 if __name__ == "__main__":
     # print(string.punctuation)
     # print(normalize_ship_name("Reuben Lasker"))
