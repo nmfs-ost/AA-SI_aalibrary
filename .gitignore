@@ -8,6 +8,10 @@
 *.csv
 logs/
 
+# For avoiding pushing any secrets files:
+.env
+env.yaml
+
 # For python files
 **/__pycache__/**
 **/.pytest_cache__/**
