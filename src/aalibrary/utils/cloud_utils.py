@@ -16,7 +16,10 @@ from aalibrary.utils import helpers
 from aalibrary.utils.helpers import (
     get_netcdf_gcp_location_from_raw_gcp_location,
 )
-from aalibrary.config import get_current_gcp_project_id
+from aalibrary.config import (
+    get_current_gcp_project_id,
+    get_current_gcp_bucket_name,
+)
 
 
 def setup_gbq_client_objs(
@@ -709,7 +712,7 @@ def bq_query_to_pandas(client: bigquery.Client = None, query: str = ""):
 
 
 def list_all_objects_in_gcp_bucket_location(
-    location: str = "", bucket_name: str = None
+    location: str = "", bucket_name: str = ""
 ) -> List[str]:
     """Gets all of the files within a GCP storage bucket location.
 
@@ -718,12 +721,14 @@ def list_all_objects_in_gcp_bucket_location(
             to "".
             Ex. "NCEI/Reuben_Lasker/RL2107"
         bucket_name (str, optional): The name of the GCP storage bucket to use.
-            Defaults to None.
+            Defaults to the bucket name set by aalibrary.config.
 
     Returns:
         List[str]: A list of strings containing all URIs for each file in the
             bucket.
     """
+    if bucket_name == "":
+        bucket_name = get_current_gcp_bucket_name()
     storage_client = storage.Client()
     gcp_bucket = storage_client.bucket(bucket_name)
 
@@ -812,12 +817,6 @@ def check_if_folder_exists_in_gcp(
     return folder_name in folders_in_parent_dir
 
 
-def get_existing_netcdf_uris_for_survey(
-    survey_name: str = "",
-) -> List[str]:  # TODO
-    ...
-
-
 def get_data_lake_directory_client(
     config_file_path: str = "",
 ) -> DataLakeServiceClient:
@@ -870,6 +869,9 @@ def get_service_client_sas(
 
 
 if __name__ == "__main__":
+    from aalibrary import config
+
+    config.use_gcp_dev()
     s3_client, s3_resource, s3_bucket = create_s3_objs()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
     # all_objs = list_all_objects_in_s3_bucket_location(
@@ -912,8 +914,7 @@ if __name__ == "__main__":
     print(
         len(
             list_all_objects_in_gcp_bucket_location(
-                location="HDD/Oscar_Elton_Sette/SE2602/None/data/raw",
-                bucket_name="ggn-nmfs-aa-prod-1-data",
+                location="HDD/Henry_B_Bigelow/HB2407/",
             )
         )
     )
