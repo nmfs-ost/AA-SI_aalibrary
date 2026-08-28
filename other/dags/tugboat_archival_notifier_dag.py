@@ -13,9 +13,9 @@ from airflow.providers.google.cloud.operators.pubsub import (
 PROJECT_ID = "ggn-nmfs-aa-dev-1"
 REGION = "us-central1"
 FUNCTION_URL = (
-    "https://tugboat-submission-function-465755541677.us-central1.run.app"
+    "https://tugboat-archival-function-465755541677.us-central1.run.app"
 )
-ENDPOINT_ROUTE = "tugboat-submission-function"
+ENDPOINT_ROUTE = "tugboat-archival-function"
 
 # Define your default parameter values and validation types
 PARAMS = {
@@ -114,15 +114,14 @@ def create_email_str(response):
 
 # DAG for submitting data to Tugboat
 with DAG(
-    dag_id="tugboat_submission_dag",
+    dag_id="tugboat_archival_dag",
     start_date=datetime(2026, 7, 1),
     schedule=None,  # Manual trigger only
     catchup=False,
     params=PARAMS,
     description=(
-        "This DAG is used to submit a JSON data package to Tugboat"
-        "using the PAMTugboatAPI. This process assumes that a project has "
-        "already been created in Tugboat."
+        "This DAG is used to notify users about current Tugboat Archival"
+        "Statuses."
     ),
 ) as dag:
 
