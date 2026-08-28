@@ -384,6 +384,12 @@ def get_all_file_names_from_survey_in_storage_bucket(
     return all_file_names
 
 
+def get_existing_netcdf_uris_for_survey(
+    survey_name: str = "",
+) -> List[str]:  # TODO
+    ...
+
+
 def get_all_raw_file_names_from_survey_in_storage_bucket(
     ship_name: str = "",
     survey_name: str = "",
@@ -1120,13 +1126,21 @@ def get_num_objects_in_folder(
     return num_objects
 
 
-def get_gcp_file_checksum(blob_name: str = "", bucket_name: str = "") -> str:
+def get_gcp_file_checksum(
+    blob_name: str = "",
+    bucket_name: str = "",
+    gcp_bucket: storage.Client.bucket = None,
+) -> str:
     """Gets the crc32c checksum of a file in a GCS bucket.
 
     Args:
         blob_name (str, optional): The blob file path. Defaults to "".
         bucket_name (str, optional): The GCS bucket name. Defaults to the
-            default bucket set by aalibrary.config.
+            default bucket name set by aalibrary.config.
+        gcp_bucket (storage.Client.bucket): The GCS bucket object to use. Use
+            this param to speed up processing.
+            Defaults to creating a bucket object from the default bucket name
+            set by aalibrary.config.
 
     Returns:
         str, None: The crc32c checksum of the file. None if blob does not'
@@ -1136,11 +1150,13 @@ def get_gcp_file_checksum(blob_name: str = "", bucket_name: str = "") -> str:
     # Use default bucket if none is provided
     if bucket_name == "":
         bucket_name = get_current_gcp_bucket_name()
-    # Create storage client
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
+    if gcp_bucket is None:
+        # Create storage client
+        client = storage.Client()
+        gcp_bucket = client.bucket(bucket_name)
+
     # Get blob details
-    blob = bucket.get_blob(blob_name)  # API call to refresh metadata
+    blob = gcp_bucket.get_blob(blob_name)  # API call to refresh metadata
 
     if (blob is None) or (blob.exists() is False):
         return None
