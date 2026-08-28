@@ -15,6 +15,7 @@ from typing import List
 from google.cloud import storage
 import boto3
 from tqdm import tqdm
+from tqdm.contrib.concurrent import thread_map
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -341,6 +342,7 @@ class LocalSurvey:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self._handle_paths()
+        print(f"ANALYZING DIRECTORY: {self.directory_path}")
         self._create_vars_for_use_later()
 
     def __repr__(self):
@@ -417,6 +419,12 @@ class LocalSurvey:
             self.gcp_project_id = os.getenv("AALIBRARY_GCP_PROJECT_ID")
         if self.gcp_bucket_name is None:
             self.gcp_bucket_name = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
+        if self.gcp_bucket is None:
+            _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs(
+                project_id=self.gcp_project_id,
+                gcp_bucket_name=self.gcp_bucket_name,
+                verbose=False,
+            )
 
         # Get all files in this directory.
         directory_path_glob = os.sep.join([self.directory_path, "**", "*"])
@@ -437,7 +445,22 @@ class LocalSurvey:
         # Remove directories from the list of files and assign attributes to
         # each file.
         # List to get rid of deleting while iterating error.
-        for file_path in list(self.all_file_paths_in_directory):
+        # Pbar to keep track of directory analysis.
+        self.init_pbar_total_steps = 4
+        if self.relocation_path != "":
+            self.init_pbar_total_steps += 1
+        self.init_pbar = tqdm(
+            total=self.init_pbar_total_steps,
+            desc="Analyzing Directory",
+            position=0,
+            leave=True,
+        )
+        for file_path in tqdm(
+            list(self.all_file_paths_in_directory),
+            desc="Getting File Metadata",
+            position=1,
+            leave=False,
+        ):
             p: Path = Path(file_path)
             # Remove it from the count if it is a directory.
             if p.is_dir():
@@ -463,7 +486,7 @@ class LocalSurvey:
             self.all_file_paths_in_directory[file_path][
                 "echosounder"
             ] = echosounder
-
+        self.init_pbar.update(1)
         # Keep track of all files sorted by ascending size (list of keys for
         # self.all_file_paths_in_directory)
         self.all_files_sorted_by_size = [
@@ -486,10 +509,16 @@ class LocalSurvey:
             )
         )
         # Get file sizes in bytes.
-        for file_path in self.all_file_paths_in_directory:
+        for file_path in tqdm(
+            self.all_file_paths_in_directory,
+            desc="Getting File Sizes",
+            position=1,
+            leave=False,
+        ):
             self.all_file_paths_in_directory[file_path]["size"] = (
                 os.path.getsize(file_path)
             )
+        self.init_pbar.update(1)
         # Get total file size of all files in bytes in this directory.
         self.total_file_size_bytes_in_directory = sum(
             file_info["size"]
@@ -502,11 +531,19 @@ class LocalSurvey:
             self.total_file_size_bytes_in_directory / (1024**3)
         )
 
+        self.init_pbar.set_description("Parsing Raw Files Metadata")
         self._parse_raw_files_in_directory()
+        self.init_pbar.update(1)
+        self.init_pbar.set_description("Parsing GCP Storage Bucket Locations")
         self._parse_gcp_storage_bucket_locations_for_all_files_in_directory()
+        self.init_pbar.update(1)
         # Create relocation paths if specified.
         if self.relocation_path != "":
+            self.init_pbar.set_description("Parsing Relocation Paths")
             self._parse_relocation_paths_for_all_files_in_directory()
+            self.init_pbar.update(1)
+        self.init_pbar.set_description("Directory Analysis Complete")
+        self.init_pbar.close()
 
     def _parse_raw_files_in_directory(self):
         """Parses through all of raw data files in the directory."""
@@ -561,7 +598,12 @@ class LocalSurvey:
         """Parses through all of the files in the directory and gets the
         correct GCP storage bucket location for each file."""
 
-        for file_path in self.all_file_paths_in_directory:
+        for file_path in tqdm(
+            self.all_file_paths_in_directory,
+            desc="Getting File GCP Locations",
+            position=1,
+            leave=False,
+        ):
             file_name = os.path.basename(file_path)
             file_type = self.all_file_paths_in_directory[file_path]["type"]
             gcp_storage_bucket_location = (
@@ -792,6 +834,22 @@ class LocalSurvey:
             # Move the file to the relocation path.
             os.rename(file_path, relocation_path)
 
+    def _get_single_file_gcp_checksum(self, file_path):
+        """Gets a single file's GCP CRC32C checksum. Used for multithreading
+        this process. Sets the checksum in the all_file_paths_in_directory
+        dict."""
+
+        gcp_crc32c_checksum = get_gcp_file_checksum(
+            blob_name=self.all_file_paths_in_directory[file_path][
+                "gcp_storage_bucket_location"
+            ],
+            bucket_name=self.gcp_bucket_name,
+            gcp_bucket=self.gcp_bucket
+        )
+        self.all_file_paths_in_directory[file_path][
+            "gcp_crc32c_checksum"
+        ] = gcp_crc32c_checksum
+
     def verify_gcp_uploads(self):
         """Verifies the files that have been uploaded to GCP using file
         checksums. Gives a printout of the number of files that have/haven't
@@ -806,17 +864,31 @@ class LocalSurvey:
         files_not_uploaded = 0
         files_not_uploaded_size_in_bytes = 0
         print("VERIFYING FILES...")
+        # Get the GCP CRC32C checksums for all files in the directory.
+        thread_map(
+            self._get_single_file_gcp_checksum,
+            list(self.all_file_paths_in_directory.keys()),
+            chunksize=1,
+            desc="Getting GCP CRC32C Checksums",
+            leave=False
+        )
+        pprint.pprint(
+            [
+                self.all_file_paths_in_directory[file_path].get(
+                    "gcp_crc32c_checksum", None
+                )
+                for file_path in self.all_file_paths_in_directory
+            ]
+        )
+        # Calculate local checksums and compare with GCP checksums.
         for file_path in tqdm(self.all_file_paths_in_directory):
             # Get the local file checksum.
             local_file_checksum = calculate_local_crc32c_checksum(
                 file_path=file_path
             )
-            gcp_crc32c_checksum = get_gcp_file_checksum(
-                bucket_name=self.gcp_bucket_name,
-                blob_name=self.all_file_paths_in_directory[file_path][
-                    "gcp_storage_bucket_location"
-                ],
-            )
+            gcp_crc32c_checksum = self.all_file_paths_in_directory[file_path][
+                "gcp_crc32c_checksum"
+            ]
             # In the case the blob does not exist (hasn't been uploaded or is
             # None)
             if gcp_crc32c_checksum is None:
@@ -824,13 +896,15 @@ class LocalSurvey:
                 files_not_uploaded_size_in_bytes += (
                     self.all_file_paths_in_directory[file_path]["size"]
                 )
-            # In the case the blob exists but the checksums do not match (has been uploaded incorrectly)
+            # In the case the blob exists but the checksums do not match (has
+            # been uploaded incorrectly)
             elif gcp_crc32c_checksum != local_file_checksum:
                 files_uploaded_incorrectly += 1
                 files_uploaded_incorrectly_size_in_bytes += (
                     self.all_file_paths_in_directory[file_path]["size"]
                 )
-            # In the case the blob exists and the checksums match (has been uploaded correctly)
+            # In the case the blob exists and the checksums match (has been
+            # uploaded correctly)
             else:
                 files_uploaded += 1
                 files_uploaded_size_in_bytes += (
