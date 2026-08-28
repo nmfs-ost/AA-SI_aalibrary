@@ -1,12 +1,14 @@
 """This file contains functions to interface with the Tugboat API."""
 
+# flake8: noqa: E266
+
 import os
 import json
 import urllib
 import warnings
+from pprint import pprint
 import requests
 from dotenv import load_dotenv
-from pprint import pprint
 
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
@@ -99,7 +101,8 @@ class TugboatAPI:
             return response.json()
         except requests.exceptions.HTTPError:
             print(
-                f"GET request to {url} failed with status code: {response.status_code}"
+                f"GET request to {url} failed with status code: "
+                f"{response.status_code}"
             )
             print(response.text)
             return response
@@ -142,7 +145,8 @@ class TugboatAPI:
             return response.json()
         except requests.exceptions.HTTPError:
             print(
-                f"GET request to {url} failed with status code: {response.status_code}"
+                f"GET request to {url} failed with status code: "
+                f"{response.status_code}"
             )
             print(response.text)
             return response
@@ -399,7 +403,7 @@ class TugboatAPI:
                 Example:
                     {
                     "name": "NEFSC SNE_Audio",
-                    "title": "NEFSC Southern New England Bottom-Moun",
+                    "title": "NEFSC Southern New England Bottom-Mounted",
                     "description": "Passive Acoustic Monitoring d ...",
                     "purpose": "This project is a combination of
                                 baseline information.",
