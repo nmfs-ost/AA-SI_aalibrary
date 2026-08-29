@@ -46,18 +46,3 @@ install-editable:
 
 uninstall-editable:
 	python -m pip uninstall aalibrary -y
-
-create-tugboat-submission-cloudrun-function:
-	gcloud config set project ggn-nmfs-aa-dev-1
-	gcloud run deploy tugboat-submission-function \
-	--source=. \
-	--env-vars-file=env.yaml \
-	--function=handle_request \
-	--base-image=python313 \
-	--region=us-east4 \
-	--service-account="tugboat-run-sa1@ggn-nmfs-aa-dev-1.iam.gserviceaccount.com" \
-    --build-service-account="projects/ggn-nmfs-aa-dev-1/serviceAccounts/cloudbuild-sa-1@ggn-nmfs-aa-dev-1.iam.gserviceaccount.com" \
-	--ingress=internal-and-cloud-load-balancing \
-	--vpc-connector="serverless-vpc-connector1" \
-	--vpc-egress="all-traffic" \
-	--no-allow-unauthenticated
