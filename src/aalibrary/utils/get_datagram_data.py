@@ -6,11 +6,13 @@ the entire raw data file, which can be very large."""
 from pprint import pprint
 import fsspec
 
+from google.cloud import storage
+
 from aalibrary.utils.sonar_checker import ek_raw_io
 from aalibrary.utils.ncei_cache_utils import (
     get_random_raw_file_from_ncei_cache_with_search_param,
 )
-from aalibrary.config import NCEI_BUCKET_NAME
+from aalibrary.config import NCEI_BUCKET_NAME, get_current_gcp_bucket_name
 from aalibrary.utils.cloud_utils import create_s3_objs
 
 
@@ -114,24 +116,90 @@ def stream_datagram_dict_from_ncei(s3_object_key: str = None) -> dict:
         return {}
 
 
+def stream_datagram_dict_from_gcs(
+    gcs_blob_path: str = "",
+    gcs_bucket_name: str = "",
+    gcs_bucket: storage.Client.bucket = None,
+) -> dict:
+    """Stream a datagram from a GCS raw data file by reading in
+    the first few megabytes and parsing the datagram to get relevant metadata.
+
+    Args:
+        gcs_blob_path (str): The GCS blob path for the raw data file to stream
+            the datagram from. Must be provided.
+        gcs_bucket_name (str): The GCS bucket name for the raw data file to
+            stream the datagram from. If not provided, the current GCP bucket
+            name will inferred from aalibrary.config.
+        gcs_bucket (storage.Client.bucket): A GCS bucket object. If not
+            provided, a new bucket object will be created using the provided
+            gcs_bucket_name or the inferred gcs_bucket_name from
+            aalibrary.config.
+    Returns:
+        dict: A dictionary containing the datagram data, or an empty dictionary
+            if an error occurs.
+    """
+
+    # Check for required parameters, and build storage clients.
+    if gcs_blob_path is None or gcs_blob_path == "":
+        raise ValueError("gcs_blob_path must be provided.")
+    if gcs_bucket_name is None:
+        gcs_bucket_name = get_current_gcp_bucket_name()
+    if gcs_bucket is None:
+        gcs_client = storage.Client()
+        gcs_bucket = gcs_client.bucket(gcs_bucket_name)
+
+    # Get datagram/header size by reading first 4 bytes
+    blob = gcs_bucket.blob(gcs_blob_path)
+    datagram_size = int.from_bytes(blob.download_as_bytes(start=0, end=3))
+
+    # Read in the contents of the blob for the datagram
+    response_body = blob.download_as_bytes(start=0, end=(datagram_size - 1))
+    try:
+        # Create a filesystem object for in-memory operations
+        fs = fsspec.filesystem("memory")
+        # Write bytes to a virtual path
+        fs.pipe("virtual/path.raw", response_body)
+    except Exception as e:
+        print(f"Error writing to in-memory filesystem: {e}")
+        return {}
+
+    try:
+        with ek_raw_io.RawSimradFile(
+            "memory://virtual/path.raw", "r", storage_options={}
+        ) as fid:
+            config_datagram = fid.read(5)
+            # config_datagram["timestamp"] = np.datetime64(
+            #     config_datagram["timestamp"].replace(tzinfo=None), "[ns]"
+            # )
+        return config_datagram
+    except Exception as e:
+        print(
+            f"Error during parsing of datagram for object `{gcs_blob_path}`:\n{e}"
+        )
+        return {}
+
+
 if __name__ == "__main__":
+    from aalibrary import config
+    config.use_gcp_dev()
+
     file_path = r"C:\Users\Hannah Khan\Desktop\repos\AA-SI_aalibrary\other\test_data_dir\L0010-D20060603-T011017-ES60.raw"
     storage_options = {}
     datagram_dict = {}
     i = 0
-    while datagram_dict == [] or datagram_dict == {}:
-        print(f"Attempt {i+1}: Streaming datagram from NCEI...")
-        (
-            random_ship_name,
-            random_survey_name,
-            random_echosounder,
-            random_raw_file,
-        ) = get_random_raw_file_from_ncei_cache_with_search_param(
-            search_param="EK80"
-        )
-        datagram_dict = stream_datagram_dict_from_ncei(
-            f"data/raw/{random_ship_name}/{random_survey_name}/{random_echosounder}/{random_raw_file}"
-        )
+    # while datagram_dict == [] or datagram_dict == {}:
+    #     print(f"Attempt {i+1}: Streaming datagram from NCEI...")
+    #     (
+    #         random_ship_name,
+    #         random_survey_name,
+    #         random_echosounder,
+    #         random_raw_file,
+    #     ) = get_random_raw_file_from_ncei_cache_with_search_param(
+    #         search_param="EK80"
+    #     )
+    #     datagram_dict = stream_datagram_dict_from_ncei(
+    #         f"data/raw/{random_ship_name}/{random_survey_name}/{random_echosounder}/{random_raw_file}"
+    #     )
     # print(search_ncei_object_keys_for_string("L0010-D20060603-T011017-ES60.raw"))
     # ES60 datagram example:
     # datagram_dict = stream_datagram_dict_from_ncei(
@@ -150,7 +218,13 @@ if __name__ == "__main__":
     #     file_download_directory=os.sep.join(file_path.split(os.sep)[:-1]),
     # )
     # datagram_dict = get_datagram_dict_from_raw_file(file_path, storage_options)
-    pprint(datagram_dict)
+    gcs_raw_blob_path = "HDD/Henry_B_Bigelow/HB2407/EK80/data/raw/D20240904-T121523.raw"
+    datagram_dict = stream_datagram_dict_from_gcs(
+        gcs_blob_path=gcs_raw_blob_path,
+        gcs_bucket_name=get_current_gcp_bucket_name(),
+    )[0]
+    pprint(datagram_dict, width=100)
+
     print(datagram_dict["timestamp"])
     print(type(datagram_dict["timestamp"]))
     print(datagram_dict["timestamp"].tzinfo)
