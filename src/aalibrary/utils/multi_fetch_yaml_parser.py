@@ -10,6 +10,8 @@ import sqlparse
 
 from google.cloud import bigquery
 
+from aalibrary.config import get_current_gcp_project_id
+
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
@@ -45,11 +47,14 @@ class YAMLParser:
         self,
         yaml_file_path: str = "",
         yaml_dict: dict = None,
-        gcp_project_id: str = "ggn-nmfs-aa-dev-1",
+        gcp_project_id: str = None,
     ):
         self.yaml_file_path = yaml_file_path
         self.yaml_dict = yaml_dict
-        self.gcp_project_id = gcp_project_id
+        if gcp_project_id is None:
+            self.gcp_project_id = get_current_gcp_project_id()
+        else:
+            self.gcp_project_id = gcp_project_id
         self.requests = []
         self.sql_query = ""
         # Load the yaml object, or read the file into a yaml object.
@@ -100,10 +105,13 @@ class RequestParser:
     def __init__(
         self,
         request_dict: dict = None,
-        gcp_project_id: str = "ggn-nmfs-aa-dev-1",
+        gcp_project_id: str = None,
     ):
         self.request_dict = request_dict
-        self.gcp_project_id = gcp_project_id
+        if gcp_project_id is None:
+            self.gcp_project_id = get_current_gcp_project_id()
+        else:
+            self.gcp_project_id = gcp_project_id
         self.sql_query = (
             f"""SELECT *\nFROM `{self.gcp_project_id}.metadata.ncei_cache`\n"""
         )
