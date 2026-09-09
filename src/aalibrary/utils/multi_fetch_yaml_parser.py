@@ -189,8 +189,14 @@ class RequestParser:
                             self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) >= '{time_dict["start-time"]}'\n"""
                         if time_dict.get("end-date", None):
                             self.sql_conditions_clause += f"""AND LEFT(file_datetime,10) <= '{time_dict["end-date"]}'\n"""
-                        if time_dict.get("end-time", None):
-                            self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) <= '{time_dict["end-time"]}'"""
+                        if time_dict.get("end-time", "00:00:00"):
+                            if time_dict.get("end-time", "00:00:00") == "00:00:00":
+                                # Handle correct end-time.
+                                # No end time can be less than 00:00:00, so we
+                                # default to "23:59:59"
+                                self.sql_conditions_clause += """AND RIGHT(file_datetime,8) <= '23:59:59'"""
+                            else:
+                                self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) <= '{time_dict["end-time"]}'"""
                         self.sql_conditions_clause += """)\n"""
                     else:
                         self.sql_conditions_clause += """OR ("""
@@ -200,8 +206,14 @@ class RequestParser:
                             self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) >= '{time_dict["start-time"]}'\n"""
                         if time_dict.get("end-date", None):
                             self.sql_conditions_clause += f"""AND LEFT(file_datetime,10) <= '{time_dict["end-date"]}'\n"""
-                        if time_dict.get("end-time", None):
-                            self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) <= '{time_dict["end-time"]}'"""
+                        if time_dict.get("end-time", "00:00:00"):
+                            if time_dict.get("end-time", "00:00:00") == "00:00:00":
+                                # Handle correct end-time.
+                                # No end time can be less than 00:00:00, so we
+                                # default to "23:59:59"
+                                self.sql_conditions_clause += """AND RIGHT(file_datetime,8) <= '23:59:59'"""
+                            else:
+                                self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) <= '{time_dict["end-time"]}'"""
                         self.sql_conditions_clause += """)\n"""
             self.sql_conditions_clause += """)\n"""
 
