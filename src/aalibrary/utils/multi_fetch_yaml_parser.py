@@ -190,7 +190,10 @@ class RequestParser:
                         if time_dict.get("end-date", None):
                             self.sql_conditions_clause += f"""AND LEFT(file_datetime,10) <= '{time_dict["end-date"]}'\n"""
                         if time_dict.get("end-time", "00:00:00"):
-                            if time_dict.get("end-time", "00:00:00") == "00:00:00":
+                            if (
+                                time_dict.get("end-time", "00:00:00")
+                                == "00:00:00"
+                            ):
                                 # Handle correct end-time.
                                 # No end time can be less than 00:00:00, so we
                                 # default to "23:59:59"
@@ -207,7 +210,10 @@ class RequestParser:
                         if time_dict.get("end-date", None):
                             self.sql_conditions_clause += f"""AND LEFT(file_datetime,10) <= '{time_dict["end-date"]}'\n"""
                         if time_dict.get("end-time", "00:00:00"):
-                            if time_dict.get("end-time", "00:00:00") == "00:00:00":
+                            if (
+                                time_dict.get("end-time", "00:00:00")
+                                == "00:00:00"
+                            ):
                                 # Handle correct end-time.
                                 # No end time can be less than 00:00:00, so we
                                 # default to "23:59:59"
@@ -257,11 +263,16 @@ def download_results(
     results: List[str], download_directory: str = "./"
 ) -> None:
     """This function takes the results of the YAML submission (a list of s3
-    object keys) and downloads the corresponding files from the s3 bucket."""
+    object keys) and downloads the corresponding files from the s3 bucket.
+
+    Args:
+        results (List[str]): A list of s3 object keys to download.
+        download_directory (str): The directory to download the files to.
+    """
     for s3_object_key in results:
         download_single_file_from_aws(
             file_url=s3_object_key,
-            download_directory=download_directory,
+            download_location=download_directory,
         )
 
 
