@@ -897,6 +897,16 @@ def download_single_file_from_aws(
         # Finally download the file.
         try:
             logging.info("DOWNLOADING `%s`...", file_name)
+            # `download_location` accepts either a full destination file path
+            # or a directory to drop the file into. boto3's download_file
+            # treats its second argument strictly as a filename, so a
+            # directory has to be joined with the basename here -- otherwise
+            # s3transfer's final rename targets a directory and raises
+            # IsADirectoryError after the transfer has already completed.
+            if os.path.isdir(download_location):
+                download_location = os.path.join(
+                    download_location, file_name
+                )
             s3_bucket.download_file(file_url, download_location)
             logging.info(
                 "DOWNLOADED `%s` TO `%s`", file_name, download_location
