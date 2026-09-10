@@ -3,12 +3,16 @@ through our google storage bucket."""
 
 # flake8: noqa: E203
 
-from typing import List, Union
+import sys
+from typing import List, Tuple, Union
 from random import randint
 from difflib import get_close_matches
+from pathlib import Path
+from functools import partial
 
 from google.cloud import storage
 from tqdm import tqdm
+from tqdm.contrib.concurrent import thread_map
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -19,6 +23,10 @@ if __package__ is None or __package__ == "":
         list_all_objects_in_gcp_bucket_location,
     )
     from helpers import normalize_ship_name
+
+    # Add the parent directory to the Python path
+    sys.path.append(str(Path(__file__).resolve().parent.parent))
+
     from config import get_current_gcp_bucket_name
 else:
     from aalibrary.utils.cloud_utils import (
@@ -752,16 +760,57 @@ def get_netcdf_files_from_survey(
     return netcdf_files if netcdf_files else None
 
 
+def _rename_single_gcs_file_multithreaded(
+    prefixes: Tuple[str, str] = ("", ""),
+    gcp_bucket: storage.Client.bucket = None,
+):
+    """Renames a single file in a GCS bucket, using a multithreaded approach to
+    speed up the process.
+
+    Args:
+        prefixes (Tuple[str, str], optional): A tuple containing the old and
+            new file prefixes.
+        gcp_bucket (storage.Client.bucket, optional): The GCP storage bucket
+            client object.
+            If none, one will be created for you based on the `project_id` and
+            `gcp_bucket_name` set by aalibrary.config.
+            Defaults to None.
+
+    Returns:
+        str: A message indicating the old and new blob names after renaming.
+    """
+
+    old_file_prefix, new_file_prefix = prefixes
+
+    if gcp_bucket is None:
+        _, _, gcp_bucket = setup_gcp_storage_objs()
+
+    # Remove the bucket name from the prefixes if it is included.
+    if (gcp_bucket.name + "/").lower() in old_file_prefix:
+        old_file_prefix = old_file_prefix.replace((gcp_bucket.name + "/"), "")
+    if (gcp_bucket.name + "/").lower() in new_file_prefix:
+        new_file_prefix = new_file_prefix.replace((gcp_bucket.name + "/"), "")
+
+    blob = gcp_bucket.blob(old_file_prefix)
+    new_blob = gcp_bucket.rename_blob(blob, new_file_prefix)
+
+    return f"Renamed {blob.name} to {new_blob.name}"
+
+
 def rename_gcs_folder(
     gcp_bucket_name: str = "",
     old_folder_prefix: str = "",
     new_folder_prefix: str = "",
 ) -> None:
     """Renames a 'folder' in a GCS bucket by renaming its contained objects.
+    NOTE: If you encounter a server error, or a health-check error when the
+    function runs for too long, please re-run the function. It will continue
+    renaming the remaining objects in the folder.
 
     Args:
         gcp_bucket_name (str, optional): The GCP bucket where the folder
-            resides. Defaults to "".
+            resides. Defaults to the default gcp bucket name provided by
+            aalibrary.config.
         old_folder_prefix (str, optional): The old folder prefix.
             Ex. ""other/HBigelow/"
             Defaults to "".
@@ -771,7 +820,8 @@ def rename_gcs_folder(
             Defaults to "".
     """
 
-    assert gcp_bucket_name != "", "Please provide a GCP bucket name."
+    if gcp_bucket_name == "":
+        gcp_bucket_name = get_current_gcp_bucket_name()
     assert old_folder_prefix != "", "Please provide the old folder prefix."
     assert new_folder_prefix != "", "Please provide the new folder prefix."
 
@@ -784,20 +834,57 @@ def rename_gcs_folder(
     if not new_folder_prefix.endswith("/"):
         new_folder_prefix += "/"
 
-    len_blobs = get_num_objects_in_folder(
-        gcp_bucket_name=gcp_bucket_name, folder_prefix=old_folder_prefix
-    )
+    # Remove the bucket name from the prefixes if it is included.
+    if (gcp_bucket_name + "/").lower() in old_folder_prefix:
+        old_folder_prefix = old_folder_prefix.replace(
+            (gcp_bucket_name + "/"), ""
+        )
+    if (gcp_bucket_name + "/").lower() in new_folder_prefix:
+        new_folder_prefix = new_folder_prefix.replace(
+            (gcp_bucket_name + "/"), ""
+        )
+
+    # len_blobs = get_num_objects_in_folder(
+    #     gcp_bucket_name=gcp_bucket_name, folder_prefix=old_folder_prefix
+    # )
+    # Get all blobs (objects) with the old folder prefix.
     blobs = bucket.list_blobs(prefix=old_folder_prefix)
+
+    assert (
+        len(list(blobs)) > 0
+    ), (f"No objects found with prefix `{old_folder_prefix}` in bucket"
+        f" `{gcp_bucket_name}`.")
+
+    # Calculate the new names for each blob based on the old prefixes.
+    old_and_new_prefixes = [
+        (blob.name, new_folder_prefix + blob.name[len(old_folder_prefix) :])
+        for blob in blobs
+    ]
 
     renamed_blobs_msgs = []
 
-    for blob in tqdm(blobs, desc="Renaming GCS objects", total=len_blobs):
-        # Construct the new blob name
-        new_blob_name = new_folder_prefix + blob.name[len(old_folder_prefix) :]
+    # Freeze the static parameters using partial
+    # This leaves 'prefixes' as the single remaining argument for the map
+    bound_function = partial(
+        _rename_single_gcs_file_multithreaded, gcp_bucket=bucket
+    )
 
-        # Rename the blob
-        new_blob = bucket.rename_blob(blob, new_blob_name)
-        renamed_blobs_msgs.append(f"\tRenamed {blob.name} to {new_blob.name}")
+    # Automatically runs concurrently and displays a progress bar, deploying
+    # max workers
+    renamed_blobs_msgs = thread_map(
+        bound_function,
+        old_and_new_prefixes,
+        desc="Renaming GCS objects",
+        chunksize=1,
+    )
+
+    # for blob in tqdm(blobs, desc="Renaming GCS objects", total=len_blobs):
+    #     # Construct the new blob name
+    #     new_blob_name = new_folder_prefix + blob.name[len(old_folder_prefix) :]
+
+    #     # Rename the blob
+    #     new_blob = bucket.rename_blob(blob, new_blob_name)
+    #     renamed_blobs_msgs.append(f"\tRenamed {blob.name} to {new_blob.name}")
 
     for msg in sorted(renamed_blobs_msgs):
         print(msg)
@@ -1215,8 +1302,16 @@ if __name__ == "__main__":
 
     # print(get_random_raw_file_from_storage_bucket())
 
-    print(
-        check_if_tugboat_metadata_json_exists_in_survey(
-            ship_name="bigelowe", survey_name="RL2107"
-        )
+    # print(
+    #     check_if_tugboat_metadata_json_exists_in_survey(
+    #         ship_name="bigelowe", survey_name="RL2107"
+    #     )
+    # )
+    from aalibrary.config import use_gcp_prod
+
+    use_gcp_prod()
+
+    rename_gcs_folder(
+        old_folder_prefix="ggn-nmfs-aa-prod-1-data/HDD/Sette/",
+        new_folder_prefix="ggn-nmfs-aa-prod-1-data/HDD/Oscar_Elton_Sette/",
     )
