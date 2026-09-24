@@ -2,6 +2,7 @@
 
 import os
 import configparser
+import sys
 import traceback
 from typing import List, Tuple
 from azure.storage.filedatalake import DataLakeServiceClient
@@ -10,6 +11,9 @@ from google.cloud import bigquery, storage
 from botocore import UNSIGNED
 from botocore.client import Config
 import boto3
+import win32gui
+from azure.identity.broker import InteractiveBrowserBrokerCredential
+from azure.storage.blob import BlobServiceClient
 
 # from aalibrary.raw_file import RawFile
 from aalibrary.utils import helpers
@@ -19,6 +23,8 @@ from aalibrary.utils.helpers import (
 from aalibrary.config import (
     get_current_gcp_project_id,
     get_current_gcp_bucket_name,
+    get_current_odl_credentials,
+    OCEAN_DATA_LAKE_STORAGE_ACCOUNT_URL,
 )
 
 
@@ -96,6 +102,57 @@ def setup_gcp_storage_objs(
         )
 
     return (gcp_stor_client, gcp_bucket_name, gcp_bucket)
+
+
+def sign_in_to_odl_with_interactive_browser_broker() -> str:
+    """Signs in to the Ocean Data Lake (ODL) using the Interactive Browser
+    Broker method. This will open a browser window for the user to sign in with
+    their credentials. The credentials will be cached as an environment
+    variable for future use.
+    """
+
+    # Get the system window handle based on OS
+    if sys.platform == "win32":
+        # Get the handle of the window currently in the foreground
+        current_window_handle = win32gui.GetForegroundWindow()
+    elif sys.platform == "darwin":  # macOS
+        import msal
+
+        # Use MSAL's built-in console window anchor for macOS
+        current_window_handle = (
+            msal.PublicClientApplication.CONSOLE_WINDOW_HANDLE
+        )
+    else:
+        # Linux defaults to standard browser-based auth, handle isn't required
+        current_window_handle = None
+
+    credential = InteractiveBrowserBrokerCredential(
+        parent_window_handle=current_window_handle
+    )
+
+    return credential
+
+
+def get_odl_blob_service_client() -> BlobServiceClient:
+    """Returns a BlobServiceClient object for the Ocean Data Lake (ODL) using
+    the Interactive Browser Broker method. This will open a browser window for
+    the user to sign in with their credentials. The credentials will be cached
+    as an environment variable for future use.
+
+    Returns:
+        BlobServiceClient: A BlobServiceClient object for the ODL.
+    """
+
+    credential = get_current_odl_credentials()
+
+    if (credential is None) or (credential == ""):
+        credential = sign_in_to_odl_with_interactive_browser_broker()
+
+    client = BlobServiceClient(
+        OCEAN_DATA_LAKE_STORAGE_ACCOUNT_URL,
+        credential=credential,
+    )
+    return client
 
 
 def get_schema_from_bigquery_table(
