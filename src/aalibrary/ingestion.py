@@ -11,6 +11,7 @@ from azure.storage.filedatalake import (
     DataLakeDirectoryClient,
     DataLakeFileClient,
 )
+from azure.storage.blob import BlobServiceClient
 import boto3
 from tqdm import tqdm
 
@@ -21,7 +22,10 @@ if __package__ is None or __package__ == "":
     import utils
     from raw_file import RawFile
     from utils import cloud_utils
-    from utils.cloud_utils import get_data_lake_directory_client
+    from utils.cloud_utils import (
+        get_data_lake_directory_client,
+        get_odl_blob_service_client,
+    )
     from utils.ncei_utils import download_single_file_from_aws
     from utils.helpers import check_for_assertion_errors
     from egress import upload_file_to_gcp_storage_bucket
@@ -31,10 +35,48 @@ else:
     from aalibrary import utils
     from aalibrary.raw_file import RawFile
     from aalibrary.utils import cloud_utils
-    from aalibrary.utils.cloud_utils import get_data_lake_directory_client
+    from aalibrary.utils.cloud_utils import (
+        get_data_lake_directory_client,
+        get_odl_blob_service_client,
+    )
     from aalibrary.utils.ncei_utils import download_single_file_from_aws
     from aalibrary.utils.helpers import check_for_assertion_errors
     from aalibrary.egress import upload_file_to_gcp_storage_bucket
+
+
+def download_file_from_azure(
+    container_name: str = "lasker",
+    blob_path: str = "1601RL-D20160107-T074016.bot",
+    download_directory: str = "./",
+    blob_service_client: BlobServiceClient = None,
+):
+    """Downloads a file from Azure Blob Storage using the BlobServiceClient
+    class."""
+
+    try:
+        if blob_service_client is None:
+            print("Connecting to Azure Blob Storage...")
+            blob_service_client = get_odl_blob_service_client()
+
+        # 3. Get a client for the specific blob
+        blob_client = blob_service_client.get_blob_client(
+            container=container_name, blob=blob_path
+        )
+
+        print(f"Downloading {blob_path}...")
+        # 4. Open a local file in write-binary mode and stream the data into it
+        with open(
+            f"{download_directory}/{os.path.basename(blob_path)}", "wb"
+        ) as download_file:
+            download_stream = blob_client.download_blob()
+            download_file.write(download_stream.readall())
+
+        print(
+            f"Success! File downloaded to: {download_directory}/{os.path.basename(blob_path)}"
+        )
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 
 def download_file_from_azure_directory(
@@ -1101,3 +1143,8 @@ if __name__ == "__main__":
     #                 survey_name="RL2107", echosounder="EK80",
     #                 file_download_directory=".", gcp_bucket=gcp_bucket,
     #                 is_metadata=False,debug=False)
+    download_file_from_azure(
+        container_name="lasker",
+        blob_path="Cruise Data/RL2604 IWCPS/RAW/EK80/EK80 Day Files/2606RL_Calibration-D20260615-T163314.raw",
+        download_directory="./",
+    )
