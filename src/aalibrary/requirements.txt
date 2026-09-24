@@ -31,6 +31,8 @@ mkdocs-material
 mkdocstrings-python
 mkdocs-git-revision-date-localized-plugin
 mkdocs-open-in-new-tab
+# Install msal for window based odl auth ONLY on Linux or macOS
+msal; sys_platform != "win32"
 nbformat
 python-dotenv
 sqlparse
