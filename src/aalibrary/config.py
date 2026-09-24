@@ -17,7 +17,9 @@ GCP_DEV_BUCKET_NAME = "ggn-nmfs-aa-dev-1-data"
 GCP_PROD_BUCKET_NAME = "ggn-nmfs-aa-prod-1-data"
 NCEI_BUCKET_NAME = "noaa-wcsd-pds"
 OCEAN_DATA_LAKE_STORAGE_ACCOUNT_NAME = "stodlnoaaomaoprod"
-OCEAN_DATA_LAKE_STORAGE_ACCOUNT_URL = f"https://{OCEAN_DATA_LAKE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+OCEAN_DATA_LAKE_STORAGE_ACCOUNT_URL = (
+    f"https://{OCEAN_DATA_LAKE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+)
 
 RAW_DATA_FILE_TYPES = ["raw", "idx", "bot", "evi"]
 CONVERTED_DATA_FILE_TYPES = ["netcdf", "nc"]
@@ -132,3 +134,8 @@ def get_current_gcp_project_id() -> str:
 def get_current_gcp_bucket_name() -> str:
     """Returns the current GCP bucket name being used."""
     return os.getenv("AALIBRARY_GCP_BUCKET_NAME")
+
+
+def get_current_odl_credentials() -> str:
+    """Returns the current ODL credentials being used."""
+    return os.getenv("AALIBRARY_ODL_CREDENTIALS")
