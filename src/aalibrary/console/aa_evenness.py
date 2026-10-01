@@ -1,59 +1,187 @@
 #!/usr/bin/env python3
 """
-Console tool to compute the Echopype metrics.evenness (Equivalent Area, EA).
+aa-evenness
 
-Pattern matches your suite:
-- optional stdin piping for INPUT_PATH
-- argparse-wrapped single function
-- clear, human-readable comments
+Console tool computing echopype.metrics.evenness, the equivalent area (EA,
+unit: m) of the backscatter along range, per channel and ping.
 
 Wraps:
   echopype.metrics.evenness(ds: xarray.Dataset, range_label: str = "echo_range") -> xarray.DataArray
 
+    EA = (sum(sv * dz))^2 / sum(sv^2 * dz)   over range_sample, sv = 10^(Sv/10)
+
+Pipeline-friendly: reads the input path (or gs:// URI) from the positional
+argument or stdin, writes the output path to stdout, logs to stderr. The
+output carries the input's provenance plus this step.
+
 Notes:
-- `evenness` expects a Dataset that includes an `echo_range`-like variable. If it’s
-  missing, you likely need to calibrate your EchoData to Sv first (compute_Sv),
-  which creates `echo_range` in the calibrated Dataset.
+- `evenness` needs a Dataset with `Sv` on a `range_sample` dimension and an
+  `echo_range`-like variable. If it's missing, you likely need to calibrate
+  your EchoData to Sv first (aa-sv), or pass --try-calibrate.
 """
 
-import io
-from contextlib import redirect_stdout
-import argparse
+# === Silence logs BEFORE any heavy imports ===
+import logging
 import sys
-from pathlib import Path
-import xarray as xr
+import warnings
+
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
 from loguru import logger
-import echopype as ep  # used only if we need to compute Sv to ensure echo_range exists
-from echopype.metrics import evenness
+logger.remove()
+# Default sink: WARNING+ to stderr so real errors aren't swallowed.
+# _configure_logging() below replaces this once --quiet is parsed.
+logger.add(sys.stderr, level="WARNING")
+
+import argparse
+import io
 import pprint
+from contextlib import redirect_stdout
+from pathlib import Path
+
+from aalibrary.console._core import (
+    Help, Run, ToolSpec, add_common_flags, canon, naming, render, show_help, stdio,
+)
+
+# xarray and echopype are imported inside compute() so --help stays fast.
+
+SPEC = ToolSpec(
+    name="aa-evenness",
+    role="transform",
+    kind="echometric",
+    op="echopype.metrics.evenness",
+    op_version=1,
+    params={"range_label": canon.text, "try_calibrate": canon.boolean},
+)
+
+HELP = Help(
+    summary="Equivalent area (EA, m) of backscatter along range, per channel and ping.",
+    does=(
+        "Runs echopype.metrics.evenness on calibrated Sv: EA = (sum sv*dz)^2 / "
+        "sum(sv^2*dz) over range_sample, with sv = 10^(Sv/10) and dz the spacing of "
+        "the range variable. EA is the range extent the backscatter would fill if "
+        "every sample held the mean density (Urmy et al. 2012). Writes one variable, "
+        "'evenness' (units m), on channel x ping_time."
+    ),
+    stdin=(
+        "One Sv NetCDF path or gs:// URI (argument, or one line on stdin), e.g. from "
+        "aa-sv or aa-clean. It must contain 'Sv' (dB) on a range_sample dimension and "
+        "the range variable named by --range-label (default echo_range)."
+    ),
+    stdout="The output file's absolute path (or gs:// URI).",
+    options=[
+        ("-o, --output_path PATH", "Explicit output, used exactly as given (no suffix "
+                                   "added). Local path or gs:// URI."),
+        ("--range-label NAME", "variable holding range in metres (default: echo_range)"),
+        ("--try-calibrate", "if that variable is missing, open the input as EchoData and "
+                            "compute Sv first (echopype defaults; no EK80 modes)"),
+        ("--no-overwrite", "exit 1 if the output exists and is a different product "
+                           "(an identical one is reused)"),
+        ("--quiet", "warnings and errors only on stderr"),
+    ],
+    science={
+        "range_label": "Variable used as range (m) for dz and the integral.",
+        "try_calibrate": "Compute Sv from EchoData first when the range variable is "
+                         "missing; changes what is analysed.",
+    },
+    files=(
+        "Reads a flat Sv NetCDF, local or gs:// (through a gcsfuse mount when one "
+        "covers it, otherwise downloaded once to the cache). Writes <base>_<hash8>.nc "
+        "beside the input (current directory for gs:// input), or -o, or --dest. "
+        "AA_NAMING=legacy restores <input stem>_evenness.nc. An identical earlier "
+        "result is reused."
+    ),
+    pipeline=(
+        "After calibration: aa-nc | aa-sv | aa-evenness. The output is a 2-D metric "
+        "(channel x ping_time), not Sv, so it ends the Sv chain."
+    ),
+    examples=[
+        "aa-nc D20160703-T060000.raw --sonar_model EK60 | aa-sv | aa-evenness",
+        "aa-evenness sv.nc -o ea.nc --no-overwrite",
+    ],
+)
+
+
+def _configure_logging(quiet: bool) -> None:
+    """Replace the default suppression sink with a user-visible one."""
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING" if quiet else "INFO")
 
 
 def print_help():
-    """Standalone help text (handy when invoked with no args and no stdin)."""
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full():
     help_text = """
     Usage: aa-evenness [OPTIONS] [INPUT_PATH]
 
     Arguments:
-      INPUT_PATH                   Path to a NetCDF file (.nc) containing a calibrated
-                                   Dataset with 'echo_range'. Optional; defaults to
-                                   reading one token from stdin.
+      INPUT_PATH                   Path (or gs:// URI) to a NetCDF file (.nc) containing a
+                                   calibrated Dataset with 'Sv' and 'echo_range'. Optional;
+                                   defaults to reading one token from stdin.
 
     Options:
-      -o, --output_path PATH       Output NetCDF path (default: <stem>_evenness.nc).
+      -o, --output_path PATH       Output NetCDF path or gs:// URI, used as given.
+                                   Default: <base>_<hash8>.nc beside the input
+                                   (AA_NAMING=legacy: <stem>_evenness.nc).
       --range-label STR            Name of the DataArray holding range (default: echo_range).
       --try-calibrate              If 'echo_range' is missing, attempt to open as converted
                                    EchoData and compute Sv to obtain it.
-      --no-overwrite               Do not overwrite an existing output file.
-      --quiet                      Print only the output path (or suppress extras).
-      -h, --help                   Show this help message and exit.
+      --no-overwrite               Do not overwrite an existing, different output file
+                                   (exit 1). An identical product is reused.
+      --quiet                      Warnings and errors only on stderr (stdout is always
+                                   just the output path).
+      --base NAME                  Base name for the output.
+      --dest DIR|gs://PREFIX       Write the default-named output there.
+      --force                      Recompute even if an identical product exists.
+      -h, --help                   Curated help. --help-all: this text.
 
     Description:
       Computes the Equivalent Area (EA) metric from Echopype (units: meters).
+      Provenance (the input's chain plus this step) is embedded in the output;
+      see aa-metadata.
     """
     print(help_text)
 
 
-def _add_basic_attrs(ds: xr.Dataset) -> None:
+def _build_parser():
+    parser = argparse.ArgumentParser(
+        description="Compute Echopype metrics.evenness (Equivalent Area, EA).",
+        add_help=False,
+    )
+
+    # IO args
+    parser.add_argument(
+        "input_path",
+        type=str,
+        nargs="?",
+        help="Path or gs:// URI of a NetCDF Dataset containing 'Sv' and 'echo_range'.",
+    )
+    parser.add_argument(
+        "-o", "--output_path",
+        type=str,
+        help="Output NetCDF path, used as given (default: <base>_<hash8>.nc).",
+    )
+
+    # evenness parameters
+    parser.add_argument("--range-label", dest="range_label", default="echo_range",
+                        help="Name of the range DataArray (default: echo_range).")
+
+    # behavior flags
+    parser.add_argument("--try-calibrate", action="store_true",
+                        help="If 'echo_range' missing, attempt to compute Sv to obtain it.")
+    parser.add_argument("--no-overwrite", action="store_true",
+                        help="Do not overwrite an existing, different output file.")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Warnings and errors only on stderr.")
+    add_common_flags(parser)
+    return parser
+
+
+def _add_basic_attrs(ds) -> None:
     """Replace None attrs with strings to avoid NetCDF writer issues."""
     for k, v in list(ds.attrs.items()):
         if v is None:
@@ -66,119 +194,109 @@ def _add_basic_attrs(ds: xr.Dataset) -> None:
 
 def main():
     """Entry point for the aa-evenness CLI."""
-    # If no argv, try to read a token path from stdin; else print help and exit.
-    if len(sys.argv) == 1:
-        if not sys.stdin.isatty():
-            token = sys.stdin.readline().strip()
-            if token:
-                sys.argv.append(token)
-        else:
-            print_help()
-            sys.exit(0)
+    # No args on a terminal: help. (An empty pipe is an error: see stdio.)
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
+        print_help()
+        sys.exit(0)
 
-    parser = argparse.ArgumentParser(
-        description="Compute Echopype metrics.evenness (Equivalent Area, EA)."
-    )
-
-    # IO args
-    parser.add_argument(
-        "input_path",
-        type=Path,
-        nargs="?",
-        help="Path to a NetCDF Dataset containing 'echo_range' (typically from calibrated Sv).",
-    )
-    parser.add_argument(
-        "-o", "--output_path",
-        type=Path,
-        help="Output NetCDF path (default: <stem>_evenness.nc).",
-    )
-
-    # evenness parameters
-    parser.add_argument("--range-label", dest="range_label", default="echo_range",
-                        help="Name of the range DataArray (default: echo_range).")
-
-    # behavior flags
-    parser.add_argument("--try-calibrate", action="store_true",
-                        help="If 'echo_range' missing, attempt to compute Sv to obtain it.")
-    parser.add_argument("--no-overwrite", action="store_true",
-                        help="Do not overwrite an existing output file.")
-    parser.add_argument("--quiet", action="store_true",
-                        help="Reduce logs; print only final path.")
+    parser = _build_parser()
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        sys.exit(0)
 
     args = parser.parse_args()
+    _configure_logging(args.quiet)
+    # The hash canonicalizes the name with strip(); use the same name.
+    args.range_label = args.range_label.strip()
 
-    # Resolve / validate
-    if args.input_path is None:
-        args.input_path = Path(sys.stdin.readline().strip())
-        if not args.quiet:
-            logger.info(f"Read input path from stdin: {args.input_path}")
+    # Resolve / validate (positional > stdin; local path or gs:// URI)
+    token = stdio.one_input(args.input_path, SPEC.name)
+    run = Run(SPEC, args)
+    src = run.input(token)
 
-    if not args.input_path.exists():
-        logger.error(f"File '{args.input_path}' does not exist.")
+    out = run.plan(
+        ext=".nc",
+        explicit=args.output_path,  # -o is used verbatim, as always
+        legacy=lambda: naming.with_stem_suffix(src.local, "_evenness", ".nc"),
+    )
+
+    if not out.remote and Path(out.target).resolve() == src.local.resolve():
+        logger.error(f"Refusing to overwrite input file: {src.local.resolve()}")
         sys.exit(1)
 
-    if args.output_path is None:
-        args.output_path = args.input_path.with_stem(args.input_path.stem + "_evenness").with_suffix(".nc")
+    if run.reusable(out):
+        run.finish(out)
+        return
 
-    if args.output_path.exists() and args.no_overwrite:
-        logger.error(f"Output file '{args.output_path}' exists and --no-overwrite was set.")
+    if args.no_overwrite and run.exists(out):
+        logger.error(f"Output file '{out.target}' exists and --no-overwrite was set.")
         sys.exit(1)
 
     try:
-        # Load quietly to keep stdout clean for piping
-        f = io.StringIO()
-        with redirect_stdout(f):
-            ds = xr.open_dataset(args.input_path)
+        compute(src.local, out.local, range_label=args.range_label,
+                try_calibrate=args.try_calibrate, shown=out.target)
 
-        # Ensure we have a range variable
-        have_range = args.range_label in ds.variables or args.range_label in ds.coords
-
-        if not have_range and args.try_calibrate:
-            if not args.quiet:
-                logger.info(f"'{args.range_label}' not found; attempting to compute Sv to obtain it...")
-            # Try opening as converted and computing Sv; this typically adds 'echo_range'
-            ed = ep.open_converted(args.input_path)
-            ds = ep.calibrate.compute_Sv(ed)
-            have_range = args.range_label in ds.variables or args.range_label in ds.coords
-
-        if not have_range:
-            logger.error(
-                f"Required range label '{args.range_label}' not found in Dataset. "
-                f"Consider using --try-calibrate if the file is an Echopype-converted product."
-            )
-            sys.exit(1)
-
-        # Compute evenness (EA)
-        if not args.quiet:
-            logger.info("Computing evenness (Equivalent Area, EA)...")
-        da_ea = evenness(ds=ds, range_label=args.range_label)
-
-        # Package into a Dataset for output
-        out_ds = da_ea.to_dataset(name="evenness")
-        # Add a bit of metadata
-        out_ds["evenness"].attrs.setdefault("long_name", "Equivalent Area")
-        out_ds["evenness"].attrs.setdefault("units", "m")
-        out_ds.attrs.setdefault("source_tool", "aa-evenness")
-        out_ds.attrs.setdefault("range_label", args.range_label)
-
-        _add_basic_attrs(out_ds)
-
-        # Save
-        if not args.quiet:
-            logger.info(f"Saving evenness to {args.output_path} ...")
-        out_ds.to_netcdf(args.output_path, mode="w", format="NETCDF4")
-
-        # Log/debug + print path for piping
-        if not args.quiet:
-            logger.debug(f"\naa-evenness args:\n{pprint.pformat(vars(args))}")
-        print(args.output_path.resolve())
-
-        if not args.quiet:
-            logger.info("Evenness computation complete.")
+        logger.debug(f"\naa-evenness args:\n{pprint.pformat(vars(args))}")
+        # Print path (or URI) for piping
+        run.finish(out)
+        logger.info("Evenness computation complete.")
 
     except Exception as e:
         logger.exception(f"Error during evenness computation: {e}")
         sys.exit(1)
+
+
+def compute(input_path: Path, output_path: Path, *, range_label: str = "echo_range",
+            try_calibrate: bool = False, shown: str | None = None) -> None:
+    """Compute EA from ``input_path`` and write it to ``output_path``.
+
+    ``shown`` is the name logged for the output (the gs:// URI when
+    ``output_path`` is a staging file).
+    """
+    import xarray as xr
+    from echopype.metrics import evenness
+
+    # Load quietly to keep stdout clean for piping
+    f = io.StringIO()
+    with redirect_stdout(f):
+        ds = xr.open_dataset(input_path)
+
+    # Ensure we have a range variable
+    have_range = range_label in ds.variables or range_label in ds.coords
+
+    if not have_range and try_calibrate:
+        logger.info(f"'{range_label}' not found; attempting to compute Sv to obtain it...")
+        import echopype as ep
+
+        # Try opening as converted and computing Sv; this typically adds 'echo_range'
+        ed = ep.open_converted(str(input_path))
+        ds = ep.calibrate.compute_Sv(ed)
+        have_range = range_label in ds.variables or range_label in ds.coords
+
+    if not have_range:
+        logger.error(
+            f"Required range label '{range_label}' not found in Dataset. "
+            f"Consider using --try-calibrate if the file is an Echopype-converted product."
+        )
+        sys.exit(1)
+
+    logger.info("Computing evenness (Equivalent Area, EA)...")
+    da_ea = evenness(ds=ds, range_label=range_label)
+
+    # Package into a Dataset for output.
+    out_ds = da_ea.to_dataset(name="evenness")
+    # Fresh attrs: the result can inherit the range variable's attrs
+    # (long_name, units, history) and those don't describe this metric.
+    out_ds["evenness"].attrs = {"long_name": "Equivalent Area", "units": "m"}
+    out_ds.attrs.setdefault("source_tool", "aa-evenness")
+    out_ds.attrs.setdefault("range_label", range_label)
+
+    _add_basic_attrs(out_ds)
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Saving evenness to {shown or output_path} ...")
+    out_ds.to_netcdf(output_path, mode="w", format="NETCDF4")
+    ds.close()
 
 
 if __name__ == "__main__":

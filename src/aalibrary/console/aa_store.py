@@ -36,6 +36,18 @@ The two ratios worth having
 
 Everything else in the output is decoration around those two.
 
+Lineage
+-------
+Two records are reported when the store carries them: the `provenance`
+attribute aa-combine writes ({tool, version, parents, at}), and the shared
+aa provenance every aa-* tool embeds (`aa_provenance`): with --json as
+`product` (the product hash), `base` and `pipeline` (one entry per step,
+identical steps grouped with a count), and as a `product` line in the
+human summary. A store written before aa-combine recorded its own aa
+provenance carries its first input's copy (echopype copies the first
+input's root attributes); that copy is recognised and not reported as the
+store's.
+
 Typical usage:
     aa-store info combined.zarr
     aa-store info --json combined.zarr | jq .
@@ -72,6 +84,65 @@ from typing import Any, Optional
 # with hasattr because SIGPIPE doesn't exist on Windows.
 if hasattr(signal, "SIGPIPE"):
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+from aalibrary.console._core import (  # noqa: E402 - after the log silencing above
+    Help, ToolSpec, provenance as _provenance, render, show_help,
+)
+
+# The provenance seal: a subgroup whose product_hash attribute must match
+# aa_provenance for the provenance to be the store's own (xarray copies root
+# attributes into a re-saved store, but not the seal).
+SEAL_GROUP = _provenance.SEAL_GROUP
+SEAL_ATTR = _provenance.SEAL_ATTR
+
+SPEC = ToolSpec(name="aa-store", role="inspector", engines=())
+
+HELP = Help(
+    summary="Describe or verify a Zarr store: dims, chunks written, bytes, codec, lineage.",
+    does=(
+        "info describes a store from its metadata and one object listing, so it "
+        "answers for half-written stores too. verify judges it: complete (exit 0), "
+        "coherent but unfinished (3, resumable), finished and wrong (4). The aa_write "
+        "marker aa-combine stamps is what tells sparsity from an interrupted write."
+    ),
+    stdin=(
+        "Store paths or URIs (local, file://, gs://, s3://), one per line, when none "
+        "are given as arguments: bare paths or aa/1 handle lines (aa-combine --json)."
+    ),
+    stdout=(
+        "The store's URI (file://... for a local store), so a pipe keeps flowing; "
+        "the human summary goes to stderr. With --json one aa/1 document per store "
+        "(NDJSON), which the Workbench Metadata panel reads."
+    ),
+    metadata=(
+        "Read-only: never opens a write handle. Reports the lineage the store "
+        "records: aa-combine's provenance {tool, version, parents, at}, and the aa "
+        "provenance when present (--json keys product, base, pipeline; a 'product' "
+        "line in the summary)."
+    ),
+    options=[
+        ("info | verify", "the subcommand (first argument)"),
+        ("--json", "one JSON document per store on stdout"),
+        ("--arrays", "include the per-array breakdown in --json"),
+        ("--group PATH", "restrict to one group, e.g. Sonar"),
+        ("--no-census", "skip the object count (huge remote stores)"),
+        ("--max-objects N", "stop the census after N objects (default 2000000)"),
+        ("--strict", "verify: no marker + missing chunks = unfinished (exit 3)"),
+    ],
+    files=(
+        "Reads .zarr stores, Zarr v2 or v3, local or remote through fsspec (gs:// "
+        "needs gcsfs, s3:// needs s3fs; local stores need nothing)."
+    ),
+    pipeline=(
+        "An inspector, usually last: aa-combine -o out.zarr --json | aa-store verify "
+        "--json. Exit codes: 0 ok, 1 unreadable, 2 usage, 3 partial, 4 verify failed "
+        "(the worst store wins)."
+    ),
+    examples=[
+        "aa-store info combined.zarr",
+        "aa-store verify --json gs://bucket/HB1603_L1.zarr",
+    ],
+)
 
 
 # Metadata documents, at every Zarr version. Everything else inside an array
@@ -119,6 +190,11 @@ def _configure_logging(quiet: bool, debug: bool) -> None:
 
 
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
     help_text = """
     Usage: aa-store [OPTIONS] SUBCOMMAND [STORE]
 
@@ -132,7 +208,9 @@ def print_help() -> None:
                                 finished and wrong.
 
     Arguments:
-      STORE                     Path to a .zarr store. Optional; falls
+      STORE                     Path or URI of a .zarr store (local,
+                                file://, gs://, s3:// ...; remote stores
+                                are read through fsspec). Optional; falls
                                 back to stdin, which may be a bare path
                                 (what every other aa-* tool prints) or an
                                 aa/1 handle line.
@@ -140,7 +218,11 @@ def print_help() -> None:
     Options:
       --json                    Emit one JSON document on stdout instead
                                 of the human summary. This is what the
-                                Workbench reads.
+                                Workbench reads. When the store carries
+                                the aa provenance, it adds "product" (the
+                                product hash), "base" and "pipeline"
+                                ([{tool, op, params, count}], oldest
+                                first) to the keys it always had.
       --arrays                  Include the per-array breakdown in --json
                                 output. Off by default: an EchoData store
                                 has dozens of arrays and the UI wants the
@@ -162,7 +244,8 @@ def print_help() -> None:
 
       -q, --quiet               Warnings and errors only.
       --debug                   Verbose logging.
-      -h, --help                This message.
+      -h, --help                The short help.
+      --help-all                This reference.
 
     Sparse or unfinished?
       A missing chunk means "every value here is the fill value". For a
@@ -285,8 +368,14 @@ def _uri_from_line(line: str) -> Optional[str]:
         return None
     if text.startswith("{"):
         try:
-            return str(json.loads(text)["uri"])
-        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            handle = json.loads(text)
+            # "uri" is the aa/1 key; "path"/"url" are accepted as the shared
+            # pipe contract (aalibrary.console._core.stdio) accepts them.
+            value = handle.get("uri") or handle.get("path") or handle.get("url")
+            if not value:
+                raise KeyError("uri")
+            return str(value)
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
             logger.warning(f"Skipping stdin line: not a handle with a uri ({exc})")
             return None
     return text
@@ -586,6 +675,11 @@ def _census(store, arrays: dict[str, dict], max_objects: int) -> dict:
     partial = False
 
     for rel, size in store.walk(max_objects=max_objects + 1):
+        if rel == SEAL_GROUP or rel.startswith(SEAL_GROUP + "/"):
+            # The provenance seal: bookkeeping, not part of the data layout.
+            # Counting it would make a sealed store differ from the same data
+            # written without one.
+            continue
         total_objects += 1
         if total_objects > max_objects:
             partial = True
@@ -748,7 +842,97 @@ def describe(
     if time_range:
         summary["time"] = time_range
 
+    # Additive: the shared aa provenance, when the store carries its own.
+    document = _aa_provenance(root_attributes)
+    if document is not None:
+        seal = _seal_hash(store)
+        if seal != (document.get("product") or {}).get("hash"):
+            # No seal, or another product's: provenance copied into a re-saved
+            # store (xarray copies root attributes, not the seal), or written
+            # before seals existed. Either way not this store's own
+            # (aalibrary.console._core.provenance.inspect calls it "copied").
+            logger.debug("aa_provenance present but not sealed for this store; not reported")
+            document = None
+    if document is not None:
+        product = document.get("product") or {}
+        summary["product"] = product.get("hash") or root_attributes.get(AA_HASH_ATTR)
+        summary["base"] = document.get("base") or root_attributes.get(AA_BASE_ATTR)
+        summary["pipeline"] = _pipeline_summary(document)
+
     return summary
+
+
+# The shared provenance (aalibrary.console._core.provenance). Parsed here as
+# plain JSON so aa-store keeps working on the metadata alone.
+AA_PROVENANCE_ATTR = "aa_provenance"
+AA_HASH_ATTR = "aa_product_hash"
+AA_BASE_ATTR = "aa_base"
+AA_PROVENANCE_SCHEMA = "aa-provenance/1"
+
+
+def _seal_hash(store) -> Optional[str]:
+    """The product hash recorded in the store's aa_seal subgroup, or None."""
+    for rel in (f"{SEAL_GROUP}/zarr.json", f"{SEAL_GROUP}/.zattrs"):
+        raw = store.read_text(rel)
+        if not raw:
+            continue
+        try:
+            document = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        attrs = document.get("attributes", {}) if rel.endswith("zarr.json") else document
+        value = (attrs or {}).get(SEAL_ATTR)
+        return str(value) if value else None
+    return None
+
+
+def _aa_provenance(attributes: dict) -> Optional[dict]:
+    """The store's own aa provenance document, or None.
+
+    Zarr attributes hold it as JSON (a dict); a NetCDF-derived copy may be a
+    JSON string. A store written by aa-combine before it recorded its own aa
+    provenance still carries its FIRST INPUT's copy, because echopype's
+    combine copies the first input's root attributes. That copy describes
+    the input, not the store: when the store's own `provenance` names a
+    different tool than the document's last step, it is ignored.
+    """
+    value = attributes.get(AA_PROVENANCE_ATTR)
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", "replace")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(value, dict) or value.get("schema") != AA_PROVENANCE_SCHEMA:
+        return None
+    lineage = attributes.get("provenance")
+    steps = value.get("pipeline") or []
+    last_tool = steps[-1].get("tool") if steps and isinstance(steps[-1], dict) else None
+    if isinstance(lineage, dict) and lineage.get("tool") and last_tool \
+            and last_tool != lineage["tool"]:
+        logger.debug(
+            f"aa_provenance belongs to an input ({last_tool}), not to this "
+            f"{lineage['tool']} store; not reported"
+        )
+        return None
+    return value
+
+
+def _pipeline_summary(document: dict) -> list[dict]:
+    """[{tool, op, params, count}], oldest first; count > 1 for grouped steps
+    (e.g. one aa-nc conversion per input of a combine)."""
+    steps = []
+    for step in document.get("pipeline") or []:
+        if not isinstance(step, dict):
+            continue
+        steps.append({
+            "tool": step.get("tool"),
+            "op": step.get("op"),
+            "params": step.get("params") or {},
+            "count": int(step.get("count") or 1),
+        })
+    return steps
 
 
 def _primary_array(entries: list[dict]) -> Optional[dict]:
@@ -944,20 +1128,20 @@ def _print_summary(summary: dict) -> None:
         parents = provenance.get("parents") or []
         out(f"  produced by {provenance['tool']} {provenance.get('version', '')}"
             f"   parents: {len(parents)}\n")
+    if summary.get("product"):
+        chain = " > ".join(
+            f"{step['tool']}" + (f" x{step['count']}" if step.get("count", 1) > 1 else "")
+            for step in summary.get("pipeline") or []
+        )
+        out(f"  product     aa:{str(summary['product'])[:8]}   base {summary.get('base', '')}"
+            + (f"   pipeline {chain}" if chain else "") + "\n")
     out(f"  arrays      {summary.get('arrayCount', 0)}\n")
 
 
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
-def main() -> None:
-    if len(sys.argv) == 1:
-        print_help()
-        sys.exit(0)
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print_help()
-        sys.exit(0)
-
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Describe or verify a Zarr store.", add_help=False
     )
@@ -978,6 +1162,18 @@ def main() -> None:
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument("--debug", action="store_true")
+    return parser
+
+
+def main() -> None:
+    if len(sys.argv) == 1:
+        print_help()
+        sys.exit(0)
+
+    parser = _build_parser()
+    # -h/--help: the short, curated help. --help-all: the full reference.
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        sys.exit(0)
 
     # `parse_known_args` rather than `parse_args`, because argparse cannot
     # match a variadic positional across an optional: given

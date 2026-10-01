@@ -18,14 +18,25 @@ file is not in NCEI, or when you need finer control over the download
 and conversion stages.
 
 Pipeline contract (mirrors the rest of the aa-suite):
-    input  : a raw file name as positional arg or via stdin
+    input  : a raw file name as positional arg or via stdin (a path,
+             file:// or gs:// URI, or an aa/1 JSON handle also work)
     output : .nc file on disk; absolute path printed to stdout
     logs   : stderr via loguru
 
-Idempotency: if the target .nc already exists, aa-ed prints its path
-and exits immediately (no BigQuery lookup, no download, no conversion).
-If only the .raw exists, the download is skipped but the conversion
-still runs. Pass --force to override both checks.
+Provenance: the .nc records what it was made from (the .raw's content
+identity and, for an NCEI download, the s3://noaa-wcsd-pds/... object it
+came from, kept in a <file>.raw.aa.json sidecar beside the download),
+the sonar model, the base name, and its product hash. See aa-metadata.
+
+Idempotency: an existing .nc is reused, with no conversion, when
+  - it holds the same product (same raw content, same sonar model);
+  - in NCEI mode, its recorded origin is the same NCEI object with the
+    same sonar model: then there is no BigQuery lookup and no download;
+  - it was made before provenance existed (no aa provenance at all):
+    it is reused by name, as before, with a note on stderr.
+A .nc that holds a different product is converted again. If only the
+.raw exists, the download is skipped but the conversion still runs.
+Pass --force to override both checks.
 
 Input shape: aa-ed auto-detects three modes from the input:
 
@@ -36,7 +47,9 @@ Input shape: aa-ed auto-detects three modes from the input:
     offline single-file mode. Sonar model detected from header (or
     --sonar_model), .nc lands next to the .raw, ZERO network calls.
     Output: .nc absolute path on stdout. --force never overwrites
-    a user-provided .raw.
+    a user-provided .raw. (A gs:// URI of a .raw works the same way:
+    read through a gcsfuse mount or the download cache; the .nc then
+    lands in the current directory.)
 
   - Path to an existing directory ("/abs/path/dir/") -> batch mode.
     Globs *.raw (or **/*.raw with --recursive), converts each via
@@ -44,9 +57,8 @@ Input shape: aa-ed auto-detects three modes from the input:
     keeps going on per-file failures. Output: the DIRECTORY path
     on stdout (not a list of .nc paths) for aa-combine et al.
 
-Idempotency: if the target .nc already exists, aa-ed prints its path
-and exits (single-file modes) or counts it as a cache hit (directory
-mode). --force overrides.
+Idempotency applies per file in directory mode (a reused .nc counts as
+a cache hit). --force overrides.
 
 Typical pipeline usage:
     echo HB1603_L1-D20160703-T183957.raw | aa-ed | aa-sv | aa-graph
@@ -68,6 +80,8 @@ Cloud output & URI caching (opt-in, fully additive):
         upload_file_to_gcp_bucket), so aa-ed and aa-upload write objects
         identically. Bucket / credentials resolve the same way too
         (--gcp_env / --project_id / --gcp_bucket_name / ambient env vars).
+        The object also gets custom metadata aa-product-hash / aa-base /
+        aa-tool from the .nc's provenance.
 
     NetCDF is HDF5 underneath and needs a seekable local file, so aa-ed
     writes the .nc to disk first and then PUTs the whole object; the
@@ -101,7 +115,10 @@ logger.add(sys.stderr, level="WARNING")
 
 # Now the heavy imports — anything they log gets squashed
 import argparse
+import os
 import pprint
+import re
+import shutil
 import signal
 from pathlib import Path
 from typing import Optional
@@ -112,6 +129,88 @@ from typing import Optional
 # with hasattr because SIGPIPE doesn't exist on Windows.
 if hasattr(signal, "SIGPIPE"):
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+from aalibrary.console._core import (  # noqa: E402 - after the log silencing above
+    Help, Run, ToolSpec, add_common_flags, canon, naming, provenance, record_source,
+    render, show_help, stdio, uris,
+)
+
+SPEC = ToolSpec(
+    name="aa-ed",
+    role="echodata",
+    kind="echodata",
+    op="echopype.open_raw",
+    op_version=1,
+    # The sonar model actually passed to echopype.open_raw: --sonar_model,
+    # else the NCEI cache (bare name) or the file header (local .raw).
+    params={"sonar_model": canon.choice("upper")},
+    # aa-ed runs exactly aa-nc's computation — echopype.open_raw(raw,
+    # sonar_model) then to_netcdf(overwrite=True), same op, op_version and
+    # canonical sonar_model (echopype upper-cases it too) — so the two tools'
+    # products are the same product: `aa-nc x.raw` then `aa-ed x.raw` reuses
+    # x.nc instead of converting it again under a different hash. The step
+    # still records tool "aa-ed" (and identity_tool "aa-nc").
+    identity="aa-nc",
+)
+
+# Where NCEI keeps the raw files (the bucket aalibrary.ingestion reads).
+NCEI_PREFIX = "s3://noaa-wcsd-pds/"
+
+HELP = Help(
+    summary="Raw file name, path or folder -> EchoData NetCDF (aa-raw + aa-nc in one step).",
+    does=(
+        "A bare NCEI file name is looked up in the NCEI BigQuery cache (ship, survey, "
+        "echosounder), downloaded from NCEI and converted with echopype.open_raw. A "
+        "local .raw (or gs:// URI) is converted offline, the sonar model read from its "
+        "header. A directory: every .raw in it."
+    ),
+    stdin=(
+        "One token (argument or first stdin line): a bare file name, a .raw path, a "
+        "directory, a file:// or gs:// URI, or an aa/1 JSON handle. An empty pipe is "
+        "an error (exit 1)."
+    ),
+    stdout=(
+        "The .nc's absolute path; its gs:// URI with --print-uri/--cloud-only or "
+        "-o/--dest gs://...; the directory itself in directory mode."
+    ),
+    metadata=(
+        "Starts the provenance chain: the .nc records the .raw's identity, the sonar "
+        "model and the base name (aa_provenance, aa_product_hash, aa_base). An NCEI "
+        "download gets a <file>.raw.aa.json sidecar with its origin "
+        "(s3://noaa-wcsd-pds/data/raw/...), which the .nc records too."
+    ),
+    options=[
+        ("FILE_NAME | PATH.raw | DIR", "what to convert (mode is auto-detected)"),
+        ("-o, --output_path PATH", "the .nc (suffix forced to .nc); local or gs://"),
+        ("--file_download_directory DIR", "where NCEI downloads land (default: .)"),
+        ("--ship_name/--survey_name/--sonar_model", "override the lookup; all three "
+                                                    "skip BigQuery"),
+        ("-r, --recursive", "directory mode: include subfolders"),
+        ("--cleanup-raw", "delete the downloaded .raw after converting"),
+        ("--gcs-uri URI | --gcs-prefix P", "use a bucket object as a cache of the .nc "
+                                           "(see --help-all)"),
+        ("-f, --force", "download and convert again"),
+    ],
+    science={"sonar_model": "Which echopype parser reads the file: --sonar_model, else "
+                            "the NCEI cache (bare name) or the .raw header."},
+    files=(
+        "Writes <raw stem>.nc beside the .raw (NCEI: in --file_download_directory; "
+        "gs:// raw: the current directory), or -o / --dest. Reused without converting: "
+        "a .nc holding the same product; in NCEI mode one recorded as converted from "
+        "the same NCEI object and sonar model (no lookup, no download); one made before "
+        "provenance existed (by name, with a note). A different product is converted "
+        "again."
+    ),
+    pipeline=(
+        "First stage: aa-ed FILE.raw | aa-sv | aa-clean ...  Directory mode feeds "
+        "aa-combine: aa-ed ./raw/ | aa-combine -o survey.zarr"
+    ),
+    examples=[
+        "aa-ed HB1603_L1-D20160703-T183957.raw | aa-sv",
+        "aa-ed ./data/D20160703-T060000.raw          # offline, .nc beside the .raw",
+        "aa-ed ./raw/ | aa-combine -o HB1603_L1.zarr",
+    ],
+)
 
 
 def silence_all_logs():
@@ -139,6 +238,11 @@ def _configure_logging(quiet: bool, debug: bool) -> None:
 
 
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
     help_text = """
     Usage: aa-ed [OPTIONS] [FILE_NAME]
 
@@ -160,7 +264,11 @@ def print_help() -> None:
                                     from the file header (no BigQuery,
                                     no NCEI download, no GCP creds
                                     needed), and writes the .nc
-                                    ALONGSIDE the .raw.
+                                    ALONGSIDE the .raw. A gs:// URI of a
+                                    .raw works the same way (read through
+                                    a gcsfuse mount or the download
+                                    cache); its .nc goes to the current
+                                    directory.
 
                                   - Path to an existing directory (e.g.
                                     /home/me/data/ or ./data/) ->
@@ -175,13 +283,23 @@ def print_help() -> None:
                                     don't abort the batch; exit code
                                     is non-zero if any failed.
 
-                                  Optional; falls back to stdin if not
-                                  provided.
+                                  Optional; falls back to the first line
+                                  of stdin if not provided (a path, a
+                                  file:// or gs:// URI, or an aa/1 JSON
+                                  handle). An empty pipe is an error
+                                  (exit 1): the previous stage failed.
 
     Optional:
-      -o, --output_path PATH      Path to save the converted NetCDF output.
+      -o, --output_path PATH      Path to save the converted NetCDF output
+                                  (its suffix is forced to .nc). May be a
+                                  gs:// URI: written locally, then uploaded.
                                   Default: same directory as the downloaded
-                                  .raw, with a .nc suffix.
+                                  .raw, named <raw stem>.nc.
+
+      --base NAME                 Base name of the output (<NAME>.nc) and of
+                                  every product derived from it downstream.
+      --dest DIR|gs://PREFIX      Write <base>.nc there instead of beside the
+                                  .raw. (Not in directory mode.)
 
       --file_download_directory PATH
                                   Where to download the .raw to.
@@ -193,7 +311,8 @@ def print_help() -> None:
       --survey_name NAME          Override the survey_name lookup
                                   (e.g. HB1603).
       --sonar_model NAME          Override the echosounder lookup
-                                  (e.g. EK60, EK80).
+                                  (e.g. EK60, EK80). This is the one option
+                                  that changes the product (hash).
 
                                   If all three overrides are provided, aa-ed
                                   skips the NCEI cache lookup entirely. Use
@@ -201,19 +320,26 @@ def print_help() -> None:
                                   disambiguate a file name that collides
                                   across multiple surveys.
 
-      --cleanup-raw               Delete the downloaded .raw after the .nc
-                                  is produced. Off by default — the .raw is
+      --cleanup-raw               Delete the downloaded .raw (and its
+                                  .aa.json sidecar) after the .nc is
+                                  produced. Off by default — the .raw is
                                   source data and is kept so re-running
                                   aa-ed (or aa-nc directly) is free.
 
       --force, -f                 Re-download and re-convert even when the
                                   .raw / .nc are already on disk. Default
                                   behavior is to treat both as cached: an
-                                  existing .nc short-circuits everything
-                                  (including the BigQuery lookup), and an
-                                  existing .raw skips the NCEI download.
-                                  Use this if you suspect a cached file is
-                                  stale or corrupt.
+                                  existing .nc that holds the same product
+                                  short-circuits everything (in NCEI mode a
+                                  .nc recorded as converted from the same
+                                  NCEI object and sonar model skips the
+                                  BigQuery lookup and the download; a .nc
+                                  made before provenance existed is reused
+                                  by name, with a note), and an existing
+                                  .raw skips the NCEI download. A .nc that
+                                  holds a different product is converted
+                                  again. Use --force if you suspect a
+                                  cached file is stale or corrupt.
 
       --upload_to_gcp             Also upload the downloaded .raw to GCP
                                   (passed through to aalibrary.ingestion).
@@ -229,7 +355,9 @@ def print_help() -> None:
                                   (downloaded, or passed through with
                                   --print-uri); on a miss the new .nc is
                                   uploaded here after conversion, using the
-                                  same GCP primitive as aa-upload.
+                                  same GCP primitive as aa-upload, and the
+                                  object gets aa-product-hash / aa-base /
+                                  aa-tool custom metadata.
 
       --gcs-prefix PREFIX         Like --gcs-uri, but aa-ed names the object
                                   <prefix>/<stem>.nc; the bucket comes from
@@ -255,14 +383,17 @@ def print_help() -> None:
       --quiet                     Suppress INFO logs; final path still
                                   prints on stdout.
 
-      -h, --help                  Show this help and exit.
+      -h, --help                  Show the short help and exit.
+      --help-all                  Show this reference and exit.
 
     Description:
       Resolves a raw file's ship/survey/echosounder by querying the NCEI
       BigQuery cache, downloads the .raw from NCEI, and converts it to a
       multi-group NetCDF EchoData file with echopype.open_raw /
       EchoData.to_netcdf. The .nc absolute path is printed on stdout,
-      ready for piping into aa-sv and onward.
+      ready for piping into aa-sv and onward. Provenance (the .raw's
+      identity and NCEI origin, sonar model, base name, product hash) is
+      embedded in the .nc; see aa-metadata.
 
       Equivalent (in output) to:
 
@@ -288,25 +419,7 @@ def print_help() -> None:
     print(help_text)
 
 
-def main() -> None:
-    # Stdin / no-args handling — same shape as aa-sonar so an empty-stdin
-    # invocation prints help instead of hanging on readline.
-    if len(sys.argv) == 1:
-        if not sys.stdin.isatty():
-            stdin_data = sys.stdin.readline().strip()
-            if stdin_data:
-                sys.argv.append(stdin_data)
-            else:
-                print_help()
-                sys.exit(0)
-        else:
-            print_help()
-            sys.exit(0)
-
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print_help()
-        sys.exit(0)
-
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Resolve, download, and convert a raw NCEI file to NetCDF.",
         add_help=False,
@@ -320,7 +433,8 @@ def main() -> None:
     )
     parser.add_argument(
         "-o", "--output_path",
-        type=Path,
+        # str, not Path: a gs:// URI must survive parsing.
+        type=str,
         default=None,
         help="Path to save the .nc output. Default: alongside the .raw.",
     )
@@ -447,6 +561,208 @@ def main() -> None:
         help="Explicit GCP bucket name for cloud output (overrides "
              "--gcp_env; ignored if a bucket is given inside --gcs-uri).",
     )
+    # --base / --dest (aa-ed already has its own --force).
+    add_common_flags(parser)
+    return parser
+
+
+# ============================================================
+# Provenance, naming and reuse (shared core)
+# ============================================================
+
+def _canon_sonar(value):
+    """The hash's spelling of a sonar model (EK60 == ek60)."""
+    return SPEC.params["sonar_model"](value)
+
+
+def _note(args, message: str) -> None:
+    """One line on stderr, like the core's "reusing ..." line (not under --quiet)."""
+    if not getattr(args, "quiet", False):
+        print(f"{SPEC.name}: {message}", file=sys.stderr)
+
+
+def _explicit_nc(args) -> Optional[str]:
+    """-o as it always worked: the suffix forced to .nc. May be a gs:// URI."""
+    if not args.output_path:
+        return None
+    return naming.with_ext(uris.from_file_uri(str(args.output_path)), ".nc")
+
+
+def _planned_target(args, default_dir: Path, file_name: str) -> str:
+    """Where the .nc goes, decided before the .raw is at hand.
+
+    The rule Run.plan applies — -o, else --dest, else the standard name
+    <base>.nc beside the .raw (AA_NAMING=legacy: <raw stem>.nc) — computed
+    without the input, so an existing .nc can be checked before any lookup
+    or download. It is then handed to plan() as the explicit target, so the
+    two can never disagree.
+    """
+    explicit = _explicit_nc(args)
+    if explicit is not None:
+        if uris.is_remote(explicit):
+            return explicit
+        return str(Path(explicit).expanduser().resolve())
+    base = naming.sanitize_base(args.base) if args.base else naming.base_of(file_name)
+    name = naming.echodata_name(base, ".nc")
+    if args.dest:
+        if uris.is_remote(args.dest):
+            return uris.join(args.dest, name)
+        return str((Path(args.dest).expanduser() / name).resolve())
+    if naming.mode() == "legacy":
+        return str((Path(default_dir) / file_name).with_suffix(".nc").resolve())
+    return str((Path(default_dir) / name).resolve())
+
+
+def _default_nc_path(raw_path: Path) -> Path:
+    """The .nc a .raw converts to by default: <base>.nc beside it, where the
+    base is the raw file's stem (AA_NAMING=legacy: <raw stem>.nc). The same
+    rule Run.plan applies; directory mode passes it as the explicit target so
+    its collision check and its conversions use one list of names."""
+    if naming.mode() == "legacy":
+        return raw_path.with_suffix(".nc")
+    return raw_path.parent / naming.echodata_name(naming.base_of(raw_path.name), ".nc")
+
+
+def _recorded_sonar(doc: dict) -> Optional[str]:
+    """The sonar model an existing .nc was converted with (from its provenance)."""
+    step = (doc.get("pipeline") or [{}])[-1]
+    if step.get("op") != SPEC.op:
+        return None
+    return (step.get("params") or {}).get("sonar_model")
+
+
+def _ship_key(name) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(name or "").lower())
+
+
+def _ncei_origin_match(doc: dict, args) -> Optional[str]:
+    """The NCEI origin an existing .nc records, when it is the object this run
+    would download and the .nc was converted with the same sonar model.
+
+    Same object: the key ends in this file name, and the ship / survey /
+    echosounder in it agree with any overrides given. Same sonar model:
+    --sonar_model when given, else the echosounder in the recorded key (which
+    is what the BigQuery lookup would return). None when they do not match.
+    """
+    recorded = _recorded_sonar(doc)
+    if recorded is None:
+        return None
+    for item in doc.get("inputs") or []:
+        origin = str(item.get("origin") or "")
+        if not origin.startswith(NCEI_PREFIX):
+            continue
+        parts = origin[len(NCEI_PREFIX):].split("/")
+        if parts[-1] != args.file_name or len(parts) < 4:
+            continue
+        ship, survey, echosounder = parts[-4], parts[-3], parts[-2]
+        if args.ship_name and _ship_key(ship) != _ship_key(args.ship_name):
+            continue
+        if args.survey_name and survey != args.survey_name:
+            continue
+        if _canon_sonar(args.sonar_model or echosounder) != recorded:
+            continue
+        return origin
+    return None
+
+
+def _product_run(args, raw_path: Path, sonar_model: str, target: str, *, stage: bool = True):
+    """Run + planned output for converting raw_path with sonar_model."""
+    run = Run(SPEC, args, params={"sonar_model": _canon_sonar(sonar_model)})
+    run.input(str(raw_path))
+    return run, run.plan(ext=".nc", explicit=target, stage=stage)
+
+
+def _ncei_object_key(file_name: str, metadata: dict) -> str:
+    """The NCEI object a download came from: the BigQuery row's
+    s3_object_key when the lookup ran, else the key aalibrary.ingestion
+    builds (data/raw/<NCEI ship>/<survey>/<echosounder>/<file>)."""
+    key = metadata.get("s3_object_key")
+    if key:
+        return str(key).lstrip("/")
+    ship = metadata["ship_name"]
+    try:
+        from aalibrary.utils.helpers import normalize_ship_name
+        from aalibrary.utils.ncei_utils import get_closest_ncei_formatted_ship_name
+
+        ship = get_closest_ncei_formatted_ship_name(ship_name=normalize_ship_name(ship)) or ship
+    except Exception as exc:  # noqa: BLE001 - the given name is the best fallback
+        logger.debug(f"Could not resolve the NCEI ship folder for '{ship}': {exc}")
+    return f"data/raw/{ship}/{metadata['survey_name']}/{metadata['sonar_model']}/{file_name}"
+
+
+def _object_metadata(nc_path: Path) -> dict:
+    """aa-product-hash / aa-base / aa-tool for a bucket object, from the .nc."""
+    doc = provenance.read(nc_path) if nc_path.exists() else None
+    if not doc:
+        return {}
+    return {
+        uris.META_HASH: doc["product"]["hash"],
+        uris.META_BASE: doc.get("base", ""),
+        uris.META_TOOL: (doc.get("pipeline") or [{}])[-1].get("tool", SPEC.name),
+        **({uris.META_RECIPE: doc["product"]["recipe"]}
+           if doc["product"].get("recipe") else {}),
+    }
+
+
+def _deliver(args, target: str, cloud: Optional[dict], *, existing: bool = False) -> None:
+    """Hand the result to the next stage, exactly as before.
+
+    No cloud cache: print the .nc's absolute path (or its gs:// URI when -o /
+    --dest was one). Cloud cache (--gcs-uri / --gcs-prefix): upload the local
+    .nc to the object (registering an existing one), then print the gs:// URI
+    with --print-uri / --cloud-only, else the local path.
+    """
+    if cloud is None:
+        stdio.emit(target)
+        return
+    nc_path = Path(target)
+    _gcs_upload_nc(cloud["bucket"], cloud["blob"], nc_path, args.debug,
+                   metadata=_object_metadata(nc_path))
+    if existing:
+        logger.success(f"Registered existing .nc in the bucket: {cloud['uri']}")
+    else:
+        logger.success(f"Uploaded derived .nc to {cloud['uri']}")
+    if args.cloud_only:
+        _maybe_remove_local(nc_path)
+    logger.info("Passing reference to stdout...")
+    print(cloud["uri"] if (args.print_uri or args.cloud_only) else nc_path.resolve())
+
+
+def _cleanup_raw(args, raw_path: Path, user_owned: bool) -> None:
+    """--cleanup-raw: delete aa-ed's own download (and its .aa.json sidecar).
+    Done after the .nc is confirmed, so a conversion failure never costs the
+    user their downloaded raw data."""
+    if not args.cleanup_raw:
+        return
+    if user_owned:
+        # The "intermediate" .raw was actually the user's source data (a
+        # path they gave, or a gs:// object read through a mount/the cache).
+        # --cleanup-raw is meant to clean up aa-ed's own downloads only.
+        logger.warning(
+            f"--cleanup-raw ignored: '{raw_path}' was provided by "
+            "the user, not downloaded by aa-ed. Delete it manually "
+            "if you really want it gone."
+        )
+        return
+    try:
+        raw_path.unlink(missing_ok=True)
+        provenance.sidecar_path(raw_path).unlink(missing_ok=True)
+        logger.info(f"Removed intermediate .raw: {raw_path}")
+    except Exception as e:
+        # Non-fatal — the .nc still exists and gets printed.
+        logger.warning(f"Could not delete '{raw_path}': {e}")
+
+
+def main() -> None:
+    # No args on a terminal: help. (An empty pipe is an error: see below.)
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
+        print_help()
+        sys.exit(0)
+
+    parser = _build_parser()
+    # -h/--help: the short, curated help. --help-all: the full reference.
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        sys.exit(0)
 
     args = parser.parse_args()
 
@@ -459,16 +775,13 @@ def main() -> None:
     # ---------------------------
     # Validate input
     # ---------------------------
-    if args.file_name is None:
-        if sys.stdin.isatty():
-            logger.error("No file name provided and no stdin available.")
-            sys.exit(1)
-        args.file_name = sys.stdin.readline().strip()
+    # Positional, else the first stdin line (a bare name, a path, a file://
+    # or gs:// URI, or an aa/1 JSON handle). An empty pipe exits 1: it means
+    # the previous stage failed, and help on stdout would feed the next one.
+    from_stdin = stdio.normalize_token(args.file_name) is None
+    args.file_name = stdio.one_input(args.file_name, SPEC.name)
+    if from_stdin:
         logger.info(f"Read file name from stdin: {args.file_name}")
-
-    if not args.file_name:
-        logger.error("Empty file name.")
-        sys.exit(1)
 
     # Three acceptable input shapes:
     #   1. Bare file name ("HB1603...raw") — aa-ed will download from
@@ -476,7 +789,8 @@ def main() -> None:
     #   2. Path to an existing .raw file
     #      ("/home/me/data/HB1603...raw" or "./data/HB1603...raw") —
     #      use it as-is, skip NCEI download and BigQuery entirely.
-    #      (Local single-file mode)
+    #      (Local single-file mode; a gs:// URI of a .raw is read the same
+    #      way, through a gcsfuse mount or the download cache.)
     #   3. Path to an existing directory ("/home/me/data/" or "./data/")
     #      — convert every .raw inside (skipping cache hits, passing
     #      through standalone .nc files) and print the directory path
@@ -486,43 +800,46 @@ def main() -> None:
     # The directory branch dispatches BEFORE args.file_name gets set
     # to a basename (which would be the directory's name, not a useful
     # value) and before the .raw-extension check (irrelevant for dirs).
-    _user_input = args.file_name
-    _input_path = Path(_user_input).expanduser()
-    _has_directory = _user_input != _input_path.name
-
+    gcs_raw: Optional[str] = None
     user_provided_raw_path: Optional[Path] = None
-    if _has_directory:
-        _input_path = _input_path.resolve()
+    if uris.is_gcs(args.file_name):
+        gcs_raw = args.file_name
+        args.file_name = uris.basename(gcs_raw)
+    else:
+        _user_input = args.file_name
+        _input_path = Path(_user_input).expanduser()
+        _has_directory = _user_input != _input_path.name
 
-        # === Directory mode dispatch ===============================
-        if _input_path.is_dir():
-            _run_directory_mode(directory=_input_path, args=args)
-            return
+        if _has_directory:
+            _input_path = _input_path.resolve()
 
-        if not _input_path.is_file():
-            # If the user gave us a path, they expect that path to
-            # resolve. Silently falling back to "download to CWD" here
-            # would be the surprising behavior we're trying to avoid.
-            logger.error(
-                f"Path '{_input_path}' does not exist as a file or "
-                "directory. If you intended for aa-ed to download from "
-                f"NCEI, pass just the filename ('{_input_path.name}') "
-                "without a directory component."
+            # === Directory mode dispatch ===============================
+            if _input_path.is_dir():
+                _run_directory_mode(directory=_input_path, args=args)
+                return
+
+            if not _input_path.is_file():
+                # If the user gave us a path, they expect that path to
+                # resolve. Silently falling back to "download to CWD" here
+                # would be the surprising behavior we're trying to avoid.
+                logger.error(
+                    f"Path '{_input_path}' does not exist as a file or "
+                    "directory. If you intended for aa-ed to download from "
+                    f"NCEI, pass just the filename ('{_input_path.name}') "
+                    "without a directory component."
+                )
+                sys.exit(1)
+
+            user_provided_raw_path = _input_path
+            logger.info(
+                f"Using user-provided .raw at '{user_provided_raw_path}'; "
+                "no NCEI download will be performed for this file."
             )
-            sys.exit(1)
 
-        user_provided_raw_path = _input_path
-        logger.info(
-            f"Using user-provided .raw at '{user_provided_raw_path}'; "
-            "no NCEI download will be performed for this file."
-        )
-
-    # The NCEI cache lookup always works on the basename only — even
-    # when the user gave us a path, the BigQuery file_name column
-    # stores just the filename. We set args.file_name here, AFTER the
-    # directory check, so directory mode doesn't see a confusing
-    # basename-of-the-directory value.
-    args.file_name = _input_path.name
+        # The NCEI cache lookup always works on the basename only — even
+        # when the user gave us a path, the BigQuery file_name column
+        # stores just the filename.
+        args.file_name = _input_path.name
 
     # We deliberately keep this strict: aa-ed is a .raw → .nc tool. Other
     # extensions belong on aa-nc (for already-downloaded files) or aa-sonar
@@ -542,13 +859,12 @@ def main() -> None:
             "only resolves and downloads from NCEI. Proceeding as NCEI."
         )
 
+    local_source = user_provided_raw_path is not None or gcs_raw is not None
     if user_provided_raw_path is not None:
         # The .raw is already on disk at the user-specified location;
-        # we never need to create a download directory. Set download_dir
-        # to the file's parent for symmetry / logging only — it won't
-        # be used to land any downloads. If the user ALSO passed
-        # --file_download_directory, the path-form input wins and we
-        # warn rather than silently ignoring it. ("." is the parser
+        # we never need to create a download directory. If the user ALSO
+        # passed --file_download_directory, the path-form input wins and
+        # we warn rather than silently ignoring it. ("." is the parser
         # default, used as a sentinel for "user didn't actually set it".)
         download_dir = user_provided_raw_path.parent
         if args.file_download_directory != ".":
@@ -557,6 +873,17 @@ def main() -> None:
                 f"is being ignored: the .raw is already on disk at "
                 f"'{user_provided_raw_path}'. Drop the directory "
                 "component from the input if you want a fresh download."
+            )
+    elif gcs_raw is not None:
+        # Read through a gcsfuse mount or the download cache; the .nc goes
+        # to the current directory (or -o / --dest), as for every aa-* tool
+        # whose input came from gs://.
+        download_dir = Path.cwd()
+        if args.file_download_directory != ".":
+            logger.warning(
+                f"--file_download_directory='{args.file_download_directory}' "
+                f"is being ignored for a gs:// input ({gcs_raw}): it is read "
+                "through a gcsfuse mount or the download cache."
             )
     else:
         download_dir = Path(args.file_download_directory).expanduser().resolve()
@@ -571,6 +898,7 @@ def main() -> None:
         "user_provided_raw_path": (
             str(user_provided_raw_path) if user_provided_raw_path else None
         ),
+        "gcs_raw": gcs_raw,
         "output_path": args.output_path,
         "file_download_directory": str(download_dir),
         "ship_name": args.ship_name,
@@ -588,6 +916,8 @@ def main() -> None:
         "gcp_env": args.gcp_env,
         "project_id": args.project_id,
         "gcp_bucket_name": args.gcp_bucket_name,
+        "base": args.base,
+        "dest": args.dest,
     }
     logger.debug(
         f"Executing aa-ed configured with [OPTIONS]:\n"
@@ -607,16 +937,14 @@ def main() -> None:
     if user_provided_raw_path is not None:
         raw_path = user_provided_raw_path
     else:
-        raw_path = download_dir / args.file_name
+        raw_path = download_dir / args.file_name  # gs:// input: set once read
 
-    if args.output_path is None:
-        nc_path = raw_path.with_suffix(".nc")
-    else:
-        nc_path = args.output_path.expanduser().resolve().with_suffix(".nc")
-        nc_path.parent.mkdir(parents=True, exist_ok=True)
+    target = _planned_target(args, download_dir, args.file_name)
+    remote_target = uris.is_remote(target)
+    nc_path: Optional[Path] = None if remote_target else Path(target)
 
     # Same guard aa-nc has — cheap insurance against -o pointing at the .raw.
-    if nc_path.resolve() == raw_path.resolve():
+    if nc_path is not None and gcs_raw is None and nc_path.resolve() == raw_path.resolve():
         logger.error(f"Refusing to overwrite input file: {raw_path.resolve()}")
         sys.exit(1)
 
@@ -627,10 +955,14 @@ def main() -> None:
     # When no cloud destination is set, cloud_target stays None and every
     # branch below is skipped — aa-ed's original local behavior is
     # untouched, and no GCP module is imported.
-    cloud_target = _resolve_cloud_target(args, nc_path)
-    gcp_bucket = None
-    gcs_uri = None
-    blob_path = None
+    if remote_target and (args.gcs_uri or args.gcs_prefix):
+        logger.error(
+            "-o/--dest gs://... and --gcs-uri/--gcs-prefix both name a bucket "
+            "destination for the .nc; use one of them."
+        )
+        sys.exit(2)
+    cloud_target = _resolve_cloud_target(args, nc_path) if nc_path is not None else None
+    cloud: Optional[dict] = None
     if cloud_target is not None:
         _bucket_name, blob_path, gcs_uri = cloud_target
         gcp_bucket, _resolved_bucket = _resolve_gcp_bucket(
@@ -642,6 +974,7 @@ def main() -> None:
         # back into the URI we print/log.
         if gcs_uri.startswith("gs://<bucket>/"):
             gcs_uri = f"gs://{_resolved_bucket}/{blob_path}"
+        cloud = {"bucket": gcp_bucket, "blob": blob_path, "uri": gcs_uri}
 
         # --- URI cache check: found -> reuse instead of recompute -------
         # This is the whole point of the feature: if someone already made
@@ -677,40 +1010,49 @@ def main() -> None:
     # Short-circuit: .nc already on disk
     # ---------------------------
     # Conversion is the expensive step (echopype's open_raw on a multi-
-    # hundred-MB .raw dwarfs the NCEI download). If the .nc is already
-    # there, the user has nothing to gain from re-running anything —
-    # skip the BigQuery lookup, the download, and the conversion, and
-    # just hand the existing path to the next pipeline stage.
-    # --force overrides this for users who suspect the cached .nc is
-    # stale or corrupt.
+    # hundred-MB .raw dwarfs the NCEI download). An existing .nc is handed
+    # on without redoing anything when we can tell it is this product:
+    #   - it carries no aa provenance (made before provenance existed):
+    #     reused by name, exactly as before, with a note;
+    #   - NCEI mode: its recorded origin is the same NCEI object with the
+    #     same sonar model — no BigQuery lookup, no download;
+    #   - NCEI mode with the .raw already on disk: same product hash.
+    # Local and gs:// inputs get the product-hash check below, once the
+    # sonar model is known (reading a header is cheap and offline).
+    # --force overrides all of this.
     logger.debug(
-        f"Checking for existing .nc at {nc_path.resolve()}: "
-        f"exists={nc_path.exists()}, force={args.force}"
+        f"Checking for existing .nc at {target}: "
+        f"exists={nc_path.exists() if nc_path is not None else 'remote'}, force={args.force}"
     )
-    if nc_path.exists() and not args.force:
-        logger.success(
-            f".nc already exists; NOT overwriting. Reusing: "
-            f"{nc_path.resolve()} (pass --force to regenerate)."
-        )
-        if cloud_target is not None:
-            # We have the product locally, but the cache check above missed
-            # in the bucket. Register it so the next person gets a hit,
-            # then emit per --print-uri / --cloud-only.
-            _gcs_upload_nc(gcp_bucket, blob_path, nc_path, args.debug)
-            logger.success(f"Registered existing .nc in the bucket: {gcs_uri}")
-            if args.cloud_only:
-                _maybe_remove_local(nc_path)
-            print(gcs_uri if (args.print_uri or args.cloud_only)
-                  else nc_path.resolve())
+    existing_doc = None
+    if nc_path is not None and nc_path.exists() and not args.force:
+        existing_doc = provenance.read(nc_path)
+        reuse = False
+        if existing_doc is None:
+            _note(args, f"{nc_path} has no aa provenance (it was made before provenance "
+                        "was recorded); reusing it by name, as before, without checking "
+                        "what it was made from. --force converts it again and records "
+                        "provenance.")
+            reuse = True
+        elif not local_source:
+            origin = _ncei_origin_match(existing_doc, args)
+            if origin:
+                _note(args, f"reusing {nc_path} (converted from the same NCEI object "
+                            f"{origin}, sonar_model {_recorded_sonar(existing_doc)}; no "
+                            "lookup or download needed; --force converts again)")
+                reuse = True
+            elif raw_path.exists():
+                sonar = args.sonar_model or _recorded_sonar(existing_doc)
+                if sonar:
+                    probe, planned = _product_run(args, raw_path, sonar, target, stage=False)
+                    reuse = probe.reusable(planned)
+        if reuse:
+            logger.success(
+                f".nc already exists; NOT overwriting. Reusing: "
+                f"{nc_path.resolve()} (pass --force to regenerate)."
+            )
+            _deliver(args, str(nc_path.resolve()), cloud, existing=True)
             return
-        print(nc_path.resolve())
-        return
-
-    # Only log "will be written" once we know we're actually going to
-    # write — i.e. past the short-circuit. The previous version logged
-    # this unconditionally, which made successful cache hits look like
-    # writes in the stderr stream.
-    logger.info(f"Output .nc will be written to: {nc_path.resolve()}")
 
     # ---------------------------
     # Resolve metadata
@@ -723,7 +1065,17 @@ def main() -> None:
     # from the .raw file's header via aalibrary's sonar_checker — the
     # same logic aa-sonar uses. This keeps the local-file path fully
     # offline, no GCP creds required.
-    if user_provided_raw_path is not None:
+    run = Run(SPEC, args)
+    if gcs_raw is not None:
+        try:
+            raw_path = run.input(gcs_raw).local
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Could not read {gcs_raw}: {e}")
+            sys.exit(1)
+    elif user_provided_raw_path is not None:
+        run.input(str(raw_path))
+
+    if local_source:
         if args.sonar_model:
             sonar_model = args.sonar_model
             logger.info(
@@ -781,70 +1133,103 @@ def main() -> None:
     )
 
     # ---------------------------
-    # Download + convert
+    # Download (NCEI mode) and record where the .raw came from
     # ---------------------------
+    if not local_source:
+        try:
+            downloaded = _acquire_raw(
+                file_name=args.file_name,
+                metadata=metadata,
+                raw_path=raw_path,
+                download_dir=download_dir,
+                upload_to_gcp=args.upload_to_gcp,
+                debug=args.debug,
+                force=args.force,
+            )
+        except SystemExit:
+            raise
+        except Exception as e:
+            logger.exception(f"Error during processing: {e}")
+            sys.exit(1)
+        if downloaded:
+            # <file>.raw.aa.json: the NCEI object and its checksum. The .nc
+            # records the origin; the identity (content md5) is unchanged,
+            # so the sidecar never changes a hash.
+            origin = NCEI_PREFIX + _ncei_object_key(args.file_name, metadata)
+            record_source(raw_path, tool=SPEC.name, origin=origin, extra={
+                "ship": metadata["ship_name"],
+                "survey": metadata["survey_name"],
+                "sonar": metadata["sonar_model"],
+            })
+        run.input(str(raw_path))
+
+    # ---------------------------
+    # Plan (hash) and reuse
+    # ---------------------------
+    run.params["sonar_model"] = _canon_sonar(metadata["sonar_model"])
+    out = run.plan(ext=".nc", explicit=target)
+    user_owned = local_source
+    if run.reusable(out):
+        run.finish(out, emit=False)
+        _cleanup_raw(args, raw_path, user_owned)
+        _deliver(args, out.target, cloud, existing=True)
+        return
+    if nc_path is not None and nc_path.exists():
+        if args.force:
+            logger.info(f"--force: converting {nc_path.name} again.")
+        elif existing_doc is not None:
+            logger.info(
+                f"{nc_path.name} holds a different product "
+                f"(aa:{str(existing_doc.get('product', {}).get('hash', ''))[:8]}, "
+                f"this one is aa:{out.short}); converting again."
+            )
+
+    # Only log "will be written" once we know we're actually going to
+    # write — i.e. past the short-circuit.
+    logger.info(f"Output .nc will be written to: {out.target}")
+
+    # ---------------------------
+    # Convert
+    # ---------------------------
+    def _drop_staging() -> None:
+        # A gs:// target is written to a local staging folder first.
+        if out.staging is not None:
+            shutil.rmtree(out.staging, ignore_errors=True)
+            out.staging = None
+
     try:
-        process_file(
-            file_name=args.file_name,
-            metadata=metadata,
-            raw_path=raw_path,
-            nc_path=nc_path,
-            download_dir=download_dir,
-            upload_to_gcp=args.upload_to_gcp,
-            debug=args.debug,
-            force=args.force,
-            user_provided_raw=(user_provided_raw_path is not None),
-        )
+        _convert(raw_path=raw_path, nc_path=out.local, sonar_model=metadata["sonar_model"])
     except SystemExit:
+        _drop_staging()
         raise
     except Exception as e:
         logger.exception(f"Error during processing: {e}")
+        _drop_staging()
+        sys.exit(1)
+
+    # Provenance into the .nc; a gs:// -o/--dest target is uploaded here,
+    # with aa-product-hash / aa-base / aa-tool object metadata.
+    try:
+        run.finish(out, emit=False)
+    except Exception as e:  # noqa: BLE001 - an upload that failed
+        logger.exception(f"Could not publish {out.target}: {e}")
+        _drop_staging()
         sys.exit(1)
 
     # Optional cleanup of the intermediate .raw. Done after the .nc is
-    # confirmed on disk inside process_file, so a conversion failure
-    # never costs the user their downloaded raw data.
-    if args.cleanup_raw:
-        if user_provided_raw_path is not None:
-            # The "intermediate" .raw was actually the user's source
-            # data — they passed its path explicitly. Refusing here is
-            # the right call: --cleanup-raw is meant to clean up
-            # aa-ed's own downloads, not the user's source files.
-            logger.warning(
-                f"--cleanup-raw ignored: '{raw_path}' was provided by "
-                "the user, not downloaded by aa-ed. Delete it manually "
-                "if you really want it gone."
-            )
-        else:
-            try:
-                raw_path.unlink(missing_ok=True)
-                logger.info(f"Removed intermediate .raw: {raw_path}")
-            except Exception as e:
-                # Non-fatal — the .nc still exists and gets printed.
-                logger.warning(f"Could not delete '{raw_path}': {e}")
+    # confirmed on disk, so a conversion failure never costs the user
+    # their downloaded raw data.
+    _cleanup_raw(args, raw_path, user_owned)
 
-    logger.success(f"Generated {nc_path.resolve()} with aa-ed.")
+    logger.success(f"Generated {out.target} with aa-ed.")
 
     # Cloud output (additive): on a cache miss we've just built the .nc
     # locally; upload it (registering it for the next person), then emit
     # either the gs:// URI or the local path. Without a cloud target this
     # is exactly the original behavior — print the local .nc path.
-    if cloud_target is not None:
-        _gcs_upload_nc(gcp_bucket, blob_path, nc_path, args.debug)
-        logger.success(f"Uploaded derived .nc to {gcs_uri}")
-        if args.cloud_only:
-            _maybe_remove_local(nc_path)
-        emit = (
-            gcs_uri if (args.print_uri or args.cloud_only)
-            else nc_path.resolve()
-        )
-        logger.info("Passing reference to stdout...")
-        print(emit)
-        return
-
-    logger.info("Passing .nc path to stdout...")
-    # Pipeline contract: print the absolute .nc path on stdout.
-    print(nc_path.resolve())
+    if cloud is None:
+        logger.info("Passing .nc path to stdout...")
+    _deliver(args, out.target, cloud)
 
 
 def resolve_metadata(
@@ -962,6 +1347,8 @@ def resolve_metadata(
         "ship_name": row["ship_name_normalized"],
         "survey_name": row["survey_name"],
         "sonar_model": row["echosounder_name"],
+        # The exact NCEI object (recorded as the download's origin).
+        "s3_object_key": row.get("s3_object_key"),
     }
 
 
@@ -1221,7 +1608,7 @@ def _gcs_download_blob(gcp_bucket, blob_path: str, dest: Path) -> None:
 
 
 def _gcs_upload_nc(gcp_bucket, blob_path: str, local_nc: Path,
-                   debug: bool) -> None:
+                   debug: bool, metadata: Optional[dict] = None) -> None:
     """Upload the local .nc to the bucket via aa-upload's primitive.
 
     Routes through aalibrary.utils.cloud_utils.upload_file_to_gcp_bucket —
@@ -1229,6 +1616,10 @@ def _gcs_upload_nc(gcp_bucket, blob_path: str, local_nc: Path,
     aa-ed and aa-upload write objects the same way. NetCDF is HDF5 (needs
     a seekable local file), so we upload the already-written local .nc as
     a whole object rather than streaming.
+
+    ``metadata`` (aa-product-hash / aa-base / aa-tool) is then set as the
+    object's custom metadata, which is how the shared core recognizes an
+    identical product in a bucket. Best effort: the upload itself stands.
     """
     try:
         from aalibrary.utils.cloud_utils import upload_file_to_gcp_bucket
@@ -1242,6 +1633,14 @@ def _gcs_upload_nc(gcp_bucket, blob_path: str, local_nc: Path,
         local_file_path=str(local_nc),
         debug=debug,
     )
+    if metadata:
+        try:
+            blob = gcp_bucket.blob(blob_path)
+            blob.metadata = {key: str(value) for key, value in metadata.items()}
+            blob.patch()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Uploaded, but could not set aa-* metadata on "
+                           f"'{blob_path}': {e}")
 
 
 def _maybe_remove_local(nc_path: Path) -> None:
@@ -1253,6 +1652,106 @@ def _maybe_remove_local(nc_path: Path) -> None:
         )
     except Exception as e:
         logger.warning(f"Could not remove local .nc '{nc_path}': {e}")
+
+
+def _acquire_raw(
+    file_name: str,
+    metadata: dict,
+    raw_path: Path,
+    download_dir: Path,
+    upload_to_gcp: bool,
+    debug: bool,
+    force: bool = False,
+) -> bool:
+    """Make sure the NCEI .raw is at raw_path. True if it was downloaded now.
+
+    If raw_path is already on disk and force=False, the download is skipped
+    (cache hit). Pass force=True to invalidate. The aalibrary.ingestion
+    download is imported only here, so the local-file modes never load it.
+    """
+    if raw_path.exists() and not force:
+        # Cache hit — file from an earlier aa-ed run is still on disk.
+        # --force is the escape hatch if the user suspects corruption.
+        logger.info(
+            f".raw already on disk, skipping NCEI download: {raw_path} "
+            f"({raw_path.stat().st_size} bytes). Pass --force to re-download."
+        )
+        return False
+
+    try:
+        from aalibrary.ingestion import download_raw_file_from_ncei
+    except Exception as e:
+        logger.exception(f"Failed to import aalibrary.ingestion: {e}")
+        sys.exit(1)
+
+    logger.info(
+        f"Downloading {file_name} "
+        f"({metadata['ship_name']} / {metadata['survey_name']} / "
+        f"{metadata['sonar_model']}) from NCEI -> {download_dir}"
+    )
+    download_raw_file_from_ncei(
+        file_name=file_name,
+        file_type="raw",
+        ship_name=metadata["ship_name"],
+        survey_name=metadata["survey_name"],
+        echosounder=metadata["sonar_model"],
+        file_download_directory=str(download_dir),
+        upload_to_gcp=upload_to_gcp,
+        debug=debug,
+    )
+
+    # Sanity check: download_raw_file_from_ncei returns nothing
+    # useful, so we only know it worked by checking disk. Without
+    # this, a silent failure would let us hand a missing path to
+    # echopype and surface a confusing error from open_raw instead.
+    if not raw_path.exists():
+        logger.error(
+            f"Download appeared to succeed, but '{raw_path}' is not on "
+            "disk. Rerun with --debug for details."
+        )
+        sys.exit(1)
+    logger.success(
+        f"Downloaded {raw_path.name} ({raw_path.stat().st_size} bytes)."
+    )
+    return True
+
+
+def _convert(raw_path: Path, nc_path: Path, sonar_model: str) -> None:
+    """Convert raw_path to an EchoData NetCDF at nc_path (echopype.open_raw)."""
+    try:
+        import echopype as ep
+    except Exception as e:
+        logger.exception(f"Failed to import echopype: {e}")
+        sys.exit(1)
+
+    logger.info(
+        f"Loading {raw_path} into EchoData "
+        f"(sonar_model={sonar_model})"
+    )
+    ed = ep.open_raw(
+        raw_file=raw_path,
+        sonar_model=sonar_model,
+    )
+
+    logger.info(f"Saving EchoData to {nc_path}")
+    Path(nc_path).parent.mkdir(parents=True, exist_ok=True)
+    # overwrite=True: we only get here when the existing file (if any) is
+    # not this product, or --force was given. echopype's default (False)
+    # kept the old file and returned as if it had written — which is why
+    # `aa-ed FILE --force` used to leave a stale .nc behind.
+    ed.to_netcdf(save_path=nc_path, overwrite=True)
+
+    if not Path(nc_path).exists():
+        # Defensive: to_netcdf shouldn't return silently on failure, but
+        # if it does, fall through with a clear error rather than printing
+        # a missing path to stdout and breaking aa-sv downstream.
+        logger.error(
+            f"Conversion appeared to succeed, but '{nc_path}' is not on "
+            "disk. Rerun with --debug for details."
+        )
+        sys.exit(1)
+
+    logger.success(f"RAW → NetCDF conversion complete: {Path(nc_path).resolve()}")
 
 
 def process_file(
@@ -1268,138 +1767,50 @@ def process_file(
 ) -> None:
     """Download the raw file from NCEI and convert it to NetCDF.
 
-    Mirrors the work of aa-raw and aa-nc respectively, in-process, so
-    we don't have to spawn subprocesses or re-parse arguments. The .raw
-    is left on disk unless the caller deletes it (see --cleanup-raw).
+    Kept for callers of this module; main() runs the two halves itself
+    (_acquire_raw, then _convert) so it can record the download's origin
+    and the .nc's provenance in between. No provenance is embedded here.
 
     Idempotency:
       - If user_provided_raw is True, the .raw at raw_path is the
         user's source file. It is never re-downloaded — not even when
-        force=True. --force only forces re-conversion of the .nc in
-        that case; the user's .raw is preserved verbatim.
+        force=True.
       - Otherwise, if raw_path is already on disk and force=False, the
         download is skipped (cache hit). Pass force=True to invalidate.
-      - The .nc-already-exists short-circuit lives upstream in main()
-        because it also lets us skip the BigQuery lookup; by the time
-        we get here, we know the .nc needs (re)building.
     """
-    # Echopype is needed in every branch (we always convert). Imported
-    # up front. The aalibrary.ingestion download is imported lazily
-    # ONLY inside the download branch below — when user_provided_raw is
-    # True, the download module is never even loaded, never mind called.
-    try:
-        import echopype as ep
-    except Exception as e:
-        logger.exception(f"Failed to import echopype: {e}")
-        sys.exit(1)
-
-    # ---- .raw acquisition ----------------------------------------
     if user_provided_raw:
-        # User-supplied source file. Belt-and-suspenders existence
-        # check — main() already validated this, but a race or an
-        # `rm` between validation and now shouldn't produce a
-        # confusing echopype error downstream.
         if not raw_path.exists():
             logger.error(
                 f"User-provided .raw '{raw_path}' has disappeared "
                 "since input validation."
             )
             sys.exit(1)
-        logger.info(
-            f"Using user-provided .raw: {raw_path} "
-            f"({raw_path.stat().st_size} bytes). "
-            "NCEI download SKIPPED (no aalibrary.ingestion import, "
-            "no network call)."
-        )
-    elif raw_path.exists() and not force:
-        # Cache hit — file from an earlier aa-ed run is still on disk.
-        # --force is the escape hatch if the user suspects corruption.
-        logger.info(
-            f".raw already on disk, skipping NCEI download: {raw_path} "
-            f"({raw_path.stat().st_size} bytes). Pass --force to re-download."
-        )
     else:
-        # Genuine NCEI download path. Import the download function
-        # only here — that way the user-provided-raw branch above
-        # cannot accidentally trigger it.
-        try:
-            from aalibrary.ingestion import download_raw_file_from_ncei
-        except Exception as e:
-            logger.exception(f"Failed to import aalibrary.ingestion: {e}")
-            sys.exit(1)
-
-        logger.info(
-            f"Downloading {file_name} "
-            f"({metadata['ship_name']} / {metadata['survey_name']} / "
-            f"{metadata['sonar_model']}) from NCEI -> {download_dir}"
-        )
-        download_raw_file_from_ncei(
-            file_name=file_name,
-            file_type="raw",
-            ship_name=metadata["ship_name"],
-            survey_name=metadata["survey_name"],
-            echosounder=metadata["sonar_model"],
-            file_download_directory=str(download_dir),
-            upload_to_gcp=upload_to_gcp,
-            debug=debug,
-        )
-
-        # Sanity check: download_raw_file_from_ncei returns nothing
-        # useful, so we only know it worked by checking disk. Without
-        # this, a silent failure would let us hand a missing path to
-        # echopype and surface a confusing error from open_raw instead.
-        if not raw_path.exists():
-            logger.error(
-                f"Download appeared to succeed, but '{raw_path}' is not on "
-                "disk. Rerun with --debug for details."
-            )
-            sys.exit(1)
-        logger.success(
-            f"Downloaded {raw_path.name} ({raw_path.stat().st_size} bytes)."
-        )
-
-    # ---- Convert .raw → .nc -------------------------------------
-    logger.info(
-        f"Loading {raw_path} into EchoData "
-        f"(sonar_model={metadata['sonar_model']})"
-    )
-    ed = ep.open_raw(
-        raw_file=raw_path,
-        sonar_model=metadata["sonar_model"],
-    )
-
-    logger.info(f"Saving EchoData to {nc_path}")
-    ed.to_netcdf(save_path=nc_path)
-
-    if not nc_path.exists():
-        # Defensive: to_netcdf shouldn't return silently on failure, but
-        # if it does, fall through with a clear error rather than printing
-        # a missing path to stdout and breaking aa-sv downstream.
-        logger.error(
-            f"Conversion appeared to succeed, but '{nc_path}' is not on "
-            "disk. Rerun with --debug for details."
-        )
-        sys.exit(1)
-
-    logger.success(f"RAW → NetCDF conversion complete: {nc_path.resolve()}")
+        _acquire_raw(file_name, metadata, raw_path, download_dir, upload_to_gcp, debug, force)
+    _convert(raw_path, nc_path, metadata["sonar_model"])
 
 
 def _convert_one_local(
     raw_path: Path,
-    nc_path: Path,
-    sonar_model_override: Optional[str],
-    force: bool,
+    nc_path: Optional[Path] = None,
+    sonar_model_override: Optional[str] = None,
+    force: bool = False,
+    args=None,
 ) -> dict:
-    """Convert a single local .raw to .nc, fully offline.
+    """Convert a single local .raw to .nc, fully offline, with provenance.
 
     No NCEI download, no BigQuery — assumes the .raw is already on
     disk at raw_path. Sonar model comes from sonar_model_override if
     given, otherwise auto-detected from the .raw file's header via
     _detect_sonar_model_from_file().
 
-    Idempotent: if nc_path already exists and not force, returns
-    early with status="cached" — the existing .nc is treated as
-    authoritative.
+    The .nc goes to nc_path when given, else the standard name beside the
+    .raw (<raw stem>.nc; AA_NAMING=legacy gives the same for plain names).
+
+    Idempotent: an existing .nc is "cached" (not converted again) when it
+    holds the same product, or when it carries no aa provenance at all (made
+    before provenance existed; reused by name, as before, and flagged with
+    "legacy": True). A .nc holding a different product is converted again.
 
     Used by _run_directory_mode to process each file in a batch.
     Returns a result dict instead of calling sys.exit so the caller
@@ -1412,16 +1823,28 @@ def _convert_one_local(
             "raw_path": Path,
             "nc_path": Path,
             "sonar_model": str,   # present when status == "converted"
+            "product": str,       # short product hash, when known
+            "legacy": bool,       # cached without provenance
             "error": str,         # present when status == "failed"
         }
     """
-    # Cache check first — same idempotency contract as single-file mode.
-    if nc_path.exists() and not force:
-        return {
-            "status": "cached",
-            "raw_path": raw_path,
-            "nc_path": nc_path,
-        }
+    run = Run(SPEC, args)
+    run.force = bool(force) or run.force
+    explicit = str(nc_path) if nc_path is not None else None
+    try:
+        run.input(str(raw_path))
+        where = run.plan(ext=".nc", explicit=explicit,
+                         legacy=lambda: raw_path.with_suffix(".nc"), stage=False)
+    except (Exception, SystemExit) as e:  # noqa: BLE001 - one file must not end the batch
+        return {"status": "failed", "raw_path": raw_path,
+                "nc_path": nc_path or raw_path.with_suffix(".nc"),
+                "error": f"could not read the .raw: {e}"}
+    nc_path = Path(where.target)
+
+    # A .nc made before provenance existed: reused by name, exactly as
+    # before (and before reading any header).
+    if nc_path.exists() and not run.force and provenance.read(nc_path) is None:
+        return {"status": "cached", "raw_path": raw_path, "nc_path": nc_path, "legacy": True}
 
     # Resolve sonar model.
     if sonar_model_override:
@@ -1439,6 +1862,12 @@ def _convert_one_local(
                 ),
             }
 
+    run.params["sonar_model"] = _canon_sonar(sonar_model)
+    out = run.plan(ext=".nc", explicit=str(nc_path), stage=False)
+    if not run.force and nc_path.exists() and run.existing_hash(out) == out.hash:
+        return {"status": "cached", "raw_path": raw_path, "nc_path": nc_path,
+                "product": out.short, "legacy": False}
+
     # Echopype import. Import-once-per-call is wasteful in a loop but
     # the import is cached after the first call, so the cost is paid
     # once across the batch.
@@ -1453,14 +1882,14 @@ def _convert_one_local(
         }
 
     try:
-        # If --force and the .nc already exists, remove it first.
-        # echopype's to_netcdf backend behavior on existing files is
-        # version-dependent (append vs error); removing up front
-        # makes the result predictable.
+        # If the .nc exists (--force, or a different product), remove it
+        # first so a half-written file is never mistaken for the old one;
+        # overwrite=True as well, since echopype's default silently keeps
+        # an existing file.
         if nc_path.exists():
             nc_path.unlink()
         ed = ep.open_raw(raw_file=raw_path, sonar_model=sonar_model)
-        ed.to_netcdf(save_path=nc_path)
+        ed.to_netcdf(save_path=nc_path, overwrite=True)
     except Exception as e:
         return {
             "status": "failed",
@@ -1480,11 +1909,13 @@ def _convert_one_local(
             "error": "to_netcdf completed but .nc is not on disk",
         }
 
+    run.finish(out, emit=False)  # embed the provenance
     return {
         "status": "converted",
         "raw_path": raw_path,
         "nc_path": nc_path,
         "sonar_model": sonar_model,
+        "product": out.short,
     }
 
 
@@ -1519,6 +1950,16 @@ def _run_directory_mode(directory: Path, args) -> None:
             "-o / --output_path is not supported in directory mode. "
             ".nc files always land alongside their source .raw inside "
             "the input directory."
+        )
+        sys.exit(2)
+
+    if getattr(args, "dest", None) or getattr(args, "base", None):
+        # Same reason as -o: the directory printed on stdout is where the
+        # .nc files are, and one base name cannot name many files.
+        logger.error(
+            "--dest / --base are not supported in directory mode. "
+            ".nc files always land alongside their source .raw, named "
+            "after it."
         )
         sys.exit(2)
 
@@ -1576,6 +2017,26 @@ def _run_directory_mode(directory: Path, args) -> None:
         f"(recursive={args.recursive})."
     )
 
+    # ---- Output-name collisions ---------------------------------
+    # Two .raw files must never write the same .nc: the second conversion
+    # would silently replace the first. Checked for the whole batch before
+    # anything is converted.
+    planned: dict[str, list[Path]] = {}
+    for raw_path in raw_files:
+        planned.setdefault(os.path.normcase(str(_default_nc_path(raw_path))), []).append(raw_path)
+    collisions = {name: raws for name, raws in planned.items() if len(raws) > 1}
+    if collisions:
+        for name, raws in sorted(collisions.items()):
+            logger.error(
+                f"{len(raws)} .raw files would all be converted to {name}: "
+                + ", ".join(f"'{raw.name}'" for raw in raws)
+            )
+        logger.error(
+            "Nothing was converted. Rename the files so their names differ, "
+            "or convert them one at a time with -o."
+        )
+        sys.exit(1)
+
     # Identify standalone .nc files — those without a matching .raw
     # in the same directory. These count as already-converted and
     # pass through to the directory output without us touching them.
@@ -1605,7 +2066,7 @@ def _run_directory_mode(directory: Path, args) -> None:
         # one. Easy to fire by accident with a stale flag from a
         # prior single-file run, so warn loudly with the count.
         existing_nc = sum(
-            1 for r in raw_files if r.with_suffix(".nc").exists()
+            1 for r in raw_files if _default_nc_path(r).exists()
         )
         if existing_nc:
             logger.warning(
@@ -1621,32 +2082,41 @@ def _run_directory_mode(directory: Path, args) -> None:
         "failed": 0,
     }
     failures: list = []
+    legacy_reused = 0
 
     for i, raw_path in enumerate(raw_files, start=1):
-        nc_path = raw_path.with_suffix(".nc")
         logger.info(f"[{i}/{len(raw_files)}] {raw_path.name}")
 
         result = _convert_one_local(
             raw_path=raw_path,
-            nc_path=nc_path,
+            nc_path=_default_nc_path(raw_path),
             sonar_model_override=sonar_override,
             force=args.force,
+            args=args,
         )
 
         status = result["status"]
         counts[status] = counts.get(status, 0) + 1
+        nc_path = result["nc_path"]
 
         if status == "converted":
             logger.success(
                 f"  -> {nc_path.name} "
                 f"(sonar={result['sonar_model']}, "
-                f"{nc_path.stat().st_size:,} bytes)"
+                f"{nc_path.stat().st_size:,} bytes, aa:{result['product']})"
             )
         elif status == "cached":
-            logger.info(
-                "  .nc already exists, skipping "
-                "(--force to override)."
-            )
+            if result.get("legacy"):
+                legacy_reused += 1
+                logger.info(
+                    "  .nc already exists (no aa provenance), skipping "
+                    "(--force to override)."
+                )
+            else:
+                logger.info(
+                    f"  .nc already exists (identical product aa:{result['product']}), "
+                    "skipping (--force to override)."
+                )
         elif status == "failed":
             logger.error(f"  FAILED: {result['error']}")
             failures.append((raw_path, result["error"]))
@@ -1663,6 +2133,11 @@ def _run_directory_mode(directory: Path, args) -> None:
             f"{counts['passthrough']} pre-existing .nc passed through, "
             f"{counts['failed']} failed."
         )
+
+    if legacy_reused:
+        _note(args, f"{legacy_reused} existing .nc file(s) in {directory} have no aa "
+                    "provenance (made before provenance was recorded) and were reused by "
+                    "name, as before. --force converts them again with provenance.")
 
     if failures:
         logger.error(

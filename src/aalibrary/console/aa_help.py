@@ -11,6 +11,8 @@ Usage:
     aa-help --refresh-index                  # incremental index update
     aa-help --index-stats                    # show what's indexed
     aa-help --model MODEL                    # override model
+    aa-help --help                           # curated help (offline)
+    aa-help --help-all                       # every option (argparse reference)
 
 Navigating menus:
     When aa-help offers you a list of options, it's keyboard-driven:
@@ -39,6 +41,7 @@ logger.add(sys.stderr, level="WARNING")
 import argparse
 from pathlib import Path
 
+from aalibrary.console._core import Help, ToolSpec, render, show_help
 from aalibrary.utils._help import config as cfg
 from aalibrary.utils._help import fsscan
 from aalibrary.utils._help import knowledge as kb
@@ -57,8 +60,79 @@ from aalibrary.utils._help.ui import (
 # the REPL and one-shot paths. (1 initial plan + up to 3 follow-up rounds.)
 MAX_CLARIFY_ROUNDS = 4
 
-# Printed at the bottom of `aa-help --help`, and echoed in short form when the
-# REPL starts, so people know the menus are driven with the arrow keys.
+SPEC = ToolSpec(name="aa-help", role="interactive", engines=())
+
+HELP = Help(
+    summary="Ask in plain English; get an aa-* pipeline, and run it if you choose.",
+    does=(
+        "Sends your question to a Gemini model on Vertex AI together with the "
+        "matching pages of your indexed documentation and the paths of acoustic "
+        "files (.raw, .nc, .evr, .evl) in the current directory and under your "
+        "home directory. The model answers, asks one multiple-choice question, "
+        "or proposes a pipeline of aa-* commands. Every proposed stage is checked "
+        "against the installed aa-* tools and rejected if it contains shell "
+        "syntax. You then pick: run it, copy it, show it as a one-liner, or "
+        "cancel. A pipeline runs without a shell: each stage's stdout feeds the "
+        "next stage's stdin, as in a | b | c."
+    ),
+    stdin="Nothing. The question is the argument; with no question aa-help starts "
+          "an interactive prompt (aa-help>).",
+    stdout=("The plan (summary, commands, expected output, risks) or the answer, "
+            "formatted for the terminal. When you run a pipeline, its last stage's "
+            "output follows."),
+    metadata=("aa-help itself records nothing. The pipelines it runs are ordinary "
+              "aa-* runs: their outputs carry provenance, are named "
+              "<base>_<hash8>.<ext>, and are reused when an identical product exists."),
+    options=[
+        ("QUESTION ...", "one shot: plan (and offer to run) this, then exit"),
+        ("--no-execute", "plan only, never run anything (default: offer to run)"),
+        ("--model NAME", "Vertex AI model for this run (default from the config: "
+                         "gemini-2.5-pro)"),
+        ("--setup", "configuration wizard: project, location, model"),
+        ("--config / --edit", "print the config path / open it in $EDITOR"),
+        ("--reindex", "rebuild the documentation index (Vertex AI embeddings)"),
+        ("--refresh-index", "index only changed documentation files"),
+        ("--index-stats", "how many files and chunks are indexed"),
+        ("--refresh-files", "rescan for acoustic files now"),
+        ("--files-stats", "what the acoustic-file index holds"),
+        ("--version", "aalibrary version"),
+    ],
+    files=(
+        "Config ~/.config/aalibrary/aa_help.toml ($XDG_CONFIG_HOME is honoured); "
+        "beside it knowledge.db (the documentation index, built from the "
+        "knowledge_dirs in the config) and file_index.json (acoustic files under "
+        "file_scan_root, default your home directory). Planning and indexing need "
+        "network access to Vertex AI and Application Default Credentials "
+        "(gcloud auth application-default login). --help, --help-all, --version, "
+        "--config, --edit and --index-stats need neither a configuration nor the "
+        "network; --refresh-files and --files-stats work offline once aa-help is "
+        "configured."
+    ),
+    pipeline=(
+        "Not a pipeline stage; it builds pipelines. Stages must be installed aa-* "
+        "tools. A plan that uses the network (aa-raw, aa-fetch, aa-ed, aa-find, "
+        "aa-get, aa-upload, aa-download, aa-cruisepack, aa-setup, aa-refresh, or any "
+        "gs:// / s3:// / http(s):// argument) asks for an extra confirmation "
+        "before it runs."
+    ),
+    examples=[
+        "aa-help",
+        'aa-help "convert D20160703-T060000.raw to Sv and draw an echogram"',
+        'aa-help --no-execute "compute NASC for D20160703-T060000.raw"',
+        'aa-help "what is the difference between MVBS and NASC?"',
+    ],
+    notes=[
+        "Menus: up/down arrows move, Enter selects, Ctrl-C cancels the current "
+        "plan. Ctrl-D, /exit, /quit or :q leave aa-help; /help or ? at the prompt "
+        "shows the keys.",
+        "Read a plan before running it. aa-help only runs installed aa-* tools, "
+        "but the model can still pick the wrong tool, flag or file.",
+    ],
+)
+
+# Printed at the bottom of `aa-help --help-all` and by /help in the REPL, and
+# echoed in short form when the REPL starts, so people know the menus are
+# driven with the arrow keys.
 NAV_HELP = """\
 interactive menus -- when aa-help asks you to pick an option:
   up / down arrows   move the highlight between options
@@ -97,6 +171,16 @@ def _pkg_version() -> str:
         return "unknown"
 
 
+def print_help():
+    """Curated help (also used by the docs generator). Offline and fast."""
+    sys.stdout.write(render(SPEC, HELP))
+
+
+def print_help_full():
+    """--help-all: the complete argparse reference."""
+    _build_parser().print_help(sys.stdout)
+
+
 def _build_parser():
     p = argparse.ArgumentParser(
         prog="aa-help",
@@ -109,11 +193,23 @@ def _build_parser():
             "pipeline to run -- and, by default, runs it for you."
         ),
         epilog=NAV_HELP,
+        # -h/--help and --help-all are handled in main() before parsing, so
+        # they print the curated help / this reference. They are declared
+        # below only so that they show up in this reference.
+        add_help=False,
     )
 
     p.add_argument(
         "question", nargs="*",
         help="One-shot question or goal. Omit it to drop into the interactive REPL.",
+    )
+    p.add_argument(
+        "-h", "--help", action="store_true",
+        help="Show the curated help and exit.",
+    )
+    p.add_argument(
+        "--help-all", action="store_true",
+        help="Show this complete reference and exit.",
     )
     p.add_argument(
         "--version", action="version",
@@ -304,6 +400,11 @@ def _run_one_shot(planner: Planner, question: str, allow_execute: bool) -> int:
 
 
 def main(argv=None):
+    # --help: curated help; --help-all: the argparse reference. Neither needs
+    # a config, credentials or the network.
+    if show_help(SPEC, HELP, None, full=print_help_full, argv=argv):
+        return 0
+
     args = _build_parser().parse_args(argv)
 
     # Cheap subcommands first -- no Vertex client needed.

@@ -32,10 +32,44 @@ import argparse
 from contextlib import contextmanager
 from pathlib import Path
 
-# Heavy imports — UI builder
-from aalibrary.utils.raw_fetch_schedule_builder import (
-    default_output_path,
-    main as builder_main,
+from aalibrary.console._core import Help, ToolSpec, render, show_help
+
+# The UI builder (InquirerPy, BigQuery clients) is imported in main(), after
+# help handling, so --help answers in well under a second.
+
+SPEC = ToolSpec(name="aa-get", role="interactive", engines=())
+
+HELP = Help(
+    summary="Build a fetch-request YAML in a terminal menu; print its path.",
+    does=(
+        "Asks for vessel, survey, instrument and time windows (the choices come "
+        "from aalibrary's NCEI metadata cache in BigQuery), shows the result, "
+        "and on confirmation writes the request document that aa-fetch reads. "
+        "aa-request writes the same document from flags, for scripts and jobs."
+    ),
+    stdin="Nothing, except with OUTPUT_DIR '-': then one line naming the output directory.",
+    stdout=(
+        "The saved YAML's absolute path, one line, last. The menus are drawn on "
+        "the terminal (sent to stderr when stdout is piped, so aa-get | aa-fetch "
+        "works). Nothing if you decline to save (exit 1) or press Ctrl-C (exit 130)."
+    ),
+    options=[
+        ("OUTPUT_DIR | -", "directory to save into (default: current directory); "
+                           "'-' reads it from stdin"),
+        ("-d, --output_dir DIR", "same as OUTPUT_DIR; wins over it"),
+        ("-n, --file_name NAME", "file name; .yaml is added if missing "
+                                 "(default: fetch_request_<YYYYMMDD_HHMMSS>.yaml)"),
+    ],
+    files=(
+        "Writes OUTPUT_DIR/NAME.yaml (asks before replacing an existing file). "
+        "Needs a terminal on stdout or stderr for the menus, and Google Cloud "
+        "credentials for the BigQuery lookups."
+    ),
+    pipeline="aa-get | aa-fetch: the saved path is the next stage's input.",
+    examples=[
+        "aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001",
+        "aa-get -d ./schedules -n test.yaml",
+    ],
 )
 
 
@@ -51,7 +85,12 @@ def silence_all_logs():
 
 
 def print_help() -> None:
-    """Verbose help. Prints to stderr so it never contaminates pipeline stdout."""
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
+    """The complete reference (--help-all)."""
     help_text = r"""
 aa-get — Interactive YAML schedule builder (prints saved YAML path)
 
@@ -104,7 +143,10 @@ OPTIONS
       Default: fetch_request_<YYYYMMDD_HHMMSS>.yaml
 
   -h, --help
-      Show this help and exit.
+      Short help.
+
+  --help-all
+      This reference.
 
 EXAMPLES
   1) Save into CWD with a timestamped filename:
@@ -120,7 +162,7 @@ EXAMPLES
       aa-get -n request.yaml | aa-fetch -o ./downloads -n run_001
       aa-get | aa-fetch
 """
-    print(help_text.strip() + "\n", file=sys.stderr)
+    print(help_text.strip() + "\n")
 
 
 def _coerce_yaml_file_name(name: str) -> str:
@@ -183,17 +225,8 @@ def _ui_stdout_to_stderr_when_piped():
     )
 
 
-def main() -> int:
-    # Preserve a handle to the "real" stdout for the final pipeline-safe print.
-    real_stdout = sys.stdout
-
-    # Help short-circuit before argparse so -h and --help behave identically
-    # and don't trigger argparse's auto-help (we use add_help=False below).
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print_help()
-        return 0
-
-    parser = argparse.ArgumentParser(add_help=False)
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="aa-get", add_help=False)
     parser.add_argument(
         "output_dir_pos",
         nargs="?",
@@ -212,8 +245,30 @@ def main() -> int:
         default=None,
         help="Output filename (default: fetch_request_<timestamp>.yaml).",
     )
+    return parser
+
+
+def main() -> int:
+    # Preserve a handle to the "real" stdout for the final pipeline-safe print.
+    real_stdout = sys.stdout
+
+    # Help before argparse and before the heavy UI import, so -h/--help
+    # (and --help-all) are fast and never start the interactive UI.
+    parser = _build_parser()
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        return 0
 
     args = parser.parse_args()
+
+    # Heavy imports — UI builder (InquirerPy, BigQuery).
+    try:
+        from aalibrary.utils.raw_fetch_schedule_builder import (
+            default_output_path,
+            main as builder_main,
+        )
+    except Exception as e:
+        logger.exception(f"Failed to import the schedule builder: {e}")
+        return 1
 
     # ---------------------------
     # Resolve output directory

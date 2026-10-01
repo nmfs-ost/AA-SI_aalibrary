@@ -117,3 +117,8 @@ aa-combine = "aalibrary.console.aa_combine:main"
 aa-store = "aalibrary.console.aa_store:main"
 
 aa-cruisepack = "aalibrary.console.aa_cruisepack:main"
+
+aa-metadata = "aalibrary.console.aa_metadata:main"
+aa-download = "aalibrary.console.aa_download:main"
+aa-location = "aalibrary.console.aa_location:main"
+aa-guide = "aalibrary.console.aa_guide:main"

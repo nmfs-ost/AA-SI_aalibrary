@@ -5,7 +5,7 @@ aa-find
 Interactive console application to search and browse acoustics data on
 NCEI (and, eventually, OMAO). Drills down vessel → survey → sonar model →
 raw file → operation, with hooks into the rest of the aa-pipeline
-(`aa-raw`, `aa-plot`).
+(`aa-raw` to download; `aa-raw | aa-nc | aa-sv | aa-graph` to plot).
 
 Navigation: it's a keyboard-driven menu — use the up/down arrow keys to
 move the highlight, Enter to select, start typing to filter long lists,
@@ -28,23 +28,16 @@ from loguru import logger
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
-# Heavy imports
 import argparse
 import os
 import subprocess
 from contextlib import contextmanager
+from pathlib import Path
 
-from InquirerPy import inquirer
+from aalibrary.console._core import Help, ToolSpec, render, show_help
 
-from aalibrary.utils.cloud_utils import create_s3_objs
-from aalibrary.utils.ncei_utils import (
-    get_all_survey_names_from_a_ship,
-    get_all_echosounders_in_a_survey,
-    get_all_ship_names_in_ncei,
-    get_all_raw_file_names_from_survey,
-    get_folder_size_from_s3,
-    get_file_size_from_s3,
-)
+# InquirerPy and the NCEI/S3 helpers are imported where they are used, so
+# `aa-find --help` does not pay for them (it used to take several seconds).
 
 # ----------------------------
 # Optional rich integration
@@ -87,13 +80,51 @@ what you can do:
     vessel -> survey -> sonar model -> .raw file -> operation
   On a .raw file you can download it, plot an echogram, or check its size
   on S3. (NetCDF download and KMeans/DBScan are stubbed for a later release.)
-  You can also authenticate with Google Cloud and list project resources.
+  You can also authenticate with Google Cloud and see documentation links.
 
 note:
-  aa-find is interactive only. Unlike aa-raw / aa-plot it does NOT take part
+  aa-find is interactive only. Unlike aa-raw / aa-graph it does NOT take part
   in the aa-pipeline `|` chain; it runs those tools for you when an operation
-  needs them.
+  needs them (download: aa-raw; plot: aa-raw | aa-nc | aa-sv | aa-graph).
 """
+
+SPEC = ToolSpec(name="aa-find", role="interactive", engines=())
+
+HELP = Help(
+    summary="Browse NCEI's echosounder archive in a terminal menu; download or plot a file.",
+    does=(
+        "Drill down vessel -> survey -> sonar model -> .raw file in NCEI's Water "
+        "Column Sonar archive (public S3 bucket noaa-wcsd-pds). On a file:\n"
+        "\n"
+        "  Download .raw          runs aa-raw\n"
+        "  Plot Echogram(s)       runs aa-raw | aa-nc | aa-sv | aa-graph\n"
+        "  Check File Disk Usage  size of the object on S3\n"
+        "\n"
+        "Also: the survey's size, Google Cloud sign-in (gcloud auth login, "
+        "application-default login, project ggn-nmfs-aa-dev-1) and documentation "
+        "links. OMAO search, NetCDF download and KMeans/DBScan are placeholders."
+    ),
+    stdin="Nothing: keyboard only (arrows, Enter, type to filter, Ctrl-C).",
+    stdout="The menus. aa-find is not a pipeline stage.",
+    options=[
+        ("--no-color, --plain", "plain text: no colors, panels or spinners"),
+        ("--version", "print the aalibrary version"),
+    ],
+    files=(
+        "Writes into ./<ship>_<survey>_<sonar>_NCEI/ in the current directory: "
+        "the .raw with its .idx/.bot and their .aa.json sidecars (from aa-raw); "
+        "for a plot also <stem>.nc (aa-nc), the Sv file (aa-sv) and <stem>.png "
+        "(aa-graph). Browsing reads NCEI's bucket anonymously; downloading "
+        "needs Google Cloud credentials (see aa-raw --help)."
+    ),
+    pipeline=(
+        "Interactive only. The tools it runs must be on PATH (the same "
+        "environment as aa-find). For EK80 and ES80 data, Plot first asks how "
+        "the file was recorded (CW or broadband, power or complex): aa-sv "
+        "cannot calibrate those without it."
+    ),
+    examples=["aa-find", "aa-find --plain"],
+)
 
 
 def _pkg_version() -> str:
@@ -117,9 +148,10 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Interactive console browser for NCEI (and, later, OMAO) vessel\n"
             "acoustics data. Drill down to a .raw file and hand it off to the\n"
-            "rest of the aa-pipeline (aa-raw, aa-plot)."
+            "rest of the aa-pipeline (aa-raw, aa-nc, aa-sv, aa-graph)."
         ),
         epilog=NAV_HELP,
+        add_help=False,       # -h/--help/--help-all are handled by show_help()
     )
     p.add_argument(
         "--version", action="version",
@@ -131,6 +163,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable colors, panels, and spinners (plain-text output).",
     )
     return p
+
+
+def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
+    """The complete reference (--help-all): every option and the navigation guide."""
+    _build_parser().print_help(sys.stdout)
 
 
 # ----------------------------
@@ -267,6 +309,8 @@ def _format_bytes(b) -> str:
 
 def _pick(message: str, choices, *, fuzzy: bool = False, default=None):
     """Wrap inquirer.fuzzy / inquirer.select with consistent kwargs."""
+    from InquirerPy import inquirer
+
     fn = inquirer.fuzzy if fuzzy else inquirer.select
     kwargs = dict(message=message, choices=choices, max_height="70%")
     if default is not None:
@@ -352,7 +396,11 @@ _MAIN_CHOICES = [
 
 def main(argv=None) -> None:
     """Top-level loop."""
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    # Help first: it must never start the interactive UI.
+    if show_help(SPEC, HELP, parser, full=print_help_full, argv=argv):
+        return
+    args = parser.parse_args(argv)
 
     global _console
     # --no-color forces the plain-text path even when rich is installed.
@@ -405,6 +453,9 @@ def _farewell() -> None:
 
 def _handle_ncei_search() -> None:
     try:
+        from aalibrary.utils.cloud_utils import create_s3_objs
+        from aalibrary.utils.ncei_utils import get_all_ship_names_in_ncei
+
         with _status("Fetching NCEI vessel list..."):
             s3_client, s3_resource, _ = create_s3_objs()
             ships = sorted(get_all_ship_names_in_ncei(s3_client=s3_client))
@@ -429,6 +480,8 @@ def _handle_ship(ship: str, s3_client, s3_resource) -> None:
     _breadcrumb(ship)
 
     try:
+        from aalibrary.utils.ncei_utils import get_all_survey_names_from_a_ship
+
         with _status(f"Fetching surveys for {ship}..."):
             surveys = sorted(
                 get_all_survey_names_from_a_ship(ship_name=ship, s3_client=s3_client)
@@ -458,6 +511,8 @@ def _handle_survey(ship: str, survey: str, s3_client, s3_resource) -> None:
     _breadcrumb(ship, survey)
 
     try:
+        from aalibrary.utils.ncei_utils import get_all_echosounders_in_a_survey
+
         with _status(f"Fetching sonar models for {survey}..."):
             sonars = sorted(
                 get_all_echosounders_in_a_survey(
@@ -487,6 +542,8 @@ def _handle_sonar(ship: str, survey: str, sonar: str, s3_resource) -> None:
     _breadcrumb(ship, survey, sonar)
 
     try:
+        from aalibrary.utils.ncei_utils import get_all_raw_file_names_from_survey
+
         with _status(f"Fetching .raw files for {sonar}..."):
             files = sorted(
                 get_all_raw_file_names_from_survey(
@@ -550,7 +607,11 @@ def _handle_file(
             # The original dispatched on the string 'Plot Echograms', but
             # the menu showed 'Plot Echogram(s)' with parens — so the
             # plot branch never fired. Now both come from the same
-            # 'plot' value, so it can't drift.
+            # 'plot' value, so it can't drift. It then ran
+            # `aa-plot <bare file name> --sonar_model X --output-file ...`,
+            # which could never work (aa-plot reads a local Sv/EchoData
+            # file, has no --sonar_model and no --output-file); it now runs
+            # the real chain, see _do_plot().
             _do_plot(ship, survey, sonar, file_name)
         elif op == "kmeans":
             _not_available("KMeans clustering")
@@ -582,24 +643,153 @@ def _do_download_raw(ship: str, survey: str, sonar: str, file_name: str) -> None
         _success(f"Saved into ./{folder}/")
 
 
+# Sonar models aa-nc (echopype.open_raw) reads without extra files, under
+# the names echopype uses. An NCEI sonar folder with one of these names is
+# passed straight on; for any other the user is asked which parser to use.
+# (AZFP is left out on purpose: it needs an XML calibration file, which this
+# menu cannot supply.)
+_ECHOPYPE_MODELS = ("EK60", "EK80", "ES70", "ES80", "EA640")
+
+# EK80-family data cannot be calibrated without choosing the pulse type and
+# sample encoding (echopype refuses to guess): (label, aa-sv flags).
+_EK80_MODES = [
+    ("CW (narrowband), power samples", ["--waveform_mode", "CW", "--encode_mode", "power"]),
+    ("CW (narrowband), complex samples", ["--waveform_mode", "CW", "--encode_mode", "complex"]),
+    ("BB / FM (broadband), complex samples", ["--waveform_mode", "BB", "--encode_mode", "complex"]),
+]
+CANCEL = "Cancel"
+
+
+def _parser_for(sonar: str) -> str | None:
+    """The echopype model name for aa-nc, or None if the user cancels."""
+    if sonar.upper() in _ECHOPYPE_MODELS:
+        return sonar.upper()
+    _warn(f"NCEI's sonar folder is '{sonar}', which is not a model name aa-nc "
+          "reads directly.")
+    choice = _pick("Which echopype parser reads this file?",
+                   list(_ECHOPYPE_MODELS) + [CANCEL])
+    return None if choice == CANCEL else choice
+
+
+def _sv_flags_for(model: str) -> list[str] | None:
+    """aa-sv flags for this model; None if the user cancels."""
+    if model not in ("EK80", "ES80"):
+        return []
+    choices = [{"name": label, "value": label} for label, _ in _EK80_MODES]
+    choices.append({"name": CANCEL, "value": CANCEL})
+    picked = _pick(f"{model} calibration: how was this file recorded?", choices)
+    if picked == CANCEL:
+        return None
+    return list(dict(_EK80_MODES)[picked])
+
+
 def _do_plot(ship: str, survey: str, sonar: str, file_name: str) -> None:
-    folder = f"{ship}_{survey}_{sonar}"
-    os.makedirs(folder, exist_ok=True)
-    out = f"{folder}/echogram.png"
-    _info(f"Plotting {file_name} → ./{out}")
-    cmd = [
-        "aa-plot",
-        file_name,
-        "--sonar_model", sonar,
-        "--output-file", out,
+    """Download, convert, calibrate and draw one file:
+
+        aa-raw ... | aa-nc --sonar_model M | aa-sv [EK80 mode] | aa-graph -o PNG
+
+    Everything lands in the same folder as "Download .raw" uses. Products
+    already made from the same file and options are reused by the tools.
+    """
+    model = _parser_for(sonar)
+    if model is None:
+        return
+    sv_flags = _sv_flags_for(model)
+    if sv_flags is None:
+        return
+    folder = Path(f"{ship}_{survey}_{sonar}_NCEI")
+    png = folder / f"{Path(file_name).stem}.png"
+    stages = [
+        ["aa-raw",
+         "--file_name", file_name,
+         "--file_type", "raw",
+         "--ship_name", ship,
+         "--survey_name", survey,
+         "--sonar_model", sonar,
+         "--file_download_directory", str(folder)],
+        ["aa-nc", "--sonar_model", model],
+        ["aa-sv", *sv_flags],
+        ["aa-graph", "-o", str(png)],
     ]
-    _run_subprocess(cmd, friendly_name="aa-plot")
+    _info(f"Plotting {file_name} → ./{png}")
+    _info("  " + " | ".join(stage[0] if i == 0 else " ".join(stage)
+                            for i, stage in enumerate(stages)))
+    result = _run_pipeline(stages)
+    if result:
+        _success(f"Echogram saved: {result}")
+
+
+def _stop(procs) -> None:
+    for _, proc in procs:
+        if proc.poll() is None:
+            proc.terminate()
+    for _, proc in procs:
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+
+def _run_pipeline(stages: list[list[str]]) -> str | None:
+    """Run `stage1 | stage2 | ...` without a shell.
+
+    Each stage's stdout feeds the next; their stderr (progress, errors) goes
+    straight to the terminal. Returns the last line the final stage printed
+    when every stage succeeded, else None (after saying which stage failed).
+    """
+    procs: list[tuple[str, subprocess.Popen]] = []
+    try:
+        upstream = None
+        for cmd in stages:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=upstream if upstream is not None else subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+            )
+            if upstream is not None:
+                # Only the child holds the read end now, so it sees EOF (or the
+                # writer SIGPIPE) exactly as in a shell pipeline.
+                upstream.close()
+            upstream = proc.stdout
+            procs.append((cmd[0], proc))
+        out, _ = procs[-1][1].communicate()
+        for _, proc in procs[:-1]:
+            proc.wait()
+    except FileNotFoundError as e:
+        _stop(procs)
+        _error(
+            f"'{e.filename or stages[len(procs)][0]}' command not found on PATH. "
+            "Is the aa-pipeline installed in the active environment?"
+        )
+        return None
+    except KeyboardInterrupt:
+        _stop(procs)
+        _warn("Plot interrupted.")
+        return None
+    except Exception as e:
+        _stop(procs)
+        _error(f"Plot failed: {e}")
+        return None
+
+    failed = [(name, proc.returncode) for name, proc in procs if proc.returncode != 0]
+    if failed:
+        # The first failure is the cause; later stages fail because they
+        # received nothing.
+        name, code = failed[0]
+        _error(f"{name} exited with code {code} (see its messages above); "
+               "the plot was not made.")
+        return None
+    lines = (out or b"").decode(errors="replace").strip().splitlines()
+    return lines[-1] if lines else None
 
 
 def _do_survey_disk_usage(
     ship: str, survey: str, sonar: str, s3_resource
 ) -> None:
     try:
+        from aalibrary.utils.ncei_utils import get_folder_size_from_s3
+
         with _status("Calculating survey disk usage..."):
             size = get_folder_size_from_s3(
                 folder_prefix=f"data/raw/{ship}/{survey}/{sonar}/",
@@ -614,6 +804,8 @@ def _do_file_disk_usage(
     ship: str, survey: str, sonar: str, file_name: str, s3_resource
 ) -> None:
     try:
+        from aalibrary.utils.ncei_utils import get_file_size_from_s3
+
         with _status(f"Fetching size of {file_name}..."):
             size = get_file_size_from_s3(
                 object_key=f"data/raw/{ship}/{survey}/{sonar}/{file_name}",

@@ -29,7 +29,8 @@ all, because the file it reads is the same file.
 
 Pipeline-friendly: with -o it writes the file and prints its path to stdout,
 like every other aa-* tool. Without -o it prints the YAML itself, so it can be
-piped straight into aa-fetch or into a heredoc-free `tee`.
+piped straight into aa-fetch (`aa-request ... | aa-fetch -`) or into a
+heredoc-free `tee`.
 
 On quoting, which is not cosmetic
 ---------------------------------
@@ -46,6 +47,7 @@ Typical usage:
     aa-request --check week.yaml
     aa-request -i week.yaml --vessel Reuben_Lasker --survey RL2107 \\
                --instrument EK80 --from 2021-06-01 --to 2021-06-02
+    aa-request week.yaml --merge-windows -o merged.yaml
 """
 from __future__ import annotations
 
@@ -74,6 +76,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
+
+from aalibrary.console._core import Help, ToolSpec, render, show_help, stdio
 
 # Pipeline tools should die cleanly when the downstream end of the pipe
 # closes early (`... | head -n 1`), not throw BrokenPipeError. Guarded
@@ -117,13 +121,84 @@ def _configure_logging(quiet: bool, debug: bool) -> None:
         logger.add(sys.stderr, level="INFO", backtrace=True, diagnose=False)
 
 
+SPEC = ToolSpec(name=TOOL, role="utility", engines=())
+
+HELP = Help(
+    summary="Build, merge or check the request YAML that aa-fetch reads.",
+    does=(
+        "Writes the vessel / survey / instrument / time-window document from "
+        "flags (the same document aa-get builds by asking questions), adds "
+        "windows to an existing document, or validates one with --check. Dates "
+        "and times are always written quoted: unquoted, YAML 1.1 reads 12:30:00 "
+        "as the integer 45000 and 2012-08-13 as a date. A document written "
+        "through aa-request has such values repaired."
+    ),
+    stdin=(
+        "An existing document to merge into or check (as EXISTING.yaml or -i), "
+        "read from stdin only when no file is named and no --vessel/--survey/"
+        "--instrument is given."
+    ),
+    stdout=(
+        "Without -o: the YAML document itself, ready for aa-fetch -. With -o: "
+        "the written file's absolute path. With --json: a JSON summary (for "
+        "the Workbench; aa-fetch cannot read it). --check prints nothing on "
+        "stdout unless --json is given; its report goes to stderr."
+    ),
+    options=[
+        ("--vessel, --survey, --instrument", "the request's keys; building a request "
+                                             "needs all three (--sonar_model is an alias "
+                                             "of --instrument)"),
+        ("--from WHEN --to WHEN", "one window. A date (2012-08-13, meaning 00:00:00) or a "
+                                  "datetime (2012-08-13T06:00:00); --from 2012-08-13 "
+                                  "--to 2012-08-14 is one whole day"),
+        ("--window FROM/TO", "another window (repeatable); also needs --vessel, "
+                             "--survey and --instrument"),
+        ("--split-days N", "break each window into N-day windows"),
+        ("--pad-minutes N", "start the first window N minutes earlier, so the file "
+                            "that spans its start is fetched (default 0)"),
+        ("EXISTING.yaml, -i PATH", "merge into this document; new windows join the "
+                                   "request with the same vessel, survey and instrument"),
+        ("--merge-windows", "combine overlapping or touching windows"),
+        ("--check", "validate only, write nothing; exit 4 on any problem OR warning"),
+        ("-o, --output_path PATH", "write here and print the path (an existing file "
+                                   "needs --force)"),
+        ("--json", "JSON summary instead of YAML"),
+        ("-q, --quiet / --debug", "fewer / more log messages on stderr"),
+    ],
+    files="Reads a local request YAML (or stdin). Writes a file only with -o.",
+    pipeline=(
+        "Feeds aa-fetch, either through the pipe (aa-request ... | aa-fetch -) "
+        "or through a file (-o request.yaml; aa-fetch request.yaml). Exit codes: 0 ok; 1 unreadable input or write "
+        "error; 2 usage (missing keys, bad dates, -o exists without --force); "
+        "4 --check found a problem or a warning (warnings include unquoted "
+        "dates/times, overlapping windows, unknown keys and an empty document), "
+        "or, without --check, the document has a problem and was not written."
+    ),
+    examples=[
+        "aa-request --vessel Alaska_Knight --survey CHS12AK --instrument ES60 \\",
+        "             --from 2012-08-13 --to 2012-08-14 -o request.yaml",
+        "aa-request --check request.yaml",
+        "aa-request request.yaml --merge-windows -o merged.yaml",
+        "aa-request --vessel Alaska_Knight --survey CHS12AK --instrument ES60 \\",
+        "             --from 2012-08-13 --to 2012-08-20 --split-days 1 | aa-fetch -",
+    ],
+)
+
+
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
     help_text = """
     Usage: aa-request [OPTIONS] [EXISTING.yaml]
 
     Arguments:
       EXISTING.yaml             A request document to merge into or check.
-                                Optional; also accepted via -i or stdin.
+                                Optional; also accepted via -i, or on stdin
+                                when no file is named and --vessel, --survey
+                                and --instrument are not given.
 
     Building a request:
       --vessel NAME             Vessel as NCEI spells it (Alaska_Knight).
@@ -137,7 +212,9 @@ def print_help() -> None:
                                 --from 2012-08-13 --to 2012-08-14 is one
                                 whole day.
       --window FROM/TO          Another window for the same request. Repeat
-                                for as many as you need.
+                                for as many as you need. Like --from/--to,
+                                it needs --vessel, --survey and --instrument
+                                (also when merging into an existing document).
 
       --split-days N            Break each window into N-day pieces. One
                                 request, many windows — which is what makes
@@ -159,11 +236,15 @@ def print_help() -> None:
                                 empty. New windows join an existing request
                                 when vessel, survey and instrument all match;
                                 otherwise a new request is appended.
-      --check                   Validate and report. Writes nothing. Exit 4
-                                if the document is malformed.
+      --check                   Validate and report (on stderr). Writes
+                                nothing. Exit 4 if the document has any
+                                problem OR any warning (unquoted dates or
+                                times, overlapping windows, unrecognised keys,
+                                a vessel with a space, no requests).
       --merge-windows           Combine overlapping or touching windows in the
                                 result. Two windows that abut describe one
                                 range, and aa-fetch would list the seam twice.
+                                Works on its own on an existing document.
 
     Output:
       -o, --output_path PATH    Write here and print the path to stdout.
@@ -174,16 +255,21 @@ def print_help() -> None:
 
       -q, --quiet               Warnings and errors only.
       --debug                   Verbose logging.
-      -h, --help                This message.
+      -h, --help                Short help.
+      --help-all                This message.
 
     Exit codes:
-      0 ok        1 runtime error    2 usage    4 validation failed
+      0 ok        1 runtime error    2 usage
+      4 --check: a problem or a warning; otherwise: a problem (not written)
 
     Examples:
       aa-request --vessel Alaska_Knight --survey CHS12AK --instrument ES60 \\
                  --from 2012-08-13 --to 2012-08-14 -o request.yaml
       aa-request --check request.yaml
-      aa-request -i request.yaml --window 2012-08-20/2012-08-21 --merge-windows
+      aa-request request.yaml --merge-windows -o merged.yaml
+      aa-request -i request.yaml --vessel Alaska_Knight --survey CHS12AK \\
+                 --instrument ES60 --window 2012-08-20/2012-08-21 \\
+                 --merge-windows -o request.yaml --force
       aa-request --vessel Alaska_Knight --survey CHS12AK --instrument ES60 \\
                  --from 2012-08-13 --to 2012-08-20 --split-days 1 | aa-fetch -
     """
@@ -591,15 +677,9 @@ def summarise(document: dict) -> dict:
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
-def main() -> None:
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print_help()
-        sys.exit(0)
-    if len(sys.argv) == 1 and sys.stdin.isatty():
-        print_help()
-        sys.exit(0)
-
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
+        prog=TOOL,
         description="Build, merge and validate an aa-fetch request document.",
         add_help=False,
     )
@@ -621,6 +701,19 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument("--debug", action="store_true")
+    return parser
+
+
+def main() -> None:
+    # No args on a terminal: help. (With stdin piped, a bare aa-request reads
+    # the document from it, as before.)
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
+        print_help()
+        sys.exit(0)
+
+    parser = _build_parser()
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        sys.exit(0)
 
     # See aa-store: argparse cannot match a variadic positional across an
     # optional, so `--check doc.yaml` loses the filename. Collect leftovers.

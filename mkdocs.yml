@@ -58,6 +58,8 @@ nav:
     - "Tugboat": usage/tugboat.md
   - "Documentation":
     - "Console Tools": documentation/console_tools.md
+    - "Console Products & Provenance": documentation/console_provenance.md
+    - "Writing Console Tools": documentation/console_tool_authoring.md
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
     - "RawFile": documentation/raw_file.md

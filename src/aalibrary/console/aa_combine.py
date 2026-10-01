@@ -61,6 +61,23 @@ Three things echopype gets wrong on this path, worked around here
    what lets `aa-store verify` tell sparsity from an interrupted write, and
    what makes exit 3 mean something a job runner can act on.
 
+Provenance and reuse
+--------------------
+The output carries the shared aa provenance (aa_provenance, aa_product_hash,
+aa_base): every input's chain, merged (N identical aa-nc steps show once as
+"aa-nc x N"), then this step. The product hash covers the inputs' identities
+in canonical order (sorted, so the order they arrive in never matters) and
+--channels; nothing else. When the output already exists and holds that same
+product in the same store layout (--chunk-pings, --compression,
+--consolidated, recorded with it), it is reused (printed as usual, exit 0)
+instead of refused, but only after the QC pass: --strict, --sonar_model and
+every blocking problem still exit 4, and the report is still written.
+--overwrite always rewrites. --check and --plan never hash or download inputs.
+
+Writing order for a store: combine -> aa provenance -> aa_kind/provenance/
+report/time_coverage (_annotate) -> aa_write marker -> consolidate. The
+consolidated metadata is written last, so it includes everything.
+
 Chunk shape and codec
 ---------------------
 echopype's writer takes no argument for either; it targets ~100 MB chunks and
@@ -99,6 +116,7 @@ import inspect
 import json
 import os
 import pprint
+import shutil
 import signal
 import statistics
 from datetime import datetime, timezone
@@ -111,9 +129,49 @@ from typing import Any, Optional
 if hasattr(signal, "SIGPIPE"):
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
+from aalibrary.console._core import (  # noqa: E402 - after the log silencing above
+    Help, Run, ToolSpec, add_common_flags, canon, naming, provenance, render, show_help,
+    stdio, uris,
+)
+
 
 TOOL = "aa-combine"
 VERSION = "0.2.0"
+
+SPEC = ToolSpec(
+    name=TOOL,
+    role="echodata",
+    kind="echodata",
+    op="echopype.combine_echodata",
+    op_version=1,
+    ext=".zarr",
+    # The only option that changes the combined values: which channels are
+    # kept, and in what order (channel_selection sets the output order).
+    # --sort is not here: a combine only happens in ascending time order.
+    params={"channels": canon.ordered()},
+)
+
+# Root attributes a combined store must not inherit from its first input.
+# combine_echodata copies the first input's Top-level attributes, so without
+# this an interrupted store would carry the first input's product hash (and,
+# when that input is itself a combined store, its `aa_write: complete`).
+INHERITED_ATTRS = (
+    provenance.ATTR, provenance.ATTR_HASH, provenance.ATTR_BASE,
+    provenance.ATTR_TOOL, provenance.ATTR_KIND, "aa_write",
+    # aa-combine's own layer label: an input that is itself a combined store
+    # (or an input written by an older core) carries one. A store gets its
+    # own from _annotate; a .nc export gets none.
+    "aa_kind",
+)
+
+WRITE_MARKER = "aa_write"
+
+# The provenance seal (aalibrary.console._core.provenance): a subgroup whose
+# product_hash attribute must match aa_provenance for the provenance to be
+# the store's own (xarray copies root attributes into a re-saved store, but
+# not the seal).
+SEAL_GROUP = provenance.SEAL_GROUP
+SEAL_ATTR = provenance.SEAL_ATTR
 
 # Seam thresholds. Kept identical to seams.ts in the Workbench frontend, which
 # runs the same test on the NCEI listing before the command is even composed.
@@ -168,15 +226,89 @@ def _configure_logging(quiet: bool, debug: bool) -> None:
         logger.add(sys.stderr, level="INFO", backtrace=True, diagnose=False)
 
 
+HELP = Help(
+    summary="Combine converted EchoData files into one L1 Zarr store (or a .nc export).",
+    does=(
+        "QC-checks the inputs first (sonar model, file names, channels, ping order, "
+        "overlaps, and seams: transit gaps that would make MVBS average across water "
+        "the ship was not in), then runs echopype.combine_echodata in time order and "
+        "writes one store with an unbroken ping axis. A QC report is written beside it."
+    ),
+    stdin=(
+        "Used only when no INPUTS and no --workdir are given: paths, directories or "
+        "gs:// URIs, one per line (bare paths or aa/1 JSON handles; '#' lines "
+        "ignored). An empty pipe falls back to the current directory."
+    ),
+    stdout=(
+        "The output's absolute path (or URI). With --json one aa/1 handle: schema, "
+        "kind (l1 | netcdf), uri, provenance {tool, version, parents, at}, time, "
+        "report, and product (hash), base, reused."
+    ),
+    metadata=(
+        "Root attributes keep aa_kind=l1, provenance {tool, version, parents, at}, "
+        "report, time_coverage_* and the aa_write marker, and add the aa provenance "
+        "(aa_provenance, aa_product_hash, aa_base): each input's chain, identical "
+        "steps grouped (aa-nc x3), then this step. The hash covers the inputs, in "
+        "canonical order, and --channels. Base: --base, else the -o stem, else "
+        "'combined'."
+    ),
+    options=[
+        ("INPUTS | --workdir DIR", "files/directories to combine (default: stdin, else .)"),
+        ("-o, --output_path PATH", ".zarr store or .nc export; local, gs:// or s3:// "
+                                   "(default: <base>.zarr in --workdir or .)"),
+        ("--channels A,B", "channels to keep; needed when inputs differ"),
+        ("--check | --plan", "QC only | estimate only (exit 4 on findings)"),
+        ("--strict", "block on seams, overlaps and duplicate pings"),
+        ("--chunk-pings N, --compression C", "store layout; not scientific"),
+        ("--json", "print an aa/1 handle instead of the path"),
+        ("--overwrite", "replace an existing output (always rewrites)"),
+        ("--force", "rebuild even when the identical output exists"),
+        ("--base NAME", "product base name (default: the -o stem, else 'combined')"),
+        ("--dest DIR|gs://PREFIX", "write <base>.zarr there instead of --workdir/."),
+    ],
+    science={"channels": "Channels kept, in this order (sets the output channel order)."},
+    files=(
+        "Reads .nc/.zarr EchoData, local or gs:// (an object, or a folder of .nc). "
+        "Writes <base>.zarr in --workdir or ., or -o / --dest; a .zarr goes straight to "
+        "gs:// or s3://, a gs:// .nc is staged and uploaded. An existing output holding "
+        "the identical product in the same layout is reused once QC passes; anything "
+        "else needs --overwrite (else exit 2). QC report: named after the output "
+        "(<output stem>.qc.json), beside it (in the bucket when remote)."
+    ),
+    # The shared --force/--base/--dest texts ("the input's base name",
+    # "beside the input") don't describe a combine; they're listed above.
+    common=False,
+    pipeline=(
+        "N:1 stage after aa-nc / aa-ed: aa-ed ./raw/ | aa-combine -o HB1603_L1.zarr | "
+        "aa-sv. Exit codes: 0 ok, 1 error, 2 usage or existing output, 3 interrupted "
+        "(store marked incomplete), 4 QC failed."
+    ),
+    examples=[
+        "aa-combine ./converted/ --check",
+        "aa-combine *.nc -o HB1603_L1.zarr --chunk-pings 500",
+        "aa-ed ./raw/ | aa-combine -o gs://bucket/HB1603_L1.zarr --json | aa-store verify --json",
+    ],
+)
+
+
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, build_parser()))
+
+
+def print_help_full() -> None:
     help_text = """
     Usage: aa-combine [OPTIONS] [INPUTS...]
 
     Arguments:
       INPUTS                    Converted EchoData files (.nc / .zarr), or a
-                                directory containing them. Optional. With no
-                                inputs, aa-combine reads stdin; with neither,
-                                it globs --workdir.
+                                directory containing them; local paths,
+                                file:// or gs:// URIs (a gs:// folder means
+                                the .nc objects in it). Optional. With no
+                                inputs, aa-combine reads stdin (bare paths or
+                                aa/1 handle lines); with neither, it globs
+                                --workdir. An empty pipe globs the current
+                                directory.
 
     Input:
       --workdir DIR             Where to look when no inputs are given.
@@ -194,6 +326,8 @@ def print_help() -> None:
                                 to keep every channel. Required when the
                                 inputs do not all carry the same channels;
                                 echopype refuses that combine outright.
+                                Scientific: it enters the product hash (in
+                                the order given, which is the output order).
       --sonar_model MODEL       Assert the expected model (EK60, EK80, ...).
                                 Fails before loading anything if an input
                                 disagrees.
@@ -204,9 +338,27 @@ def print_help() -> None:
                                 be a gs:// or s3:// URI for .zarr, which
                                 writes there directly rather than writing
                                 locally and copying a directory of thousands
-                                of objects afterwards. Default: combined.zarr
-                                in --workdir.
-      --overwrite               Replace an existing output.
+                                of objects afterwards. A gs:// .nc is written
+                                to a local staging file and uploaded (other
+                                remote schemes are refused for .nc). No
+                                suffix means .zarr. Default: <base>.zarr in
+                                --workdir, or in the current directory
+                                (combined.zarr unless --base is given).
+      --base NAME               Base name of the product (default: the -o
+                                stem, else "combined"). Recorded in the
+                                provenance and kept by every later stage.
+      --dest DIR|gs://PREFIX    Write <base>.zarr (or .nc) there instead.
+      --overwrite               Replace an existing output. Always rewrites
+                                (e.g. to apply a new --chunk-pings).
+                                Without it, an existing output that holds
+                                the identical product in the same layout
+                                (same inputs and --channels; same
+                                --chunk-pings, --compression and
+                                --consolidated) is reused once the QC pass
+                                has passed: its path is printed and the
+                                exit code is 0. Anything else exits 2.
+      --force                   Recompute even when the identical product
+                                already exists (replaces it).
       --chunk-pings N           Chunk length along ping_time. Unset lets
                                 echopype target ~100 MB chunks, which is a
                                 good default and the wrong one once you know
@@ -236,15 +388,24 @@ def print_help() -> None:
                                 it must also exceed. Default: 6.
       --report [PATH]           Write the QC report. Bare --report, or the
                                 flag omitted entirely, writes it beside the
-                                output. --report PATH chooses the path.
-                                --no-report skips it. The report URI is named
-                                in the handle, which is the only way the UI
-                                can surface it.
+                                output, named after it (-o Y.zarr ->
+                                Y.qc.json); for a remote output that is in
+                                the bucket, beside the store, and if that
+                                write fails, ./Y.qc.json in the current
+                                directory. Written on every run that passes
+                                the QC pass, a reused output included. --report PATH (or URI)
+                                chooses the place. --no-report skips it. The
+                                report URI is named in the handle, which is
+                                the only way the UI can surface it.
       --no-report               Skip the QC report.
 
     Machine interfaces:
       --json                    Emit an aa/1 handle line on stdout instead of
-                                the bare path.
+                                the bare path. Keys: schema, kind, uri,
+                                provenance {tool, version, parents, at},
+                                time, report, and (added) product = the full
+                                product hash, base, reused = true when an
+                                identical existing output was reused.
       --progress                Emit NDJSON progress events on stderr for a
                                 job runner to parse.
       --describe                Emit this tool's own parameter schema as JSON
@@ -253,10 +414,20 @@ def print_help() -> None:
 
       -q, --quiet               Warnings and errors only.
       --debug                   Verbose logging.
-      -h, --help                This message.
+      -h, --help                The short help.
+      --help-all                This reference.
+
+    Provenance:
+      The output carries the aa provenance (aa_provenance, aa_product_hash,
+      aa_base; aa-metadata shows it): every input's chain, identical steps
+      grouped (aa-nc x3), then this step. Inputs are registered in canonical
+      order, so the same files in any order, or as stdin handles, give the
+      same product hash and reuse the same output. Store attributes aa_kind,
+      provenance, report, time_coverage_* and aa_write are kept as before.
 
     Exit codes:
-      0 ok        1 runtime error    2 usage
+      0 ok (including an identical output reused)
+      1 runtime error    2 usage, or a different output already exists
       3 partial (interrupted; store marked resumable)
       4 QC failed (--check, or --strict with findings)
 
@@ -305,11 +476,17 @@ PARAM_META: dict[str, dict] = {
     "recursive": {"label": "Search recursively", "type": "boolean"},
     "json": {"label": "Machine output", "type": "boolean"},
     "progress": {"label": "NDJSON progress", "type": "boolean"},
+    # Shared aa-* flags (add_common_flags). Appended after the tool's own, so
+    # the existing entries keep their order.
+    "force": {"label": "Recompute even if identical exists", "type": "boolean"},
+    "base": {"label": "Base name", "type": "string"},
 }
 
 # Flags that describe how the tool talks, not what it does. The catalogue has
-# no use for them and listing them would bury the ones it does.
-PARAM_SKIP = {"quiet", "debug", "describe", "help", "inputs", "no_report"}
+# no use for them and listing them would bury the ones it does. --dest is a
+# second spelling of "where the output goes", which output_path already is
+# for the catalogue.
+PARAM_SKIP = {"quiet", "debug", "describe", "help", "inputs", "no_report", "dest"}
 
 
 def describe(parser: argparse.ArgumentParser) -> dict:
@@ -436,9 +613,30 @@ class Target:
             raise ValueError(f"{self.uri} is not a local path")
         return Path(self.raw)
 
+    @property
+    def staged(self) -> bool:
+        """Written locally, then uploaded by the core: a gs:// NetCDF export.
+
+        A gs:// store is normally written in place through gcsfs (a large store
+        should not need twice its size on local disk). With AA_GCS_FAKE_ROOT set
+        there is no real bucket to write to, so a store is staged and published
+        into the fake one like any other product, and never reaches real GCS.
+        """
+        if not (self.remote and uris.is_gcs(self.raw)):
+            return False
+        return self.is_netcdf or bool(os.getenv("AA_GCS_FAKE_ROOT"))
+
     def exists(self) -> bool:
         if not self.remote:
             return Path(self.raw).exists()
+        if self.staged:
+            # A single object, published through the core: ask the same
+            # object store the upload will go to.
+            try:
+                return uris.stat(self.raw) is not None
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"Could not check {self.raw}: {exc}")
+                return False
         try:
             import fsspec
 
@@ -488,12 +686,43 @@ def _is_aa_product(path: Path) -> bool:
     return False
 
 
-def _collect_inputs(raw_inputs: list[str], recursive: bool) -> list[Path]:
-    """Expand directories, keep files, preserve order, drop duplicates."""
-    found: list[Path] = []
+def _expand_gcs(uri: str, recursive: bool) -> list[str]:
+    """A gs:// input: an object or a .zarr store as given, else a folder whose
+    .nc objects are the inputs (like a local directory)."""
+    name = uri.rstrip("/").rsplit("/", 1)[-1]
+    suffix = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    if suffix in INPUT_SUFFIXES and not uri.endswith("/"):
+        return [uri]
+    if suffix == ".zarr":
+        return [uri.rstrip("/")]
+    bucket, key = uris.parse_gcs(uri)
+    prefix = key.rstrip("/") + "/" if key.strip("/") else ""
+    found = []
+    for obj in uris.backend().list(bucket, prefix):
+        rel = obj.key[len(prefix):]
+        if not recursive and "/" in rel:
+            continue
+        if Path(rel).suffix.lower() in NETCDF_SUFFIXES:
+            found.append(f"gs://{bucket}/{obj.key}")
+    if not found:
+        logger.warning(
+            f"No .nc objects {'anywhere under' if recursive else 'directly inside'} {uri}"
+        )
+    return sorted(found)
+
+
+def _collect_inputs(raw_inputs: list[str], recursive: bool) -> list:
+    """Expand directories, keep files, preserve order, drop duplicates.
+
+    Local inputs come back as Paths, gs:// inputs as URI strings (the core
+    localizes them when they are registered)."""
+    found: list = []
     seen: set[str] = set()
     for item in raw_inputs:
-        path = Path(item).expanduser()
+        if uris.is_gcs(item):
+            found.extend(_expand_gcs(item, recursive))
+            continue
+        path = Path(uris.from_file_uri(str(item))).expanduser()
         if path.is_dir() and path.suffix.lower() != ".zarr":
             pattern = "**/*" if recursive else "*"
             candidates = sorted(
@@ -509,9 +738,12 @@ def _collect_inputs(raw_inputs: list[str], recursive: bool) -> list[Path]:
             found.extend(candidates)
         else:
             found.append(path)
-    ordered: list[Path] = []
+    ordered: list = []
     for path in found:
-        key = str(path.resolve()) if path.exists() else str(path)
+        if isinstance(path, str):
+            key = path
+        else:
+            key = str(path.resolve()) if path.exists() else str(path)
         if key in seen:
             logger.warning(f"Ignoring repeated input: {path}")
             continue
@@ -522,7 +754,11 @@ def _collect_inputs(raw_inputs: list[str], recursive: bool) -> list[Path]:
 
 def _read_stdin_inputs() -> list[str]:
     """Bare paths or aa/1 handle lines. Both, because every tool already
-    installed prints the former and the Workbench wants the latter."""
+    installed prints the former and the Workbench wants the latter.
+
+    Kept for callers of this module; main() reads stdin through the shared
+    core (stdio.read_tokens), which applies the same rules plus file:// URIs
+    and the "path"/"url" handle keys."""
     values: list[str] = []
     for line in sys.stdin:
         text = line.strip()
@@ -547,12 +783,22 @@ def _read_stdin_inputs() -> list[str]:
 # --------------------------------------------------------------------------- #
 # Inspection — one lazy open per input, no data read
 # --------------------------------------------------------------------------- #
-def inspect_inputs(paths: list[Path], progress: bool) -> list[dict]:
+def inspect_inputs(
+    paths: list,
+    progress: bool,
+    uri_list: Optional[list[str]] = None,
+    storage_options: Optional[dict] = None,
+) -> list[dict]:
     """Open each input lazily and record what the QC pass needs to judge it.
 
     `open_converted` is lazy, and ping_time is a coordinate, so xarray has it
     in memory the moment the group opens. Reading first/last from it costs
     nothing; reading the data would cost everything.
+
+    ``paths`` are local paths, or remote URIs (--check/--plan on gs://
+    inputs: opened in place through fsspec with ``storage_options``).
+    ``uri_list`` gives each input's URI when it is not the local path's (a
+    gs:// input read from the cache or a mount).
     """
     import echopype as ep
 
@@ -560,14 +806,18 @@ def inspect_inputs(paths: list[Path], progress: bool) -> list[dict]:
     total = len(paths)
     for index, path in enumerate(paths, start=1):
         _progress(progress, "progress", done=index - 1, total=total, unit="files")
+        remote = uris.is_remote(str(path))
         record: dict[str, Any] = {
             "path": str(path),
-            "uri": _to_uri(path),
-            "name": path.name,
+            "uri": uri_list[index - 1] if uri_list else _to_uri(path),
+            "name": uris.basename(str(path)) if remote else Path(path).name,
             "error": None,
         }
         try:
-            echodata = ep.open_converted(str(path))
+            if remote:
+                echodata = ep.open_converted(str(path), storage_options=storage_options or {})
+            else:
+                echodata = ep.open_converted(str(path))
         except Exception as exc:  # noqa: BLE001 - one bad file must not stop the pass
             record["error"] = f"{type(exc).__name__}: {exc}"
             logger.error(f"Could not open {path}: {exc}")
@@ -1070,6 +1320,28 @@ def _clean_netcdf_attrs(echodata) -> int:
     return fixed
 
 
+def _drop_inherited_attrs(echodata) -> None:
+    """Remove the first input's product identity from the combined root.
+
+    combine_echodata copies the first input's Top-level attributes. For an
+    aa-* input those include its aa_provenance / aa_product_hash (and, for a
+    combined store, its aa_write marker), which would make an interrupted
+    store look like its first input, or like a finished write. This tool
+    writes its own values for all of them once the combine has succeeded.
+    """
+    try:
+        top = echodata["Top-level"]
+        dropped = [key for key in INHERITED_ATTRS if key in top.attrs]
+        if not dropped:
+            return
+        for key in dropped:
+            top.attrs.pop(key, None)
+        echodata["Top-level"] = top
+        logger.debug(f"Dropped inherited root attribute(s) {dropped}")
+    except Exception as exc:  # noqa: BLE001 - cosmetic; finish() overwrites them anyway
+        logger.debug(f"Could not drop inherited attributes: {exc}")
+
+
 def _blosc(cname: str, clevel: int = 5):
     """A Blosc codec in whatever spelling the installed zarr uses."""
     try:
@@ -1298,6 +1570,287 @@ def _annotate(
             group.attrs["time_coverage_end"] = max(ends)
 
 
+# --------------------------------------------------------------------------- #
+# Provenance, reuse and the report (shared core on top of the above)
+# --------------------------------------------------------------------------- #
+def _read_root_doc(target: Target, name: str, storage_options: dict) -> Optional[dict]:
+    """A store's root metadata document (zarr.json / .zattrs / .zmetadata),
+    parsed, or None. Read as JSON, local or through fsspec: no zarr import."""
+    try:
+        if not target.remote:
+            path = Path(target.raw) / name
+            if not path.is_file():
+                return None
+            return json.loads(path.read_text(encoding="utf-8"))
+        import fsspec
+
+        fs, root = fsspec.core.url_to_fs(target.raw, **(storage_options or {}))
+        key = f"{root.rstrip('/')}/{name}"
+        if not fs.exists(key):
+            return None
+        with fs.open(key, "rb") as handle:
+            return json.loads(handle.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 - unreadable is "unknown", never fatal
+        logger.debug(f"Could not read {name} in {target.raw}: {exc}")
+        return None
+
+
+def _root_attrs(target: Target, storage_options: dict) -> dict:
+    document = _read_root_doc(target, "zarr.json", storage_options)
+    if document is not None:
+        return document.get("attributes", {}) or {}
+    return _read_root_doc(target, ".zattrs", storage_options) or {}
+
+
+def _has_consolidated(target: Target, storage_options: dict) -> bool:
+    if _read_root_doc(target, ".zmetadata", storage_options) is not None:
+        return True
+    document = _read_root_doc(target, "zarr.json", storage_options) or {}
+    return bool(document.get("consolidated_metadata"))
+
+
+def _as_doc(value: Any) -> Optional[dict]:
+    """An aa provenance document from an attribute (JSON text or a dict)."""
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", "replace")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return None
+    if isinstance(value, dict) and value.get("schema") == provenance.SCHEMA:
+        return value
+    return None
+
+
+def _seal_hash(target: Target, storage_options: dict) -> Optional[str]:
+    """The product hash in the store's aa_seal subgroup, or None.
+
+    The seal is what makes a store's aa provenance genuine: xarray copies
+    root attributes into anything re-saved from a store, but not the seal.
+    """
+    for name in (f"{SEAL_GROUP}/zarr.json", f"{SEAL_GROUP}/.zattrs"):
+        document = _read_root_doc(target, name, storage_options)
+        if document is None:
+            continue
+        attrs = document.get("attributes", {}) if name.endswith("zarr.json") else document
+        value = (attrs or {}).get(SEAL_ATTR)
+        return str(value) if value else None
+    return None
+
+
+def _existing_product(target: Target, storage_options: dict, run: Run, out) -> dict:
+    """What the existing output holds: its product hash, whether its write
+    finished, the store layout it was written with, and the attributes and
+    provenance the reuse handle is built from.
+
+    Provenance only counts when it is the output's own: sealed (a copy that
+    rode along into a re-saved file is not), and for a gs:// object, not
+    rewritten since it was published. A NetCDF export is judged by the core
+    (Run.existing_hash); a store, local or remote, by its root attributes and
+    seal, read here as JSON through the same filesystem it was written with.
+    """
+    info: dict[str, Any] = {"hash": None, "complete": None, "attrs": {}, "doc": None,
+                            "layout": None}
+    try:
+        if target.is_netcdf:
+            info["complete"] = True  # one file: either there or not
+            info["hash"] = run.existing_hash(out)
+            if target.staged:
+                if info["hash"] and info["hash"] == out.hash:
+                    # The recorded layout is inside the file.
+                    info["doc"] = provenance.read(uris.localize(target.raw).path)
+            else:
+                info["doc"] = provenance.read(target.raw)
+        else:
+            attrs = _root_attrs(target, storage_options)
+            doc = _as_doc(attrs.get(provenance.ATTR))
+            product_hash = ((doc or {}).get("product") or {}).get("hash")
+            if product_hash and _seal_hash(target, storage_options) != product_hash:
+                logger.debug(f"{target.raw}: aa provenance without a matching seal; "
+                             "not this store's own")
+                doc, product_hash = None, None
+            info["attrs"] = attrs
+            info["doc"] = doc
+            info["hash"] = product_hash
+            marker = attrs.get(WRITE_MARKER)
+            info["complete"] = marker.get("complete") if isinstance(marker, dict) else None
+        info["layout"] = (((info["doc"] or {}).get("extra") or {}).get(TOOL) or {}).get("layout")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Could not read the existing product at {target.raw}: {exc}")
+    return info
+
+
+def _layout(args, target: Target) -> dict:
+    """The store layout a run asks for, in canonical form. Not part of the
+    product (the values are the same), but a reused output must have it:
+    --chunk-pings 50 on an existing store chunked by 180 is not a no-op."""
+    if target.is_netcdf:
+        return {"format": "netcdf",
+                "compression": "none" if args.compression == "none" else "default"}
+    return {
+        "format": "zarr",
+        "chunk_pings": args.chunk_pings,
+        # zlib is a NetCDF codec; for a store it means echopype's default.
+        "compression": "default" if args.compression in {"default", "zlib"} else args.compression,
+        "consolidated": bool(args.consolidated),
+    }
+
+
+def _layout_text(layout: Optional[dict]) -> str:
+    if not layout:
+        return "an unrecorded layout"
+    return ", ".join(f"{key}={value}" for key, value in layout.items() if key != "format")
+
+
+def _input_bytes(path_or_uri: str) -> int:
+    """Size of an input for --plan: a local file or store, or a gs:// object
+    or store (object metadata only; nothing is downloaded)."""
+    if uris.is_gcs(str(path_or_uri)):
+        try:
+            info = uris.stat(str(path_or_uri))
+            if info is not None:
+                return int(info.size)
+            bucket, key = uris.parse_gcs(str(path_or_uri))
+            prefix = key.rstrip("/") + "/"
+            return sum(obj.size for obj in uris.backend().list(bucket, prefix))
+        except Exception as exc:  # noqa: BLE001 - an estimate
+            logger.debug(f"Could not size {path_or_uri}: {exc}")
+            return 0
+    return _tree_bytes(Path(path_or_uri))
+
+
+def _embed_remote(run: Run, out, target: Target, storage_options: dict, extra: dict) -> None:
+    """The core's provenance, written into a remote store's root group
+    through the same fsspec mapper the combine wrote with (the core's
+    provenance.write only handles local files; a remote Zarr is never staged
+    locally). provenance.write_zarr_group sets the flat attributes and
+    aa_provenance and creates the aa_seal subgroup; the caller consolidates.
+    """
+    document = run.document(out, extra=extra)
+    with _open_root(target, storage_options) as group:
+        if group is None:
+            raise RuntimeError(f"could not open {target.raw} to record provenance")
+        provenance.write_zarr_group(group, document)
+
+
+def _write_report(report: dict, destination: str, storage_options: dict) -> Optional[str]:
+    """Write the QC report; returns its URI, or None if it could not be written.
+
+    A remote destination (the default for a remote store: beside it) is
+    written there: gs:// through the core's object store (like every aa-*
+    gs:// output), any other scheme through fsspec with --storage-options. If
+    that fails, the report lands in the current directory under its own name,
+    rather than in a local directory tree spelled like the URI ("./gs:/...").
+    """
+    text = json.dumps(report, indent=2, default=str)
+    if uris.is_remote(destination):
+        try:
+            if uris.is_gcs(destination):
+                import tempfile
+
+                with tempfile.TemporaryDirectory() as tmp:
+                    local = Path(tmp) / uris.basename(destination)
+                    local.write_text(text, encoding="utf-8")
+                    uris.publish(local, destination, keep_in_cache=False)
+            else:
+                import fsspec
+
+                with fsspec.open(destination, "w", **(storage_options or {})) as handle:
+                    handle.write(text)
+            logger.info(f"QC report: {destination}")
+            return destination
+        except Exception as exc:  # noqa: BLE001
+            fallback = Path.cwd() / uris.basename(destination)
+            logger.warning(
+                f"Could not write the QC report to {destination} ({exc}); "
+                f"writing {fallback} instead"
+            )
+            destination = str(fallback)
+    report_path = Path(destination).expanduser()
+    try:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(text, encoding="utf-8")
+        logger.info(f"QC report: {report_path}")
+        return _to_uri(report_path)
+    except OSError as exc:
+        logger.warning(f"Could not write the QC report: {exc}")
+        return None
+
+
+def _handle(
+    target: Target,
+    parents: list[str],
+    at: Optional[str],
+    time_range: Optional[list],
+    report_uri: Optional[str],
+    product: str,
+    base: str,
+    reused: bool,
+    version: str = VERSION,
+    tool: str = TOOL,
+) -> dict:
+    """The aa/1 handle. The first six keys are the original contract; product,
+    base and reused were added with the shared provenance."""
+    handle: dict[str, Any] = {
+        "schema": "aa/1",
+        # A .zarr store is the L1 layer; a .nc file is an export that
+        # nothing downstream reads back. Same tool, different product.
+        "kind": "netcdf" if target.is_netcdf else "l1",
+        "uri": target.uri,
+        "provenance": {"tool": tool, "version": version, "parents": parents, "at": at},
+    }
+    if time_range:
+        handle["time"] = list(time_range)
+    if report_uri:
+        handle["report"] = report_uri
+    handle["product"] = product
+    handle["base"] = base
+    handle["reused"] = reused
+    return handle
+
+
+def _reuse_handle(
+    target: Target,
+    existing: dict,
+    product: str,
+    base: str,
+    parents: list[str],
+    time_range: Optional[list],
+    report_uri: Optional[str],
+) -> dict:
+    """The handle for an output that already holds this product.
+
+    parents, time and report are this run's: the inputs as given now (the
+    same content as the ones the store was made from, possibly at other
+    paths), and the report just written. The production time and version
+    are the store's own. A report is still named when --no-report skipped
+    this run's: the one recorded with the store.
+    """
+    attrs = existing.get("attrs") or {}
+    doc = existing.get("doc")
+    if doc is None and target.staged:
+        try:
+            doc = provenance.read(uris.localize(target.raw).path)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"Could not read the provenance of {target.raw}: {exc}")
+    doc = doc or {}
+    recorded = ((doc.get("extra") or {}).get(TOOL)) or {}
+    lineage = attrs.get("provenance") if isinstance(attrs.get("provenance"), dict) else {}
+    return _handle(
+        target,
+        parents=parents,
+        at=lineage.get("at") or (doc.get("created") or {}).get("at"),
+        time_range=time_range,
+        report_uri=report_uri or attrs.get("report") or recorded.get("report"),
+        product=product,
+        base=base,
+        reused=True,
+        version=lineage.get("version") or VERSION,
+        tool=lineage.get("tool") or TOOL,
+    )
+
+
 def combine(
     paths: list[Path],
     target: Target,
@@ -1349,6 +1902,7 @@ def combine(
         return
 
     _strip_netcdf_encoding(combined)
+    _drop_inherited_attrs(combined)
 
     if target.is_netcdf:
         # An export, not a layer. NetCDF is HDF5 underneath and needs a
@@ -1468,21 +2022,44 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--describe", action="store_true")
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument("--debug", action="store_true")
+    # --force / --base / --dest, last so --describe keeps its existing order.
+    add_common_flags(parser)
+    # The shared help texts assume a 1:1 tool (base = the input's; output
+    # beside the input). --describe hands these to the Workbench verbatim.
+    for action in parser._actions:  # noqa: SLF001 - argparse has no setter
+        if action.dest == "base":
+            action.help = ("Base name of the product (default: the -o stem, else "
+                           "'combined').")
+        elif action.dest == "dest":
+            action.help = ("Write <base>.zarr (or .nc) here instead of --workdir or the "
+                           "current directory.")
+        elif action.dest == "force":
+            action.help = ("Rebuild even when the output already holds the identical "
+                           "product.")
     return parser
 
 
-def main() -> None:
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print_help()
-        sys.exit(0)
+def _output_base(args) -> str:
+    """--base, else the -o stem, else 'combined' (the old default name)."""
+    if getattr(args, "base", None):
+        return naming.sanitize_base(args.base)
+    if args.output_path:
+        return naming.base_of(uris.basename(uris.from_file_uri(str(args.output_path))))
+    return "combined"
 
+
+def main() -> None:
     parser = build_parser()
+
+    # -h/--help: the short, curated help. --help-all: the full reference.
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        sys.exit(0)
 
     if "--describe" in sys.argv:
         print(json.dumps(describe(parser), separators=(",", ":"), default=str))
         sys.exit(0)
 
-    if len(sys.argv) == 1 and sys.stdin.isatty():
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
         print_help()
         sys.exit(0)
 
@@ -1525,29 +2102,34 @@ def main() -> None:
     # `aa-ed ./raw/ | aa-combine` still works, because that is the third case
     # and aa-ed's path arrives whenever it arrives. A runner that wants the
     # directory behaviour passes --workdir, or attaches /dev/null to stdin.
-    raw_inputs = list(args.inputs)
+    #
+    # Tokens follow the shared pipe contract (stdio): bare paths, file:// and
+    # gs:// URIs, aa/1 JSON handles; blank and '#' lines are skipped.
+    workdir = uris.from_file_uri(args.workdir) if args.workdir is not None else None
+    raw_inputs = [token for token in map(stdio.normalize_token, args.inputs) if token]
     discovered = not raw_inputs
-    if not raw_inputs and args.workdir is not None:
-        raw_inputs = [args.workdir]
-        logger.info(f"Looking in --workdir {Path(args.workdir).resolve()}")
-    if not raw_inputs and not sys.stdin.isatty():
+    if not raw_inputs and workdir is not None:
+        raw_inputs = [workdir]
+        where = workdir if uris.is_remote(workdir) else Path(workdir).resolve()
+        logger.info(f"Looking in --workdir {where}")
+    if not raw_inputs and stdio.stdin_is_piped():
         logger.debug("Reading inputs from stdin")
-        raw_inputs = _read_stdin_inputs()
+        raw_inputs = stdio.read_tokens()
         if raw_inputs:
             logger.info(f"Read {len(raw_inputs)} input(s) from stdin.")
     if not raw_inputs:
         raw_inputs = ["."]
         logger.info(f"No inputs given; looking in {Path('.').resolve()}")
 
-    paths = _collect_inputs(raw_inputs, args.recursive)
-    missing = [path for path in paths if not path.exists()]
+    items = _collect_inputs(raw_inputs, args.recursive)
+    missing = [item for item in items if isinstance(item, Path) and not item.exists()]
     if missing:
         for path in missing:
             logger.error(f"Input does not exist: {path}")
         sys.exit(1)
-    if len(paths) < 2:
+    if len(items) < 2:
         logger.error(
-            f"Combining needs at least 2 inputs; found {len(paths)}. "
+            f"Combining needs at least 2 inputs; found {len(items)}. "
             "A one-file combine is a copy — use aa-store info to inspect it instead."
         )
         sys.exit(2)
@@ -1562,25 +2144,39 @@ def main() -> None:
     # ---------------------------
     # Resolve output
     # ---------------------------
+    # Where it goes: -o as given (no suffix -> .zarr), else --dest, else
+    # <base>.zarr in --workdir or the current directory. The base name is
+    # --base, else the -o stem, else "combined", so the old default stays
+    # combined.zarr. The location never depends on the inputs, so it is
+    # known before anything is hashed.
+    run = Run(SPEC, args)
+    base = _output_base(args)
+    run.base_override = base
+    default_dir = workdir if workdir is not None else "."
+    explicit = None
+    ext = SPEC.ext
+    if args.output_path is not None:
+        explicit = uris.from_file_uri(str(args.output_path))
+        name = uris.basename(explicit)
+        if "." not in name:
+            explicit = explicit.rstrip("/") + ".zarr"
+            logger.info(f"No suffix on -o; writing {explicit}")
+        ext = "." + uris.basename(explicit).rsplit(".", 1)[-1].lower()
+    located = run.plan(ext=ext, explicit=explicit, directory=default_dir, stage=False)
+    target = Target(located.target)
     if args.output_path is None:
-        default_output = Path(args.workdir or ".").expanduser() / "combined.zarr"
-        target = Target(str(default_output))
         logger.info(f"No -o given; writing {target.raw}")
-    else:
-        target = Target(args.output_path)
 
-    if not target.suffix:
-        target = Target(target.raw + ".zarr")
-        logger.info(f"No suffix on -o; writing {target.raw}")
     if target.suffix not in INPUT_SUFFIXES:
         logger.error(
             f"-o {target.name}: expected a .zarr store or a .nc export, got {target.suffix!r}."
         )
         sys.exit(2)
-    if target.is_netcdf and target.remote:
+    if target.is_netcdf and target.remote and not target.staged:
         logger.error(
-            "NetCDF is HDF5 underneath and needs a seekable local file, so -o cannot "
-            "be a remote URI for a .nc export. Write locally, then aa-upload."
+            "NetCDF is HDF5 underneath and needs a seekable local file, so a .nc export "
+            "can only go to a local path or a gs:// URI (written locally, then uploaded). "
+            "Write locally, then aa-upload."
         )
         sys.exit(2)
     if target.is_netcdf:
@@ -1589,44 +2185,130 @@ def main() -> None:
             "downstream reads it back, and it must be read whole. Prefer .zarr unless "
             "this is for handoff or archive."
         )
-    if target.exists() and not (args.overwrite or args.check or args.plan):
-        logger.error(f"{target.raw} exists. Pass --overwrite to replace it.")
-        sys.exit(2)
+
     # Only for inputs the user named. An input that merely turned up in a
     # directory scan and happens to be the output is excluded below, not
     # refused — refusing there would make the second run in a folder fail on
     # something the tool did to itself.
-    if not target.remote and not discovered:
-        for path in paths:
-            if _same_target(path, target):
-                logger.error(f"Refusing to overwrite an input: {target.raw}")
-                sys.exit(1)
+    named_target = (
+        not target.remote
+        and not discovered
+        and any(isinstance(item, Path) and _same_target(item, target) for item in items)
+    )
+    if named_target:
+        # A store can never be the product of combining itself, so there is
+        # nothing to reuse here: the old order of checks and exit codes holds.
+        if target.exists() and not (args.overwrite or args.check or args.plan):
+            logger.error(f"{target.raw} exists. Pass --overwrite to replace it.")
+            sys.exit(2)
+        logger.error(f"Refusing to overwrite an input: {target.raw}")
+        sys.exit(1)
 
     if discovered:
         # The default output lands in the directory being globbed, so the
         # second run of `aa-combine` in a folder finds its own store from the
         # first and tries to combine it back in. It fails deep inside
         # echopype, on a missing group, which is a long way from the cause.
-        kept = [path for path in paths if not _same_target(path, target)]
-        if len(kept) != len(paths):
-            logger.info(f"Excluding the output store from the discovered inputs")
-            paths = kept
-        for path in paths:
-            if _is_aa_product(path):
+        kept = [
+            item for item in items
+            if not (isinstance(item, Path) and _same_target(item, target))
+        ]
+        if len(kept) != len(items):
+            logger.info("Excluding the output store from the discovered inputs")
+            items = kept
+        for item in items:
+            if isinstance(item, Path) and _is_aa_product(item):
                 # Not refused: combining a combined store with newer files is
                 # a real operation. But finding one you did not ask for is
                 # almost always the first case, so it gets named.
                 logger.warning(
-                    f"{path.name} was written by this toolset and was picked up by "
+                    f"{item.name} was written by this toolset and was picked up by "
                     f"the directory scan, not named explicitly. Pass inputs "
                     f"explicitly if that was not intended."
                 )
-        if len(paths) < 2:
+        if len(items) < 2:
             logger.error(
-                f"Only {len(paths)} input(s) left after excluding the output. "
+                f"Only {len(items)} input(s) left after excluding the output. "
                 "Name the inputs explicitly, or point --workdir somewhere else."
             )
             sys.exit(2)
+
+    # ---------------------------
+    # Register inputs, hash the product — only when something may be written
+    # ---------------------------
+    # --check and --plan write nothing but the report, so they stay the lazy,
+    # metadata-only pass they always were: no content hashing and no
+    # downloads. A gs:// input is then read in place: through a gcsfuse mount
+    # when one covers it, else lazily through fsspec.
+    paths: list = []
+    input_uris: list[str] = []
+    out = None
+    existing: Optional[dict] = None
+    reuse = False
+    replace = bool(args.overwrite)
+    if args.check or args.plan:
+        for item in items:
+            if isinstance(item, Path):
+                paths.append(item)
+                input_uris.append(_to_uri(item))
+            else:
+                mounted = uris.mounted_path(item)
+                paths.append(mounted if mounted is not None else item)
+                input_uris.append(item)
+    else:
+        # Each input's identity is its own product hash when it carries aa
+        # provenance (aa-nc / aa-ed output), else its content. gs:// inputs
+        # are read through a gcsfuse mount or the download cache.
+        for item in items:
+            try:
+                registered = run.input(str(item))
+            except Exception as exc:  # noqa: BLE001 - a missing or unreadable gs:// object
+                logger.error(f"Input does not exist: {item} ({exc})")
+                sys.exit(1)
+            if isinstance(item, Path):
+                paths.append(item)
+                input_uris.append(_to_uri(item))
+            else:
+                paths.append(registered.local)
+                input_uris.append(registered.uri)
+        # Canonical order: the combined product is sorted by time whatever
+        # order the inputs arrive in, so the hash must not depend on it.
+        run.inputs.sort(key=lambda registered: (registered.id, registered.uri))
+        out = run.plan(ext=ext, explicit=explicit, directory=default_dir, stage=False)
+
+        # An existing output. Decided here, before the (slower) inspection
+        # pass, whenever the answer is "refuse": that stays the fast exit 2 it
+        # always was. Reuse is only a candidate until the QC gate below has
+        # passed: --strict, --sonar_model and every blocking problem apply to
+        # a reused output exactly as to a fresh one.
+        if target.exists():
+            existing = _existing_product(target, storage_options, run, out)
+            same = existing["hash"] == out.hash
+            finished = existing["complete"] is True
+            layout = _layout(args, target)
+            same_layout = existing["layout"] == layout
+            if same and finished and same_layout and not (args.overwrite or run.force):
+                # Same inputs, same channels, same science, same store layout.
+                reuse = True
+            elif args.overwrite or (run.force and same):
+                # --overwrite always rewrites (as it always did: e.g. to apply
+                # a new --chunk-pings); --force recomputes an identical one.
+                replace = True
+            else:
+                logger.error(f"{target.raw} exists. Pass --overwrite to replace it.")
+                if same and not finished:
+                    logger.info("It holds this product, but its write never finished "
+                                "(aa_write marker); --overwrite rewrites it.")
+                elif same:
+                    logger.info(
+                        "It holds this product, but not in the layout asked for "
+                        f"(written with {_layout_text(existing['layout'])}; asked for "
+                        f"{_layout_text(layout)}); --overwrite rewrites it."
+                    )
+                elif existing["hash"]:
+                    logger.info(f"It holds a different product (aa:{str(existing['hash'])[:8]}; "
+                                f"this one is aa:{out.short}).")
+                sys.exit(2)
 
     args_summary = {
         "inputs": len(paths),
@@ -1637,6 +2319,9 @@ def main() -> None:
         "chunk_pings": args.chunk_pings,
         "compression": args.compression,
         "strict": args.strict,
+        "product": out.hash if out else None,
+        "base": out.base if out else base,
+        "reuse": reuse,
     }
     logger.debug(
         f"Executing aa-combine configured with [OPTIONS]:\n{pprint.pformat(args_summary)}"
@@ -1650,10 +2335,13 @@ def main() -> None:
     # default disposition and exit 143, which tells a job runner nothing about
     # whether anything was left behind. Every path out of this tool now ends
     # in a code the runner can act on.
+    state = {"write": target}
+
     def _on_signal(signum, _frame):
-        if target.exists():
-            _stamp(target, False, storage_options, extra={"interruptedBy": int(signum)})
-            logger.warning(f"Interrupted (signal {signum}); {target.raw} marked incomplete.")
+        written = state["write"]
+        if written.exists():
+            _stamp(written, False, storage_options, extra={"interruptedBy": int(signum)})
+            logger.warning(f"Interrupted (signal {signum}); {written.raw} marked incomplete.")
         else:
             logger.warning(f"Interrupted (signal {signum}) before anything was written.")
         _progress(args.progress, "done", exit=3)
@@ -1670,7 +2358,7 @@ def main() -> None:
     # ---------------------------
     _progress(args.progress, "start", inputs=len(paths))
     try:
-        records = inspect_inputs(paths, args.progress)
+        records = inspect_inputs(paths, args.progress, input_uris, storage_options)
     except ImportError as exc:
         logger.error(f"echopype is required to read EchoData files: {exc}")
         sys.exit(1)
@@ -1713,16 +2401,18 @@ def main() -> None:
     # ---------------------------
     # QC report
     # ---------------------------
+    # Beside the output, named after it: <output stem>.qc.json. Written on
+    # every run that gets this far, a reused output included (the report is
+    # this run's QC verdict, and --report PATH asks for it). For a remote
+    # output it goes beside
+    # the store in the bucket (it used to become "./gs:/bucket/..." in the
+    # current directory, with a file:// URI naming a path nobody meant).
     report_uri = None
     if not args.no_report and args.report != "none":
-        report_path = Path(args.report) if args.report else Path(target.sibling(".qc.json"))
-        try:
-            report_path.parent.mkdir(parents=True, exist_ok=True)
-            report_path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-            report_uri = _to_uri(report_path)
-            logger.info(f"QC report: {report_path}")
-        except OSError as exc:
-            logger.warning(f"Could not write the QC report: {exc}")
+        destination = (
+            uris.from_file_uri(args.report) if args.report else target.sibling(".qc.json")
+        )
+        report_uri = _write_report(report, destination, storage_options)
 
     blocking = bool(report["problems"]) or (args.strict and bool(report["warnings"]))
 
@@ -1730,7 +2420,7 @@ def main() -> None:
         pings = sum(item.get("pings") or 0 for item in records if not item.get("error"))
         channels = channel_selection or (records[0].get("channels") if records else []) or []
         source_bytes = sum(
-            _tree_bytes(Path(item["path"])) for item in records if not item.get("error")
+            _input_bytes(item["path"]) for item in records if not item.get("error")
         )
         chunks = None
         if args.chunk_pings and pings:
@@ -1764,7 +2454,8 @@ def main() -> None:
             f"{len(report['warnings'])} warning(s)"
         )
         if report_uri:
-            print(report_uri if args.json else report_uri[len("file://"):])
+            local_report = report_uri.startswith("file://")
+            print(report_uri if (args.json or not local_report) else report_uri[len("file://"):])
         sys.exit(4 if (report["problems"] or report["warnings"]) else 0)
 
     if blocking:
@@ -1775,33 +2466,108 @@ def main() -> None:
         sys.exit(4)
 
     # ---------------------------
+    # Reuse (the QC gate has passed)
+    # ---------------------------
+    if reuse:
+        out.reused = True
+        if not args.quiet:
+            print(f"{TOOL}: reusing {target.raw} (identical product aa:{out.short} "
+                  "already exists; --force recomputes)", file=sys.stderr)
+        _progress(args.progress, "done", exit=0)
+        if args.json:
+            # This run's inputs, time range and report; the store's own
+            # production time and version.
+            parents = [item["uri"] for item in records if not item.get("error")]
+            starts = [item["start"] for item in report["inputs"] if item.get("start")]
+            ends = [item["end"] for item in report["inputs"] if item.get("end")]
+            handle = _reuse_handle(
+                target, existing, out.hash, out.base, parents,
+                [min(starts), max(ends)] if starts and ends else None, report_uri,
+            )
+            print(json.dumps(handle, separators=(",", ":"), default=str))
+        else:
+            print(target.raw)
+        sys.exit(0)
+
+    # ---------------------------
     # Combine
     # ---------------------------
-    if target.exists() and args.overwrite:
+    if replace and target.exists():
         logger.info(f"Overwriting {target.raw}")
+
+    write_target = target
+    if target.staged:
+        # gs:// .nc: write a local staging file; finish() uploads it.
+        out = run.plan(ext=ext, explicit=explicit, directory=default_dir, stage=True)
+        write_target = Target(str(out.local))
+        state["write"] = write_target
 
     try:
         combine(
             paths=paths,
-            target=target,
+            target=write_target,
             channel_selection=channel_selection,
-            overwrite=args.overwrite,
+            overwrite=replace,
             compression=args.compression,
             chunk_pings=args.chunk_pings,
-            consolidated=args.consolidated,
+            # Consolidated once, below, after every attribute is written.
+            consolidated=False,
             storage_options=storage_options,
             progress=args.progress,
         )
     except Exception as exc:  # noqa: BLE001
-        if target.exists():
-            _stamp(target, False, storage_options, extra={"error": str(exc)})
+        if write_target.exists():
+            _stamp(write_target, False, storage_options, extra={"error": str(exc)})
         logger.exception(f"Error during combine: {exc}")
+        if out.staging is not None:
+            shutil.rmtree(out.staging, ignore_errors=True)
         _progress(args.progress, "done", exit=1)
         sys.exit(1)
 
     parents = [item["uri"] for item in records if not item.get("error")]
-    _annotate(target, report_uri, parents, report, storage_options)
-    _stamp(target, True, storage_options, extra={"inputs": len(parents)})
+    starts = [item["start"] for item in report["inputs"] if item.get("start")]
+    ends = [item["end"] for item in report["inputs"] if item.get("end")]
+    time_range = [min(starts), max(ends)] if starts and ends else None
+    # Recorded in the provenance too, so a reused .nc export (which has no
+    # store attributes) can still produce the same handle. A store keeps its
+    # parents in its own `provenance` attribute; not repeated there.
+    # The store layout asked for is recorded as well: reuse needs the same
+    # product in the same layout (chunking, codec, consolidation).
+    extra = {TOOL: {"time": time_range, "report": report_uri, "sort": args.sort,
+                    "layout": _layout(args, target)}}
+    if target.is_netcdf:
+        extra[TOOL]["parents"] = parents
+
+    # 1. The aa provenance. Written before this tool's own attributes because
+    #    the core also sets aa_kind (to the provenance kind, "echodata") and
+    #    the store's aa_kind must stay "l1".
+    try:
+        if target.remote and not target.staged:
+            _embed_remote(run, out, target, storage_options, extra)
+            run.finish(out, embed=False, publish=False, emit=False)
+        else:
+            # Local .nc / .zarr: embedded by the core. gs:// .nc: embedded in
+            # the staging file, then uploaded with aa-product-hash metadata.
+            run.finish(out, extra=extra, emit=False)
+    except Exception as exc:  # noqa: BLE001
+        if target.staged:
+            logger.exception(f"Could not upload {target.raw}: {exc}")
+            if out.staging is not None:
+                shutil.rmtree(out.staging, ignore_errors=True)
+            _progress(args.progress, "done", exit=1)
+            sys.exit(1)
+        logger.warning(f"Could not record the aa provenance in {target.raw}: {exc}")
+
+    # 2. This tool's store attributes and the completion marker (no-ops for a
+    #    NetCDF export). 3. Consolidated metadata last, so it includes all of
+    #    the above. A consolidated block echopype left behind is refreshed even
+    #    under --no-consolidated: a stale one is worse than either.
+    _annotate(write_target, report_uri, parents, report, storage_options)
+    _stamp(write_target, True, storage_options, extra={"inputs": len(parents)})
+    if not target.is_netcdf and (
+        args.consolidated or _has_consolidated(write_target, storage_options)
+    ):
+        _consolidate(write_target, storage_options)
 
     logger.success(f"Generated {target.raw} with aa-combine.")
     _progress(args.progress, "done", exit=0)
@@ -1810,25 +2576,8 @@ def main() -> None:
     # Output
     # ---------------------------
     if args.json:
-        handle = {
-            "schema": "aa/1",
-            # A .zarr store is the L1 layer; a .nc file is an export that
-            # nothing downstream reads back. Same tool, different product.
-            "kind": "netcdf" if target.is_netcdf else "l1",
-            "uri": target.uri,
-            "provenance": {
-                "tool": TOOL,
-                "version": VERSION,
-                "parents": parents,
-                "at": _now(),
-            },
-        }
-        starts = [item["start"] for item in report["inputs"] if item.get("start")]
-        ends = [item["end"] for item in report["inputs"] if item.get("end")]
-        if starts and ends:
-            handle["time"] = [min(starts), max(ends)]
-        if report_uri:
-            handle["report"] = report_uri
+        handle = _handle(target, parents, _now(), time_range, report_uri,
+                         out.hash, out.base, reused=False)
         print(json.dumps(handle, separators=(",", ":"), default=str))
     else:
         # The path, matching every other aa-* tool, so this drops into an

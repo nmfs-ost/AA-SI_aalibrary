@@ -11,8 +11,6 @@ from google.cloud import bigquery, storage
 from botocore import UNSIGNED
 from botocore.client import Config
 import boto3
-import win32gui
-from azure.identity.broker import InteractiveBrowserBrokerCredential
 from azure.storage.blob import BlobServiceClient
 
 # from aalibrary.raw_file import RawFile
@@ -111,8 +109,16 @@ def sign_in_to_odl_with_interactive_browser_broker() -> str:
     variable for future use.
     """
 
+    # Imported here, not at the top of the module: win32gui exists only on
+    # Windows and azure.identity.broker is the optional azure-identity-broker
+    # package. Importing either at module level breaks every tool that uses
+    # cloud_utils (aa-fetch, aa-raw, aa-upload, ...) wherever it's missing.
+    from azure.identity.broker import InteractiveBrowserBrokerCredential
+
     # Get the system window handle based on OS
     if sys.platform == "win32":
+        import win32gui
+
         # Get the handle of the window currently in the foreground
         current_window_handle = win32gui.GetForegroundWindow()
     elif sys.platform == "darwin":  # macOS

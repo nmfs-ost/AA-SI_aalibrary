@@ -7,6 +7,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Every console tool now names, hashes and records its outputs the same
+  way (shared core in `aalibrary/console/_core/`; see
+  `docs/documentation/console_provenance.md`):
+  - scientific products are named `<base>_<hash8>.<ext>`, where the hash
+    covers the input's identity, the operation and the canonical
+    scientific options (flag order, spelling and explicit defaults don't
+    matter); EchoData keeps `<base>.nc`; renderings are named after the
+    product they show; `AA_NAMING=legacy` restores the old names and `-o`
+    behaves as before;
+  - an identical earlier result is reused instead of recomputed
+    (`--force` or `AA_REUSE=0` recompute);
+  - provenance (inputs, raw-file origins, every scientific step with its
+    options, software versions) is embedded in every product (.nc, .zarr,
+    .png, .html; `.aa.json` sidecars otherwise);
+  - gs:// URIs work as inputs and outputs everywhere (`-o gs://…`,
+    `--dest gs://PREFIX/`), through gcsfuse mounts or a download cache;
+  - curated `--help` for every tool (`--help-all` keeps the full text).
+- New console tools: `aa-metadata` (inspect and verify provenance) and
+  `aa-download` (gs:// objects and prefixes to local files, reuse-aware).
+  `aa-location` and `aa-guide` now have entry points.
+- `aa-upload FILE… gs://bucket/prefix/` uploads with provenance metadata
+  and skips objects that already hold the same product.
+- `aa-test` is a real offline self-test on a synthetic EK60 file
+  (`aalibrary.utils.ek60_synth`).
+
+### Fixed
+
+- aa-detect-transient `--apply` kept only the noise; aa-detect-seafloor
+  `--apply` kept only the data below the seabed.
+- aa-evl produced wrong masks under pandas 3 (every ping used the line's
+  last depth); aa-evr dropped regions deeper than 1000 m.
+- aa-graph and aa-plot blended the depth axes of different channels.
+- aa-depth ignored an explicit `--depth-offset`/`--tilt` when a `--use-*`
+  flag was also given.
+- Crashes: aa-impulse `--apply`, aa-mvbs `--method coarsen|block`,
+  aa-sound-speed `-o`, aa-dispersion with an existing output,
+  aa-location and aa-splitbeam-angle on every input (echopype 0.11),
+  aa-coerce-time under pandas 3.
+- aa-ed `--force` did not reconvert; aa-combine wrote remote reports to
+  `./gs:/…`; library prints reached stdout in aa-raw, aa-fetch, aa-upload
+  and aa-sonar; `aa-request … | aa-fetch -` works.
+- aa-find's Plot action, aa-cruisepack `--help` (it started a disk scan),
+  aa-setup's literal `{ACCOUNT}`, and many help texts and examples.
+- `cloud_utils` imports `win32gui` only on Windows.
+
+### Changed
+
+- An empty stdin from a pipe is an error (exit 1) instead of printing
+  help to stdout.
+
 ## [1.2.0]
 
 This version is the first version released after AALibrary has gone live to production. Now, the default environment for use with AALibrary is prod, `ggn-nmfs-aa-prod-1`. After about a year and a half, AALibrary is finally ready to help deliver insights in the real world!

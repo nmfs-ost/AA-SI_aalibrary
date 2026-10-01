@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-Console tool for adding a depth coordinate to an Echopype Sv NetCDF file.
+aa-depth
+
+Console tool for adding a depth coordinate to an Echopype Sv NetCDF file
+(echopype.consolidate.add_depth).
+
+Pipeline-friendly: reads the input path (or gs:// URI) from the positional
+argument or stdin, writes the output path to stdout, all logs to stderr.
+The output carries the input's provenance plus this step; an --echodata
+file is recorded as a second input (role "echodata").
 """
 
 # === Silence logs BEFORE any heavy imports ===
@@ -14,18 +22,89 @@ warnings.filterwarnings("ignore")
 from loguru import logger
 logger.remove()
 # Keep WARNING+ visible on stderr so real errors aren't swallowed.
-# Drop this line if you want truly silent output.
 logger.add(sys.stderr, level="WARNING")
 
-# Now the heavy imports — anything they log gets squashed
 import argparse
 import pprint
 from pathlib import Path
 from typing import Optional
 
-import xarray as xr
-import echopype as ep  # used for ep.open_converted when --echodata is supplied
-from echopype.consolidate import add_depth
+from aalibrary.console._core import (
+    Help, Run, ToolSpec, add_common_flags, canon, naming, render, show_help, stdio, uris,
+)
+
+# xarray / echopype are imported inside process_file so --help stays fast.
+
+SPEC = ToolSpec(
+    name="aa-depth",
+    role="transform",
+    kind="sv",
+    op="echopype.consolidate.add_depth",
+    op_version=1,
+    params={
+        "depth_offset": canon.number,
+        "tilt": canon.number,
+        "downward": canon.boolean,
+        "use_platform_vertical_offsets": canon.boolean,
+        "use_platform_angles": canon.boolean,
+        "use_beam_angles": canon.boolean,
+    },
+)
+
+HELP = Help(
+    summary="Add a depth variable to an Sv dataset (echopype.consolidate.add_depth).",
+    does=(
+        "Adds 'depth' (m; channel x ping_time x range_sample) to the Sv dataset: "
+        "depth = transducer depth + echo_range x cos(tilt); with --no-downward "
+        "the echo_range term is subtracted instead (transducer depth - "
+        "echo_range x cos(tilt)). Transducer depth is --depth-offset, else the "
+        "Platform vertical offsets of --echodata (with "
+        "--use-platform-vertical-offsets), else 0. The tilt is --tilt, else the "
+        "Platform or Beam angles of --echodata (--use-platform-angles / "
+        "--use-beam-angles), else 0. An explicit --depth-offset or --tilt always "
+        "wins over the corresponding --use-* flag. Every input variable is kept "
+        "unchanged; the product kind is the input's (sv, mvbs, ...)."
+    ),
+    stdin="One Sv .nc/.netcdf4 path or gs:// URI (aa-sv output, or anything with echo_range).",
+    stdout="The output file's absolute path (or gs:// URI).",
+    options=[
+        ("-o, --output_path PATH", "Explicit output, used as given; '.nc' is added only "
+                                   "when it has no suffix. Local path or gs:// URI."),
+        ("--depth-offset M", "transducer depth below the surface, in metres"),
+        ("--tilt DEG", "transducer tilt from vertical, in degrees"),
+        ("--no-downward", "upward-looking transducers (default: downward)"),
+        ("--echodata ED.nc", "the EchoData (aa-nc output) the Sv came from; needed by "
+                             "the --use-* options. Its content enters the product hash."),
+        ("--use-platform-vertical-offsets", "transducer depth from Platform (EK60/EK80)"),
+        ("--use-platform-angles | --use-beam-angles",
+         "tilt from Platform or Beam angles (EK60/EK80; not both)"),
+    ],
+    science={
+        "depth_offset": "Transducer depth (m). Overrides the Platform vertical offsets.",
+        "tilt": "Tilt from vertical (degrees). Overrides Platform/Beam angles.",
+        "downward": ("Downward-looking by default; --no-downward (upward-looking) "
+                     "subtracts the echo_range term from the transducer depth."),
+        "use_platform_vertical_offsets": "Transducer depth from the EchoData Platform group.",
+        "use_platform_angles": "Tilt from the EchoData Platform group angles.",
+        "use_beam_angles": "Tilt from the EchoData Beam group angles.",
+        "echodata": "EchoData file: its content identity (not its path) enters the hash.",
+    },
+    files=(
+        "Reads Sv .nc/.netcdf4 and an optional EchoData .nc/.netcdf4/.zarr, local "
+        "or gs://. Writes <base>_<hash>.nc beside the input (current directory "
+        "for gs:// input), or -o, or --dest. An identical earlier result is "
+        "reused. AA_NAMING=legacy: <stem>_depth.nc. Refuses to overwrite the "
+        "input or the --echodata file."
+    ),
+    pipeline=(
+        "After aa-sv, before tools that need depth (aa-detect-seafloor): "
+        "aa-nc | aa-sv | aa-depth | ..."
+    ),
+    examples=[
+        "aa-nc D20160703-T060000.raw --sonar_model EK60 | aa-sv | aa-depth --depth-offset 5",
+        "aa-depth Sv.nc --echodata D20160703-T060000.nc --use-platform-vertical-offsets",
+    ],
+)
 
 
 def silence_all_logs():
@@ -41,18 +120,26 @@ def silence_all_logs():
 
 
 def print_help():
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full():
     help_text = """
     Usage: aa-depth [OPTIONS] [INPUT_PATH]
 
     Arguments:
-    INPUT_PATH                 Path to the .nc / .netcdf4 file containing Sv.
-                               Optional. Defaults to stdin if not provided.
+    INPUT_PATH                 Path (or gs:// URI) to the .nc / .netcdf4 file
+                               containing Sv. Optional. Defaults to stdin if not
+                               provided.
 
     Options:
-    -o, --output_path          Path to save processed output. If provided, it is
-                               used as-is (a .nc suffix is added only when missing).
-                               If omitted, defaults to the input path with '_depth'
-                               appended to the stem and a .nc suffix.
+    -o, --output_path          Path (or gs:// URI) to save processed output. If
+                               provided, it is used as-is (a .nc suffix is added
+                               only when missing). If omitted, defaults to
+                               <base>_<hash>.nc beside the input
+                               (AA_NAMING=legacy: the input stem with '_depth'
+                               appended and a .nc suffix).
 
     --depth-offset             Offset (meters) along depth to account for transducer
                                position in water. Default: None (transducer at the
@@ -62,11 +149,15 @@ def print_help():
                                Default: None. If set, Platform/Beam angles are ignored.
 
     --downward / --no-downward Whether transducers point downward.
-                               Default: --downward (True).
+                               Default: --downward (True). With --no-downward
+                               depth = transducer depth - echo_range*cos(tilt)
+                               (only the echo_range term changes sign).
 
-    --echodata                 Path to the converted EchoData file (.nc/.netcdf4/.zarr)
-                               that the Sv dataset originated from. Required when using
-                               any of the --use-* options below.
+    --echodata                 Path (or gs:// URI) to the converted EchoData file
+                               (.nc/.netcdf4/.zarr) that the Sv dataset originated
+                               from. Required when using any of the --use-* options
+                               below. Its identity is recorded as a second input
+                               and enters the product hash.
 
     --use-platform-vertical-offsets
                                Use the EchoData Platform group vertical offsets to
@@ -81,10 +172,16 @@ def print_help():
                                (EK60/EK80 only). Ignored if --tilt is given.
                                Cannot be combined with --use-platform-angles.
 
+    --base NAME                Base name for the output.
+    --dest DIR|gs://PREFIX     Write the default-named output there.
+    --force                    Recompute even if an identical product exists.
+
     Description:
     Loads a NetCDF Sv dataset, adds a depth coordinate via
     echopype.consolidate.add_depth, and writes the result to a new
     .nc file. The output path is printed to stdout for piping.
+    Provenance (the input's chain plus this step) is embedded in the
+    output; see aa-metadata.
 
     Example:
     aa-depth /path/to/input_Sv.nc --depth-offset 1.5 --tilt 5
@@ -94,41 +191,24 @@ def print_help():
     print(help_text)
 
 
-def main():
-    # If no args and stdin has data, treat the first stdin line as the input path
-    if len(sys.argv) == 1:
-        if not sys.stdin.isatty():
-            stdin_data = sys.stdin.readline().strip()
-            if stdin_data:
-                sys.argv.append(stdin_data)
-            else:
-                print_help()
-                sys.exit(0)
-        else:
-            print_help()
-            sys.exit(0)
-
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print_help()
-        sys.exit(0)
-
+def _build_parser():
     parser = argparse.ArgumentParser(
         description="Add a depth coordinate to an Echopype Sv NetCDF file.",
-        add_help=False,  # we handle help ourselves above
+        add_help=False,  # help is handled by show_help()
     )
 
     parser.add_argument(
         "input_path",
-        type=Path,
+        type=str,
         nargs="?",
-        help="Path to the .nc or .netcdf4 file.",
+        help="Path or gs:// URI of the .nc or .netcdf4 file.",
     )
     parser.add_argument(
         "-o", "--output_path",
-        type=Path,
+        type=str,
         help=(
-            "Path to save processed output. Used as-is if provided; "
-            "otherwise defaults to the input stem with '_depth' appended."
+            "Path to save processed output. Used as-is if provided (.nc added "
+            "only when there is no suffix)."
         ),
     )
     parser.add_argument(
@@ -162,10 +242,10 @@ def main():
         help=argparse.SUPPRESS,
     )
 
-    # --- New parameters mirroring the current echopype.consolidate.add_depth API ---
+    # --- Parameters mirroring the current echopype.consolidate.add_depth API ---
     parser.add_argument(
         "--echodata",
-        type=Path,
+        type=str,
         default=None,
         help=(
             "Path to the converted EchoData file (.nc/.netcdf4/.zarr) the Sv "
@@ -199,28 +279,53 @@ def main():
             "Ignored if --tilt is given. Cannot be combined with --use-platform-angles."
         ),
     )
+    add_common_flags(parser)
+    return parser
+
+
+def _inherited_kind(src) -> str:
+    """The input's product kind (sv, mvbs, mask ...): this step keeps what the data are.
+
+    Falls back to SPEC.kind ("sv") for inputs without provenance, and for
+    EchoData or fetched source files, whose kinds describe a different
+    representation.
+    """
+    kind = (((src.prov or {}).get("product") or {}).get("kind") or "").strip()
+    return kind if kind and kind not in {"echodata", "source"} else SPEC.kind
+
+
+def _explicit_output(value: Optional[str]) -> Optional[str]:
+    """-o as given; '.nc' only when the name has no suffix (the tool's old rule)."""
+    if not value:
+        return None
+    name = value.rstrip("/").rsplit("/", 1)[-1]
+    return value if Path(name).suffix else naming.with_ext(value, ".nc")
+
+
+def main():
+    # No args on a terminal: help. (An empty pipe is an error: see stdio.)
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
+        print_help()
+        sys.exit(0)
+
+    parser = _build_parser()
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        sys.exit(0)
 
     args = parser.parse_args()
 
     # ---------------------------
     # Validate input
     # ---------------------------
-    if args.input_path is None:
-        if sys.stdin.isatty():
-            logger.error("No input path provided and no stdin available.")
-            sys.exit(1)
-        args.input_path = Path(sys.stdin.readline().strip())
-        logger.info(f"Read input path from stdin: {args.input_path}")
-
-    if not args.input_path.exists():
-        logger.error(f"File '{args.input_path}' does not exist.")
-        sys.exit(1)
+    token = stdio.one_input(args.input_path, SPEC.name)
+    run = Run(SPEC, args)
+    src = run.input(token)
 
     allowed_extensions = {".netcdf4": "netcdf", ".nc": "netcdf"}
-    ext = args.input_path.suffix.lower()
+    ext = src.local.suffix.lower()
     if ext not in allowed_extensions:
         logger.error(
-            f"'{args.input_path.name}' is not a supported file type. "
+            f"'{src.name}' is not a supported file type. "
             f"Allowed: {', '.join(allowed_extensions.keys())}"
         )
         sys.exit(1)
@@ -228,15 +333,23 @@ def main():
     # ---------------------------
     # Validate EchoData + option combinations
     # ---------------------------
+    ed = None
     if args.echodata is not None:
-        if not args.echodata.exists():
-            logger.error(f"EchoData file '{args.echodata}' does not exist.")
+        missing = f"EchoData file '{args.echodata}' does not exist."
+        if not uris.is_gcs(args.echodata) and not Path(args.echodata).expanduser().exists():
+            logger.error(missing)
             sys.exit(1)
-        ed_ext = args.echodata.suffix.lower()
+        # A file-valued scientific option: its identity enters the hash.
+        try:
+            ed = run.input(args.echodata, role="echodata")
+        except FileNotFoundError:          # a gs:// object that is not there
+            logger.error(missing)
+            sys.exit(1)
+        ed_ext = ed.local.suffix.lower()
         allowed_ed = {".nc", ".netcdf4", ".zarr"}
         if ed_ext not in allowed_ed:
             logger.error(
-                f"'{args.echodata.name}' is not a supported EchoData type. "
+                f"'{ed.name}' is not a supported EchoData type. "
                 f"Allowed: {', '.join(sorted(allowed_ed))}"
             )
             sys.exit(1)
@@ -275,46 +388,48 @@ def main():
     # ---------------------------
     # Resolve output path
     # ---------------------------
-    if args.output_path is None:
-        # Derive from input: append '_depth' to the stem and force a .nc suffix.
-        args.output_path = args.input_path.with_stem(
-            args.input_path.stem + "_depth"
-        ).with_suffix(".nc")
-    elif args.output_path.suffix == "":
-        # Respect an explicit path; only default the suffix when one is missing.
-        args.output_path = args.output_path.with_suffix(".nc")
+    out = run.plan(
+        ext=".nc",
+        kind=_inherited_kind(src),
+        explicit=_explicit_output(args.output_path),
+        legacy=lambda: src.local.with_stem(src.local.stem + "_depth").with_suffix(".nc"),
+    )
 
     # Guard against clobbering files we read from.
-    out_resolved = args.output_path.resolve()
-    if out_resolved == args.input_path.resolve():
-        logger.error(f"Refusing to overwrite input file: {args.input_path.resolve()}")
-        sys.exit(1)
-    if args.echodata is not None and out_resolved == args.echodata.resolve():
-        logger.error(f"Refusing to overwrite EchoData file: {args.echodata.resolve()}")
-        sys.exit(1)
+    if not out.remote:
+        out_resolved = Path(out.target).resolve()
+        if out_resolved == src.local.resolve():
+            logger.error(f"Refusing to overwrite input file: {src.local.resolve()}")
+            sys.exit(1)
+        if ed is not None and out_resolved == ed.local.resolve():
+            logger.error(f"Refusing to overwrite EchoData file: {ed.local.resolve()}")
+            sys.exit(1)
+
+    if run.reusable(out):
+        run.finish(out)
+        return
 
     # ---------------------------
     # Process file
     # ---------------------------
     try:
-        pretty_args = pprint.pformat(vars(args))
-        logger.debug(f"\naa-depth args:\n{pretty_args}")
+        args_summary = dict(vars(args), output=out.target, product=out.hash)
+        logger.debug(f"\naa-depth args:\n{pprint.pformat(args_summary)}")
 
         process_file(
-            input_path=args.input_path,
-            output_path=args.output_path,
+            input_path=src.local,
+            output_path=out.local,
             depth_offset=args.depth_offset,
             tilt=args.tilt,
             downward=args.downward,
-            echodata_path=args.echodata,
+            echodata_path=ed.local if ed is not None else None,
             use_platform_vertical_offsets=args.use_platform_vertical_offsets,
             use_platform_angles=args.use_platform_angles,
             use_beam_angles=args.use_beam_angles,
         )
 
-        logger.success(f"Desired data generated and saved to\n\t{args.output_path.resolve()}")
-        logger.success("Piping saved .nc path to stdout ⟶")
-        print(args.output_path.resolve())
+        logger.success(f"Desired data generated and saved to\n\t{out.target}")
+        run.finish(out)
 
     except Exception as e:
         logger.exception(f"Error during processing: {e}")
@@ -335,6 +450,10 @@ def process_file(
     """
     Load Sv from NetCDF, add a depth coordinate, and save back to NetCDF.
     """
+    import xarray as xr
+    import echopype as ep
+    from echopype.consolidate import add_depth
+
     logger.info(f"Loading NetCDF file {input_path} into xarray dataset")
 
     # Open into memory then close the file handle so we can write to a path
@@ -347,19 +466,38 @@ def process_file(
     echodata = None
     if echodata_path is not None:
         logger.info(f"Opening EchoData file {echodata_path}")
-        echodata = ep.open_converted(echodata_path)
+        echodata = ep.open_converted(str(echodata_path))
 
+    # An explicit --depth-offset / --tilt takes precedence over the EchoData
+    # Platform/Beam values, as documented. echopype 0.11 add_depth does not
+    # enforce that itself: it sets the explicit value and then still runs the
+    # Platform/Beam branch, which overwrites it (an explicit offset was
+    # ignored; --tilt with --use-beam-angles gave all-NaN depth on EK60).
+    # So the overridden --use-* flags are simply not passed on.
     ds_Sv = add_depth(
         ds_Sv,
         echodata=echodata,
         depth_offset=depth_offset,
         tilt=tilt,
         downward=downward,
-        use_platform_vertical_offsets=use_platform_vertical_offsets,
-        use_platform_angles=use_platform_angles,
-        use_beam_angles=use_beam_angles,
+        use_platform_vertical_offsets=use_platform_vertical_offsets and depth_offset is None,
+        use_platform_angles=use_platform_angles and tilt is None,
+        use_beam_angles=use_beam_angles and tilt is None,
     )
 
+    # Written anyway (as before), but say so: e.g. EK60 files carry no Beam
+    # angles, so --use-beam-angles yields NaN everywhere.
+    if bool(ds_Sv["depth"].isnull().all()):
+        hint = ""
+        if (use_platform_vertical_offsets and depth_offset is None) or (
+                (use_platform_angles or use_beam_angles) and tilt is None):
+            hint = (" The EchoData Platform/Beam values used by the --use-* options are "
+                    "missing (NaN) in this file; EK60 files often record a zero beam "
+                    "direction, which echopype stores as NaN. Consider --depth-offset / "
+                    "--tilt instead.")
+        logger.warning(f"every 'depth' value is NaN.{hint}")
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     ds_Sv.to_netcdf(output_path)
 
 

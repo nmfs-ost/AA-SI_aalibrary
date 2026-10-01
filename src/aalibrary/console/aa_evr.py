@@ -5,15 +5,28 @@ aa-evr
 Mask echogram NetCDF (.nc/.netcdf4) using Echoview region files (.evr) via echoregions Regions2D.
 
 AA-style pipeline behavior:
-- Reads input NetCDF paths from stdin (newline-delimited) when piped OR accepts positional inputs.
+- Reads input NetCDF paths (or gs:// URIs) from stdin (newline-delimited) when piped
+  OR accepts positional inputs.
 - Produces a NEW NetCDF output per input.
-- Emits output path(s) to stdout (one per line) for downstream piping.
+- Emits output path(s) to stdout (one per line, in input order) for downstream piping.
 - Logs go to stderr.
 
 Core behavior:
-- --evr accepts one or more .evr paths (argparse nargs="+").
+- --evr accepts one or more .evr sources (argparse nargs="+"): local paths,
+  gs:// URIs (read through the aalibrary cache), or other fsspec URIs.
 - Loads all EVRs and unions all regions across them.
 - Applies union mask to all variables containing (time_dim, depth_dim): outside -> NaN.
+
+Provenance and naming (shared console core):
+- Each output is a scientific product named <base>_<hash8>.nc. The hash covers
+  the input's product hash, the CONTENT of the region files (not their paths;
+  order and duplicates don't matter, the union is order-free), the resolved
+  variable / dimension names, the channel index (when the variable has a
+  channel dimension) and --write-mask.
+- -o PATH and an explicit --suffix TEXT keep the old explicit names;
+  AA_NAMING=legacy restores the old default <stem>_evr.nc.
+- An identical earlier product is reused; a different existing file is only
+  replaced with --overwrite.
 
 Drawing mode (--evr omitted):
 - Launched when --evr is NOT provided.
@@ -21,8 +34,12 @@ Drawing mode (--evr omitted):
 - Opens an interactive Bokeh browser app showing the echogram.
 - User draws freehand ROI polygons directly on the echogram.
 - On save, produces:
-    1. An .evr file (--name, default: <stem>_regions.evr).
-    2. A masked NetCDF (_evr.nc) with only drawn regions kept.
+    1. An .evr file (--name, default: <stem>_regions.evr) recording the drawing.
+       echoregions cannot currently parse this file, so it cannot be passed
+       back to --evr.
+    2. A masked NetCDF (<stem>_evr.nc) with only drawn regions kept.
+- The masked NetCDF carries provenance (variant "draw"); a drawing is never
+  reused, and the drawn .evr (when written) is recorded as its regions input.
 - Output NC path is emitted to stdout for downstream piping.
 
   Example:
@@ -47,6 +64,11 @@ Known fixes in this version:
 
   3. Robust region_mask return parsing: handles variable name variations (mask_3d,
      mask) and dimension name variations (region_id, region) across echoregions versions.
+
+  4. Depth bounds: er.read_evr() was called without min_depth/max_depth, so
+     echoregions' defaults (0 m, 1000 m) made Regions2D.region_mask() silently
+     drop every region with a vertex deeper than 1000 m. The bounds are now
+     wide open (see _ER_DEPTH_BOUNDS); aa-evr does its own depth handling.
 """
 
 # === Silence logs BEFORE any heavy imports ===
@@ -57,6 +79,7 @@ import re
 import shutil
 import sys
 import tempfile
+import uuid
 import warnings
 
 logging.disable(logging.CRITICAL)
@@ -71,14 +94,19 @@ logger.add(sys.stderr, level="WARNING")
 # Now the heavy imports - anything they log gets squashed
 import argparse
 import pprint
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 import echoregions as er
+
+from aalibrary.console._core import (
+    Help, Run, ToolSpec, add_common_flags, canon, naming, render, show_help, stdio, uris,
+)
 
 
 def silence_all_logs():
@@ -94,10 +122,153 @@ def silence_all_logs():
 
 
 # ---------------------------
+# Tool identity
+# ---------------------------
+
+SPEC = ToolSpec(
+    name="aa-evr",
+    role="transform",
+    kind="sv",   # the default; an output keeps its input's kind (masked MVBS is still mvbs)
+    op="echoregions.Regions2D.region_mask",
+    op_version=1,
+    engines=("echoregions", "regionmask"),
+    # The region files are scientific too: they are registered as inputs
+    # (role "regions") so their CONTENT enters the hash. var / time_dim /
+    # depth_dim / channel_index are replaced by the values actually used
+    # (see _resolve_masking) before the hash is computed.
+    params={
+        "var": canon.text,
+        "time_dim": canon.text,
+        "depth_dim": canon.text,
+        "channel_index": canon.integer,
+        "write_mask": canon.boolean,
+    },
+)
+
+# Draw mode is interactive: the polygons come from a person, and the mask is
+# rasterized with matplotlib.path from the drawn coordinates (region_draw.py),
+# not with echoregions. Its step says so.
+DRAW_SPEC = ToolSpec(
+    name="aa-evr",
+    role="transform",
+    kind="sv",
+    op="aalibrary.utils.region_draw.polygon_mask",
+    op_version=1,
+    engines=("matplotlib", "bokeh"),
+    # --write-mask does not apply to draw mode (region_draw never writes it).
+    params={k: v for k, v in SPEC.params.items() if k != "write_mask"},
+)
+
+DEFAULT_SUFFIX = "_evr"   # the old default name, <stem>_evr.nc (AA_NAMING=legacy)
+
+HELP = Help(
+    summary="Keep only the data inside Echoview regions (.evr); set the rest to NaN.",
+    does=(
+        "Two modes.\n\n"
+        "EVR mode (--evr given): reads one or more Echoview region files with "
+        "echoregions, takes the union of all their regions, and sets every cell "
+        "of every (time, depth) variable that lies outside the union to NaN. "
+        "Axis variables (echo_range, depth, ...) are left intact. The mask is "
+        "built on --var at --channel-index and applied to all channels. Echoview's -9999.99 / 9999.99 depths (surface / bottom) become "
+        "the echogram's top / bottom; regions without usable depths (GPS or "
+        "track regions) keep whole pings inside their time span.\n\n"
+        "Draw mode (no --evr): opens the echogram of one input in your browser "
+        "(Bokeh). Draw regions freehand, click Save, and the tool writes the "
+        "masked NetCDF <stem>_evr.nc plus an .evr of the drawn polygons (--name)."
+    ),
+    stdin=(
+        "EVR mode: flat NetCDF paths (.nc/.netcdf4) or gs:// URIs, one per line "
+        "or as arguments: Sv, cleaned Sv, MVBS, ... with a (ping_time|time) x "
+        "(depth|range_sample|range_bin|echo_range) variable. Draw mode: one path (only the "
+        "first input is used)."
+    ),
+    stdout=(
+        "EVR mode: one line per input, in input order: the output's absolute path "
+        "(or gs:// URI). An input that fails prints nothing and the exit status is "
+        "1 at the end. Draw mode: the masked NetCDF's path."
+    ),
+    metadata=(
+        "Reads the input's provenance, appends this step with its canonical "
+        "scientific options and embeds it (NetCDF attributes aa_provenance, "
+        "aa_product_hash, aa_base, aa_tool, history). The region files are "
+        "recorded as inputs with role 'regions' and identified by content, and "
+        "the aa_evr_files attribute lists them as given. The base name is "
+        "carried through. Draw mode records variant 'draw' and the drawn .evr. "
+        "Inspect with: aa-metadata FILE"
+    ),
+    options=[
+        ("--evr EVR [EVR ...]", "EVR mode: region files, local, gs://, or another "
+                                "fsspec URI (s3://, https://). All regions are unioned."),
+        ("-o, --output-path PATH", "exact output path (one input only); local or gs://"),
+        ("--out-dir DIR", "write the outputs here instead of beside each input"),
+        ("--suffix TEXT", "use the old naming <input stem><TEXT>.nc instead of "
+                          "<base>_<hash8>.nc"),
+        ("--overwrite", "replace an existing output that is a different product"),
+        ("--var NAME", "variable the mask is built on (default: first of Sv, "
+                       "Sv_clean, MVBS, TS, NASC)"),
+        ("--time-dim / --depth-dim NAME", "dimension names (default: ping_time|time; "
+                                          "depth|range_sample|range_bin|echo_range)"),
+        ("--channel-index N", "channel whose depth axis builds the mask (default 0)"),
+        ("--write-mask", "also write the union mask as int8 variable region_mask"),
+        ("--fail-empty", "fail an input whose mask is empty instead of writing all-NaN"),
+        ("--name FILE", "draw mode: .evr file name (default <stem>_regions.evr)"),
+        ("--port N", "draw mode: Bokeh server port (default 5006, next free one)"),
+        ("--debug", "verbose diagnostics on stderr"),
+    ],
+    science={
+        "evr": "The region files' CONTENT (not their paths or names). Order and "
+               "duplicates don't matter: the union is the same.",
+        "var": "Variable the mask is built on, as resolved (an auto-detected name "
+               "hashes the same as the same name given explicitly).",
+        "time_dim": "Time dimension used, as resolved.",
+        "depth_dim": "Depth dimension used, as resolved.",
+        "channel_index": "Channel whose depth axis builds the mask. Recorded only "
+                         "when --var has a channel dimension.",
+        "write_mask": "Adds the region_mask variable to the file.",
+    },
+    files=(
+        "Reads flat NetCDF, local or gs://. Region files may be local, gs:// (read "
+        "through the cache, AA_CACHE_DIR) or another fsspec URI. Writes "
+        "<base>_<hash8>.nc beside each input (current directory for gs:// input), "
+        "in --out-dir, or under --dest DIR|gs://PREFIX. -o and --suffix keep the "
+        "old explicit names; AA_NAMING=legacy restores the old default "
+        "<stem>_evr.nc. An identical earlier product is reused; a different "
+        "existing file is replaced only with --overwrite. Draw mode writes "
+        "<stem>_evr.nc and the .evr beside the input or in --out-dir."
+    ),
+    pipeline=(
+        "After aa-sv / aa-clean / aa-depth / aa-evl, before aa-graph, aa-plot, "
+        "aa-mvbs, ... Every stdin line is one input and gives one output line. "
+        "Draw mode blocks until you click Save in the browser."
+    ),
+    examples=[
+        "aa-nc x.raw --sonar_model EK60 | aa-sv | aa-evr --evr school.evr | aa-graph",
+        "aa-evr a.nc b.nc --evr gs://bucket/regions/leg1.evr --out-dir masked/",
+        "aa-evl x_Sv.nc --evl bottom.evl | aa-evr --evr school.evr --write-mask",
+        "aa-evr x_Sv.nc --name school.evr        # draw mode",
+    ],
+    notes=[
+        "Region depths are compared with echo_range of --channel-index at the "
+        "first ping (range from the transducer) when the file has it, otherwise "
+        "with depth, otherwise with sample indices.",
+        "Regions that don't overlap the echogram's time range give an empty mask: "
+        "a warning and an all-NaN output (or a failure with --fail-empty).",
+        "The .evr written by draw mode is a record of the drawing; echoregions "
+        "cannot read it back, so don't pass it to --evr.",
+    ],
+)
+
+
+# ---------------------------
 # Help / logging
 # ---------------------------
 
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
     print(
         """
 aa-evr - apply Echoview region(s) (.evr) to an echogram NetCDF (.nc/.netcdf4)
@@ -116,42 +287,66 @@ MODES
   EVR mode (--evr provided)   Apply existing .evr file(s) to echogram.
   Draw mode (--evr omitted)   Open an interactive Bokeh browser app to draw
                               freehand ROI regions directly on the echogram.
-                              Saves both a new .evr and a masked .nc.
+                              Saves both a new .evr and a masked .nc. The .evr
+                              records the drawing; echoregions cannot read it
+                              back, so it cannot be passed to --evr.
 
 REQUIRED (EVR mode only)
   --evr EVR [EVR ...]     One or more .evr sources. Each may be a local path
-                          or a remote URI, e.g. gs://bucket/regions.evr
-                          (remote URIs need fsspec + the matching backend,
-                          e.g. gcsfs for gs://).
+                          or a remote URI. gs://bucket/regions.evr is read
+                          through the aalibrary cache (AA_CACHE_DIR); other
+                          schemes (s3://, http(s)://) need fsspec + the
+                          matching backend (e.g. s3fs for s3://).
+                          The regions of all files are unioned, so their
+                          order and any duplicates do not matter.
 
 INPUT
   INPUT_PATH [INPUT_PATH ...]
-    Optional positional .nc paths. If omitted, reads newline-delimited .nc paths from stdin.
+    Optional positional .nc paths or gs:// URIs. If omitted, reads
+    newline-delimited .nc paths from stdin. An empty stdin is an error
+    (exit 1); a bare `aa-evr` on a terminal prints the short help.
 
 OUTPUT
-  -o, --output-path PATH  Only valid when processing exactly 1 input.
+  -o, --output-path PATH  Only valid when processing exactly 1 input. Used as
+                          given; may be a gs:// URI.
   --out-dir DIR           Output directory for pipelines / multiple inputs.
-  --suffix TEXT           Output suffix appended to input stem (default: _evr).
-  --overwrite             Overwrite output files.
+  --suffix TEXT           Name outputs <input stem><TEXT>.nc (in --out-dir, or
+                          beside the input). Default: no suffix, outputs are
+                          named <base>_<hash8>.nc (AA_NAMING=legacy: the old
+                          default suffix _evr).
+  --overwrite             Replace an existing output that is a different
+                          product. An identical product (same input, same
+                          region-file content, same options) is reused.
+  --base NAME             Base name for the default output name.
+  --dest DIR|gs://PREFIX  Write the default-named output there.
+  --force                 Recompute even if an identical product exists.
 
 DRAWING MODE OPTIONS
   --name TEXT             EVR output filename (default: <input_stem>_regions.evr).
                           May include or omit the .evr extension.
   --port INT              Port for the Bokeh drawing server (default: 5006;
                           auto-increments if occupied).
+  Draw mode writes <input_stem>_evr.nc and the .evr beside the input (or in
+  --out-dir); -o, --suffix, --base and --dest apply to EVR mode only.
 
 MASKING (both modes)
-  --var NAME              Variable to mask (default: auto-detect — first of
+  --var NAME              Variable to mask (default: auto-detect - first of
                           Sv, Sv_clean, MVBS, TS, NASC found in the file).
                           Pass explicitly to override.
   --time-dim NAME         Time dimension name (default: infer ping_time else time).
   --depth-dim NAME        Depth dimension name (default: infer depth, range_sample,
-                          or range_bin).
+                          range_bin, or echo_range as in aa-mvbs output).
   --channel-index INT     Channel used to build mask when var has 'channel' dim
                           (default: 0).
   --write-mask            Write union mask as int8 variable 'region_mask' in output.
   --fail-empty            Exit non-zero if union mask is empty (0 cells inside).
   --debug                 Verbose diagnostics to stderr.
+
+PROVENANCE
+  Each output embeds its provenance (aa-metadata FILE): the input's chain, this
+  step with its scientific options, and the region files as inputs with role
+  "regions", identified by content. The attributes aa_tool and aa_evr_files
+  (the region files as given) are kept.
 
 EXAMPLES
   # Mask to EVR regions only:
@@ -209,9 +404,10 @@ def _download_to_temp(uri: str) -> Path:
     """Download a remote EVR *uri* to a local temp .evr file and return its Path.
 
     echoregions.read_evr only reads local files, so a remote object has to be
-    materialised first.  fsspec handles gs://, s3://, http(s)://, etc.; the
-    matching backend (e.g. gcsfs for gs://) must be installed.  The temp file is
-    removed automatically when the process exits.
+    materialised first.  fsspec handles s3://, http(s)://, etc.; the matching
+    backend (e.g. s3fs for s3://) must be installed.  gs:// does not come here:
+    it is read through the aalibrary cache (see _resolve_region_files).  The
+    temp file is removed automatically when the process exits.
     """
     try:
         import fsspec
@@ -219,7 +415,6 @@ def _download_to_temp(uri: str) -> Path:
         raise RuntimeError(
             f"Reading a remote EVR ({uri}) needs fsspec plus the backend for its "
             f"scheme. Install, e.g.:\n"
-            f"    pip install fsspec gcsfs   # for gs://\n"
             f"    pip install fsspec s3fs    # for s3://\n"
             f"(import error: {exc})"
         ) from exc
@@ -243,63 +438,109 @@ def _download_to_temp(uri: str) -> Path:
     return Path(tmp)
 
 
-def _resolve_evr_sources(sources: List[str]) -> List[Path]:
-    """Map raw --evr arguments to local Paths, preserving order.
+@dataclass
+class _RegionFile:
+    """One --evr source, resolved once for the whole batch."""
+    raw: str                        # as given on the command line
+    token: str                      # what the core reads: a local path or a gs:// URI
+    local: Path                     # readable local copy
+    id: str                         # content identity (enters the hash)
+    remote_uri: Optional[str] = None  # a non-gs:// URI fetched with fsspec
 
-    Local paths behave exactly as before (expanduser + resolve).  file:// URIs
-    are treated as local.  Any other URI scheme is downloaded to a temp file.
+    @property
+    def shown(self) -> str:
+        """How the file is listed in the aa_evr_files attribute (unchanged rule:
+        the URI for remote sources, the resolved local path otherwise)."""
+        if _looks_like_uri(self.raw) and not self.raw.lower().startswith("file://"):
+            return self.raw
+        return str(self.local)
+
+
+def _resolve_region_files(sources: List[str]) -> Tuple[Optional[List["_RegionFile"]], str]:
+    """Resolve --evr sources to local files and content identities, in the
+    order given. Returns (files, "") or (None, error message).
+
+    Local paths and file:// URIs are read in place; gs:// URIs through the
+    aalibrary cache (a gcsfuse mount or one download per object version);
+    any other scheme is downloaded with fsspec to a temp file.
     """
-    resolved: List[Path] = []
-    for src in sources:
-        if not _looks_like_uri(src):
-            resolved.append(Path(src).expanduser().resolve())
-            continue
-        if src.lower().startswith("file://"):
-            from urllib.parse import unquote, urlparse
-            resolved.append(Path(unquote(urlparse(src).path)).expanduser().resolve())
-            continue
-        resolved.append(_download_to_temp(src))
-    return resolved
+    probe = Run(SPEC)   # only to compute identities; never plans anything
+    out: List[_RegionFile] = []
+    for raw in sources:
+        remote_uri = None
+        if uris.is_gcs(raw):
+            # Checked here so a missing object exits 2 like a missing local
+            # file (the core would exit 1). A gcsfuse mount needs no API call.
+            if uris.mounted_path(raw) is None:
+                try:
+                    found = uris.stat(raw) is not None
+                except Exception as exc:      # credentials, network, permissions
+                    return None, f"EVR file not readable: {raw} ({exc})"
+                if not found:
+                    return None, f"EVR file not found: {raw}"
+            token = raw
+        elif _looks_like_uri(raw) and not raw.lower().startswith("file://"):
+            try:
+                token = str(_download_to_temp(raw))
+            except Exception as exc:
+                return None, str(exc)
+            remote_uri = raw
+        else:
+            if raw.lower().startswith("file://"):
+                from urllib.parse import unquote, urlparse
+                local = Path(unquote(urlparse(raw).path))
+            else:
+                local = Path(raw)
+            local = local.expanduser().resolve()
+            if not local.exists():
+                return None, f"EVR file not found: {local}"
+            token = str(local)
+        try:
+            inp = probe.param_file(token, role="regions")
+        except (Exception, SystemExit) as exc:   # the core exits on unreadable input
+            return None, f"EVR file not readable: {raw} ({exc})"
+        out.append(_RegionFile(raw, token, inp.local, inp.id, remote_uri))
+    return out, ""
+
+
+def _canonical_regions(files: List["_RegionFile"]) -> List["_RegionFile"]:
+    """The union is order-free and idempotent: sort by content identity and
+    keep one file per identity. This order is used for the hash AND for the
+    computation."""
+    seen = {}
+    for f in files:
+        seen.setdefault(f.id, f)
+    return [seen[k] for k in sorted(seen)]
+
+
+def _register_regions(run: Run, files: List["_RegionFile"]) -> None:
+    for f in files:
+        # A file fetched with fsspec is recorded by its URI, not the temp copy.
+        run.param_file(f.token, role="regions", uri=f.remote_uri)
 
 
 # ---------------------------
 # Input handling
 # ---------------------------
 
-def _iter_input_paths(positional: List[Path]) -> Iterable[Path]:
-    if positional:
-        yield from positional
-        return
-    if not sys.stdin.isatty():
-        for line in sys.stdin:
-            s = line.strip()
-            if s:
-                yield Path(s)
-        return
-    print_help()
-    sys.exit(0)
+_ALLOWED_EXT = {".nc", ".netcdf4"}
 
 
-def _validate_inputs(input_paths: List[Path], evr_paths: List[Path]) -> None:
-    allowed_ext = {".nc", ".netcdf4"}
-
-    if not evr_paths:
-        logger.error("At least one --evr file is required.")
-        sys.exit(2)
-
-    for evr in evr_paths:
-        if not evr.exists():
-            logger.error(f"EVR file not found: {evr}")
-            sys.exit(2)
-
-    for p in input_paths:
-        if not p.exists():
-            logger.error(f"Input file not found: {p}")
-            sys.exit(1)
-        if p.suffix.lower() not in allowed_ext:
+def _validate_inputs(tokens: List[str]) -> None:
+    """Up-front checks, as before: a missing local input or a wrong extension
+    stops the whole batch with exit 1. (A gs:// input is checked when read.)"""
+    for tok in tokens:
+        name = uris.basename(tok)
+        if not uris.is_gcs(tok):
+            p = Path(uris.from_file_uri(tok)).expanduser().resolve()
+            if not p.exists():
+                logger.error(f"Input file not found: {p}")
+                sys.exit(1)
+            name = p.name
+        if Path(name).suffix.lower() not in _ALLOWED_EXT:
             logger.error(
-                f"Unsupported input extension: {p.name} "
-                f"(allowed: {', '.join(sorted(allowed_ext))})"
+                f"Unsupported input extension: {name} "
+                f"(allowed: {', '.join(sorted(_ALLOWED_EXT))})"
             )
             sys.exit(1)
 
@@ -384,6 +625,11 @@ def _infer_dims(
             ddim = "range_sample"
         elif "range_bin" in da.dims:
             ddim = "range_bin"
+        elif "echo_range" in da.dims:
+            # aa-mvbs output: Sv on (channel, ping_time, echo_range). Checked
+            # last, so files that have depth/range_sample/range_bin infer the
+            # same dimension as before.
+            ddim = "echo_range"
         else:
             raise ValueError(
                 f"Could not infer depth dim for '{var}'. Provide --depth-dim."
@@ -477,6 +723,18 @@ def _extract_region_mask_union(
             break
 
     return da.astype(bool)
+
+
+# Depth bounds handed to er.read_evr(). echoregions' Regions2D.region_mask()
+# drops every region that has a vertex outside [max(0, min_depth), max_depth]
+# (read_evr defaults: 0 and 1000 m), so with the defaults any region reaching
+# deeper than 1000 m silently disappeared from the mask. aa-evr handles depth
+# itself before calling region_mask (Echoview's +/-9999.99 sentinels become the
+# echogram's top/bottom, vertices are clamped to the echogram's depth range),
+# so echoregions' filter must never fire: these bounds lie beyond any ocean
+# depth. (echoregions floors the lower bound at 0 m regardless.) The bounds are
+# also what echoregions' replace_nan_depth() would use, which aa-evr never calls.
+_ER_DEPTH_BOUNDS = {"min_depth": -1.0e7, "max_depth": 1.0e7}
 
 
 def _build_union_region_mask(
@@ -593,8 +851,9 @@ def _build_union_region_mask(
     union_mask = None
 
     for evr_path in evr_files:
-        # Use huge depth bounds to avoid old-API depth-filtering of sentinel values
-        regions2d = er.read_evr(str(evr_path))
+        # Wide-open depth bounds: echoregions must not filter regions by depth
+        # (see _ER_DEPTH_BOUNDS); sentinels and clamping are handled below.
+        regions2d = er.read_evr(str(evr_path), **_ER_DEPTH_BOUNDS)
 
         # --- get underlying dataframe ---
         df = None
@@ -904,6 +1163,37 @@ def _apply_mask(
 
 
 # ---------------------------
+# Scientific parameters actually used
+# ---------------------------
+
+def _resolve_masking(nc_path: Path, var: Optional[str], time_dim: Optional[str],
+                     depth_dim: Optional[str], channel_index: int) -> dict:
+    """The variable, dimensions and channel the mask will actually use.
+
+    Reads only the file's metadata. These resolved values (not the flags as
+    typed) enter the hash, so `--var Sv` and an auto-detected Sv are the same
+    product. The channel index only matters when the variable has a channel
+    dimension (see _build_union_region_mask); otherwise it is recorded as None.
+    """
+    with xr.open_dataset(nc_path) as ds:
+        rvar = _resolve_var(ds, var)
+        tdim, ddim = _infer_dims(ds, var=rvar, time_dim=time_dim, depth_dim=depth_dim)
+        has_channel = "channel" in ds[rvar].dims
+    return {
+        "var": rvar,
+        "time_dim": tdim,
+        "depth_dim": ddim,
+        "channel_index": channel_index if has_channel else None,
+    }
+
+
+def _kind_of(src) -> str:
+    """Masking keeps what the data is: masked Sv is sv, masked MVBS is mvbs."""
+    kind = (((src.prov or {}).get("product") or {}).get("kind") or "").strip()
+    return kind if kind and kind not in {"echodata", "source"} else SPEC.kind
+
+
+# ---------------------------
 # Output path resolution
 # ---------------------------
 
@@ -913,10 +1203,50 @@ def _resolve_output_path(
     out_dir: Optional[Path],
     suffix: str,
 ) -> Path:
+    """The old naming rule: -o as given, else (out_dir or input dir)/<stem><suffix>.nc."""
     if output_path is not None:
         return output_path
     out_name = input_path.with_suffix("").name + suffix + ".nc"
     return (out_dir or input_path.parent) / out_name
+
+
+def _input_dir_and_path(src) -> Tuple[Path, Path]:
+    """(folder, path) the old rule names outputs after: the resolved local
+    input, or the current directory for a gs:// input."""
+    if src.via == "local":
+        p = src.local.resolve()
+        return p.parent, p
+    return Path.cwd(), Path(src.name)
+
+
+def _explicit_output(args, src) -> Optional[str]:
+    """Names the user chose keep their old meaning.
+
+    -o PATH is used as given (local or gs://). An explicitly given --suffix
+    keeps the old <stem><suffix>.nc name, in --dest, --out-dir or beside the
+    input. Otherwise None: the standard <base>_<hash8>.nc name.
+    """
+    if args.output_path:
+        return str(args.output_path)
+    if args.suffix is None:
+        return None
+    folder, in_path = _input_dir_and_path(src)
+    name = in_path.with_suffix("").name + args.suffix + ".nc"
+    where = args.dest or args.out_dir
+    if where and uris.is_remote(str(where)):
+        return uris.join(str(where), name)
+    if where:
+        return str(Path(where).expanduser().resolve() / name)
+    return str(folder / name)
+
+
+def _legacy_output(args, src, suffix: str) -> str:
+    """The old default name, <stem><suffix>.nc in --out-dir or beside the input."""
+    folder, in_path = _input_dir_and_path(src)
+    if args.out_dir and uris.is_remote(str(args.out_dir)):
+        return uris.join(str(args.out_dir), in_path.with_suffix("").name + suffix + ".nc")
+    out_dir = Path(args.out_dir).expanduser().resolve() if args.out_dir else None
+    return str(_resolve_output_path(in_path, None, out_dir or folder, suffix))
 
 
 # ---------------------------
@@ -927,7 +1257,6 @@ def _process_file(
     input_path: Path,
     evr_files: List[Path],
     output_path: Path,
-    overwrite: bool,
     var: str,
     time_dim: Optional[str],
     depth_dim: Optional[str],
@@ -937,15 +1266,11 @@ def _process_file(
     debug: bool,
     evr_sources: Optional[List[str]] = None,
 ) -> Optional[Path]:
-    if output_path.exists() and not overwrite:
-        logger.error(f"Output exists (use --overwrite): {output_path}")
-        return None
+    """Mask one file and write it to output_path. None: nothing written.
 
-    # Guard against clobbering the input
-    if output_path.resolve() == input_path.resolve():
-        logger.error(f"Refusing to overwrite input file: {input_path.resolve()}")
-        return None
-
+    Output-exists / --overwrite and the refuse-to-overwrite-the-input guard are
+    decided by the caller, before this runs (reuse comes first).
+    """
     # Read into memory and release the file handle so we can write into the
     # same directory without xarray holding a read lock.
     with xr.open_dataset(input_path) as ds_in:
@@ -1009,30 +1334,260 @@ def _process_file(
         str(s) for s in (evr_sources if evr_sources is not None else evr_files)
     )
 
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     ds_out.to_netcdf(output_path)
 
     return output_path
+
+
+def _run_one(token: str, args, regions: List["_RegionFile"],
+             evr_sources: List[str]) -> Optional[str]:
+    """One input -> one product. Returns the printed target, or None on failure."""
+    run = Run(SPEC, args)
+    src = run.input(token)
+    _register_regions(run, regions)
+
+    resolved = _resolve_masking(src.local, args.var, args.time_dim, args.depth_dim,
+                                args.channel_index)
+    if args.debug:
+        logger.debug(f"{src.name}: resolved {resolved}")
+
+    hash_naming = naming.mode() != "legacy"
+    out = run.plan(
+        ext=".nc",
+        explicit=_explicit_output(args, src),
+        legacy=lambda: _legacy_output(args, src, DEFAULT_SUFFIX),
+        directory=args.out_dir if hash_naming else None,
+        kind=_kind_of(src),
+        extra_params=resolved,
+    )
+
+    # Guard against clobbering the input
+    if not out.remote and Path(out.target).resolve() == src.local.resolve():
+        logger.error(f"Refusing to overwrite input file: {src.local.resolve()}")
+        run.discard(out)
+        return None
+
+    # Reuse comes first: an identical product is never an "overwrite".
+    if run.reusable(out):
+        return run.finish(out)
+
+    # A different product already there (an identical one, e.g. with --force,
+    # is not an "overwrite").
+    if not args.overwrite and run.conflicts(out):
+        logger.error(f"Output exists (use --overwrite): {out.target}")
+        run.discard(out)
+        return None
+
+    try:
+        produced = _process_file(
+            input_path=src.local,
+            evr_files=[r.local for r in regions],
+            output_path=out.local,
+            var=resolved["var"],
+            time_dim=resolved["time_dim"],
+            depth_dim=resolved["depth_dim"],
+            channel_index=args.channel_index,
+            write_mask=args.write_mask,
+            fail_empty=args.fail_empty,
+            debug=args.debug,
+            evr_sources=evr_sources,
+        )
+    except BaseException:
+        run.discard(out)
+        raise
+    if not produced:
+        run.discard(out)
+        return None
+
+    logger.success(f"Saved masked NetCDF:\n\t{out.target}")
+    logger.success("Piping saved .nc path to stdout ⟶")
+    return run.finish(out)
+
+
+def _evr_mode(args) -> int:
+    tokens = stdio.many_inputs(args.input_paths, SPEC.name)   # empty stdin: exit 1
+
+    # --evr may be a local path OR a remote URI (gs://, s3://, http(s)://).
+    # Resolved once for the whole batch; each file's CONTENT identifies it.
+    regions_given, err = _resolve_region_files([str(s) for s in args.evr])
+    if regions_given is None:
+        logger.error(err)
+        return 2
+    regions = _canonical_regions(regions_given)
+
+    # Provenance attribute written into the output NetCDF: the sources as given
+    # (remote URI, or the resolved local path), unchanged from before.
+    evr_sources = [r.shown for r in regions_given]
+
+    _validate_inputs(tokens)
+
+    if args.output_path is not None and len(tokens) != 1:
+        logger.error(
+            "--output-path is only valid when processing exactly 1 input. "
+            "Use --out-dir for multiple files."
+        )
+        return 2
+
+    if args.out_dir and not uris.is_remote(str(args.out_dir)):
+        Path(args.out_dir).expanduser().resolve().mkdir(parents=True, exist_ok=True)
+
+    if args.debug:
+        logger.debug(f"\naa-evr args:\n{pprint.pformat(vars(args))}")
+        logger.debug(f"Region files (canonical order): {[r.raw for r in regions]}")
+
+    any_fail = False
+    for token in tokens:
+        try:
+            if not _run_one(token, args, regions, evr_sources):
+                any_fail = True
+        except SystemExit:
+            # The core stops on this input (e.g. a missing gs:// object) after
+            # printing why; the rest of the batch still runs.
+            any_fail = True
+        except Exception as e:
+            any_fail = True
+            logger.exception(f"Error processing {token}: {e}")
+
+    return 1 if any_fail else 0
+
+
+# ---------------------------
+# Drawing mode
+# ---------------------------
+
+def _set_nc_attrs(path: Path, attrs: dict) -> None:
+    import netCDF4
+
+    with netCDF4.Dataset(str(path), "a") as nc:
+        for k, v in attrs.items():
+            nc.setncattr(k, v)
+
+
+def _draw_mode(args) -> int:
+    try:
+        from aalibrary.utils.region_draw import run_drawing_mode
+    except ImportError as exc:
+        logger.error(
+            f"Could not import region_draw (drawing mode): {exc}\n"
+            "Ensure region_draw.py is in the same directory as aa_evr.py, "
+            "or on PYTHONPATH."
+        )
+        return 2
+
+    tokens = stdio.many_inputs(args.input_paths, SPEC.name)   # empty stdin: exit 1
+    if len(tokens) > 1:
+        logger.warning(
+            f"Drawing mode processes one file at a time; "
+            f"using first input: {tokens[0]}"
+        )
+    token = tokens[0]
+    if not uris.is_gcs(token):
+        p = Path(uris.from_file_uri(token)).expanduser().resolve()
+        if not p.exists():
+            logger.error(f"Input file not found: {p}")
+            return 1
+        token = str(p)
+
+    ignored = [flag for flag, value in (("-o", args.output_path), ("--suffix", args.suffix),
+                                        ("--dest", args.dest), ("--base", args.base))
+               if value]
+    if ignored:
+        logger.warning(f"Drawing mode ignores {', '.join(ignored)} (EVR mode only).")
+
+    # A drawing is never reused: nothing identifies it before it is drawn.
+    run = Run(DRAW_SPEC, args)
+    src = run.input(token)
+    nc_path = src.local
+
+    # Resolve --var: explicit value if given, else auto-detect by
+    # opening the file to inspect data_vars.  Mirrors the EVR-mode
+    # path so `aa-evr file_TS.nc --name foo.evr` works without
+    # forcing the user to add --var TS by hand.
+    try:
+        resolved = _resolve_masking(nc_path, args.var, args.time_dim, args.depth_dim,
+                                    args.channel_index)
+    except Exception as exc:
+        logger.error(f"Could not resolve variable in {nc_path}: {exc}")
+        return 1
+    resolved_var = resolved["var"]
+    # region_draw also uses the index to pick a channel of echo_range/depth,
+    # whether or not --var has a channel dimension: record it as given.
+    resolved["channel_index"] = args.channel_index
+
+    evr_name = args.name or (Path(src.name).with_suffix("").name + "_regions.evr")
+    if args.out_dir:
+        out_dir = Path(args.out_dir).expanduser().resolve()
+    elif src.via != "local":
+        out_dir = Path.cwd()        # never write beside a cached gs:// copy
+    else:
+        out_dir = None
+
+    if args.debug:
+        logger.debug(
+            f"\naa-evr drawing mode args:\n"
+            f"  nc_path={nc_path}\n"
+            f"  evr_name={evr_name}\n"
+            f"  out_dir={out_dir}\n"
+            f"  var={resolved_var}, port={args.port}"
+        )
+
+    result = run_drawing_mode(
+        nc_path=nc_path,
+        evr_name=evr_name,
+        out_dir=out_dir,
+        var=resolved_var,
+        time_dim=resolved["time_dim"],     # same inference as region_draw's,
+        depth_dim=resolved["depth_dim"],   # plus echo_range (aa-mvbs output)
+        channel_index=args.channel_index,
+        overwrite=args.overwrite,
+        port=args.port,
+        debug=args.debug,
+    )
+    if not result:
+        return 1
+
+    # Provenance for the drawn product. The drawn .evr (when written) is its
+    # regions input; a one-off drawing id keeps two different drawings from
+    # ever sharing a hash (the .evr stores whole seconds, and may be missing).
+    result = Path(result)
+    with xr.open_dataset(result) as ds_done:
+        written = str(ds_done.attrs.get("aa_evr_files", "not_written"))
+        tool_attr = str(ds_done.attrs.get("aa_tool", "aa-evr-draw"))
+    if written != "not_written" and Path(written).is_file():
+        run.param_file(written, role="regions")
+    # stage=False: region_draw has already written the target itself, so the
+    # core embeds into it rather than expecting a temp file to rename.
+    out = run.plan(ext=".nc", explicit=str(result), variant="draw", kind=_kind_of(src),
+                   extra_params=dict(resolved, drawing=uuid.uuid4().hex), stage=False)
+    run.finish(out, emit=False)
+    # The core stamps aa_tool with the step's tool; keep the attribute
+    # region_draw has always written for drawn products.
+    _set_nc_attrs(result, {"aa_tool": tool_attr})
+
+    logger.success("Piping saved .nc path to stdout ⟶")
+    stdio.emit(str(result))
+    return 0
 
 
 # ---------------------------
 # Entry point
 # ---------------------------
 
-def main() -> int:
-    if len(sys.argv) == 1 and sys.stdin.isatty():
-        print_help()
-        return 0
-
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
+        prog="aa-evr",
         description=(
             "Mask echogram NetCDF (.nc) using Echoview EVR region files, "
             "or draw new regions interactively (omit --evr)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
     )
     parser.add_argument(
-        "input_paths", nargs="*", type=Path,
-        help="Input .nc/.netcdf4 paths (or read from stdin).",
+        "input_paths", nargs="*", type=str,
+        help="Input .nc/.netcdf4 paths or gs:// URIs (or read from stdin).",
     )
 
     # -- EVR mode --
@@ -1060,20 +1615,21 @@ def main() -> int:
 
     # -- Shared output options --
     parser.add_argument(
-        "-o", "--output-path", dest="output_path", type=Path,
-        help="Output path (only valid for a single input file, EVR mode only).",
+        "-o", "--output-path", dest="output_path", type=str,
+        help="Output path or gs:// URI (only valid for a single input file, EVR mode only).",
     )
     parser.add_argument(
-        "--out-dir", type=Path,
+        "--out-dir", type=str,
         help="Output directory (for pipelines / multiple inputs).",
     )
     parser.add_argument(
-        "--suffix", type=str, default="_evr",
-        help="Suffix appended to output stem (default: _evr, EVR mode only).",
+        "--suffix", type=str, default=None,
+        help=("Name outputs <input stem><SUFFIX>.nc (EVR mode only). Default: "
+              "<base>_<hash8>.nc; AA_NAMING=legacy: suffix _evr."),
     )
     parser.add_argument(
         "--overwrite", action="store_true",
-        help="Overwrite existing output files.",
+        help="Replace an existing output that is a different product.",
     )
 
     # -- Masking options (shared) --
@@ -1109,6 +1665,19 @@ def main() -> int:
         "--debug", action="store_true",
         help="Verbose diagnostics to stderr.",
     )
+    add_common_flags(parser)
+    return parser
+
+
+def main() -> int:
+    # No args on a terminal: help. (An empty pipe is an error: see stdio.)
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
+        print_help()
+        return 0
+
+    parser = _build_parser()
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        return 0
     args = parser.parse_args()
 
     _configure_logging(args.debug)
@@ -1117,157 +1686,12 @@ def main() -> int:
     # Route: DRAWING MODE  (--evr not provided)
     # ==============================================================
     if not args.evr:
-        try:
-            from aalibrary.utils.region_draw import run_drawing_mode
-        except ImportError as exc:
-            logger.error(
-                f"Could not import region_draw (drawing mode): {exc}\n"
-                "Ensure region_draw.py is in the same directory as aa_evr.py, "
-                "or on PYTHONPATH."
-            )
-            return 2
-
-        input_paths = list(_iter_input_paths(args.input_paths))
-        if not input_paths:
-            logger.error(
-                "Drawing mode requires one input NC path "
-                "(positional argument or piped via stdin)."
-            )
-            return 1
-        if len(input_paths) > 1:
-            logger.warning(
-                f"Drawing mode processes one file at a time; "
-                f"using first input: {input_paths[0]}"
-            )
-
-        nc_path = input_paths[0].expanduser().resolve()
-        if not nc_path.exists():
-            logger.error(f"Input file not found: {nc_path}")
-            return 1
-
-        # Resolve --var: explicit value if given, else auto-detect by
-        # opening the file to inspect data_vars.  Mirrors the EVR-mode
-        # path so `aa-evr file_TS.nc --name foo.evr` works without
-        # forcing the user to add --var TS by hand.
-        try:
-            with xr.open_dataset(nc_path) as _ds_peek:
-                resolved_var = _resolve_var(_ds_peek, args.var)
-        except Exception as exc:
-            logger.error(f"Could not resolve variable in {nc_path}: {exc}")
-            return 1
-
-        evr_name = args.name or (nc_path.with_suffix("").name + "_regions.evr")
-        out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
-
-        if args.debug:
-            logger.debug(
-                f"\naa-evr drawing mode args:\n"
-                f"  nc_path={nc_path}\n"
-                f"  evr_name={evr_name}\n"
-                f"  out_dir={out_dir}\n"
-                f"  var={resolved_var}, port={args.port}"
-            )
-
-        result = run_drawing_mode(
-            nc_path=nc_path,
-            evr_name=evr_name,
-            out_dir=out_dir,
-            var=resolved_var,
-            time_dim=args.time_dim,
-            depth_dim=args.depth_dim,
-            channel_index=args.channel_index,
-            overwrite=args.overwrite,
-            port=args.port,
-            debug=args.debug,
-        )
-
-        if result:
-            logger.success("Piping saved .nc path to stdout ⟶")
-            print(str(result))
-            return 0
-        else:
-            return 1
+        return _draw_mode(args)
 
     # ==============================================================
     # Route: EVR MODE  (--evr provided)
     # ==============================================================
-    input_paths = list(_iter_input_paths(args.input_paths))
-    if not input_paths:
-        logger.error("No input paths provided (positional or via stdin).")
-        return 1
-
-    input_paths = [p.expanduser().resolve() for p in input_paths]
-
-    # --evr may now be a local path OR a remote URI (gs://, s3://, http(s)://).
-    # Local paths behave exactly as before; remote URIs are downloaded to temp
-    # files for the duration of the run (echoregions reads local files only).
-    evr_args = [str(s) for s in args.evr]
-    try:
-        evr_files = _resolve_evr_sources(evr_args)
-    except Exception as exc:
-        logger.error(str(exc))
-        return 2
-
-    # Provenance written into the output NetCDF: keep the original URI for remote
-    # sources, and the resolved local path for local ones (unchanged from before).
-    evr_provenance = [
-        raw if (_looks_like_uri(raw) and not raw.lower().startswith("file://"))
-        else str(local)
-        for raw, local in zip(evr_args, evr_files)
-    ]
-
-    _validate_inputs(input_paths, evr_files)
-
-    if args.output_path is not None and len(input_paths) != 1:
-        logger.error(
-            "--output-path is only valid when processing exactly 1 input. "
-            "Use --out-dir for multiple files."
-        )
-        return 2
-
-    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
-    if out_dir is not None:
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    if args.debug:
-        logger.debug(f"\naa-evr args:\n{pprint.pformat(vars(args))}")
-
-    any_fail = False
-    for in_path in input_paths:
-        out_path = _resolve_output_path(
-            input_path=in_path,
-            output_path=(
-                args.output_path.expanduser().resolve() if args.output_path else None
-            ),
-            out_dir=out_dir,
-            suffix=args.suffix,
-        )
-        try:
-            produced = _process_file(
-                input_path=in_path,
-                evr_files=evr_files,
-                output_path=out_path,
-                overwrite=args.overwrite,
-                var=args.var,
-                time_dim=args.time_dim,
-                depth_dim=args.depth_dim,
-                channel_index=args.channel_index,
-                write_mask=args.write_mask,
-                fail_empty=args.fail_empty,
-                debug=args.debug,
-                evr_sources=evr_provenance,
-            )
-            if produced:
-                logger.success(f"Saved masked NetCDF:\n\t{produced}")
-                logger.success("Piping saved .nc path to stdout ⟶")
-                print(str(produced))
-            else:
-                any_fail = True
-        except Exception as e:
-            any_fail = True
-            logger.exception(f"Error processing {in_path}: {e}")
-
-    return 1 if any_fail else 0
+    return _evr_mode(args)
 
 
 if __name__ == "__main__":

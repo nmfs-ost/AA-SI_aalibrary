@@ -3,17 +3,21 @@
 aa-plot - Interactive echogram plotting (HTML) for Echopype/xarray NetCDF datasets
 
 Goals:
-- Accept .nc path from argv OR stdin (pipeline-friendly).
+- Accept a .nc path or gs:// URI from argv OR stdin (pipeline-friendly).
 - Plot a variable (default: Sv if present).
-- Plot ALL channels and/or frequencies in a tabbed UI (Panel + hvPlot).
-  * If Sv has a 'channel' dimension, tabs are per-channel (labels include
-    frequency_nominal if present as a coord on channel).
-  * If Sv has a 'frequency_nominal' dimension, tabs are per-frequency.
+- Plot ALL channels in a tabbed UI (Panel + hvPlot): if the variable has a
+  'channel' dimension, there is one tab per channel (labels include
+  frequency_nominal when it is a variable on channel). A 'frequency_nominal'
+  dimension is only used to pick one frequency with --frequency; it does
+  not get tabs.
+- Each tab's depth axis is built from that channel's own echo_range/depth.
 - No matplotlib. Output is standalone HTML.
-- Print absolute HTML path to stdout for downstream chaining.
+- Print absolute HTML path (or gs:// URI) to stdout for downstream chaining.
 - Keep stdout clean except for final path (logs go to stderr via loguru).
 - Drawing tools (freehand, polyline, region polygon) overlay the echogram;
   annotations export to EVL (lines) or EVR (regions) Echoview-compatible files.
+- The input product's provenance (aa-metadata) is shown in the data summary
+  and embedded in the page with a rendering step (shared console core).
 
 Notes for cloud / JupyterLab workspaces:
 - JupyterLab opens HTML files in a restrictive iframe sandbox that blocks
@@ -38,24 +42,48 @@ logger.remove()
 # _configure_logging() below replaces this once --quiet is parsed.
 logger.add(sys.stderr, level="WARNING")
 
-# Now the heavy imports - anything they log gets squashed
 import argparse
 import io
 import json
+import re
+import shutil
 from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
+from html import escape as _html_escape
 from pathlib import Path
-from typing import Optional, Tuple, Any
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Optional, Tuple, Any
 
 import numpy as np
-import xarray as xr
 
-import holoviews as hv
-from holoviews import opts
-import hvplot.xarray  # noqa: F401
-import panel as pn
+from aalibrary.console._core import (
+    Help, Run, ToolSpec, add_common_flags, canon, naming, render, show_help, stdio, uris,
+)
 
-pn.extension()
+if TYPE_CHECKING:  # for annotations only; the real imports are in _plotting()
+    import panel as pn
+    import xarray as xr
+
+# The plotting stack (xarray, HoloViews, hvPlot, Panel) takes seconds to
+# import, so it is loaded on first use rather than at import time: --help
+# and the docs generator (which imports print_help) stay fast. Logging is
+# already silenced above, as it was for the old module-level imports.
+_STACK = None
+
+
+def _plotting() -> SimpleNamespace:
+    """Import the plotting stack once; returns xr, opts and pn."""
+    global _STACK
+    if _STACK is None:
+        import xarray as xr_
+        import holoviews  # noqa: F401
+        from holoviews import opts as opts_
+        import hvplot.xarray  # noqa: F401  (registers DataArray.hvplot)
+        import panel as pn_
+
+        pn_.extension()
+        _STACK = SimpleNamespace(xr=xr_, opts=opts_, pn=pn_)
+    return _STACK
 
 
 def silence_all_logs():
@@ -84,40 +112,153 @@ _CMAP_OPTIONS = [
 ]
 
 
+SPEC = ToolSpec(
+    name="aa-plot",
+    role="representation",
+    kind="html",
+    op="aa_plot.echogram",
+    op_version=1,
+    ext=".html",
+    engines=(),
+    # Options that change the page. They identify the rendering (so the same
+    # page is reused); the science shown is the input product's. --group-by
+    # is accepted but has no effect, so it is left out.
+    params={
+        "var": canon.text, "all": canon.boolean, "single": canon.boolean,
+        "frequency": canon.number, "channel": canon.text,
+        "x_override": canon.text, "y_override": canon.text, "no_flip": canon.boolean,
+        "vmin": canon.number, "vmax": canon.number, "cmap": canon.text,
+        "width": canon.integer, "height": canon.integer, "toolbar": canon.choice(),
+        "no_hover": canon.boolean, "no_crosshair": canon.boolean,
+        "no_cmap_picker": canon.boolean, "no_log": canon.boolean, "no_draw": canon.boolean,
+        "decimate": canon.integer, "ymin": canon.number, "ymax": canon.number,
+    },
+)
+
+HELP = Help(
+    summary="Interactive echogram HTML page with drawing tools and EVL/EVR export.",
+    does=(
+        "Renders one variable (default Sv) of a NetCDF product as a standalone "
+        "HTML page: one tab per channel, hover values, click-to-pin, a colormap "
+        "picker, freehand/polyline/region drawing tools that export Echoview "
+        "EVL (lines) and EVR (regions) files, and a data summary that shows the "
+        "product's provenance chain (inputs and every pipeline step with its "
+        "options). Each tab's depth axis comes from that channel's own "
+        "echo_range/depth."
+    ),
+    stdin="One NetCDF path or gs:// URI (Sv, cleaned Sv, MVBS, a mask, a cluster map, ...).",
+    stdout="The HTML page's absolute path (or gs:// URI), one line.",
+    options=[
+        ("--var NAME", "variable to plot (default: Sv, Sv_clean, MVBS, TS, NASC, "
+                       "cluster_map, else the first data variable)"),
+        ("--single | --channel NAME | --frequency HZ",
+         "one channel instead of one tab per channel"),
+        ("--vmin DB --vmax DB", "colour limits (default: the data range)"),
+        ("--y NAME", "y axis (default: depth, echo_range, ... then range_sample)"),
+        ("--decimate N", "plot every Nth ping (large files)"),
+        ("--ymin M --ymax M", "depth window"),
+        ("--no-draw", "no drawing tools and no EVL/EVR export"),
+        ("-o, --output_path PATH", "explicit output, local or gs://; '.html' is added "
+                                   "when the name doesn't end in it (as Panel always did)"),
+        ("--no-overwrite", "exit 1 if a different file is already at the output path "
+                           "(an identical rendering is reused)"),
+        ("--quiet", "warnings only on stderr"),
+    ],
+    science={
+        "var": "variable to plot",
+        "all": "one tab per channel (the default for multi-channel data)",
+        "single": "one channel only (channel 0 unless --channel/--frequency)",
+        "frequency": "the channel nearest this nominal frequency (Hz)",
+        "channel": "the channel with this exact name",
+        "x_override": "x axis name",
+        "y_override": "y axis name",
+        "no_flip": "don't draw depth/range increasing downwards",
+        "vmin": "lower colour limit",
+        "vmax": "upper colour limit",
+        "cmap": "initial colormap",
+        "width": "minimum plot width in px",
+        "height": "plot height in px",
+        "toolbar": "toolbar position",
+        "no_hover": "no hover tooltip",
+        "no_crosshair": "no crosshair",
+        "no_cmap_picker": "no colormap picker",
+        "no_log": "no data summary panel",
+        "no_draw": "no drawing tools",
+        "decimate": "every Nth ping",
+        "ymin": "top of the depth window",
+        "ymax": "bottom of the depth window",
+    },
+    files=(
+        "Writes <name of the input product>.html beside the input (current "
+        "directory for gs:// input): the page for D20160703-T060000_35e8864f.nc "
+        "is D20160703-T060000_35e8864f.html. Re-rendering with the same options "
+        "reuses the page; different options replace it (use -o to keep several). "
+        "AA_NAMING=legacy restores <stem>_plot.html. EVL/EVR files saved from the "
+        "page are named <input product>_lines.evl and <input product>_regions.evr."
+    ),
+    pipeline="Last stage: aa-nc x.raw --sonar_model EK60 | aa-sv | aa-plot",
+    examples=[
+        "aa-nc x.raw --sonar_model EK60 | aa-sv | aa-plot --vmin -80 --vmax -30",
+        "aa-plot gs://bucket/derived/x_35e8864f.nc --frequency 38000 --dest gs://bucket/pages/",
+    ],
+    notes=[
+        "--group-by is accepted for backwards compatibility but has no effect "
+        "(tabs are always per channel), so it is not a rendering option.",
+        "EVL/EVR export needs a time x axis (ping_time) and a metre y axis "
+        "(depth or echo_range). A y axis in range_sample indices is warned about "
+        "on stderr and in the page.",
+    ],
+)
+
+
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
     help_text = r"""
 Usage: aa-plot [OPTIONS] [INPUT_PATH]
 
 Arguments:
-  INPUT_PATH                Path to a NetCDF file (.nc). Optional; if omitted,
-                            reads a single path token from stdin.
+  INPUT_PATH                Path (or gs:// URI) to a NetCDF file (.nc).
+                            Optional; if omitted, reads a single path token
+                            from stdin. An empty stdin is an error (exit 1).
 
 Core selection:
-  --var VAR                 Variable to plot (default: Sv if present, else first data_var).
-  --all                     Plot all channels/frequencies as tabs (default
-                            behavior when the dataset has a 'channel' dim
-                            with > 1 entry; flag kept for backwards compat).
+  --var VAR                 Variable to plot (default: the first of Sv,
+                            Sv_clean, MVBS, TS, NASC, cluster_map present,
+                            else the first data_var).
+  --all                     Plot all channels as tabs (default behavior when
+                            the variable has a 'channel' dim with > 1 entry;
+                            flag kept for backwards compat).
   --single                  Plot only one channel (default channel 0) instead
                             of all-channels tabs. Use --channel/--frequency
                             to choose which.
   --frequency FLOAT         Select single nominal frequency (Hz) (nearest match).
-  --channel NAME            Select single channel by name (exact match preferred).
+  --channel NAME            Select single channel by its exact name. If no
+                            channel matches, channel 0 is plotted (with a
+                            warning).
   --group-by {auto,channel,freq}
-                            When tabs are shown and both channel+freq dims are available:
-                              auto   -> frequency outer tabs, channel inner tabs
-                              channel-> channel outer tabs, frequency inner tabs
-                              freq   -> frequency outer tabs, channel inner tabs
+                            Accepted for backwards compatibility; has no
+                            effect. Tabs are always one per channel.
 
 Axes:
   --x NAME                  Override x-axis dim/coord (default: auto-detect).
-  --y NAME                  Override y-axis dim/coord (default: auto-detect).
+  --y NAME                  Override y-axis dim/coord (default: auto-detect:
+                            depth, echo_range, range_meter, range, then
+                            range_sample). A 2-D depth/echo_range is reduced
+                            per channel; samples that are NaN in every ping
+                            (padding of a shorter channel) are dropped. If the
+                            result is not strictly increasing, the tab falls
+                            back to range_sample indices (with a warning).
   --no-flip                 Disable automatic y-axis inversion for range/depth axes.
 
 Appearance:
   --vmin FLOAT              Lower color limit.
   --vmax FLOAT              Upper color limit.
   --cmap NAME               Initial colormap name (default: inferno).
-  --width INT               Minimum plot width in px; stretches beyond this (default: 800).
+  --width INT               Minimum plot width in px; stretches beyond this (default: 250).
   --height INT              Plot height (default: 450).
   --toolbar STR             Toolbar: above/below/left/right/disable (default: above).
   --no-hover                Disable hover tooltip overlay.
@@ -127,6 +268,8 @@ Appearance:
 
 Drawing & annotation:
   --no-draw                 Disable the freehand/polyline/region drawing tools.
+                            Exported files are named <input stem>_lines.evl
+                            and <input stem>_regions.evr.
 
 Subsetting / performance:
   --decimate INT            Take every Nth sample along x-axis (default: 1).
@@ -134,10 +277,25 @@ Subsetting / performance:
   --ymax FLOAT              Crop upper y-limit.
 
 Output:
-  -o, --output_path PATH    Output HTML path (default: <stem>_plot.html).
-  --no-overwrite            Fail if output already exists.
+  -o, --output_path PATH    Output HTML path or gs:// URI. '.html' is appended
+                            when the name doesn't end in '.html' (Panel's rule;
+                            a name ending in 'png' asks Panel for a PNG).
+                            Default: <input name>.html beside the input
+                            (current directory for gs:// input);
+                            AA_NAMING=legacy: <stem>_plot.html.
+  --no-overwrite            Fail (exit 1) if a different file already exists at
+                            the output path. An identical rendering (same input
+                            product, same options) is reused either way.
+  --dest DIR|gs://PREFIX    Write the default-named page there.
+  --base NAME               Name the page NAME.html.
+  --force                   Re-render even if an identical page exists.
   --quiet                   Suppress info logs; still prints final path.
-  -h, --help                Show this help and exit.
+  -h, --help                Short help.  --help-all: this text.
+
+Provenance:
+  The input product's provenance is shown in the data summary (inputs and
+  pipeline steps with their options) and embedded in the page with an
+  aa-plot rendering step:  aa-metadata PAGE.html
 """
     print(help_text.strip())
 
@@ -150,13 +308,6 @@ def _configure_logging(quiet: bool) -> None:
         logger.add(sys.stderr, level="WARNING", backtrace=False, diagnose=False)
     else:
         logger.add(sys.stderr, level="INFO", backtrace=True, diagnose=False)
-
-
-def _read_input_path_from_stdin() -> Optional[str]:
-    if sys.stdin.isatty():
-        return None
-    token = sys.stdin.readline().strip()
-    return token or None
 
 
 def _coord_to_str(val: Any) -> str:
@@ -296,9 +447,31 @@ def _ensure_y_axis_coord(
     if depth_dim is None:
         return da, y_name
 
-    # Reduce src to 1-D along the depth dim. The depth/echo_range variable is
-    # often (channel, ping_time, range_sample) — same shape as Sv. We need a
-    # 1-D vector along range_sample.
+    # Use only this panel's channel. The callers reduce `da` to one channel
+    # with .isel before calling this, which leaves the channel as a scalar
+    # coord on `da`; select the same channel from `src` (echo_range/depth is
+    # usually a (channel, ping_time, range_sample) data variable).
+    #
+    # The previous version averaged across every channel as well as every
+    # ping. Channels can have different sample counts and spacing (e.g. the
+    # 120 kHz channel of an EK60 file has fewer samples than 38 kHz, or the
+    # files of a combined dataset differ), NaN-padded to a common length. That
+    # labelled each tab with a blend of the other channels' ranges: the
+    # shorter channel's axis ran on into the other channel's padding, and past
+    # its last sample the blend could step backwards. The depths of drawn
+    # EVL/EVR annotations come from this axis, so it must be the tab's own.
+    orig_da = da
+    for d in src.dims:
+        if (d != depth_dim and d not in da.dims and d in da.coords
+                and da.coords[d].ndim == 0):
+            try:
+                src = src.sel({d: da.coords[d].values})
+            except Exception as exc:
+                logger.debug(f"could not select {d}={da.coords[d].values!r} from '{y_name}': {exc}")
+
+    # Reduce src to 1-D along the depth dim. For one channel the depth/echo_range
+    # variable is (ping_time, range_sample); we need a 1-D vector along
+    # range_sample.
     #
     # NaN-AWARE REDUCTION: aa-evr's masking applies xr.where(mask, da, NaN)
     # to every variable with (time, depth) dims, which means depth and
@@ -306,20 +479,24 @@ def _ensure_y_axis_coord(
     # then produces a NaN-filled axis and hvplot's auto-range chokes (visible
     # as a "zoomed in" plot showing only a fragment of the depth axis).
     #
-    # Strategy: nanmean across non-depth dims. Echo-range and depth are
+    # Strategy: nanmean across the pings. Echo-range and depth are
     # roughly constant along ping_time anyway (transducer doesn't move
     # much per cell), so the mean of finite values is essentially the same
     # as picking any single ping. nanmean ignores the masked-out NaNs and
     # returns the underlying physical depth axis.
     reduced = src
+    spread = None
     nondepth_dims = [d for d in reduced.dims if d != depth_dim]
     if nondepth_dims:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")  # ignore "Mean of empty slice"
-                reduced = reduced.mean(dim=nondepth_dims, skipna=True)
+                reduced = src.mean(dim=nondepth_dims, skipna=True)
+                spread = (src.max(dim=nondepth_dims, skipna=True)
+                          - src.min(dim=nondepth_dims, skipna=True))
         except Exception:
             # Fallback to isel(0) if mean fails (e.g. non-numeric)
+            reduced, spread = src, None
             for d in nondepth_dims:
                 try:
                     reduced = reduced.isel({d: 0})
@@ -352,6 +529,43 @@ def _ensure_y_axis_coord(
             f"Could not reduce '{y_name}' to a 1-D depth axis; falling back to '{depth_dim}'."
         )
         return da, depth_dim
+
+    if reduced_vals.dtype.kind in "iuf":
+        vals = reduced_vals.astype(float)
+        # Samples that no ping of this channel reaches are padding (a shorter
+        # channel in a common-length array) or cells masked out in every
+        # ping. They hold no data for this tab, so drop them.
+        keep = np.flatnonzero(np.isfinite(vals))
+        if keep.size < vals.size:
+            da = da.isel({depth_dim: keep})
+            reduced = reduced.isel({depth_dim: keep})
+            vals = vals[keep]
+            if spread is not None:
+                spread = spread.isel({depth_dim: keep})
+        # An axis that isn't strictly increasing can't be drawn or cropped
+        # correctly; say so and use the sample index instead.
+        if vals.size > 1 and not np.all(np.diff(vals) > 0):
+            logger.warning(
+                f"'{y_name}' is not strictly increasing along '{depth_dim}' for this "
+                f"channel; plotting against '{depth_dim}' (sample indices, not metres) "
+                f"instead. Drawn EVL/EVR depths from this tab would be sample indices."
+            )
+            return orig_da, depth_dim
+        # One depth axis per channel is exact only if every ping shares the
+        # same range bins. If the sample spacing changed during the window
+        # (e.g. a pulse-length change between files), say so.
+        if spread is not None and vals.size > 1:
+            try:
+                spr = np.asarray(spread.values, dtype=float)
+                step = float(np.median(np.diff(vals)))
+                if np.nanmax(spr, initial=0.0) > 0.5 * step:
+                    logger.warning(
+                        f"'{y_name}' differs between pings for this channel "
+                        "(settings changed during the window?). The y-axis uses "
+                        "the average, so some pings are drawn at approximate depths."
+                    )
+            except Exception:
+                pass
 
     # Assign reduced values as a coord on da's depth dim, then SWAP it onto
     # the dim so it becomes the dimension coordinate. Holoviews/hvplot's
@@ -591,6 +805,14 @@ _SIDEBAR_CSS = """\
 .aa-cluster-bar { height: 100%; background: linear-gradient(90deg, #0369a1, #0ea5e9); }
 .aa-cluster-count { color: #334155; min-width: 90px; text-align: right; }
 .aa-divider { border: none; border-top: 1px solid #e2e8f0; margin: 4px 0; }
+.aa-sub { color: #78350f; font-weight: 600; font-size: 0.92em; margin-top: 4px; }
+.aa-step { padding: 2px 0; }
+.aa-step-head { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.aa-step-n { color: #94a3b8; min-width: 20px; }
+.aa-step-tool { color: #1e293b; font-weight: 600; }
+.aa-step-op { color: #6366f1; }
+.aa-step-tag { color: #b45309; font-style: italic; }
+.aa-step-params { color: #334155; padding-left: 26px; word-break: break-all; }
 .aa-copy-btn {
     background: #f1f5f9;
     border: 1px solid #cbd5e1;
@@ -708,13 +930,151 @@ def _format_attr_value(v: Any) -> str:
     return s
 
 
+# ---------------------------------------------------------------------------
+# Provenance (aa-metadata's view of the input) for the data summary
+# ---------------------------------------------------------------------------
+
+_PROV_ATTR = "aa_provenance"
+
+
+def _provenance_doc(ds: xr.Dataset, prov: Optional[dict]) -> Optional[dict]:
+    """The provenance document to show, or None.
+
+    ``prov`` is the core's reading of the input (complete: it comes from the
+    .aa.json sidecar when the embedded copy was trimmed). Without it, parse
+    the dataset's ``aa_provenance`` attribute here.
+    """
+    if isinstance(prov, dict) and prov.get("pipeline") is not None:
+        return prov
+    raw = ds.attrs.get(_PROV_ATTR)
+    if raw is None:
+        return None
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", errors="replace")
+    try:
+        doc = json.loads(str(raw))
+    except ValueError:
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def _fmt_params(params: Optional[dict]) -> str:
+    """Canonical step options as 'k=v k=v' (sorted; unset options left out)."""
+    parts = []
+    for k, v in sorted((params or {}).items()):
+        if v is None:
+            continue
+        parts.append(f"{k}={v if isinstance(v, str) else json.dumps(v, sort_keys=True, separators=(',', ':'))}")
+    return " ".join(parts) or "(defaults)"
+
+
+def _short_id(value: Any, n: int = 8) -> str:
+    """'aa:<64 hex>' -> 'aa:1234abcd'; 'md5:<hex>:<size>' -> 'md5:1234abcd'."""
+    s = str(value or "")
+    kind, sep, rest = s.partition(":")
+    if sep and rest:
+        return f"{kind}:{rest.split(':')[0][:n]}"
+    return s[:n]
+
+
+def _provenance_view(doc: dict, rendering: Optional[dict] = None) -> dict:
+    """What the panel and the plain-text copy show of a provenance document:
+    the product (hash, kind, base), its inputs, and every pipeline step with
+    its canonical options. ``rendering`` (this page's own step) goes last."""
+    prod = doc.get("product") or {}
+    h = str(prod.get("hash") or "")
+    rows = [("product", f"aa:{h[:8]}  {prod.get('kind') or '?'} ({prod.get('role') or '?'})"
+             if h else f"{prod.get('kind') or '?'} ({prod.get('role') or '?'})")]
+    if prod.get("name"):
+        rows.append(("name", str(prod["name"])))
+    if doc.get("base"):
+        rows.append(("base", str(doc["base"])))
+    if h:
+        rows.append(("hash", h))
+    inputs = []
+    for inp in doc.get("inputs") or []:
+        inputs.append({
+            "role": str(inp.get("role") or "input"),
+            "text": f"{inp.get('name') or ''}  {_short_id(inp.get('id'))}".strip(),
+            "where": str(inp.get("origin") or inp.get("uri") or ""),
+        })
+    steps = []
+    raw_steps = list(doc.get("pipeline") or [])
+    if rendering:
+        raw_steps.append(dict(rendering, _this_page=True))
+    for i, step in enumerate(raw_steps, 1):
+        tags = []
+        if step.get("variant"):
+            tags.append(f"({step['variant']})")
+        if step.get("count"):
+            tags.append(f"x{step['count']}")
+        if step.get("_this_page"):
+            tags.append(f"[rendering: this page, aa:{str(step.get('product') or '')[:8]}]")
+        elif not step.get("scientific", True):
+            tags.append("[rendering]")
+        steps.append({"n": i, "tool": str(step.get("tool") or ""), "op": str(step.get("op") or ""),
+                      "tag": " ".join(tags), "params": _fmt_params(step.get("params"))})
+    note = ""
+    if doc.get("pipeline_truncated"):
+        note = (f"{doc['pipeline_truncated']} earlier step(s) are only in the product's "
+                ".aa.json sidecar")
+    return {"rows": rows, "inputs": inputs, "steps": steps, "note": note}
+
+
+def _provenance_html(view: dict) -> str:
+    """The provenance view as rows in the Pipeline / Provenance section."""
+    html = "".join(_html_row(k, v, em=(k == "product")) for k, v in view["rows"])
+    if view["inputs"]:
+        html += '<div class="aa-sub">inputs</div>'
+        for inp in view["inputs"]:
+            html += _html_row(inp["role"], inp["text"])
+            if inp["where"]:
+                html += f'<div class="aa-step-params">{_esc(inp["where"])}</div>'
+    if view["steps"] or view["note"]:
+        html += '<div class="aa-sub">pipeline (oldest first)</div>'
+    if view["note"]:
+        html += f'<div class="aa-step-params">({_esc(view["note"])})</div>'
+    for s in view["steps"]:
+        html += (
+            '<div class="aa-step"><div class="aa-step-head">'
+            f'<span class="aa-step-n">{s["n"]}.</span>'
+            f'<span class="aa-step-tool">{_esc(s["tool"])}</span>'
+            f'<span class="aa-step-op">{_esc(s["op"])}</span>'
+            + (f'<span class="aa-step-tag">{_esc(s["tag"])}</span>' if s["tag"] else "")
+            + f'</div><div class="aa-step-params">{_esc(s["params"])}</div></div>'
+        )
+    return html
+
+
+def _provenance_text(view: dict) -> list[str]:
+    """The provenance view as plain-text lines for 'Copy summary'."""
+    lines = [f"  {k}: {v}" for k, v in view["rows"]]
+    for inp in view["inputs"]:
+        lines.append(f"  input ({inp['role']}): {inp['text']}"
+                     + (f"  {inp['where']}" if inp["where"] else ""))
+    if view["steps"] or view["note"]:
+        lines.append("  pipeline (oldest first):")
+    if view["note"]:
+        lines.append(f"    ({view['note']})")
+    for s in view["steps"]:
+        head = f"    {s['n']}. {s['tool']}  {s['op']}"
+        lines.append(head + (f"  {s['tag']}" if s["tag"] else ""))
+        lines.append(f"       {s['params']}")
+    return lines
+
+
 def _build_data_log(
     ds: xr.Dataset,
     var: str,
     x_name: str,
     y_name: str,
     flip_y: bool,
+    provenance: Optional[dict] = None,
+    rendering: Optional[dict] = None,
 ) -> pn.pane.HTML:
+    """Data summary panel. ``provenance``: the input's provenance document
+    (from the core); ``rendering``: this page's own step, shown last."""
+    pn = _plotting().pn
     sections: list[str] = []
     sections.append(f'<div class="aa-sidebar-title">{_CLIPBOARD_SVG} Data Summary</div>')
 
@@ -738,12 +1098,27 @@ def _build_data_log(
     # Pipeline provenance — any aa_* attrs left by upstream tools.
     # This is the key context for KMeans / EVL / EVR / depth / etc:
     # the parameters that produced this file live here.
+    #
+    # The aa_provenance attribute (written by the console core) is a JSON
+    # document; shown raw it's an unreadable blob, so it is parsed and shown
+    # as product / inputs / pipeline steps instead. The other aa_* attrs and
+    # history are shown as before.
     # ------------------------------------------------------------------
     aa_attrs = {k: v for k, v in attrs.items() if k.startswith("aa_") or k.lower() == "history"}
-    if aa_attrs:
+    prov_doc = _provenance_doc(ds, provenance)
+    prov_view = _provenance_view(prov_doc, rendering) if prov_doc else None
+    flat_attrs = {k: v for k, v in aa_attrs.items() if k != _PROV_ATTR}
+    if aa_attrs or prov_view:
         sec = '<div class="aa-section aa-section-pipeline"><div class="aa-section-head">Pipeline / Provenance</div>'
-        for k in sorted(aa_attrs.keys()):
-            sec += _html_row(k, _format_attr_value(aa_attrs[k]),
+        if prov_view:
+            sec += _provenance_html(prov_view)
+            if flat_attrs:
+                sec += '<hr class="aa-divider"/>'
+        elif _PROV_ATTR in aa_attrs:
+            n = len(str(aa_attrs[_PROV_ATTR]))
+            sec += _html_row(_PROV_ATTR, f"(not readable as JSON; {n:,} characters)")
+        for k in sorted(flat_attrs.keys()):
+            sec += _html_row(k, _format_attr_value(flat_attrs[k]),
                              em=(k == "aa_tool"))
         sec += '</div>'
         sections.append(sec)
@@ -958,11 +1333,16 @@ def _build_data_log(
     plain_lines.append(f"File: {ds.encoding.get('source', '(in-memory)')}")
     plain_lines.append(f"Variable: {var} (dtype={ds[var].dtype})")
     plain_lines.append(f"Axes: x={x_name}  y={y_name}{' (inverted)' if flip_y else ''}")
-    if aa_attrs:
+    if aa_attrs or prov_view:
         plain_lines.append("")
         plain_lines.append("Pipeline / Provenance:")
-        for k in sorted(aa_attrs.keys()):
-            plain_lines.append(f"  {k}: {_format_attr_value(aa_attrs[k])}")
+        if prov_view:
+            plain_lines.extend(_provenance_text(prov_view))
+        elif _PROV_ATTR in aa_attrs:
+            plain_lines.append(f"  {_PROV_ATTR}: (not readable as JSON; "
+                               f"{len(str(aa_attrs[_PROV_ATTR])):,} characters)")
+        for k in sorted(flat_attrs.keys()):
+            plain_lines.append(f"  {k}: {_format_attr_value(flat_attrs[k])}")
     if var_attrs:
         plain_lines.append("")
         plain_lines.append(f"{var} Attributes:")
@@ -1001,7 +1381,11 @@ def _build_data_log(
 
     text_json = json.dumps("\n".join(plain_lines))
     copy_js = _COPY_JS_TEMPLATE.format(text_json=text_json)
-    copy_btn = f'<button class="aa-copy-btn" onclick="{copy_js.strip()}">Copy summary</button>'
+    # The handler goes in a double-quoted attribute, and the JSON text in it is
+    # double-quoted too: escape it, or the attribute ends at `var text = ` and
+    # the button does nothing. The browser unescapes it before running it.
+    copy_btn = (f'<button class="aa-copy-btn" onclick="{_html_escape(copy_js.strip(), quote=True)}">'
+                'Copy summary</button>')
 
     html = (
         f'{_SIDEBAR_CSS}<div class="aa-sidebar">'
@@ -1042,6 +1426,7 @@ def _get_bokeh_palette(name: str, n: int = 256) -> list[str]:
 
 def _build_cmap_picker(default_cmap: str) -> pn.pane.Bokeh:
     from bokeh.models import CustomJS, Select as BokehSelect
+    pn = _plotting().pn
 
     palette_map: dict[str, list[str]] = {cm: _get_bokeh_palette(cm, 256) for cm in _CMAP_OPTIONS}
     palettes_json = json.dumps(palette_map)
@@ -1249,6 +1634,12 @@ _DRAW_CSS = """\
 _DRAW_JS_HELPERS = """\
 <script>
 (function(W){
+  // Names of downloaded files: <stem>_lines.evl / <stem>_regions.evr, where
+  // <stem> is the plotted product's file name without extension.
+  // _build_annotation_panel() replaces the placeholder (default "aa").
+  W._aaFileStem = "__AA_FILE_STEM__";
+  W._aaFileName = function(suffix) { return W._aaFileStem + '_' + suffix; };
+
   W._aaGetModels = function() {
     var out = [];
     try {
@@ -1692,7 +2083,7 @@ _DRAW_JS_HELPERS = """\
 
   W.aaExportEvl = function() {
     _handleGenResult(aaGenerateEvl(), 'lines', function(c) {
-      _aaTryDownload(c, 'aa_lines.evl');
+      _aaTryDownload(c, _aaFileName('lines.evl'));
     });
   };
   W.aaShowEvlText = function() {
@@ -1701,12 +2092,12 @@ _DRAW_JS_HELPERS = """\
       segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
       var summary = _aaSummariseSegs(segs);
       var summaryHtml = _aaSummaryHtml(summary, 'strokes');
-      _aaShowTextModal(c, 'aa_lines.evl', 'EVL Line File', summaryHtml);
+      _aaShowTextModal(c, _aaFileName('lines.evl'), 'EVL Line File', summaryHtml);
     });
   };
   W.aaExportEvr = function() {
     _handleGenResult(aaGenerateEvr(), 'regions', function(c) {
-      _aaTryDownload(c, 'aa_regions.evr');
+      _aaTryDownload(c, _aaFileName('regions.evr'));
     });
   };
   W.aaShowEvrText = function() {
@@ -1715,7 +2106,7 @@ _DRAW_JS_HELPERS = """\
       segs = segs.filter(function(s){ return s.xs && s.xs.length > 0; });
       var summary = _aaSummariseSegs(segs);
       var summaryHtml = _aaSummaryHtml(summary, 'regions');
-      _aaShowTextModal(c, 'aa_regions.evr', 'EVR Region File', summaryHtml);
+      _aaShowTextModal(c, _aaFileName('regions.evr'), 'EVR Region File', summaryHtml);
     });
   };
 
@@ -1808,9 +2199,18 @@ def _apply_draw_tools(fig, draw_idx: int) -> None:
         fig.add_tools(freehand_tool, line_tool, region_tool)
 
 
-def _build_annotation_panel() -> pn.pane.HTML:
+def _js_string(value: str) -> str:
+    """A JavaScript string literal that is also safe inside an HTML <script>."""
+    return (json.dumps(str(value))
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
+
+
+def _build_annotation_panel(file_stem: Optional[str] = None) -> pn.pane.HTML:
     """
     Build the annotation controls pane.
+
+    ``file_stem`` names the downloaded files (<file_stem>_lines.evl,
+    <file_stem>_regions.evr); default "aa", i.e. aa_lines.evl / aa_regions.evr.
 
     Two rows of buttons:
       Row 1: download buttons (work in normal browser tabs)
@@ -1841,9 +2241,11 @@ def _build_annotation_panel() -> pn.pane.HTML:
         '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
         '</svg>'
     )
+    pn = _plotting().pn
+    helpers = _DRAW_JS_HELPERS.replace('"__AA_FILE_STEM__"', _js_string(file_stem or "aa"), 1)
 
     html = f"""{_DRAW_CSS}
-{_DRAW_JS_HELPERS}
+{helpers}
 <div class="aa-draw-wrap">
   <div class="aa-draw-title">{pencil_svg} Annotation Tools</div>
   <div class="aa-draw-body">
@@ -1911,6 +2313,7 @@ def _plot_echogram(
     draw_idx: int = 0,
     show_draw: bool = True,
 ):
+    opts = _plotting().opts  # also registers DataArray.hvplot
     da = da.rename(var)
 
     clim = (vmin, vmax) if (vmin is not None or vmax is not None) else None
@@ -1963,6 +2366,19 @@ def _plot_echogram(
 
     def _combined_hook(bokeh_plot, element):
         bokeh_plot.state.sizing_mode = "stretch_width"
+        # One depth range per tab. Panel links the axis ranges of plots whose
+        # range tags match (the dimension, e.g. [["echo_range", None]]), which
+        # would draw every tab over the union of all channels' depth ranges
+        # (a 120 kHz tab running on to the 38 kHz channel's maximum range). A
+        # per-tab tag keeps the y ranges apart; the time axis stays linked, so
+        # a time zoom still carries across tabs.
+        try:
+            y_range = bokeh_plot.state.y_range
+            if y_range.tags and isinstance(y_range.tags[0], (list, tuple)):
+                y_range.tags = ([tuple(y_range.tags[0]) + (("aa-plot tab", _draw_idx),)]
+                                + list(y_range.tags[1:]))
+        except Exception as exc:
+            logger.debug(f"could not unlink the y range of tab {_draw_idx}: {exc}")
         if _add_draw:
             try:
                 _apply_draw_tools(bokeh_plot.state, _draw_idx)
@@ -2021,7 +2437,12 @@ def _build_single_plot(
     if channel is not None and chan_dim is not None:
         coord = ds[chan_dim]
         vals = [_coord_to_str(v) for v in coord.values]
-        idx = vals.index(channel) if channel in vals else 0
+        if channel in vals:
+            idx = vals.index(channel)
+        else:
+            idx = 0
+            logger.warning(f"--channel {channel!r} matches no channel; plotting channel 0 "
+                           f"({vals[0]!r}). Channels: {vals}")
         da = da.isel({chan_dim: idx})
         ch_val = coord.isel({chan_dim: idx}).values
         label = _coord_to_str(ch_val)
@@ -2089,6 +2510,7 @@ def _build_all_tabs(
     show_crosshair: bool = True,
     show_draw: bool = True,
 ):
+    pn = _plotting().pn
     da = ds[var]
 
     if "channel" in da.dims:
@@ -2145,13 +2567,17 @@ def _build_all_tabs(
 #  HEADER
 # ===========================================================================
 
-def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool) -> pn.pane.Markdown:
+def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bool,
+                  provenance: Optional[dict] = None) -> pn.pane.Markdown:
+    pn = _plotting().pn
     source = ds.encoding.get("source", "(in-memory)")
     dim_info = " \u00d7 ".join(f"{d}={s}" for d, s in ds[var].sizes.items())
     attrs = ds.attrs
     sonar_model = attrs.get("sonar_model", attrs.get("keywords", ""))
     survey_name = attrs.get("survey_name", attrs.get("title", ""))
     aa_tool = attrs.get("aa_tool", "")
+    prov = _provenance_doc(ds, provenance)
+    prod = (prov or {}).get("product") or {}
 
     meta_lines = []
     if survey_name:
@@ -2160,6 +2586,8 @@ def _build_header(ds: xr.Dataset, var: str, x_name: str, y_name: str, flip_y: bo
         meta_lines.append(f"- **sonar:** `{sonar_model}`")
     if aa_tool:
         meta_lines.append(f"- **last pipeline step:** `{aa_tool}`")
+    if prod.get("hash"):
+        meta_lines.append(f"- **product:** `aa:{str(prod['hash'])[:8]}` ({prod.get('kind') or '?'})")
 
     orient_note = "y-axis inverted (surface at top)" if flip_y else "y-axis normal"
     md = (
@@ -2205,7 +2633,14 @@ def _render_layout(
     show_cmap_picker: bool = True,
     show_log: bool = True,
     show_draw: bool = True,
+    provenance: Optional[dict] = None,
+    rendering: Optional[dict] = None,
+    file_stem: Optional[str] = None,
 ) -> pn.viewable.Viewable:
+    """The whole page. ``provenance``: the input's provenance document;
+    ``rendering``: this page's own provenance step (shown in the data
+    summary); ``file_stem``: names the EVL/EVR downloads."""
+    pn = _plotting().pn
     x_name, y_name = _detect_axes(ds)
     if x_override:
         x_name = x_override
@@ -2233,7 +2668,7 @@ def _render_layout(
     )
     pin_pane = pn.pane.Bokeh(pin_div, sizing_mode="stretch_width")
 
-    header = _build_header(ds, var, x_name, y_name, flip_y)
+    header = _build_header(ds, var, x_name, y_name, flip_y, provenance=provenance)
 
     if all_plots:
         body = _build_all_tabs(
@@ -2266,11 +2701,12 @@ def _render_layout(
 
     if show_draw:
         parts.append(pn.Spacer(height=6))
-        parts.append(_build_annotation_panel())
+        parts.append(_build_annotation_panel(file_stem))
 
     if show_log:
         parts.append(pn.Spacer(height=8))
-        parts.append(_build_data_log(ds, var, x_name, y_name, flip_y))
+        parts.append(_build_data_log(ds, var, x_name, y_name, flip_y,
+                                     provenance=provenance, rendering=rendering))
 
     return pn.Column(*parts, sizing_mode="stretch_width")
 
@@ -2279,31 +2715,25 @@ def _render_layout(
 #  CLI
 # ===========================================================================
 
-def main() -> None:
-    if len(sys.argv) == 1:
-        token = _read_input_path_from_stdin()
-        if token:
-            sys.argv.append(token)
-        else:
-            print_help()
-            raise SystemExit(0)
-
+def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
+        prog="aa-plot",
         description="Interactive echogram plotting (hvPlot + Panel) -> standalone HTML",
         add_help=False,
     )
-    p.add_argument("input_path", type=Path, nargs="?")
+    p.add_argument("input_path", type=str, nargs="?")  # str: gs:// must survive
     p.add_argument("--var", default=None)
     p.add_argument("--all", action="store_true",
                    help="(Default behavior — kept for backwards compat.) "
-                        "Plot every channel/frequency in tabs.")
+                        "Plot every channel in tabs.")
     p.add_argument("--single", action="store_true",
                    help="Plot only one channel (default channel 0). "
                         "Opt-out of the per-channel tab default. Use with "
                         "--frequency or --channel to pick which one.")
     p.add_argument("--frequency", type=float, default=None)
     p.add_argument("--channel", type=str, default=None)
-    p.add_argument("--group-by", type=str, default="auto", choices=["auto", "channel", "freq"])
+    p.add_argument("--group-by", type=str, default="auto", choices=["auto", "channel", "freq"],
+                   help="Accepted for backwards compatibility; has no effect.")
     p.add_argument("--x", dest="x_override", type=str, default=None)
     p.add_argument("--y", dest="y_override", type=str, default=None)
     p.add_argument("--no-flip", action="store_true")
@@ -2324,37 +2754,69 @@ def main() -> None:
     p.add_argument("--decimate", type=int, default=1)
     p.add_argument("--ymin", type=float, default=None)
     p.add_argument("--ymax", type=float, default=None)
-    p.add_argument("-o", "--output_path", type=Path, default=None)
+    p.add_argument("-o", "--output_path", type=str, default=None)
     p.add_argument("--no-overwrite", action="store_true")
     p.add_argument("--quiet", action="store_true")
-    p.add_argument("-h", "--help", action="store_true")
+    add_common_flags(p)  # --force --base --dest
+    return p
 
-    args = p.parse_args()
 
-    if args.help:
+def _panel_file_name(target: str) -> str:
+    """The file Panel's save() actually writes for ``target``.
+
+    Panel appends '.html' to a name that doesn't end in '.html' (and writes a
+    PNG for a name ending in 'png'). Before the shared core, `-o foo` wrote
+    foo.html but printed foo; applying the same rule here keeps the file
+    that is written unchanged and makes the printed path match it.
+    """
+    if target.endswith("png") or target.endswith(".html"):
+        return target
+    return target + ".html"
+
+
+_SCRIPT_ELEMENT = re.compile(r"(<script\b[^>]*>)(.*?)(</script)", re.I | re.S)
+_HEAD_END = re.compile(r"</head>", re.I)
+
+
+def _escape_head_end_in_scripts(path: Path) -> int:
+    """Escape '</head>' inside <script> elements as '<\\/head>'; returns the count.
+
+    Panel inlines the Bokeh/Panel JavaScript, and that code contains the
+    text '</head>' inside a string literal, before the page's real </head>.
+    The console core embeds the provenance tag before the first '</head>' in
+    the file, which would put a <script> inside that JavaScript string and
+    cut the library short: the page would not render. Inside a script,
+    '<\\/head>' is the same string ('\\/' is '/' in JavaScript and JSON), so
+    this changes no behaviour and leaves the real </head> as the first one.
+    """
+    text = path.read_text(encoding="utf-8")
+    count = 0
+
+    def _fix(m: re.Match) -> str:
+        nonlocal count
+        body, n = _HEAD_END.subn(lambda h: "<\\/" + h.group(0)[2:], m.group(2))
+        count += n
+        return m.group(1) + body + m.group(3)
+
+    new = _SCRIPT_ELEMENT.sub(_fix, text)
+    if count:
+        path.write_text(new, encoding="utf-8")
+    return count
+
+
+def main() -> None:
+    # No args on a terminal: help. (An empty pipe is an error: see stdio.)
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
         print_help()
         raise SystemExit(0)
 
+    p = _build_parser()
+    if show_help(SPEC, HELP, p, full=print_help_full):
+        raise SystemExit(0)
+
+    args = p.parse_args()
+
     _configure_logging(args.quiet)
-
-    if args.input_path is None:
-        token = _read_input_path_from_stdin()
-        if not token:
-            logger.error("No INPUT_PATH provided and no stdin token available.")
-            raise SystemExit(2)
-        args.input_path = Path(token)
-        logger.info(f"Read input path from stdin: {args.input_path}")
-
-    if not args.input_path.exists():
-        logger.error(f"Input file does not exist: {args.input_path}")
-        raise SystemExit(1)
-
-    if args.output_path is None:
-        args.output_path = args.input_path.with_stem(args.input_path.stem + "_plot").with_suffix(".html")
-
-    if args.output_path.exists() and args.no_overwrite:
-        logger.error(f"Output exists and --no-overwrite set: {args.output_path}")
-        raise SystemExit(1)
 
     if args.all and (args.frequency is not None or args.channel is not None):
         logger.error("Use either --all OR a specific --frequency/--channel (not both).")
@@ -2363,15 +2825,52 @@ def main() -> None:
         logger.error("Cannot combine --single and --all.")
         raise SystemExit(2)
 
+    # Input: positional > stdin; local path or gs:// URI (localized by the core).
+    token = stdio.one_input(args.input_path, SPEC.name)
+    run = Run(SPEC, args)
+    src = run.input(token)
+
+    # Output. -o is handed to Panel as before (see _panel_file_name); the
+    # default is the depicted product's name with .html, beside the input.
+    def _legacy() -> Path:
+        # The old default: <input stem>_plot.html beside the input (for a
+        # gs:// input, the current directory, like the standard name).
+        beside = src.local if src.via == "local" else Path.cwd() / src.local.name
+        return beside.with_stem(beside.stem + "_plot").with_suffix(".html")
+
+    explicit = _panel_file_name(args.output_path) if args.output_path else None
+    out = run.plan(ext=".html", explicit=explicit, legacy=_legacy)
+
+    if not out.remote and Path(out.target).resolve() == src.local.resolve():
+        logger.error(f"Refusing to overwrite the input file: {src.local.resolve()}")
+        raise SystemExit(1)
+
+    # An identical rendering (same input product, same options) is reused;
+    # that is never an "overwrite".
+    if run.reusable(out):
+        run.finish(out)
+        return
+
+    if args.no_overwrite:
+        exists = (uris.stat(out.target) is not None) if out.remote else Path(out.target).exists()
+        if exists:
+            why = "--force given" if run.force else "it is a different rendering"
+            logger.error(f"Output exists and --no-overwrite set: {out.target} ({why})")
+            if out.staging is not None:  # plan() made a staging dir for gs://
+                shutil.rmtree(out.staging, ignore_errors=True)
+            raise SystemExit(1)
+
     try:
+        pn = _plotting().pn
+        xr = _plotting().xr
         buf = io.StringIO()
         with redirect_stdout(buf), redirect_stderr(buf):
-            with xr.open_dataset(args.input_path) as ds_in:
+            with xr.open_dataset(src.local) as ds_in:
                 ds = ds_in.load()
 
-        ds.encoding["source"] = str(args.input_path)
+        ds.encoding["source"] = src.token
         var = _ensure_variable(ds, args.var)
-        logger.info(f"Plotting var='{var}' from {args.input_path.name}")
+        logger.info(f"Plotting var='{var}' from {src.name}")
 
         # New default: tabs across channels when there's a 'channel' dim
         # with > 1 entry, unless --single is given or a specific channel/
@@ -2405,22 +2904,30 @@ def main() -> None:
             show_cmap_picker=not args.no_cmap_picker,
             show_log=not args.no_log,
             show_draw=not args.no_draw,
+            provenance=src.prov,
+            rendering=out.step,
+            file_stem=naming.stem_of(src.name),
         )
 
-        args.output_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Saving HTML: {args.output_path}")
+        out.local.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving HTML: {out.target}")
         pn.io.save.save(
             layout,
-            filename=str(args.output_path),
+            filename=str(out.local),
             embed=True,
             resources="inline",
             title="aa-plot echogram",
         )
+        if out.local.suffix.lower() in (".html", ".htm"):
+            _escape_head_end_in_scripts(out.local)  # before the core embeds provenance
 
-        print(args.output_path.resolve())
+        # Provenance, upload for gs://, and the one stdout line.
+        run.finish(out)
 
     except Exception as e:
         logger.exception(f"aa-plot failed: {e}")
+        if out.staging is not None:
+            shutil.rmtree(out.staging, ignore_errors=True)
         raise SystemExit(1)
 
 
