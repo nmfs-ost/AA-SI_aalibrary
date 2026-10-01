@@ -50,18 +50,20 @@ nav:
     - "Video Tutorials": getting-started/video-tutorials.md
     - "Workshop": getting-started/workshop.md
   - "Usage":
+    - "Configuration": usage/configuration.md
     - "Downloads": usage/downloads.md
     - "Conversions": usage/conversions.md
     - "Uploads": usage/uploads.md
-    - "Configuration": usage/configuration.md
+    - "Archival (Tugboat)": usage/tugboat.md
     - "Scripts": usage/scripts.md
-    - "Tugboat": usage/tugboat.md
+    - "Derived Products": usage/derived_products.md
   - "Documentation":
-    - "Console Tools": documentation/console_tools.md
+    - "One-Pager": documentation/one_pager.md
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
     - "RawFile": documentation/raw_file.md
     - "Tugboat API": documentation/tugboat_api.md
+    - "Console Tools": documentation/console_tools.md
     - "GCP Overview": documentation/gcp_overview.md
   - "Troubleshooting": troubleshooting/troubleshooting.md
   - "About":
