@@ -9,21 +9,35 @@ The default environment in AALibrary is the prod environment, `ggn-nmfs-aa-prod-
 
 ## Current Environments (aka ‘Projects’) in GCP
 
+* ggn-nmfs-aa-prod-1:
+    * Default environment used by `AALibrary`.
+    * Production environment.
+    * Transfer Appliance files exist in separate bucket (ta_upload)
+    * No workstations available.
+    * Storage Buckets: [ggn-nmfs-aa-prod-1-data](https://console.cloud.google.com/storage/browser/ggn-nmfs-aa-prod-1-data?pageState=(%22StorageObjectListTable%22:(%22f%22:%22%255B%255D%22))&forceOnBucketsSortingFiltering=true&hl=en&project=ggn-nmfs-aa-prod-1), [ta_upload](https://console.cloud.google.com/storage/browser/ta_upload;tab=objects?forceOnBucketsSortingFiltering=true&hl=en&project=ggn-nmfs-aa-prod-1&prefix=&forceOnObjectsSortingFiltering=false) (Files are stored until archival to NCEI)
+    * Metadata DB (dev version): [Metadata DB](https://console.cloud.google.com/bigquery?referrer=search&hl=en&invt=AbuwBQ&project=ggn-nmfs-aa-prod-1&ws=!1m5!1m4!3m2!1sggn-nmfs-aa-prod-1!2smetadata!23sRESOURCE_NAVIGATION_BREADCRUMB)
 * ggn-nmfs-aa-dev-1:
     * Used for development purposes for AALibrary.
     * All data exists in one storage bucket.
     * NOTE: NOT a stable environment. Data gets deleted often.
     * No workstations available.
-    * Storage Bucket: ggn-nmfs-aa-dev-1-data
-* ggn-nmfs-aa-prod-1:
-    * Production environment.
-    * Transfer Appliance files exist in separate bucket (ta_upload)
-    * No workstations available.
-    * Storage Buckets: ggn-nmfs-aa-prod-1-data, ta_upload (Files are stored until archival to NCEI)
-* ggn-nmfs-wsent-prod-1:
-    * Used for our workstations.
+    * Storage Bucket: [ggn-nmfs-aa-dev-1-data](https://console.cloud.google.com/storage/browser/ggn-nmfs-aa-dev-1-data;tab=objects?hl=en&project=ggn-nmfs-aa-dev-1&prefix=&forceOnObjectsSortingFiltering=false)
+    * Metadata DB (dev version): [Metadata DB](https://console.cloud.google.com/bigquery?hl=en&invt=AbuwBQ&project=ggn-nmfs-aa-dev-1&ws=!1m5!1m4!3m2!1sggn-nmfs-aa-dev-1!2smetadata!23sRESOURCE_LIST)
+* [ggn-nmfs-wsent-prod-1](https://console.cloud.google.com/workstations/list?invt=AbrUhA&project=ggn-nmfs-wsent-prod-1):
+    * Used for our Linux-based [workstations](https://console.cloud.google.com/workstations/list?invt=AbrUhA&project=ggn-nmfs-wsent-prod-1).
 
 ## Storage Bucket Layouts
+
+### Prod Environment Layout
+
+Below is the hierarchical layout for the production environment's storage bucket. This is the default environment used by `AALibrary`. As you can see, data is organized based on it's metadata. For example, any file relating to a specific survey will only exist within that survey's folder.
+
+This also means that this layout has a 1:1 mapping of each file to its location in the storage bucket. This makes files easily searchable using AALibrary.
+
+!!! note "NOTE: On folder names"
+    You can replace any parameter that is located within brackets `{}` with its appropriate name. For example, `{survey_name}` can be replaced with `HB2407`, and so on.
+
+![prod_env_folder_layout.png](../assets/prod-env-folder-layout.png)
 
 ### Dev Environment Layout
 
@@ -35,15 +49,6 @@ This also means that this layout has a 1:1 mapping of each file to its location 
     You can replace any parameter that is located within brackets `{}` with its appropriate name. For example, `{survey_name}` can be replaced with `HB2407`, and so on.
 
 ![dev-env-folder-layout.png](../assets/dev-env-folder-layout.png)
-
-### Prod Environment Layout
-
-The production environments storage bucket also utilizes a similar layout.
-
-!!! note "NOTE: On folder names"
-    You can replace any parameter that is located within brackets `{}` with its appropriate name. For example, `{survey_name}` can be replaced with `HB2407`, and so on.
-
-![prod_env_folder_layout.png](../assets/prod-env-folder-layout.png)
 
 ### Transfer Appliance Layout
 
@@ -76,3 +81,13 @@ There are certain file naming conventions that we are trying to normalize here a
 We have a metadata database that can hold the same Tugboat metadata for enhanced usage through the AALibrary. (e.g. searching/retrieving files from March 26th, 2024).
 Coriolix Metadata is planned to be added, as more of it becomes available.
 If you would like access to the metadata DB, please see the [permissions page](../getting-started/permissions.md/#gcp-bigquery-metadata-database).
+
+## Derived Products
+
+Derived products are work products produced through analysis of raw files. These are stored in their own directory in GCP. More information can be found on the [`derived products doc`](../usage/derived_products.md).
+
+## Cruisepack
+
+Older CruisePack files can be uploaded to GCP storage using [this script](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/scripts/cruisepack_to_gcs.py). The data that is uploaded can then be parsed and uploaded to the BigQuery Metadata Database using the [following script](https://github.com/nmfs-ost/AA-SI_aalibrary/blob/main/other/scripts/cruisepack_sql_to_bq.py). This is an important part of cloud migration, as it stores historical CruisePack data in the cloud. However, this process cannot be automated, and must be completed by each FMC, by a user who has access to these files on their local (or network) drive.
+
+To make the process of finding the CruisePack files easier, you can use a console tool with this command `aa-cruisepack`. More information can be found on the [scripts page](../usage/scripts.md), reading the comments in the script, or running the command alone to get the `help` readout.
