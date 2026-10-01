@@ -9,13 +9,15 @@ developers.
 
 ## In one paragraph
 
-A **product** is identified by *what was computed from what*: the input's
-identity, the operation, and the scientific options, written in a
-canonical form. That identity is hashed. The first 8 hex digits of the
-hash go into the file name (`HB1603_EK60_20160703T060000-20160703T120000_71957ca9.nc`)
-and the full record goes inside the file. Running the same computation
-again finds the existing file and reuses it; changing a scientific option
-produces a new name. `aa-metadata FILE` shows the record.
+A file name has two parts: the **base** says *which data*
+(`HB1603_EK60_20160703T060000-20160703T120000`), and the 8-character
+**recipe hash** says *which processing*: the chain of scientific steps and
+their options, written in a canonical form, without the data. So the same
+processing applied to two surveys gives `HB1603_…_71957ca9.nc` and
+`HB1701_…_71957ca9.nc`, and changing a scientific option gives a new hash.
+Inside the file a second hash, the **product hash** (recipe + the identity
+of the input data), decides whether an existing file can be reused.
+`aa-metadata FILE` shows both and the full record.
 
 ## Base names
 
@@ -41,7 +43,7 @@ representation.
 | Product | Name | Example |
 |---|---|---|
 | EchoData (aa-nc, aa-ed, aa-combine) | `<base>.nc` / `<base>.zarr` | `HB1603_EK60_…-…120000.nc` |
-| scientific products (Sv, masks, MVBS, NASC, …) | `<base>_<hash8>.<ext>` | `HB1603_…_71957ca9.nc` |
+| scientific products (Sv, masks, MVBS, NASC, …) | `<base>_<recipe8>.<ext>` | `HB1603_…_71957ca9.nc` |
 | renderings (aa-graph, aa-plot) | the name of the product shown | `HB1603_…_71957ca9.png` |
 | explicit `-o PATH` | exactly as each tool always did | `aa-sv -o out.nc` → `out_Sv.nc` |
 
@@ -51,17 +53,29 @@ input came from gs://), or under `--dest DIR|gs://PREFIX/`.
 `_mvbs`, …) for scripts that depend on them; provenance is embedded
 either way.
 
-## The product hash
+## The two hashes
 
 ```
-sha256( canonical JSON of {
+recipe  = sha256( canonical JSON of {
     tool, op, op_version,            # which computation (and its version)
     params,                          # scientific options, canonical form
     engine,                          # e.g. {"echopype": "0.11.1", "flox": "0.11.2"}
     variant,                         # e.g. "apply" for a masked copy
-    inputs: [{role, id}]             # what it was computed from
+    inputs: [{role, recipe}]         # the recipe of each input; raw data is just "data"
 } )
+product = sha256( the same, but inputs: [{role, id}] )   # id = the input's actual identity
 ```
+
+The **recipe** is in the file name. It chains: the recipe of the cleaned
+Sv covers aa-nc → aa-sv → aa-clean with their options, so "clean after
+calibration" and "clean alone" differ, but it never depends on which raw
+file went in. Combining 3 or 300 files converted the same way is the same
+recipe. Parameter files that define the query itself (EVR regions, EVL
+lines) do count, by content.
+
+The **product** hash adds the identity of the inputs. It is stored in the
+file and in the object's metadata, and it is what reuse compares, so two
+different datasets never share a product even when they share a recipe.
 
 **Only scientific options count.** Each tool declares which options can
 change its numbers (they are listed under *SCIENTIFIC OPTIONS* in
@@ -79,13 +93,16 @@ these pairs give the same product:
 | option omitted | the same option given with its default value |
 | `--waveform_mode FM` | `--waveform_mode BB` (echopype computes them identically) |
 
-**Inputs chain.** An input that is itself a product is identified by its
-product hash (`aa:<hash>`), which already covers everything upstream. A
-file without provenance (a `.raw`) is identified by its MD5 and size, the
-same value GCS reports for the object, so a file has one identity whether
-it is read locally, through a mount, or from the bucket. Region and line
-files (`--evr`, `--evl`) and `--echodata` files are inputs too: their
-*content* counts, not their path.
+**Input identities (product hash).** An input that is itself a product is
+identified by its product hash (`aa:<hash>`), which already covers
+everything upstream. A file without provenance (a `.raw`) is identified by
+its MD5 and size, the same value GCS reports for the object, so a file has
+one identity whether it is read locally, through a mount, or from the
+bucket. Region and line files (`--evr`, `--evl`) and `--echodata` files are
+inputs too: their *content* counts, not their path.
+
+Finding everything processed one way across surveys is then a file-name
+search: `gsutil ls 'gs://bucket/derived_products/**_71957ca9.*'`.
 
 **Library versions count.** echopype and other 0.x science libraries are
 hashed by full version (patch releases have changed results); 1.x and
@@ -93,8 +110,9 @@ later by major.minor.
 
 ## Reuse
 
-Before computing, each tool works out the output's name and hash. If a
-file with that name already holds a product with that hash, the tool
+Before computing, each tool works out the output's name and both hashes.
+If a file with that name already holds a product with that product hash,
+the tool
 prints `reusing … (identical product aa:xxxxxxxx already exists)` on
 stderr, prints the path on stdout as usual, and does nothing else. A
 pipeline re-run after a failure therefore only computes what is missing.
@@ -150,7 +168,7 @@ from, carried forward through every step.
 
 | Format | Where the document is |
 |---|---|
-| `.nc` | root attributes `aa_provenance` (plus `aa_product_hash`, `aa_base`, `aa_tool`, `aa_product_kind`, a `history` line) and the `aa_seal` group |
+| `.nc` | root attributes `aa_provenance` (plus `aa_recipe`, `aa_product_hash`, `aa_base`, `aa_tool`, `aa_product_kind`, a `history` line) and the `aa_seal` group |
 | `.zarr` | root attributes, same names, plus `aa_seal`; consolidated metadata is refreshed |
 | `.png` | text chunks |
 | `.html` | a `<script type="application/json" id="aa-provenance">` block at the top of `<head>` |
@@ -179,9 +197,16 @@ still runs on local files; the core moves bytes at the edges:
   gcsfuse mount that shows the object (e.g. `~/ggn-nmfs-aa-prod-1-data`),
   or a download into the cache (checked against the object's MD5).
 - **Writing** stages the file in the cache, uploads it with its sidecar,
-  stamps `aa-product-hash`, `aa-base`, `aa-tool` and `aa-content-md5` into
+  stamps `aa-recipe`, `aa-product-hash`, `aa-base`, `aa-tool` and `aa-content-md5` into
   the object's custom metadata, and keeps the staged copy in the cache so
-  the next stage reads it without downloading.
+  the next stage reads it without downloading. Every product published to
+  gs:// gets a `<object>.aa.json` sidecar beside it (a store: `<store>.aa.json`),
+  so its provenance can be read without downloading the product.
+- **`aa-metadata gs://…`** reads that sidecar first and trusts it only when it
+  names the product hash the object itself carries; for a store without one it
+  reads only the root metadata and the seal; only then does it download.
+- `AA_GCS_FAKE_ROOT=/dir` makes a local directory play the object store
+  (tests and rehearsals): nothing reaches GCS, stores included.
 - `AA_CACHE_DIR` sets the cache (default `~/.cache/aalibrary`). Point it at
   a tmpfs to keep a whole pipeline in RAM.
 - `AA_GCS_MOUNTS="bucket=/path"` declares mounts that `/proc/mounts`

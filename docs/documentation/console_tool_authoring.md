@@ -21,7 +21,9 @@ recipe. The reference implementations are:
 - `echodata`: creates EchoData and starts the chain (aa-nc, aa-ed,
   aa-combine). Output is `<base>.nc` / `<base>.zarr`.
 - `transform`: produces a new scientific product. Output is
-  `<base>_<hash8>.<ext>`.
+  `<base>_<recipe8>.<ext>` (the recipe hash: the processing without the
+  data; the product hash, recipe + data, is recorded inside and decides
+  reuse).
 - `representation`: renders a product (aa-graph, aa-plot). Output is
   `<product name>.<ext>`.
 - `sink`, `inspector`, `utility`, `interactive`: no product. These get the

@@ -259,7 +259,7 @@ def test_run_reuse_force_and_chain(tmp_path, capsys):
         return out
 
     out1 = once([str(src)])
-    assert Path(out1.target).name == f"D20160703-T060000_{out1.short}.nc"
+    assert Path(out1.target).name == f"D20160703-T060000_{out1.recipe_short}.nc"
     assert not out1.reused
     out2 = once([str(src)])
     assert out2.reused and out2.target == out1.target
@@ -302,7 +302,7 @@ def test_gcs_output_input_and_reuse(tmp_path, capsys):
         return run.finish(out), out
 
     uri, out = stage([str(src), "--dest", "gs://bkt/derived/"])
-    assert uri == f"gs://bkt/derived/S_{out.short}.nc"
+    assert uri == f"gs://bkt/derived/S_{out.recipe_short}.nc"
     info = uris.stat(uri)
     assert info.metadata[uris.META_HASH] == out.hash
     # Reading it back: served from the cache (publish kept a copy), no download.
@@ -424,7 +424,7 @@ def test_folder_target_gets_standard_name(tmp_path):
     run = Run(SPEC, _parser().parse_args([str(src)]))
     run.input(str(src))
     out = run.plan(explicit="gs://bkt/dir/")
-    assert out.target == f"gs://bkt/dir/S_{out.short}.nc"
+    assert out.target == f"gs://bkt/dir/S_{out.recipe_short}.nc"
     run.discard(out)
 
 
@@ -507,3 +507,50 @@ def test_html_block_goes_after_charset(tmp_path):
     text = page.read_text()
     assert text.index('charset="utf-8"') < text.index("aa-provenance") < text.index("<script>")
     assert provenance.read(page)["product"]["hash"] == _doc()["product"]["hash"]
+
+
+def test_name_hash_is_the_recipe_not_the_data(tmp_path):
+    """Same processing on different raw data: same <hash8>, different product."""
+    outs = []
+    for name, values in (("A.nc", np.arange(3.0)), ("B.nc", np.arange(3.0) + 7)):
+        src = tmp_path / name
+        xr.Dataset({"Sv": ("t", values)}).to_netcdf(src)
+        outs.append(_product(tmp_path, name, ["--ping_num", "5"]))
+    a, b = outs
+    assert a.recipe == b.recipe and a.hash != b.hash
+    assert Path(a.target).name == f"A_{a.recipe_short}.nc"
+    assert Path(b.target).name == f"B_{a.recipe_short}.nc"
+    # A different scientific option is a different recipe.
+    c = _product(tmp_path, "A.nc", ["--ping_num", "6"])
+    assert c.recipe != a.recipe
+    # The recipe of a second step includes the first (a chain, not one step).
+    d = _product(tmp_path, Path(a.target).name, ["--ping_num", "5"])
+    e = _product(tmp_path, Path(b.target).name, ["--ping_num", "5"])
+    assert d.recipe == e.recipe != a.recipe
+    doc = provenance.read(d.target)
+    assert doc["product"]["recipe"] == d.recipe
+    assert doc["pipeline"][-1]["recipe_inputs"] == [{"role": "source", "recipe": f"r:{a.recipe}"}]
+
+
+def test_bucket_products_carry_a_sidecar_read_without_download(tmp_path, monkeypatch):
+    from aalibrary.console import aa_metadata
+
+    src = tmp_path / "S.nc"
+    xr.Dataset({"Sv": ("t", np.arange(3.0))}).to_netcdf(src)
+    args = _parser().parse_args([str(src), "--dest", "gs://bkt/derived/"])
+    run = Run(SPEC, args)
+    inp = run.input(args.input_path)
+    out = run.plan(explicit=args.output_path)
+    _compute(inp.local, out.local)
+    uri = run.finish(out)
+    assert uris.stat(uri + ".aa.json") is not None
+    # aa-metadata answers from the sidecar: the product itself is never fetched.
+    monkeypatch.setattr(uris, "localize", lambda *_a, **_k: pytest.fail("downloaded"))
+    doc, _ = aa_metadata._load(uri)
+    assert doc["product"]["hash"] == out.hash
+    # A sidecar that names another product is not believed.
+    bucket, key = uris.parse_gcs(uri)
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps(doc | {"product": {"hash": "0" * 64}}))
+    uris.backend().upload(bad, bucket, key + ".aa.json", None)
+    assert aa_metadata._remote_doc(uri) is None

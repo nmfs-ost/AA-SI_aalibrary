@@ -40,3 +40,10 @@ google-genai>=0.3.0
 tomli-w>=1.0.0
 tomli>=2.0.0; python_version < "3.11"
 rich>=13.0.0
+# Imported directly by the console tools (aa-*), not only through echopype:
+# aa-graph / aa-plot draw with matplotlib; aa-request, aa-fetch and the recipe
+# tools read and write YAML; the provenance core reads and writes PNG text
+# chunks with Pillow.
+matplotlib>=3.7
+pyyaml>=6.0
+pillow>=10.0

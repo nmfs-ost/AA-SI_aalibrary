@@ -93,10 +93,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH  Explicit output, used exactly as given (no suffix
@@ -166,10 +168,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH  Explicit output, used exactly as given (no suffix
@@ -332,10 +336,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH  Explicit output, used exactly as given (no suffix
@@ -404,10 +410,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH		Explicit output; '_clean' is ALWAYS appended
@@ -481,10 +489,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   --time-name NAME		the time coordinate to fix (default ping_time)
@@ -731,10 +741,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH		Explicit output, used as given; '.nc' is added
@@ -821,10 +833,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   --method basic|blackwell  REQUIRED. Detector.
@@ -920,10 +934,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   --method weill|echoview  REQUIRED. Detector. echoview also needs idim/jdim
@@ -1101,10 +1117,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH  Explicit output, used exactly as given (no suffix
@@ -1310,10 +1328,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH  Explicit output, used exactly as given (no suffix
@@ -1761,10 +1781,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   --freqABEq 'A - B op NdB'	 Frequencies WITHOUT quotes, in Hz with an
@@ -2177,10 +2199,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   --echodata ED.nc		  the EchoData (aa-nc output) the Sv came from.
@@ -2235,11 +2259,13 @@ aa-metadata — Show what made a product: inputs, pipeline, options, hash.
 
 WHAT IT DOES
   Reads the provenance every aa-* tool embeds in its outputs and prints it:
-  base name, product hash and kind, the inputs (with their origin, e.g. the
-  NCEI object a .raw came from), every scientific step in order with its
-  canonical options, and the software versions. --verify recomputes the
-  product hash from the recorded step and checks that a hash in the file name
-  (<base>_<hash8>.<ext>) is the recorded one.
+  base name, recipe (the processing, which is the <hash8> in the file name and
+  is the same for any data processed the same way), product hash (this
+  processing of this data), the inputs and raw sources (with their origin,
+  e.g. the NCEI object a .raw came from), every scientific step in order with
+  its canonical options, and the software versions. --verify recomputes both
+  hashes from the recorded step and checks that the hash in the file name is
+  the recorded recipe.
 
 INPUT (argument or stdin)
   Paths or gs:// URIs, one per line (or as arguments). aa/1 JSON handles work
@@ -2301,10 +2327,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH  Explicit output; '_mask-impulse-noise' is appended
@@ -2375,10 +2403,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH		Explicit output; '_mvbs' is ALWAYS appended to
@@ -2474,10 +2504,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH  Explicit output, used as given with the extension
@@ -2537,10 +2569,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH  Explicit output; '_nasc' is ALWAYS appended to its
@@ -2681,10 +2715,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH		Explicit output, used exactly as given (no
@@ -3261,10 +3297,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   --echodata ED.nc			 the EchoData (aa-nc output) the Sv came from.
@@ -3387,10 +3425,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH	   Explicit output; '_Sv' is appended to its stem,
@@ -3453,10 +3493,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   --check-unique		  fail early (exit 1) if frequency_nominal is missing
@@ -3672,10 +3714,12 @@ OUTPUT (stdout)
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
-  scientific options, computes the new product hash, and embeds it all in the
-  output (NetCDF attributes aa_provenance, aa_product_hash, aa_base, aa_tool,
-  history). The base name is carried through unchanged. Inspect with:
-  aa-metadata FILE
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
   -o, --output_path PATH	   Explicit output; '_ts' is ALWAYS appended to

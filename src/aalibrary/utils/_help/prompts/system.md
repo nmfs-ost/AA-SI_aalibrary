@@ -125,8 +125,10 @@ hold. Every tool also has `--help` (curated) and `--help-all` (every option).
     file's stem, or `-o`/`--base` on `aa-nc`, `aa-ed`, `aa-combine` — and
     carried in provenance; tools never rename it. EchoData is
     `<base>.nc` / `<base>.zarr`; every later product is
-    `<base>_<hash8>.<ext>`; an image is named after the product it shows
-    (`<base>_<hash8>.png`). Outputs go beside the input (current directory
+    `<base>_<hash8>.<ext>`, where `<hash8>` identifies the processing
+    recipe (the steps and options, not the data: the same processing on
+    another survey gets the same `<hash8>` with a different base); an
+    image is named after the product it shows (`<base>_<hash8>.png`). Outputs go beside the input (current directory
     for gs:// input) unless `--dest DIR|gs://PREFIX/` or `-o` says
     otherwise. `-o` behaves as each tool always did (some append a suffix:
     `aa-sv -o x.nc` writes `x_Sv.nc`). `AA_NAMING=legacy` (an environment

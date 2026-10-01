@@ -14,14 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every console tool now names, hashes and records its outputs the same
   way (shared core in `aalibrary/console/_core/`; see
   `docs/documentation/console_provenance.md`):
-  - scientific products are named `<base>_<hash8>.<ext>`, where the hash
-    covers the input's identity, the operation and the canonical
-    scientific options (flag order, spelling and explicit defaults don't
-    matter); EchoData keeps `<base>.nc`; renderings are named after the
-    product they show; `AA_NAMING=legacy` restores the old names and `-o`
-    behaves as before;
-  - an identical earlier result is reused instead of recomputed
-    (`--force` or `AA_REUSE=0` recompute);
+  - scientific products are named `<base>_<recipe8>.<ext>`: the base says
+    which data, the recipe hash which processing (every scientific step and
+    its canonical options, without the data: flag order, spelling and
+    explicit defaults don't matter, and the same processing on another
+    survey gets the same hash); EchoData keeps `<base>.nc`; renderings are
+    named after the product they show; `AA_NAMING=legacy` restores the old
+    names and `-o` behaves as before;
+  - a product hash (recipe + input identity) is recorded in every file, and
+    an identical earlier result is reused instead of recomputed (`--force`
+    or `AA_REUSE=0` recompute);
   - provenance (inputs, raw-file origins, every scientific step with its
     options, software versions) is embedded in every product (.nc, .zarr,
     .png, .html; `.aa.json` sidecars otherwise);
