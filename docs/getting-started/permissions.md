@@ -24,7 +24,7 @@ The data stored in the NCEI s3 bucket is an archive, and open-data. This means t
 
 ## Ocean Data Lake (OMAO) Access
 
-!!! info "Not Available"
+The data stored on the Ocean Data Lake (ODL) is secure, and you will need permissions to access it. Please get permissions to these by reaching out to <a href="mailto:katie.watkins-brandt@noaa.gov" target="_blank">Katie Watkins-Brandt</a>.
 
 ## GCP BigQuery Metadata Database
 
