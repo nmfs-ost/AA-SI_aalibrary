@@ -26,3 +26,5 @@ To run this script, install the AALibrary according to the installation page. Th
 ```bash
 aa-cruisepack
 ```
+
+More info can be found on the [GCP Overview Page](../documentation/gcp_overview.md).
