@@ -63,3 +63,9 @@ upload_folder_as_is_to_gcp(
     destination_prefix="other/deletable/",
 )
 ```
+
+## Uploading To Ocean Data Lake
+
+!!! note: Your ability to upload data to the Ocean Data Lake depends on your permission level. Most are granted read-only permissions, and you might have to reach out to get permission to upload.
+
+The goal of the ODL is to upload from the ship directly, so chances are that end-users will not have to upload any files. If by any chance, you encounter the need to upload files to the ODL, please use the [Azure CLI](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-cli#upload-a-blob) to accomplish this.
