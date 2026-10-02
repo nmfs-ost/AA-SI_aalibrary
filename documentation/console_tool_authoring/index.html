@@ -1,0 +1,1803 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="AALibrary is a Python library that provides tools for working with acoustic data in the cloud.">
+      
+      
+        <meta name="author" content="Hannan Khan">
+      
+      
+      
+        <link rel="prev" href="../console_provenance/">
+      
+      
+        <link rel="next" href="../gcp_overview/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/noaa_favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Writing Console Tools - AALibrary</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#writing-and-converting-aa-console-tools" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="AALibrary" class="md-header__button md-logo" aria-label="AALibrary" data-md-component="logo">
+      
+  <img src="../../assets/NOAA-color-logo-no-text-print.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AALibrary
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Writing Console Tools
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/nmfs-ost/AA-SI_aalibrary/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="AALibrary" class="md-nav__button md-logo" aria-label="AALibrary" data-md-component="logo">
+      
+  <img src="../../assets/NOAA-color-logo-no-text-print.png" alt="logo">
+
+    </a>
+    AALibrary
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/nmfs-ost/AA-SI_aalibrary/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/video-tutorials/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Tutorials
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/workshop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workshop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Downloads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/conversions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conversions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/uploads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Uploads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tugboat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archival (Tugboat)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/derived_products/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Derived Products
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Documentation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../one_pager/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One-Pager
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aalibrary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AALibrary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utils/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utils
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../raw_file/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RawFile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tugboat_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tugboat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../console_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Console Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../console_provenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Console Products & Provenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Console Tools
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Console Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-classify-the-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Classify the tool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-declare-the-scientific-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Declare the scientific options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-main-skeleton" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The main() skeleton
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-curated-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Curated help
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-checking-a-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Checking a conversion
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gcp_overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GCP Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/license/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    License
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/notice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notice
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/disclaimer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disclaimer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/external_resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    External Resources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/nmfs-ost/AA-SI_GCPSetup" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GCPSetup ↗
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/nmfs-ost/AA-SI_aalibrary/issues" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report an Issue ↗
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-classify-the-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Classify the tool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-declare-the-scientific-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Declare the scientific options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-main-skeleton" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The main() skeleton
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-curated-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Curated help
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-checking-a-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Checking a conversion
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="writing-and-converting-aa-console-tools">Writing and converting aa-* console tools</h1>
+<p>Every <code>aa-*</code> tool uses the shared core in <code>aalibrary/console/_core/</code>. It gives
+all tools the same rules for the scientific hash, file names, provenance,
+<code>gs://</code> URIs, reuse and <code>--help</code> (the user-facing rules are in
+<a href="../console_provenance/">Products, names and provenance</a>). This page is the
+recipe. The reference implementations are:</p>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Example</th>
+<th>Shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EchoData builder</td>
+<td><code>aa_nc.py</code></td>
+<td>starting the chain, <code>-o</code> with a forced extension</td>
+</tr>
+<tr>
+<td>scientific transform</td>
+<td><code>aa_sv.py</code></td>
+<td>the standard transform; legacy <code>-o</code> suffix rule</td>
+</tr>
+<tr>
+<td>representation</td>
+<td><code>aa_graph.py</code></td>
+<td>an image named after the product it shows</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-classify-the-tool">1. Classify the tool</h2>
+<p><code>ToolSpec.role</code> is one of:</p>
+<ul>
+<li><code>source</code>: fetches data (aa-raw, aa-fetch). It writes a <code>&lt;file&gt;.aa.json</code>
+  sidecar with <code>record_source()</code>.</li>
+<li><code>echodata</code>: creates EchoData and starts the chain (aa-nc, aa-ed,
+  aa-combine). Output is <code>&lt;base&gt;.nc</code> / <code>&lt;base&gt;.zarr</code>.</li>
+<li><code>transform</code>: produces a new scientific product. Output is
+  <code>&lt;base&gt;_&lt;recipe8&gt;.&lt;ext&gt;</code> (the recipe hash: the processing without the
+  data; the product hash, recipe + data, is recorded inside and decides
+  reuse).</li>
+<li><code>representation</code>: renders a product (aa-graph, aa-plot). Output is
+  <code>&lt;product name&gt;.&lt;ext&gt;</code>.</li>
+<li><code>sink</code>, <code>inspector</code>, <code>utility</code>, <code>interactive</code>: no product. These get the
+  curated help only.</li>
+</ul>
+<p><code>kind</code> is a short product label: <code>sv</code>, <code>ts</code>, <code>mask</code>, <code>mvbs</code>, <code>nasc</code>,
+<code>noise</code>, <code>depth</code>, <code>echometric</code>, <code>echodata</code>, <code>echogram</code>, <code>html</code> ...</p>
+<h2 id="2-declare-the-scientific-options">2. Declare the scientific options</h2>
+<p><code>ToolSpec.params</code> maps <strong>argparse <code>dest</code></strong> to a canonicalizer from
+<code>_core.canon</code>. Only these options enter the hash, so declare an option
+when changing it can change the output values:</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Canonicalizer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>integer / float</td>
+<td><code>canon.integer</code>, <code>canon.number</code></td>
+</tr>
+<tr>
+<td><code>"10dB"</code>, <code>"5m"</code>, <code>"0.5nmi"</code>, <code>"20s"</code></td>
+<td><code>canon.quantity("dB")</code>, <code>canon.quantity("m")</code>, <code>canon.quantity()</code></td>
+</tr>
+<tr>
+<td>enumerated text</td>
+<td><code>canon.choice()</code>, <code>canon.choice("upper")</code>, <code>canon.choice("lower")</code></td>
+</tr>
+<tr>
+<td>flag</td>
+<td><code>canon.boolean</code></td>
+</tr>
+<tr>
+<td><code>KEY=VALUE</code> list</td>
+<td><code>canon.kv()</code></td>
+</tr>
+<tr>
+<td>order-free list</td>
+<td><code>canon.set_of()</code></td>
+</tr>
+<tr>
+<td>order-significant list</td>
+<td><code>canon.ordered()</code></td>
+</tr>
+<tr>
+<td>comma-separated numbers</td>
+<td><code>canon.csv_numbers</code></td>
+</tr>
+<tr>
+<td>expression text</td>
+<td><code>canon.expression</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Never</strong> declare paths, <code>-o</code>, <code>--quiet</code>, <code>--debug</code>, <code>--json</code>,
+<code>--overwrite</code>/<code>--no-overwrite</code>, <code>--force</code>, compression or chunking, or
+dask/flox performance knobs (<code>method</code>, <code>engine</code>, <code>chunk</code>). An option that
+only matters when another is set is still declared; the hash stays
+conservative, so it may miss a reuse but never reuses the wrong product.</p>
+<p>When the tool parses a value itself (for example <code>--param k=v</code> through
+<code>ast.literal_eval</code>), pass the parsed result instead:
+<code>Run(SPEC, args, params={"param": parsed_dict})</code>.</p>
+<p>A <strong>file-valued</strong> scientific option (EVR/EVL region files, <code>--echodata</code>)
+is registered as an input, so its <em>content</em> enters the hash:
+<code>run.param_file(path, role="regions")</code> or
+<code>run.input(path, role="echodata")</code>.</p>
+<p><code>op</code> names the science call, e.g. <code>"echopype.clean.remove_background_noise"</code>.
+<code>op_version</code> starts at 1; <strong>bump it whenever the tool's own logic changes
+the numbers.</strong> <code>engines</code> lists the libraries whose version enters the hash
+(default <code>("echopype",)</code>; add <code>"flox"</code> for binned reductions; <code>()</code> for
+renderings). Two tools that run exactly the same computation can share
+products with <code>ToolSpec(identity="aa-nc")</code> (aa-ed does this).</p>
+<p>If the hashed dict comes from a parsed option (<code>--param</code>), fill in the
+library's defaults for the hash (<code>inspect.signature</code>) so an explicit
+default equals an omitted one; otherwise set <code>Help(hash_note=...)</code>, because
+the generated help promises that explicit defaults don't change the hash.</p>
+<h2 id="3-the-main-skeleton">3. The main() skeleton</h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.console._core</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">Help</span><span class="p">,</span> <span class="n">Run</span><span class="p">,</span> <span class="n">ToolSpec</span><span class="p">,</span> <span class="n">add_common_flags</span><span class="p">,</span> <span class="n">canon</span><span class="p">,</span> <span class="n">naming</span><span class="p">,</span> <span class="n">render</span><span class="p">,</span> <span class="n">show_help</span><span class="p">,</span> <span class="n">stdio</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">SPEC</span> <span class="o">=</span> <span class="n">ToolSpec</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"aa-x"</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"transform"</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"sv"</span><span class="p">,</span> <span class="n">op</span><span class="o">=</span><span class="s2">"echopype.x"</span><span class="p">,</span> <span class="n">op_version</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>                <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">"ping_num"</span><span class="p">:</span> <span class="n">canon</span><span class="o">.</span><span class="n">integer</span><span class="p">,</span> <span class="s2">"threshold"</span><span class="p">:</span> <span class="n">canon</span><span class="o">.</span><span class="n">quantity</span><span class="p">(</span><span class="s2">"dB"</span><span class="p">)})</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">HELP</span> <span class="o">=</span> <span class="n">Help</span><span class="p">(</span><span class="n">summary</span><span class="o">=...</span><span class="p">,</span> <span class="n">does</span><span class="o">=...</span><span class="p">,</span> <span class="n">stdin</span><span class="o">=...</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=...</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">[</span><span class="o">...</span><span class="p">],</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>            <span class="n">science</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">},</span> <span class="n">files</span><span class="o">=...</span><span class="p">,</span> <span class="n">pipeline</span><span class="o">=...</span><span class="p">,</span> <span class="n">examples</span><span class="o">=</span><span class="p">[</span><span class="o">...</span><span class="p">])</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">print_help</span><span class="p">():</span>                    <span class="c1"># curated; the docs generator imports this name</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">render</span><span class="p">(</span><span class="n">SPEC</span><span class="p">,</span> <span class="n">HELP</span><span class="p">,</span> <span class="n">_build_parser</span><span class="p">()))</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="k">def</span><span class="w"> </span><span class="nf">print_help_full</span><span class="p">():</span>               <span class="c1"># the previous help text, kept for --help-all</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="o">...</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="k">def</span><span class="w"> </span><span class="nf">_build_parser</span><span class="p">():</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">p</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">add_help</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"input_path"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">nargs</span><span class="o">=</span><span class="s2">"?"</span><span class="p">)</span>      <span class="c1"># str, not Path: gs:// must survive</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="n">p</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"-o"</span><span class="p">,</span> <span class="s2">"--output_path"</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="o">...</span><span class="n">tool</span> <span class="n">options</span> <span class="n">unchanged</span><span class="o">...</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="n">add_common_flags</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>                                      <span class="c1"># --force --base --dest</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    <span class="k">return</span> <span class="n">p</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">stdio</span><span class="o">.</span><span class="n">stdin_is_piped</span><span class="p">():</span>   <span class="c1"># bare command on a terminal</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>        <span class="n">print_help</span><span class="p">();</span> <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="n">parser</span> <span class="o">=</span> <span class="n">_build_parser</span><span class="p">()</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="k">if</span> <span class="n">show_help</span><span class="p">(</span><span class="n">SPEC</span><span class="p">,</span> <span class="n">HELP</span><span class="p">,</span> <span class="n">parser</span><span class="p">,</span> <span class="n">full</span><span class="o">=</span><span class="n">print_help_full</span><span class="p">):</span>  <span class="c1"># -h/--help, --help-all</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    <span class="n">token</span> <span class="o">=</span> <span class="n">stdio</span><span class="o">.</span><span class="n">one_input</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">input_path</span><span class="p">,</span> <span class="n">SPEC</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>      <span class="c1"># positional &gt; stdin</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="n">run</span> <span class="o">=</span> <span class="n">Run</span><span class="p">(</span><span class="n">SPEC</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="n">src</span> <span class="o">=</span> <span class="n">run</span><span class="o">.</span><span class="n">input</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>                                   <span class="c1"># local path, provenance, base</span>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>    <span class="o">...</span><span class="n">extension</span> <span class="n">checks</span> <span class="n">on</span> <span class="n">src</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">suffix</span><span class="o">...</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="n">explicit</span> <span class="o">=</span> <span class="o">&lt;</span><span class="n">the</span> <span class="n">tool</span><span class="s1">'s EXISTING -o rule applied to args.output_path, or None&gt;</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>    <span class="n">out</span> <span class="o">=</span> <span class="n">run</span><span class="o">.</span><span class="n">plan</span><span class="p">(</span><span class="n">ext</span><span class="o">=</span><span class="s2">".nc"</span><span class="p">,</span> <span class="n">explicit</span><span class="o">=</span><span class="n">explicit</span><span class="p">,</span>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>                   <span class="n">legacy</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">the</span> <span class="n">tool</span><span class="s1">'s EXISTING default path, from src.local&gt;)</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">out</span><span class="o">.</span><span class="n">remote</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">target</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span> <span class="o">==</span> <span class="n">src</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">resolve</span><span class="p">():</span>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="o">...</span><span class="n">refuse</span><span class="p">,</span> <span class="k">as</span> <span class="n">before</span><span class="o">...</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">reusable</span><span class="p">(</span><span class="n">out</span><span class="p">):</span>                                    <span class="c1"># same product already there</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>        <span class="n">run</span><span class="o">.</span><span class="n">finish</span><span class="p">(</span><span class="n">out</span><span class="p">);</span> <span class="k">return</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="o">...</span><span class="n">existing</span> <span class="n">overwrite</span> <span class="n">policy</span> <span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">g</span><span class="o">.</span> <span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">overwrite</span><span class="p">)</span> <span class="n">here</span><span class="o">...</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    <span class="n">compute</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">local</span><span class="p">,</span> <span class="n">out</span><span class="o">.</span><span class="n">local</span><span class="p">)</span>                            <span class="c1"># write to out.local</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="n">run</span><span class="o">.</span><span class="n">finish</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>                                          <span class="c1"># provenance, upload, print</span>
+</span></code></pre></div>
+<p>Rules the skeleton encodes:</p>
+<ul>
+<li><strong><code>-o</code> behaves exactly as before.</strong> Tools that appended their suffix to
+  <code>-o</code> still do (<code>naming.with_stem_suffix(args.output_path, "_clean", ".nc")</code>).
+  Tools that forced <code>.nc</code> still do (<code>naming.with_ext(...)</code>). Tools that
+  used <code>-o</code> verbatim still do. <code>-o</code> may now be a <code>gs://</code> URI.</li>
+<li><strong><code>legacy=</code></strong> is the tool's old default path. It is used only when
+  <code>AA_NAMING=legacy</code>. Otherwise the default is the standard name beside the
+  input, or the current directory when the input came from gs://.</li>
+<li><strong>Reuse comes before overwrite checks.</strong> An identical product is never
+  an "overwrite". <code>--no-overwrite</code> / <code>--overwrite</code> keep their meaning for a
+  <em>different</em> existing file.</li>
+<li><strong>Write only to <code>out.local</code></strong> and never to <code>out.target</code>, and never derive
+  other paths from <code>out.local</code>: for a local target it is a hidden temp
+  sibling (<code>.&lt;name&gt;.aa-XXXX&lt;ext&gt;</code>) that <code>finish()</code> renames into place once
+  provenance is embedded; for a gs:// target it is a staging file that
+  <code>finish()</code> uploads. Use <code>out.target</code> in messages. A tool that must write
+  the target itself (a Zarr store through fsspec, a file another library
+  wrote) plans with <code>stage=False</code>.</li>
+<li><code>finish()</code> exits 1 if nothing was written or the provenance can't be
+  read back; <code>run.discard(out)</code> drops a planned output that won't be
+  written. <code>run.exists(out)</code> / <code>run.conflicts(out)</code> answer "is something
+  there?" / "is something <em>different</em> there?" for <code>--no-overwrite</code>.</li>
+<li>The core refuses a target equal to any registered input, and writes
+  defaults beside the input as given (a symlink's folder, not its target's).</li>
+<li><strong>stdout contract:</strong> <code>run.finish(out)</code> prints <code>out.target</code>, the same line
+  the tool printed before (an absolute path, or now a gs:// URI). A tool
+  whose stdout was something else (a number, a token, a repr) keeps it.
+  Call <code>run.finish(out, emit=False)</code> and print as before.</li>
+<li><strong>Side outputs</strong> (<code>--apply</code> masked copies, seafloor masks): plan each
+  with <code>variant="apply"</code> (or another short name) and its own
+  <code>kind</code>/<code>legacy</code>, then call <code>run.finish(side, emit=False)</code> and announce it
+  on stderr (<code>aa-x: cleaned Sv: &lt;side.target&gt;</code>). The primary output is still
+  the one printed.</li>
+<li><strong>Zero-input products</strong> (aa-sound-speed <code>-o</code>): <code>Run(SPEC, args, base=NAME)</code>.</li>
+<li><strong>Remote Zarr written through fsspec</strong>: embed with
+  <code>provenance.write_zarr_group(group, run.document(out))</code> (attributes plus
+  the <code>aa_seal</code> subgroup), consolidate, then <code>run.finish(out, embed=False,
+  publish=False)</code>.</li>
+<li><strong>Batch tools</strong> (several inputs, one output each): make a new <code>Run</code> per
+  input inside the loop.</li>
+<li><strong>An empty piped stdin is an error.</strong> <code>stdio.one_input</code> handles it: it
+  prints to stderr and exits 1. Do not print help in that case; help on
+  stdout would feed the next stage.</li>
+</ul>
+<h2 id="4-curated-help">4. Curated help</h2>
+<p><code>Help</code> answers, in this order: what the tool does, input, output,
+metadata, options that matter, scientific options (generated from
+<code>SPEC.params</code>, so it cannot drift), files and URIs, pipeline behavior,
+and examples. Keep each section short and concrete. Name real defaults
+and real variable names. The previous full text moves to
+<code>print_help_full()</code>, shown by <code>--help-all</code>. Correct any statements in it
+that the change made untrue, such as output names.</p>
+<h2 id="5-checking-a-conversion">5. Checking a conversion</h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>-m<span class="w"> </span>aalibrary.utils.ek60_synth<span class="w"> </span>/tmp/w/D20160703-T060000.raw
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>aa-nc<span class="w"> </span>/tmp/w/D20160703-T060000.raw<span class="w"> </span>--sonar_model<span class="w"> </span>EK60<span class="w"> </span><span class="p">|</span><span class="w"> </span>aa-sv<span class="w"> </span><span class="p">|</span><span class="w"> </span>aa-x<span class="w"> </span>...
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>aa-x<span class="w"> </span>...<span class="w"> </span>again<span class="w"> </span>with<span class="w"> </span>the<span class="w"> </span>flags<span class="w"> </span>reordered<span class="w">         </span><span class="c1"># -&gt; "reusing ..." on stderr</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>aa-metadata<span class="w"> </span>&lt;output&gt;<span class="w"> </span>--verify<span class="w">                   </span><span class="c1"># chain, params, hash verified</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nv">AA_NAMING</span><span class="o">=</span>legacy<span class="w"> </span>aa-x<span class="w"> </span>...<span class="w">                       </span><span class="c1"># old default name</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nv">AA_GCS_FAKE_ROOT</span><span class="o">=</span>/tmp/w/gcs<span class="w"> </span>aa-x<span class="w"> </span>...<span class="w"> </span>--dest<span class="w"> </span>gs://b/p/<span class="w">   </span><span class="c1"># prints gs://b/p/&lt;name&gt;</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>aa-x<span class="w"> </span>--help<span class="w"> </span><span class="p">;</span><span class="w"> </span>aa-x<span class="w"> </span>--help-all
+</span></code></pre></div>
+<p>Then add the tool to <code>[project.scripts]</code> in <code>pyproject.toml</code>, to
+<code>KNOWN_TOOLS</code> in <code>aalibrary/utils/_help/safety.py</code>, and to aa-guide's
+index, and regenerate <code>docs/documentation/console_tools.md</code> with
+<code>other/scripts/generate_console_tools_docs.ipynb</code>. <code>pytest tests/console</code>
+and <code>aa-test</code> must pass.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 1, 2026 13:25:27 UTC">October 1, 2026</span>
+  </span>
+
+    
+    
+    
+    
+  </aside>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/open_in_new_tab.js"></script>
+      
+    
+  </body>
+</html>
