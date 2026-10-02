@@ -59,6 +59,8 @@ nav:
     - "Derived Products": usage/derived_products.md
   - "Documentation":
     - "One-Pager": documentation/one_pager.md
+    - "Console Products & Provenance": documentation/console_provenance.md
+    - "Writing Console Tools": documentation/console_tool_authoring.md
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
     - "RawFile": documentation/raw_file.md

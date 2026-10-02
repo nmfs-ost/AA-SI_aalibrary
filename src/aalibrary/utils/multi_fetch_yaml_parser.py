@@ -32,6 +32,26 @@ else:
     )
 
 
+def _sql_text(value) -> str:
+    """A YAML scalar as SQL string content: dates and times written the way
+    the column stores them, and single quotes escaped so a value cannot end
+    the literal it is placed in."""
+    if value is None:
+        return ""
+    if hasattr(value, "strftime"):
+        if hasattr(value, "hour"):
+            text = value.strftime("%H:%M:%S") if not hasattr(value, "year") \
+                else value.strftime("%Y-%m-%d")
+        else:
+            text = value.strftime("%Y-%m-%d")
+    elif isinstance(value, int):
+        # YAML 1.1 reads 06:00:00 as a sexagesimal integer (21600).
+        text = f"{value // 3600:02d}:{value % 3600 // 60:02d}:{value % 60:02d}"
+    else:
+        text = str(value).strip()
+    return text.replace("'", "''")
+
+
 class YAMLParser:
     """This class is the main class used to parse YAML objects. It's most
     important attributes are:
@@ -175,53 +195,48 @@ class RequestParser:
                         )
 
     def _parse_time_window_conditions(self):
-        if "time-windows" in self.request_dict:
-            self.sql_conditions_clause += """\nAND\n(\n"""
-            if isinstance(self.request_dict["time-windows"], list):
-                for idx, time_dict in enumerate(
-                    self.request_dict["time-windows"]
-                ):
-                    if idx == 0:
-                        self.sql_conditions_clause += """("""
-                        if time_dict.get("start-date", None):
-                            self.sql_conditions_clause += f"""LEFT(file_datetime,10) >= '{time_dict["start-date"]}'\n"""
-                        if time_dict.get("start-time", None):
-                            self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) >= '{time_dict["start-time"]}'\n"""
-                        if time_dict.get("end-date", None):
-                            self.sql_conditions_clause += f"""AND LEFT(file_datetime,10) <= '{time_dict["end-date"]}'\n"""
-                        if time_dict.get("end-time", "00:00:00"):
-                            if (
-                                time_dict.get("end-time", "00:00:00")
-                                == "00:00:00"
-                            ):
-                                # Handle correct end-time.
-                                # No end time can be less than 00:00:00, so we
-                                # default to "23:59:59"
-                                self.sql_conditions_clause += """AND RIGHT(file_datetime,8) <= '23:59:59'"""
-                            else:
-                                self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) <= '{time_dict["end-time"]}'"""
-                        self.sql_conditions_clause += """)\n"""
-                    else:
-                        self.sql_conditions_clause += """OR ("""
-                        if time_dict.get("start-date", None):
-                            self.sql_conditions_clause += f"""LEFT(file_datetime,10) >= '{time_dict["start-date"]}'\n"""
-                        if time_dict.get("start-time", None):
-                            self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) >= '{time_dict["start-time"]}'\n"""
-                        if time_dict.get("end-date", None):
-                            self.sql_conditions_clause += f"""AND LEFT(file_datetime,10) <= '{time_dict["end-date"]}'\n"""
-                        if time_dict.get("end-time", "00:00:00"):
-                            if (
-                                time_dict.get("end-time", "00:00:00")
-                                == "00:00:00"
-                            ):
-                                # Handle correct end-time.
-                                # No end time can be less than 00:00:00, so we
-                                # default to "23:59:59"
-                                self.sql_conditions_clause += """AND RIGHT(file_datetime,8) <= '23:59:59'"""
-                            else:
-                                self.sql_conditions_clause += f"""AND RIGHT(file_datetime,8) <= '{time_dict["end-time"]}'"""
-                        self.sql_conditions_clause += """)\n"""
-            self.sql_conditions_clause += """)\n"""
+        """One condition per window, OR-ed together.
+
+        Each window is ONE continuous interval from start-date start-time to
+        end-date end-time. The date and the time used to be compared
+        separately (date >= start-date AND time >= start-time AND ...), which
+        is only right when the window lies within a single day: a window from
+        06:00 on the 3rd to 12:00 on the 5th selected 06:00-12:00 on each day
+        and dropped everything overnight. The comparison is now made on the
+        whole timestamp, built from the same LEFT/RIGHT pieces of
+        file_datetime the old query already relied on, so it is independent
+        of whether the column separates date and time with 'T' or a space.
+
+        An end-time of "00:00:00" (or none) still means the end of the
+        end-date, as before.
+        """
+        if "time-windows" not in self.request_dict:
+            return
+        windows = self.request_dict["time-windows"]
+        if not isinstance(windows, list) or not windows:
+            return
+        stamp = "CONCAT(LEFT(file_datetime,10),' ',RIGHT(file_datetime,8))"
+        clauses = []
+        for time_dict in windows:
+            parts = []
+            start_date = _sql_text(time_dict.get("start-date"))
+            if start_date:
+                start_time = _sql_text(time_dict.get("start-time")) or "00:00:00"
+                parts.append(f"{stamp} >= '{start_date} {start_time}'")
+            end_date = _sql_text(time_dict.get("end-date"))
+            if end_date:
+                end_time = _sql_text(time_dict.get("end-time")) or "00:00:00"
+                if end_time == "00:00:00":
+                    # Handle correct end-time: no time is below 00:00:00, so
+                    # a bare end date means the whole of that day.
+                    end_time = "23:59:59"
+                parts.append(f"{stamp} <= '{end_date} {end_time}'")
+            if parts:
+                clauses.append("(" + "\nAND ".join(parts) + ")")
+        if clauses:
+            self.sql_conditions_clause += (
+                "\nAND\n(\n" + "\nOR ".join(clauses) + "\n)\n"
+            )
 
     def _create_sql_query(self):
         self.sql_query += f"""\n{self.sql_conditions_clause}\n"""

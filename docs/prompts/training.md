@@ -29,12 +29,18 @@ generation), say so plainly rather than inventing tools.
 These tools **do not** stream raw bytes through Unix pipes.  They stream
 **file paths**:
 
-1. Each tool reads a single NetCDF path — either as a positional
-   argument OR a single line from stdin.
-2. Each tool writes its output to a new file on disk.  By default the
-   output filename is the input stem with a tool-specific suffix:
-   `input.nc → input_Sv.nc → input_Sv_clean.nc → input_Sv_clean_mvbs.nc`.
-3. Each tool prints the absolute path of its output to stdout.
+1. Each tool reads a single NetCDF path (or gs:// URI) — either as a
+   positional argument OR a single line from stdin.
+2. Each tool writes its output to a new file on disk (or gs://).  By
+   default EchoData is named `<base>.nc` and every later product
+   `<base>_<hash8>.nc`, where the hash identifies the computation:
+   `D20160703-T060000.nc → D20160703-T060000_35e8864f.nc (Sv) →
+   D20160703-T060000_41b27617.nc (cleaned)`.  Running the same computation
+   again reuses the existing file.  `AA_NAMING=legacy` restores the old
+   suffix names (`input_Sv.nc → input_Sv_clean.nc → …`).  Every product
+   records its full pipeline inside; `aa-metadata FILE` shows it.
+3. Each tool prints the absolute path (or gs:// URI) of its output to
+   stdout.
 4. The next tool reads that one-line path string from its stdin and
    continues.
 

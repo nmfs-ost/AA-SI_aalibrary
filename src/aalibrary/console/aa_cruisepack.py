@@ -1,11 +1,16 @@
 """This script is used to upload local Cruisepack database files to Google
-Cloud Storage (GCS)."""
+Cloud Storage (GCS).
+
+aa-cruisepack is interactive and takes no arguments; `aa-cruisepack --help`
+describes it without running anything.
+"""
 
 # pylint: disable=wrong-import-position
 # flake8: noqa: E402
 
 
 ### Check and install required packages before running script.
+import importlib
 import sys
 import os
 import platform
@@ -13,40 +18,98 @@ from pathlib import Path
 from pprint import pprint
 import traceback
 import subprocess
-import pip
 
+from aalibrary.console._core import Help, ToolSpec, render, show_help
+
+# (module to import, pip package that provides it). The check must use the
+# import name: pip names such as "google-cloud-storage" or "inquirerpy" can
+# never be imported, so checking them made every run reinstall everything.
 REQUIRED_PACKAGES = [
-    "google-cloud",
-    "google-api-python-client",
-    "inquirerpy",
-    "google-cloud-storage",
+    ("google.cloud.storage", "google-cloud-storage"),
+    ("googleapiclient", "google-api-python-client"),
+    ("InquirerPy", "inquirerpy"),
 ]
+
+SPEC = ToolSpec(name="aa-cruisepack", role="interactive", engines=())
+
+HELP = Help(
+    summary="Find CruisePack SQLite databases on this computer and upload them to GCS.",
+    does=(
+        "Asks for your name, the GCP project (dev or prod) and your science "
+        "center, then searches the whole disk (from /, or C:\\ on Windows) for "
+        "folders named cruise_pack_*, CruisePack_* or packager_*. Every "
+        "cruiseData.sqlite and packageData.sqlite in a folder below them whose "
+        "name contains 'database' is uploaded to\n"
+        "\n"
+        "  gs://ggn-nmfs-aa-dev-1-data/cruisepack/<CENTER>/<CENTER>_<name>_<n>_<file>\n"
+        "  gs://ggn-nmfs-aa-prod-1-data/...   (prod project)\n"
+        "\n"
+        "Nothing is changed locally."
+    ),
+    stdin="Nothing: the answers come from the prompts.",
+    stdout="Prompts and progress messages. Not a pipeline stage.",
+    options=[
+        ("(none)", "aa-cruisepack takes no arguments; anything other than "
+                   "-h/--help/--help-all is refused"),
+    ],
+    files=(
+        "Reads every directory it can list, starting at the filesystem root; "
+        "this can take a long time. Writes objects to the chosen GCS bucket "
+        "(an object with the same name is replaced). Needs Google Cloud "
+        "credentials that may write to that bucket (gcloud auth "
+        "application-default login). Any of these packages that cannot be "
+        "imported is first pip-installed into the running Python:\n"
+        "\n"
+        "  google-cloud-storage  google-api-python-client  inquirerpy"
+    ),
+    pipeline="Interactive only; not a pipeline stage.",
+    examples=["aa-cruisepack"],
+)
+
+
+def print_help():
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, None))
+
+
+def _missing_packages():
+    """pip names of the required packages that cannot be imported."""
+    missing = []
+    for module, package in REQUIRED_PACKAGES:
+        try:
+            importlib.import_module(module)
+        except ImportError:
+            missing.append(package)
+    return missing
 
 
 def check_and_install_missing_pkgs():
     """Checks and installs missing packages."""
 
-    missing_packages = []
-    # for package in REQUIRED_PACKAGES:
-    #     # Look up the module specification without actually importing it
-    #     if importlib.util.find_spec(package) is None:
-    #         missing_packages.append(package)
-    for package in REQUIRED_PACKAGES:
-        try:
-            __import__(package)
-        except ImportError:
-            print(f"Installing {package}...")
-            subprocess.check_call(
-                [sys.executable, "-m", "pip", "install", package]
-            )
-
+    missing_packages = _missing_packages()
     if missing_packages:
-        print(
-            f"Error: Missing required packages: {', '.join(missing_packages)}"
-        )
-        for package in missing_packages:
-            print(f"Installing `{package}`")
-            pip.main(["install", package])
+        print(f"Installing missing package(s): {', '.join(missing_packages)}...")
+        try:
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", *missing_packages]
+            )
+        except (subprocess.CalledProcessError, OSError) as exc:
+            print(
+                f"Error: could not install {', '.join(missing_packages)} "
+                f"({exc}). Install them into this Python ({sys.executable}) "
+                "and run aa-cruisepack again.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        importlib.invalidate_caches()
+        still_missing = _missing_packages()
+        if still_missing:
+            print(
+                f"Error: {', '.join(still_missing)} still cannot be imported "
+                "after installing. Check the environment and try again.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     print("All dependencies are satisfied. Running script...")
 
@@ -240,6 +303,18 @@ def upload_file_to_gcp_bucket(
 
 
 def main():
+    # Help before anything else: without this, `aa-cruisepack --help` ran the
+    # whole tool (package install, disk-wide search, upload prompts).
+    if show_help(SPEC, HELP):
+        return
+    if len(sys.argv) > 1:
+        print(
+            f"aa-cruisepack takes no arguments (got: {' '.join(sys.argv[1:])}). "
+            "See aa-cruisepack --help.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     check_and_install_missing_pkgs()
     clear_screen()
 

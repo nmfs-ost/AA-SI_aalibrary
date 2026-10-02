@@ -1,5 +1,13 @@
 """aa-refresh — clean reinstall of AA-SI development libraries with a pretty UI.
 
+Uninstalls aalibrary and AA-SI-KMEANS and reinstalls them from GitHub main
+into the running interpreter's environment. Reinstalling is also what puts
+new console entry points (aa-metadata, aa-download, ...) on the PATH.
+
+    aa-refresh                   refresh every library
+    aa-refresh --only aalibrary  refresh one
+    aa-refresh --help            curated help; --help-all: argparse reference
+
 Requires: rich  (pip install rich)
 """
 
@@ -26,6 +34,8 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
+from aalibrary.console._core import Help, ToolSpec, render, show_help
+
 
 LIBRARIES = [
     {
@@ -39,6 +49,46 @@ LIBRARIES = [
 ]
 
 console = Console()
+
+SPEC = ToolSpec(name="aa-refresh", role="utility", engines=())
+
+HELP = Help(
+    summary="Reinstall aalibrary and AA-SI-KMEANS from GitHub main.",
+    does=(
+        "For each library: pip uninstall, then pip install --force-reinstall "
+        "from the main branch on GitHub, into the Python environment aa-refresh "
+        "itself runs in, with a live progress display. This is also how new "
+        "aa-* tools reach your PATH: pip creates a tool's command (aa-metadata, "
+        "aa-download, ...) only when it installs the package, so a tool added "
+        "since your last install says 'command not found' until you refresh."
+    ),
+    stdin="Nothing.",
+    stdout=("A progress display, then a summary table (library, ok/failed, time). "
+            "For a failed library, the last lines of pip's output."),
+    options=[
+        ("--only PIP_NAME", "refresh one library: aalibrary or AA-SI-KMEANS "
+                            "(default: both)"),
+    ],
+    files=(
+        "Installs into the active environment (the interpreter that runs "
+        "aa-refresh). Needs network access to GitHub and PyPI."
+    ),
+    pipeline=(
+        "Not a pipeline stage. Run it on its own, inside the environment you "
+        "want to update (e.g. after 'source ~/venv313/bin/activate')."
+    ),
+    examples=[
+        "aa-refresh",
+        "aa-refresh --only aalibrary",
+    ],
+    notes=[
+        "It replaces a developer install from a git clone (pip install -e .) "
+        "with the GitHub main version. In a clone, run 'pip install -e .' "
+        "instead; that also installs new entry points.",
+        "Exits 1 if any library failed to install, 0 otherwise. Recommended "
+        "every week or two.",
+    ],
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -214,7 +264,21 @@ def render_error_panels(failed: list[Result]) -> list[Panel]:
 # CLI
 # --------------------------------------------------------------------------- #
 
+def print_help():
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full():
+    """--help-all: the argparse reference."""
+    _build_parser().print_help(sys.stdout)
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    return _build_parser().parse_args(argv)
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aa-refresh",
         description=(
@@ -225,6 +289,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Recommended every week or two."
         ),
         epilog="Run this from inside your active virtual environment.",
+        add_help=False,  # -h/--help/--help-all are handled in main()
+    )
+    parser.add_argument(
+        "-h", "--help", action="store_true",
+        help="Show the curated help and exit.",
     )
     parser.add_argument(
         "--only",
@@ -232,11 +301,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Refresh just one library instead of all of them. "
              "Example: --only aalibrary",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--help-all", action="store_true",
+        help="Show this complete reference and exit.",
+    )
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(sys.argv[1:] if argv is None else argv)
+    argv = sys.argv[1:] if argv is None else argv
+    if show_help(SPEC, HELP, _build_parser(), full=print_help_full, argv=argv):
+        return 0
+    args = parse_args(argv)
 
     targets = LIBRARIES
     if args.only:

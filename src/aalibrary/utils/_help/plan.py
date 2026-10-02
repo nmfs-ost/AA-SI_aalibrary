@@ -22,7 +22,7 @@ class Plan:
     kind: str                          # "pipeline" | "answer" | "clarify"
     summary: str = ""                  # one-paragraph plain-English summary
     stages: list[PipelineStage] = field(default_factory=list)
-    expected_output: str = ""          # e.g. "./cruise_Sv_clean_mvbs.nc"
+    expected_output: str = ""          # e.g. "./D20160703-T060000_<hash8>.nc (MVBS)"
     risks: list[str] = field(default_factory=list)
     answer: str = ""                   # populated when kind == "answer"
     question: str = ""                 # populated when kind == "clarify"
@@ -79,8 +79,8 @@ Schema:
       "explanation": "one short line"
     }
   ],
-  "expected_output": "./cruise_Sv_clean_mvbs.nc",
-  "risks": ["downloads ~2GB from Azure", "assumed EK60 sonar model"],
+  "expected_output": "./D20160703-T060000_<hash8>.nc (MVBS)",
+  "risks": ["downloads ~1 GB from NCEI", "assumed EK60 sonar model"],
 
   // kind="answer":
   "answer": "free-form markdown text",
@@ -106,8 +106,16 @@ Rules for "pipeline":
 - `args` is a list of argv tokens. Do NOT include the tool name. Do NOT include
   pipe characters, redirects, env vars, or shell substitutions.
 - If a flag takes a value, split it: ["--sonar_model", "EK60"], not
-  ["--sonar_model=EK60"].
+  ["--sonar_model=EK60"]. Exception: a value that starts with "-" and is not
+  a plain number (e.g. -125dB) must be joined with "=", or argparse reads it
+  as a flag: ["--background_noise_max=-125dB"]. Plain negative numbers split
+  normally: ["--vmin", "-80"].
 - If a default is reasonable, use it and note the assumption in `risks`.
+- `expected_output` names the final product the new way: EchoData is
+  `<base>.nc` / `<base>.zarr`; every later product is `<base>_<hash8>.<ext>`
+  (write the literal `<hash8>`: you cannot know the hash); an image is named
+  after the product it shows. Add the product kind in parentheses. With an
+  explicit `-o`, give that path as the tool will write it.
 
 Rules for "answer":
 - For knowledge questions (no run intent), return free-form markdown.

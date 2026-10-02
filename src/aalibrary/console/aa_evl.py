@@ -5,23 +5,36 @@ aa-evl
 Mask echogram NetCDF (.nc/.netcdf4) using Echoview line files (.evl) via echoregions Lines2D.
 
 AA-style pipeline behavior:
-- Reads input NetCDF paths from stdin (newline-delimited) when piped OR accepts positional inputs.
+- Reads input NetCDF paths (or gs:// URIs) from stdin (newline-delimited) when piped
+  OR accepts positional inputs.
 - Produces a NEW NetCDF output per input.
-- Emits output path(s) to stdout (one per line) for downstream piping.
+- Emits output path(s) to stdout (one per line, in input order) for downstream piping.
 - Logs go to stderr.
 
 Core behavior:
-- --evl accepts one or more .evl paths (argparse nargs="+").
+- --evl accepts one or more .evl paths or gs:// URIs (argparse nargs="+").
 - Loads all EVLs and builds a per-ping depth threshold for each, then unions them
   into a single composite line (the shallowest or deepest, depending on --keep).
 - Applies the line mask to all variables containing (time_dim, depth_dim): the
   side that is masked becomes NaN.
 
+Provenance and naming (shared console core):
+- Each output is a scientific product named <base>_<hash8>.nc. The hash covers
+  the input's product hash, the CONTENT of the EVL files (not their paths),
+  --keep, --depth-offset, the resolved variable / dimension names, the channel
+  index (when a channel dimension is involved) and --write-line. For
+  --keep above/below the order of the EVL files and duplicates don't matter
+  (per-ping min/max); for --keep between the order is kept (see below).
+- -o PATH and an explicit --suffix TEXT keep the old explicit names;
+  AA_NAMING=legacy restores the old default <stem>_evl.nc.
+- An identical earlier product is reused; a different existing file is only
+  replaced with --overwrite.
+
 EVL semantics:
   An EVL file is a time-series of (datetime, depth_metres) points defining a
   boundary line across the echogram (e.g. seafloor, surface, bottom exclusion
   zone).  Unlike EVR (closed polygons), an EVL is an open line; there is no
-  "inside" - only above vs. below.
+  "inside" - only above vs. below.  Depth is positive downward.
 
   --keep above   Keep data ABOVE the union line (default); mask everything below.
                  Typical use: mask out seafloor / bottom noise.
@@ -40,11 +53,18 @@ Design notes:
 - Union line for "below" mode:  per-ping MAXIMUM depth across all EVLs
   (the deepest of all lines).
 - "Between" mode requires exactly 2 EVLs: upper_line <= depth <= lower_line.
+  The files are given upper then lower; if the first line's median depth is
+  deeper than the second's, the two are swapped. When the medians are equal the
+  given order decides, so for "between" the file order is part of the hash.
 - Lines are interpolated to every ping_time in the echogram using linear
   interpolation; pings outside the EVL time range use the nearest boundary
-  value (forward/back fill).
-- Sentinel depth values (e.g. +/-9999.99) are replaced with the echogram
-  depth min/max before interpolation.
+  value (forward/back fill).  Both time axes are converted to nanoseconds first
+  (under pandas 3 the EVL times parse as datetime64[us] while ping_time is
+  datetime64[ns]; mixing the two used to clamp every ping to the last EVL point).
+- Line points with sentinel depths (|depth| >= 9000, e.g. Echoview's -10000.99
+  "no data") are dropped, so the line is interpolated across them from the
+  neighbouring valid points; the remaining depths are clipped to the echogram
+  depth range.
 - Coordinate-label mismatch is avoided by positional masking (same fix as aa-evr).
 """
 
@@ -65,14 +85,19 @@ logger.add(sys.stderr, level="WARNING")
 # Now the heavy imports - anything they log gets squashed
 import argparse
 import pprint
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 import echoregions as er
+
+from aalibrary.console._core import (
+    Help, Run, ToolSpec, add_common_flags, canon, naming, render, show_help, stdio, uris,
+)
 
 
 def silence_all_logs():
@@ -171,10 +196,150 @@ _patch_echoregions_parse_evl()
 
 
 # ---------------------------
+# Tool identity
+# ---------------------------
+
+SPEC = ToolSpec(
+    name="aa-evl",
+    role="transform",
+    kind="sv",   # the default; an output keeps its input's kind (masked MVBS is still mvbs)
+    op="aa_evl.line_mask",
+    op_version=1,
+    engines=("echoregions",),
+    # The EVL files are scientific too: they are registered as inputs
+    # (role "regions") so their CONTENT enters the hash. var / time_dim /
+    # depth_dim / channel_index are replaced by the values actually used
+    # (see _resolve_masking) before the hash is computed.
+    params={
+        "keep": canon.choice(),
+        "depth_offset": canon.number,
+        "var": canon.text,
+        "time_dim": canon.text,
+        "depth_dim": canon.text,
+        "channel_index": canon.integer,
+        "write_line": canon.boolean,
+    },
+)
+
+DEFAULT_SUFFIX = "_evl"   # the old default name, <stem>_evl.nc (AA_NAMING=legacy)
+
+HELP = Help(
+    summary="Mask an echogram above, below or between Echoview lines (.evl).",
+    does=(
+        "Reads one or more Echoview line files (time, depth points), interpolates "
+        "each line linearly to every ping (pings before the first / after the "
+        "last point take that point's depth), and sets every cell of every "
+        "(time, depth) variable on the unwanted side of the line to NaN. Axis "
+        "variables (echo_range, depth, ...) are left intact.\n\n"
+        "--keep above (default): keep cells at or above the line (depth <= line); "
+        "with several lines, the per-ping shallowest one. Typical: remove the "
+        "seafloor and everything below it.\n\n"
+        "--keep below: keep cells at or below the line (depth >= line); with "
+        "several lines, the per-ping deepest one. Typical: remove near-surface "
+        "noise.\n\n"
+        "--keep between: exactly two lines, given upper then lower; keep "
+        "upper <= depth <= lower. If the first line's median depth is deeper, "
+        "the two are swapped.\n\n"
+        "Depth is positive downward. --depth-offset METRES is added to the line "
+        "(to both lines for between) before masking: negative moves the line up "
+        "(shallower), positive moves it down (deeper). So --keep above "
+        "--depth-offset -5 on a seafloor line keeps only data more than 5 m above "
+        "the bottom. Line depths are clipped to the echogram's depth range. Line "
+        "points with sentinel depths (|depth| >= 9000, e.g. -10000.99) are dropped "
+        "and the line is interpolated across them."
+    ),
+    stdin=(
+        "Flat NetCDF paths (.nc/.netcdf4) or gs:// URIs, one per line or as "
+        "arguments: Sv, cleaned Sv, MVBS, ... with a (ping_time|time) x "
+        "(depth|range_sample|range_bin|echo_range) variable (--var, default Sv)."
+    ),
+    stdout=(
+        "One line per input, in input order: the output's absolute path (or gs:// "
+        "URI). An input that fails prints nothing and the exit status is 1 at "
+        "the end."
+    ),
+    metadata=(
+        "Reads the input's provenance, appends this step with its canonical "
+        "scientific options and embeds it (NetCDF attributes aa_provenance, "
+        "aa_product_hash, aa_base, aa_tool, history). The EVL files are recorded "
+        "as inputs with role 'regions' and identified by content; the attributes "
+        "aa_evl_files, aa_evl_keep and aa_evl_depth_offset are kept. The base "
+        "name is carried through. Inspect with: aa-metadata FILE"
+    ),
+    options=[
+        ("--evl EVL [EVL ...]", "REQUIRED. Line files, local or gs://."),
+        ("--keep above|below|between", "which side of the line(s) to keep "
+                                       "(default above)"),
+        ("--depth-offset METRES", "shift the line(s) before masking; negative = up "
+                                  "(shallower), positive = down (default 0)"),
+        ("-o, --output-path PATH", "exact output path (one input only); local or gs://"),
+        ("--out-dir DIR", "write the outputs here instead of beside each input"),
+        ("--suffix TEXT", "use the old naming <input stem><TEXT>.nc instead of "
+                          "<base>_<hash8>.nc"),
+        ("--overwrite", "replace an existing output that is a different product"),
+        ("--var NAME", "variable whose dimensions define the mask (default Sv)"),
+        ("--time-dim / --depth-dim NAME", "dimension names (default: ping_time|time; "
+                                          "depth|range_sample|range_bin|echo_range)"),
+        ("--channel-index N", "channel whose echo_range/depth gives the depth axis "
+                              "(default 0)"),
+        ("--write-line", "also write the line used as evl_line_depth (per ping; "
+                         "for between: the upper line)"),
+        ("--fail-empty", "fail an input whose mask keeps nothing instead of "
+                         "writing all-NaN"),
+        ("--debug", "verbose diagnostics on stderr"),
+    ],
+    science={
+        "evl": "The line files' CONTENT (not their paths or names). For above/below "
+               "their order and duplicates don't matter; for between the order is "
+               "kept (it decides upper/lower when the medians are equal).",
+        "keep": "Which side of the line is kept.",
+        "depth_offset": "Metres added to the line depth (negative = shallower; "
+                        "default 0).",
+        "var": "Variable whose dimensions define the mask.",
+        "time_dim": "Time dimension used, as resolved.",
+        "depth_dim": "Depth dimension used, as resolved.",
+        "channel_index": "Channel whose echo_range/depth gives the depth axis. "
+                         "Recorded only when --var or that axis has a channel "
+                         "dimension.",
+        "write_line": "Adds the evl_line_depth variable to the file.",
+    },
+    files=(
+        "Reads flat NetCDF, local or gs://; EVL files local or gs:// (read through "
+        "the cache, AA_CACHE_DIR). Writes <base>_<hash8>.nc beside each input "
+        "(current directory for gs:// input), in --out-dir, or under --dest "
+        "DIR|gs://PREFIX. -o and --suffix keep the old explicit names; "
+        "AA_NAMING=legacy restores the old default <stem>_evl.nc. An identical "
+        "earlier product is reused; a different existing file is replaced only "
+        "with --overwrite."
+    ),
+    pipeline=(
+        "After aa-sv / aa-clean / aa-depth, before aa-evr, aa-graph, aa-mvbs, ... "
+        "Every stdin line is one input and gives one output line."
+    ),
+    examples=[
+        "aa-nc x.raw --sonar_model EK60 | aa-sv | aa-evl --evl seafloor.evl "
+        "--depth-offset -5 | aa-graph",
+        "aa-evl a.nc b.nc --evl surface.evl --keep below --out-dir masked/",
+        "aa-evl x_Sv.nc --evl upper.evl lower.evl --keep between --write-line",
+    ],
+    notes=[
+        "Line depths are compared with echo_range of --channel-index at the first "
+        "ping (range from the transducer) when the file has it, otherwise with "
+        "depth, otherwise with sample indices (with a warning).",
+    ],
+)
+
+
+# ---------------------------
 # Help / logging
 # ---------------------------
 
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
     print(
         """
 aa-evl - apply Echoview line(s) (.evl) to an echogram NetCDF (.nc/.netcdf4)
@@ -185,18 +350,29 @@ USAGE
   echo input.nc | aa-evl --evl seafloor.evl --depth-offset -5.0 --overwrite
 
 REQUIRED
-  --evl EVL [EVL ...]     One or more .evl paths (accepts wildcards via shell).
+  --evl EVL [EVL ...]     One or more .evl paths (accepts wildcards via shell)
+                          or gs:// URIs (read through the aalibrary cache).
 
 INPUT
   INPUT_PATH [INPUT_PATH ...]
-    Optional positional .nc paths. If omitted, reads newline-delimited .nc paths
-    from stdin.
+    Optional positional .nc paths or gs:// URIs. If omitted, reads
+    newline-delimited .nc paths from stdin. An empty stdin is an error
+    (exit 1); a bare `aa-evl` on a terminal prints the short help.
 
 OUTPUT
-  -o, --output-path PATH  Only valid when processing exactly 1 input.
+  -o, --output-path PATH  Only valid when processing exactly 1 input. Used as
+                          given; may be a gs:// URI.
   --out-dir DIR           Output directory for pipelines / multiple inputs.
-  --suffix TEXT           Suffix appended to output stem (default: _evl).
-  --overwrite             Overwrite output files if they exist.
+  --suffix TEXT           Name outputs <input stem><TEXT>.nc (in --out-dir, or
+                          beside the input). Default: no suffix, outputs are
+                          named <base>_<hash8>.nc (AA_NAMING=legacy: the old
+                          default suffix _evl).
+  --overwrite             Replace an existing output that is a different
+                          product. An identical product (same input, same EVL
+                          content, same options) is reused.
+  --base NAME             Base name for the default output name.
+  --dest DIR|gs://PREFIX  Write the default-named output there.
+  --force                 Recompute even if an identical product exists.
 
 MASKING
   --keep {above,below,between}
@@ -208,21 +384,40 @@ MASKING
                                       shallower data.  Union = per-ping MAX depth.
                                       Typical use: exclude near-surface noise.
                             between : keep data BETWEEN two lines.  Requires
-                                      exactly 2 EVL files (upper then lower).
+                                      exactly 2 EVL files (upper then lower;
+                                      swapped if the first has the deeper
+                                      median depth).
+                          Cells exactly on a line are kept.
   --depth-offset METRES   Shift the composite line by this many metres before
                           masking.  Negative = shift up (shallower); positive =
-                          shift down (deeper).  Default: 0.0.
+                          shift down (deeper).  Default: 0.0.  With --keep
+                          between, both lines are shifted.
                           Example: --depth-offset -5  removes 5 m above seafloor.
   --var NAME              Variable to mask (default: Sv).
   --time-dim NAME         Time dimension name (default: infer ping_time or time).
   --depth-dim NAME        Depth dimension name (default: infer depth, range_sample,
-                          or range_bin).
+                          range_bin, or echo_range as in aa-mvbs output).
   --channel-index INT     Channel used to resolve metre-depth coordinates when the
                           variable has a 'channel' dim (default: 0).
   --write-line            Write the interpolated composite line as a variable
-                          'evl_line_depth' in the output NetCDF.
-  --fail-empty            Exit non-zero if the composite line has no valid points.
+                          'evl_line_depth' in the output NetCDF (for --keep
+                          between: the upper line).
+  --fail-empty            Exit non-zero if the line mask keeps zero cells.
   --debug                 Verbose diagnostics to stderr.
+
+LINE HANDLING
+  Each line is interpolated linearly to every ping; pings outside the EVL time
+  range take the depth of the nearest end point.  Points whose depth is a
+  sentinel (|depth| >= 9000, e.g. Echoview's -10000.99) are dropped and the
+  line is interpolated across them; remaining depths are clipped to the
+  echogram depth range.  Depths are compared with echo_range (else depth) of
+  --channel-index at the first ping.
+
+PROVENANCE
+  Each output embeds its provenance (aa-metadata FILE): the input's chain, this
+  step with its scientific options, and the EVL files as inputs with role
+  "regions", identified by content.  The attributes aa_tool, aa_evl_files,
+  aa_evl_keep and aa_evl_depth_offset are kept.
 
 EXAMPLES
   # Mask everything below the seafloor line, with a 5 m safety buffer above it:
@@ -254,51 +449,103 @@ def _configure_logging(debug: bool) -> None:
 
 
 # ---------------------------
+# EVL files (file-valued scientific option)
+# ---------------------------
+
+@dataclass
+class _LineFile:
+    """One --evl source, resolved once for the whole batch."""
+    raw: str      # as given on the command line
+    token: str    # what the core reads: a local path or a gs:// URI
+    local: Path   # readable local copy
+    id: str       # content identity (enters the hash)
+
+    @property
+    def shown(self) -> str:
+        """How the file is listed in the aa_evl_files attribute: the resolved
+        local path, as before, or the gs:// URI."""
+        return self.raw if uris.is_gcs(self.raw) else str(self.local)
+
+
+def _resolve_line_files(sources: List[str]) -> Tuple[Optional[List["_LineFile"]], str]:
+    """Resolve --evl sources to local files and content identities, in the
+    order given. Returns (files, "") or (None, error message).
+
+    Local paths and file:// URIs are read in place; gs:// URIs through the
+    aalibrary cache (a gcsfuse mount or one download per object version).
+    """
+    probe = Run(SPEC)   # only to compute identities; never plans anything
+    out: List[_LineFile] = []
+    for raw in sources:
+        if uris.is_gcs(raw):
+            # Checked here so a missing object exits 2 like a missing local
+            # file (the core would exit 1). A gcsfuse mount needs no API call.
+            if uris.mounted_path(raw) is None:
+                try:
+                    found = uris.stat(raw) is not None
+                except Exception as exc:      # credentials, network, permissions
+                    return None, f"EVL file not readable: {raw} ({exc})"
+                if not found:
+                    return None, f"EVL file not found: {raw}"
+            token = raw
+        else:
+            local = Path(uris.from_file_uri(raw)).expanduser().resolve()
+            if not local.exists():
+                return None, f"EVL file not found: {local}"
+            token = str(local)
+        try:
+            inp = probe.param_file(token, role="regions")
+        except (Exception, SystemExit) as exc:   # the core exits on unreadable input
+            return None, f"EVL file not readable: {raw} ({exc})"
+        if inp.local.suffix.lower() != ".evl":
+            logger.warning(f"Unexpected extension for EVL file: {inp.local.name}")
+        out.append(_LineFile(raw, token, inp.local, inp.id))
+    return out, ""
+
+
+def _canonical_lines(files: List["_LineFile"], keep: str) -> List["_LineFile"]:
+    """The order used for the hash AND the computation.
+
+    above / below: per-ping min / max over the lines, so order and duplicates
+    don't matter: sort by content identity, one file per identity.
+    between: the order as given (upper, lower). The median swap makes it
+    irrelevant unless the two medians are equal, and then it decides.
+    """
+    if keep == "between":
+        return list(files)
+    seen = {}
+    for f in files:
+        seen.setdefault(f.id, f)
+    return [seen[k] for k in sorted(seen)]
+
+
+def _register_lines(run: Run, files: List["_LineFile"]) -> None:
+    for f in files:
+        run.param_file(f.token, role="regions")
+
+
+# ---------------------------
 # Input handling
 # ---------------------------
 
-def _iter_input_paths(positional: List[Path]) -> Iterable[Path]:
-    if positional:
-        yield from positional
-        return
-    if not sys.stdin.isatty():
-        for line in sys.stdin:
-            s = line.strip()
-            if s:
-                yield Path(s)
-        return
-    print_help()
-    sys.exit(0)
+_ALLOWED_EXT = {".nc", ".netcdf4"}
 
 
-def _validate_inputs(input_paths: List[Path], evl_paths: List[Path], keep: str) -> None:
-    allowed_ext = {".nc", ".netcdf4"}
-
-    if not evl_paths:
-        logger.error("At least one --evl file is required.")
-        sys.exit(2)
-
-    if keep == "between" and len(evl_paths) != 2:
-        logger.error(
-            f"--keep between requires exactly 2 EVL files; got {len(evl_paths)}."
-        )
-        sys.exit(2)
-
-    for evl in evl_paths:
-        if not evl.exists():
-            logger.error(f"EVL file not found: {evl}")
-            sys.exit(2)
-        if evl.suffix.lower() != ".evl":
-            logger.warning(f"Unexpected extension for EVL file: {evl.name}")
-
-    for p in input_paths:
-        if not p.exists():
-            logger.error(f"Input file not found: {p}")
-            sys.exit(1)
-        if p.suffix.lower() not in allowed_ext:
+def _validate_inputs(tokens: List[str]) -> None:
+    """Up-front checks, as before: a missing local input or a wrong extension
+    stops the whole batch with exit 1. (A gs:// input is checked when read.)"""
+    for tok in tokens:
+        name = uris.basename(tok)
+        if not uris.is_gcs(tok):
+            p = Path(uris.from_file_uri(tok)).expanduser().resolve()
+            if not p.exists():
+                logger.error(f"Input file not found: {p}")
+                sys.exit(1)
+            name = p.name
+        if Path(name).suffix.lower() not in _ALLOWED_EXT:
             logger.error(
-                f"Unsupported input extension: {p.name} "
-                f"(allowed: {', '.join(sorted(allowed_ext))})"
+                f"Unsupported input extension: {name} "
+                f"(allowed: {', '.join(sorted(_ALLOWED_EXT))})"
             )
             sys.exit(1)
 
@@ -340,6 +587,11 @@ def _infer_dims(
             ddim = "range_sample"
         elif "range_bin" in da.dims:
             ddim = "range_bin"
+        elif "echo_range" in da.dims:
+            # aa-mvbs output: Sv on (channel, ping_time, echo_range). Checked
+            # last, so files that have depth/range_sample/range_bin infer the
+            # same dimension as before.
+            ddim = "echo_range"
         else:
             raise ValueError(
                 f"Could not infer depth dim for '{var}'. Provide --depth-dim."
@@ -403,11 +655,15 @@ def _read_evl_to_series(
     debug: bool,
 ) -> pd.Series:
     """
-    Read a single EVL file and return a pd.Series indexed by datetime64[ns]
-    with depth values in metres.
+    Read a single EVL file and return a pd.Series of depth values in metres,
+    indexed by (tz-naive) datetime64. The index unit is whatever pandas parsed:
+    [us] under pandas 3; _interpolate_line_to_pings converts it to [ns].
 
     Handles:
-    - Sentinel depth values (|depth| >= 9000) -> clipped to echogram range.
+    - Sentinel depth values (|depth| >= 9000, e.g. Echoview's -10000.99
+      "no data") -> dropped (not replaced), so the line is interpolated across
+      them from the neighbouring valid points.
+    - Remaining depths -> clipped to the echogram depth range.
     - NaN / bad depth values -> dropped.
     - The echoregions Lines2D dataframe layout (columns depend on version).
     """
@@ -465,13 +721,13 @@ def _read_evl_to_series(
             f"Available columns: {list(df.columns)}"
         )
 
-    # --- coerce time to datetime64[ns] ---
+    # --- coerce time to datetime64 (unit as parsed; converted to ns later) ---
     t_raw = pd.to_datetime(df[time_col], errors="coerce", utc=False)
     # Strip timezone so we can compare with naive NetCDF timestamps
     if hasattr(t_raw, "dt") and t_raw.dt.tz is not None:
         t_raw = t_raw.dt.tz_localize(None)
 
-    # --- coerce depth to float, replace sentinels, clip ---
+    # --- coerce depth to float, drop sentinels, clip ---
     d_raw = pd.to_numeric(df[depth_col], errors="coerce").astype(float)
     d_raw = d_raw.where(d_raw.abs() < 9000, other=np.nan)  # drop sentinels
     d_raw = d_raw.clip(lower=ech_depth_min, upper=ech_depth_max)
@@ -497,6 +753,16 @@ def _read_evl_to_series(
     return s
 
 
+def _as_float_ns(times) -> np.ndarray:
+    """Datetimes (any datetime64 unit, DatetimeIndex, or parseable values) as
+    float64 nanoseconds since the epoch. tz-aware values lose their zone, as
+    the EVL times do in _read_evl_to_series."""
+    idx = pd.DatetimeIndex(pd.to_datetime(times))
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+    return idx.values.astype("datetime64[ns]").astype(np.int64).astype(float)
+
+
 def _interpolate_line_to_pings(
     line_series: pd.Series,
     ping_times: np.ndarray,
@@ -510,12 +776,15 @@ def _interpolate_line_to_pings(
 
     Returns a 1-D float64 array of shape (n_pings,).
     """
-    # Convert everything to float64 nanoseconds for interpolation
-    evl_t_ns = line_series.index.astype(np.int64).astype(float)
+    # Both time axes as float64 nanoseconds. The unit must be converted
+    # explicitly: under pandas 3 the EVL index is datetime64[us] while ping_time
+    # is datetime64[ns], and a bare .astype(np.int64) returned microseconds for
+    # one and nanoseconds for the other, so np.interp clamped every ping to the
+    # last EVL point.
+    evl_t_ns = _as_float_ns(line_series.index)
     evl_d = line_series.values.astype(float)
 
-    # ping times as float64 ns
-    ping_t_ns = pd.to_datetime(ping_times).astype(np.int64).astype(float)
+    ping_t_ns = _as_float_ns(ping_times)
 
     # Use numpy interp (clamps at boundaries automatically)
     interp_depth = np.interp(ping_t_ns, evl_t_ns, evl_d)
@@ -764,6 +1033,53 @@ def _apply_mask(
 
 
 # ---------------------------
+# Scientific parameters actually used
+# ---------------------------
+
+def _channel_used(ds: xr.Dataset, var: str) -> bool:
+    """Whether --channel-index can affect the result.
+
+    It selects the channel of --var (when it has one) and, independently, the
+    channel of the echo_range / depth axis (see _get_depth_coord_metres). If
+    neither has a channel dimension the index is unused. Conservative: any
+    channel dimension on those candidates counts.
+    """
+    da = ds[var]
+    if "channel" in da.dims:
+        return True
+    for cname in ("echo_range", "depth"):
+        x = ds[cname] if cname in ds else (da.coords[cname] if cname in da.coords else None)
+        if x is not None and "channel" in x.dims:
+            return True
+    return False
+
+
+def _resolve_masking(nc_path: Path, var: str, time_dim: Optional[str],
+                     depth_dim: Optional[str], channel_index: int) -> dict:
+    """The variable, dimensions and channel the mask will actually use.
+
+    Reads only the file's metadata. These resolved values (not the flags as
+    typed) enter the hash, so an explicit `--time-dim ping_time` and the
+    auto-detected ping_time are the same product.
+    """
+    with xr.open_dataset(nc_path) as ds:
+        tdim, ddim = _infer_dims(ds, var=var, time_dim=time_dim, depth_dim=depth_dim)
+        used = _channel_used(ds, var)
+    return {
+        "var": var,
+        "time_dim": tdim,
+        "depth_dim": ddim,
+        "channel_index": channel_index if used else None,
+    }
+
+
+def _kind_of(src) -> str:
+    """Masking keeps what the data is: masked Sv is sv, masked MVBS is mvbs."""
+    kind = (((src.prov or {}).get("product") or {}).get("kind") or "").strip()
+    return kind if kind and kind not in {"echodata", "source"} else SPEC.kind
+
+
+# ---------------------------
 # Output path resolution
 # ---------------------------
 
@@ -773,10 +1089,50 @@ def _resolve_output_path(
     out_dir: Optional[Path],
     suffix: str,
 ) -> Path:
+    """The old naming rule: -o as given, else (out_dir or input dir)/<stem><suffix>.nc."""
     if output_path is not None:
         return output_path
     out_name = input_path.with_suffix("").name + suffix + ".nc"
     return (out_dir or input_path.parent) / out_name
+
+
+def _input_dir_and_path(src) -> Tuple[Path, Path]:
+    """(folder, path) the old rule names outputs after: the resolved local
+    input, or the current directory for a gs:// input."""
+    if src.via == "local":
+        p = src.local.resolve()
+        return p.parent, p
+    return Path.cwd(), Path(src.name)
+
+
+def _explicit_output(args, src) -> Optional[str]:
+    """Names the user chose keep their old meaning.
+
+    -o PATH is used as given (local or gs://). An explicitly given --suffix
+    keeps the old <stem><suffix>.nc name, in --dest, --out-dir or beside the
+    input. Otherwise None: the standard <base>_<hash8>.nc name.
+    """
+    if args.output_path:
+        return str(args.output_path)
+    if args.suffix is None:
+        return None
+    folder, in_path = _input_dir_and_path(src)
+    name = in_path.with_suffix("").name + args.suffix + ".nc"
+    where = args.dest or args.out_dir
+    if where and uris.is_remote(str(where)):
+        return uris.join(str(where), name)
+    if where:
+        return str(Path(where).expanduser().resolve() / name)
+    return str(folder / name)
+
+
+def _legacy_output(args, src, suffix: str) -> str:
+    """The old default name, <stem><suffix>.nc in --out-dir or beside the input."""
+    folder, in_path = _input_dir_and_path(src)
+    if args.out_dir and uris.is_remote(str(args.out_dir)):
+        return uris.join(str(args.out_dir), in_path.with_suffix("").name + suffix + ".nc")
+    out_dir = Path(args.out_dir).expanduser().resolve() if args.out_dir else None
+    return str(_resolve_output_path(in_path, None, out_dir or folder, suffix))
 
 
 # ---------------------------
@@ -787,7 +1143,6 @@ def _process_file(
     input_path: Path,
     evl_files: List[Path],
     output_path: Path,
-    overwrite: bool,
     var: str,
     time_dim: Optional[str],
     depth_dim: Optional[str],
@@ -797,16 +1152,13 @@ def _process_file(
     write_line: bool,
     fail_empty: bool,
     debug: bool,
+    evl_sources: Optional[List[str]] = None,
 ) -> Optional[Path]:
-    if output_path.exists() and not overwrite:
-        logger.error(f"Output exists (use --overwrite): {output_path}")
-        return None
+    """Mask one file and write it to output_path. None: nothing written.
 
-    # Guard against clobbering the input
-    if output_path.resolve() == input_path.resolve():
-        logger.error(f"Refusing to overwrite input file: {input_path.resolve()}")
-        return None
-
+    Output-exists / --overwrite and the refuse-to-overwrite-the-input guard are
+    decided by the caller, before this runs (reuse comes first).
+    """
     # Read into memory and release the file handle so we can write into the
     # same directory without xarray holding a read lock.
     with xr.open_dataset(input_path) as ds_in:
@@ -862,51 +1214,121 @@ def _process_file(
         composite_line=composite_line,
     )
     ds_out.attrs["aa_tool"] = "aa-evl"
-    ds_out.attrs["aa_evl_files"] = ",".join(str(p) for p in evl_files)
+    ds_out.attrs["aa_evl_files"] = ",".join(
+        str(p) for p in (evl_sources if evl_sources is not None else evl_files)
+    )
     ds_out.attrs["aa_evl_keep"] = keep
     ds_out.attrs["aa_evl_depth_offset"] = str(depth_offset)
 
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     ds_out.to_netcdf(output_path)
 
     return output_path
+
+
+def _run_one(token: str, args, lines: List["_LineFile"],
+             evl_sources: List[str]) -> Optional[str]:
+    """One input -> one product. Returns the printed target, or None on failure."""
+    run = Run(SPEC, args)
+    src = run.input(token)
+    _register_lines(run, lines)
+
+    resolved = _resolve_masking(src.local, args.var, args.time_dim, args.depth_dim,
+                                args.channel_index)
+    if args.debug:
+        logger.debug(f"{src.name}: resolved {resolved}")
+
+    hash_naming = naming.mode() != "legacy"
+    out = run.plan(
+        ext=".nc",
+        explicit=_explicit_output(args, src),
+        legacy=lambda: _legacy_output(args, src, DEFAULT_SUFFIX),
+        directory=args.out_dir if hash_naming else None,
+        kind=_kind_of(src),
+        extra_params=resolved,
+    )
+
+    # Guard against clobbering the input
+    if not out.remote and Path(out.target).resolve() == src.local.resolve():
+        logger.error(f"Refusing to overwrite input file: {src.local.resolve()}")
+        run.discard(out)
+        return None
+
+    # Reuse comes first: an identical product is never an "overwrite".
+    if run.reusable(out):
+        return run.finish(out)
+
+    # A different product already there (an identical one, e.g. with --force,
+    # is not an "overwrite").
+    if not args.overwrite and run.conflicts(out):
+        logger.error(f"Output exists (use --overwrite): {out.target}")
+        run.discard(out)
+        return None
+
+    try:
+        produced = _process_file(
+            input_path=src.local,
+            evl_files=[f.local for f in lines],
+            output_path=out.local,
+            var=resolved["var"],
+            time_dim=resolved["time_dim"],
+            depth_dim=resolved["depth_dim"],
+            channel_index=args.channel_index,
+            keep=args.keep,
+            depth_offset=args.depth_offset,
+            write_line=args.write_line,
+            fail_empty=args.fail_empty,
+            debug=args.debug,
+            evl_sources=evl_sources,
+        )
+    except BaseException:
+        run.discard(out)
+        raise
+    if not produced:
+        run.discard(out)
+        return None
+
+    logger.success(f"Saved masked NetCDF:\n\t{out.target}")
+    logger.success("Piping saved .nc path to stdout ⟶")
+    return run.finish(out)
 
 
 # ---------------------------
 # Entry point
 # ---------------------------
 
-def main() -> int:
-    if len(sys.argv) == 1 and sys.stdin.isatty():
-        print_help()
-        return 0
-
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
+        prog="aa-evl",
         description="Mask echogram NetCDF (.nc) using Echoview EVL line files.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
     )
     parser.add_argument(
-        "input_paths", nargs="*", type=Path,
-        help="Input .nc/.netcdf4 paths (or read from stdin).",
+        "input_paths", nargs="*", type=str,
+        help="Input .nc/.netcdf4 paths or gs:// URIs (or read from stdin).",
     )
     parser.add_argument(
-        "--evl", required=True, nargs="+", type=Path, metavar="EVL",
-        help="One or more .evl paths.",
+        "--evl", required=True, nargs="+", type=str, metavar="EVL",
+        help="One or more .evl paths or gs:// URIs.",
     )
     parser.add_argument(
-        "-o", "--output-path", dest="output_path", type=Path,
-        help="Output path (only valid for a single input file).",
+        "-o", "--output-path", dest="output_path", type=str,
+        help="Output path or gs:// URI (only valid for a single input file).",
     )
     parser.add_argument(
-        "--out-dir", type=Path,
+        "--out-dir", type=str,
         help="Output directory (for pipelines / multiple inputs).",
     )
     parser.add_argument(
-        "--suffix", type=str, default="_evl",
-        help="Suffix appended to output stem (default: _evl).",
+        "--suffix", type=str, default=None,
+        help=("Name outputs <input stem><SUFFIX>.nc. Default: <base>_<hash8>.nc; "
+              "AA_NAMING=legacy: suffix _evl."),
     )
     parser.add_argument(
         "--overwrite", action="store_true",
-        help="Overwrite existing output files.",
+        help="Replace an existing output that is a different product.",
     )
     parser.add_argument(
         "--keep", choices=["above", "below", "between"], default="above",
@@ -953,69 +1375,69 @@ def main() -> int:
         "--debug", action="store_true",
         help="Verbose diagnostics to stderr.",
     )
+    add_common_flags(parser)
+    return parser
+
+
+def main() -> int:
+    # No args on a terminal: help. (An empty pipe is an error: see stdio.)
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
+        print_help()
+        return 0
+
+    parser = _build_parser()
+    if show_help(SPEC, HELP, parser, full=print_help_full):
+        return 0
     args = parser.parse_args()
 
     _configure_logging(args.debug)
 
-    input_paths = list(_iter_input_paths(args.input_paths))
-    if not input_paths:
-        logger.error("No input paths provided (positional or via stdin).")
-        return 1
+    tokens = stdio.many_inputs(args.input_paths, SPEC.name)   # empty stdin: exit 1
 
-    input_paths = [p.expanduser().resolve() for p in input_paths]
-    evl_files = [p.expanduser().resolve() for p in args.evl]
+    if args.keep == "between" and len(args.evl) != 2:
+        logger.error(
+            f"--keep between requires exactly 2 EVL files; got {len(args.evl)}."
+        )
+        return 2
 
-    _validate_inputs(input_paths, evl_files, args.keep)
+    # --evl may be a local path or a gs:// URI. Resolved once for the whole
+    # batch; each file's CONTENT identifies it.
+    lines_given, err = _resolve_line_files([str(s) for s in args.evl])
+    if lines_given is None:
+        logger.error(err)
+        return 2
+    lines = _canonical_lines(lines_given, args.keep)
+    # Attribute written into the output: the files as given (user order).
+    evl_sources = [f.shown for f in lines_given]
 
-    if args.output_path is not None and len(input_paths) != 1:
+    _validate_inputs(tokens)
+
+    if args.output_path is not None and len(tokens) != 1:
         logger.error(
             "--output-path is only valid when processing exactly 1 input. "
             "Use --out-dir for multiple files."
         )
         return 2
 
-    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
-    if out_dir is not None:
-        out_dir.mkdir(parents=True, exist_ok=True)
+    if args.out_dir and not uris.is_remote(str(args.out_dir)):
+        Path(args.out_dir).expanduser().resolve().mkdir(parents=True, exist_ok=True)
 
     if args.debug:
         logger.debug(f"\naa-evl args:\n{pprint.pformat(vars(args))}")
+        logger.debug(f"EVL files (order used): {[f.raw for f in lines]}")
 
     any_fail = False
-    for in_path in input_paths:
-        out_path = _resolve_output_path(
-            input_path=in_path,
-            output_path=(
-                args.output_path.expanduser().resolve() if args.output_path else None
-            ),
-            out_dir=out_dir,
-            suffix=args.suffix,
-        )
+    for token in tokens:
         try:
-            produced = _process_file(
-                input_path=in_path,
-                evl_files=evl_files,
-                output_path=out_path,
-                overwrite=args.overwrite,
-                var=args.var,
-                time_dim=args.time_dim,
-                depth_dim=args.depth_dim,
-                channel_index=args.channel_index,
-                keep=args.keep,
-                depth_offset=args.depth_offset,
-                write_line=args.write_line,
-                fail_empty=args.fail_empty,
-                debug=args.debug,
-            )
-            if produced:
-                logger.success(f"Saved masked NetCDF:\n\t{produced}")
-                logger.success("Piping saved .nc path to stdout ⟶")
-                print(str(produced))
-            else:
+            if not _run_one(token, args, lines, evl_sources):
                 any_fail = True
+        except SystemExit:
+            # The core stops on this input (e.g. a missing gs:// object) after
+            # printing why; the rest of the batch still runs.
+            any_fail = True
         except Exception as e:
             any_fail = True
-            logger.exception(f"Error processing {in_path}: {e}")
+            logger.exception(f"Error processing {token}: {e}")
 
     return 1 if any_fail else 0
 

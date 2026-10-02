@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """
-Template console tool for processing .raw or .netcdf4 files with Echopype using Loguru.
+aa-crop: PLACEHOLDER. Not installed as a command (no entry point in
+pyproject.toml); run as ``python -m aalibrary.console.aa_crop``.
+
+Meant to become: crop an echogram / EchoData to a (ping, range) window.
+
+What it does today: loads a .raw or converted .nc/.netcdf4 file with echopype,
+applies transform_echo_data(), which returns the EchoData unchanged, and writes
+it to NetCDF (default <input stem>_processed.nc). The required --ping_num and
+--range_sample_num, and --background_noise_max / --snr_threshold, are parsed
+but not used: they were copied from the background-noise template this file
+started from. It records no provenance and is not part of the shared console
+core (no product hash, no reuse, no gs://).
 """
 
 import argparse
@@ -10,14 +21,66 @@ from pathlib import Path
 from loguru import logger
 import echopype as ep  # make sure echopype is installed
 
+from aalibrary.console._core import Help, ToolSpec, help_mode, render, stdio
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Convert RAW files to NetCDF using Echopype, apply transformations, and save back."
-    )
+# Help only: aa-crop is not wired into the core (no Run, no provenance).
+SPEC = ToolSpec(name="aa-crop", role="utility", engines=())
 
+HELP = Help(
+    summary="PLACEHOLDER: copies EchoData unchanged. Not installed as a command.",
+    does=(
+        "Nothing scientific yet. It is meant to crop an echogram / EchoData to a "
+        "(ping, range) window. Today it loads the input with echopype, applies "
+        "transform_echo_data(), which returns the EchoData unchanged, and writes "
+        "it to NetCDF. --ping_num, --range_sample_num, --background_noise_max and "
+        "--snr_threshold are parsed but not used (left over from the "
+        "background-noise template the file was copied from)."
+    ),
+    stdin="Does not read stdin. One local input path as the argument (.raw, .nc or .netcdf4).",
+    stdout="The output path.",
+    metadata="Records no provenance and computes no product hash.",
+    options=[
+        ("INPUT_PATH", "a converted EchoData .nc/.netcdf4 (or .raw; see NOTE)"),
+        ("-o, --output_path PATH", "output file (default <input stem>_processed.nc)"),
+        ("--ping_num N", "required, unused"),
+        ("--range_sample_num N", "required, unused"),
+        ("--background_noise_max X", "unused"),
+        ("--snr_threshold DB", "unused (default 3.0)"),
+    ],
+    files="Local files only. Writes beside the input unless -o is given.",
+    pipeline=(
+        "Not installed as a command (there is no aa-crop entry point in "
+        "pyproject.toml), so it is not part of any pipeline. Run it as "
+        "python -m aalibrary.console.aa_crop."
+    ),
+    examples=[
+        "python -m aalibrary.console.aa_crop x.nc --ping_num 1 --range_sample_num 1",
+    ],
+    notes=[
+        ".raw input fails: echopype.open_raw is called without a sonar model. "
+        "Re-saving a converted .nc can also fail with recent xarray versions "
+        "(\"unexpected encoding parameters for 'netCDF4' backend\").",
+    ],
+)
+
+
+def print_help():
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full():
+    """The complete argparse reference (--help-all)."""
+    _build_parser().print_help()
+
+
+def _build_parser():
     parser = argparse.ArgumentParser(
-        description="Convert RAW files to NetCDF using Echopype, remove background noise, and save back."
+        prog="aa-crop",
+        description=(
+            "PLACEHOLDER (not installed as a command): loads EchoData and writes "
+            "it back unchanged. Meant to become a (ping, range) crop."
+        ),
     )
 
     parser.add_argument(
@@ -36,30 +99,43 @@ def main():
         "--ping_num",
         type=int,
         required=True,
-        help="Number of pings to use for background noise removal.",
+        help="Unused. (Number of pings to use for background noise removal.)",
     )
 
     parser.add_argument(
         "--range_sample_num",
         type=int,
         required=True,
-        help="Number of range samples to use for background noise removal.",
+        help="Unused. (Number of range samples to use for background noise removal.)",
     )
 
     parser.add_argument(
         "--background_noise_max",
         type=str,
         default=None,
-        help="Optional maximum background noise value.",
+        help="Unused. (Optional maximum background noise value.)",
     )
 
     parser.add_argument(
         "--snr_threshold",
         type=float,
         default=3.0,
-        help="SNR threshold in dB (default: 3.0).",
+        help="Unused. (SNR threshold in dB, default: 3.0.)",
     )
+    return parser
 
+
+def main():
+    mode = help_mode()
+    bare = len(sys.argv) == 1 and not stdio.stdin_is_piped()   # bare command on a terminal
+    if bare or mode == "curated":
+        print_help()
+        sys.exit(0)
+    if mode == "full":
+        print_help_full()
+        sys.exit(0)
+
+    parser = _build_parser()
     args = parser.parse_args()
 
     # ---------------------------

@@ -2,12 +2,23 @@
 """
 aa-upload
 
-Console tool for uploading echosounder files or arbitrary folders to a
-GCP storage bucket via aalibrary.egress. Pipeline-friendly: prints the
-input path back to stdout so aa-upload can sit *between* stages as a
-side-effect tee.
+Console tool for uploading products, echosounder files or arbitrary
+folders to a GCP storage bucket.
 
-Two upload modes (auto-detected, can be forced):
+Three upload modes:
+
+  0. gs:// destination (a gs:// URI among the arguments) — uploads each
+     input to that URI or prefix with the core's publish(): the
+     <file>.aa.json sidecar goes along, the object gets custom metadata
+     aa-product-hash / aa-base / aa-tool, and an object that already holds
+     the same product (or the same bytes) is not uploaded again. Prints the
+     gs:// URI of each object (--tee: the local path instead):
+
+       aa-download gs://b/raw/x.raw | aa-nc --sonar_model EK60 | aa-sv \
+         | aa-clean | aa-upload gs://b/derived/me/
+
+  The two original modes, unchanged (they print the input path back to
+  stdout so aa-upload can sit *between* stages as a side-effect tee):
 
   1. Echosounder mode (default) — wraps
        aalibrary.egress.upload_local_echosounder_files_from_directory_to_gcp_storage_bucket
@@ -63,12 +74,68 @@ logger.add(sys.stderr, level="WARNING")
 
 # Now the heavy imports — anything they log gets squashed
 import argparse
+import contextlib
+import json
 import os
 import pprint
 import signal
 import tempfile
 from pathlib import Path
 from typing import Optional
+
+from aalibrary.console._core import (
+    Help, ToolSpec, provenance, identity, render, show_help, stdio, uris,
+)
+
+SPEC = ToolSpec(name="aa-upload", role="sink", engines=())
+
+HELP = Help(
+    summary="Upload files and products to a GCS bucket.",
+    does=(
+        "With a gs:// destination (aa-upload [FILE ...] gs://bucket/prefix/): "
+        "uploads each input there, with its .aa.json sidecar, stamps the "
+        "product hash into the object's metadata, and skips objects that "
+        "already hold the same product or the same bytes. Folders (.zarr "
+        "stores) are uploaded recursively.\n\n"
+        "Without one, the original modes: echosounder mode keeps aalibrary's "
+        "data/raw/<ship>/<survey>/<sonar>/ layout (needs --ship_name, "
+        "--survey_name, --sonar_model); --as-is uploads under "
+        "--destination_prefix in the configured bucket."
+    ),
+    stdin=("Paths (or gs:// URIs to copy between buckets), one per line, when "
+           "no input argument is given. aa/1 JSON handles work too."),
+    stdout=("gs:// destination: the gs:// URI of each uploaded (or already "
+            "present) object; with --tee the local path instead. Original modes: "
+            "the input path, unchanged."),
+    options=[
+        ("gs://BUCKET/PREFIX/", "destination; ending in / (or several inputs, or a "
+                                "folder) means 'put it under this prefix'; a name "
+                                "with an extension is the exact object"),
+        ("--tee", "gs:// mode: print the local path, so the pipe continues locally"),
+        ("--force", "gs:// mode: upload even if the object is identical"),
+        ("--dry-run", "show what would be uploaded; upload nothing"),
+        ("--ship_name/--survey_name/--sonar_model", "echosounder mode (all three)"),
+        ("--as-is --destination_prefix PFX", "as-is mode"),
+        ("--gcp_env prod|dev, --project_id, --gcp_bucket_name",
+         "which project/bucket the original modes use"),
+    ],
+    files=(
+        "Reads local files and folders (or gs:// objects). Writes gs:// objects "
+        "with your Application Default Credentials (billing project: --project_id, "
+        "else the project aalibrary is configured for). A .zarr store uploaded over "
+        "an older one replaces it completely (objects it no longer has are removed); "
+        "other folders only add and update files."
+    ),
+    pipeline=(
+        "The last stage (gs:// mode prints the URIs, which aa-metadata, aa-graph "
+        "or aa-download accept), or a tee between stages with --tee or in the "
+        "original modes."
+    ),
+    examples=[
+        "aa-nc x.raw --sonar_model EK60 | aa-sv | aa-clean | aa-upload gs://bucket/derived/me/",
+        "aa-upload ./HB1603/EK60 --ship_name Henry_B._Bigelow --survey_name HB1603 --sonar_model EK60",
+    ],
+)
 
 
 # Pipeline tools should die cleanly when the downstream end of the pipe
@@ -111,8 +178,25 @@ def _configure_logging(quiet: bool, debug: bool) -> None:
 
 
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, None))
+
+
+def print_help_full() -> None:
     help_text = """
-    Usage: aa-upload [OPTIONS] [PATH]
+    Usage: aa-upload [OPTIONS] [PATH ...] gs://BUCKET/PREFIX/   (gs:// destination)
+           aa-upload [OPTIONS] [PATH]                         (original modes)
+
+    gs:// destination mode (a gs:// URI among the arguments):
+      Each PATH (or each stdin line) is uploaded to the URI: into it when it
+      ends in '/', when there are several inputs or the input is a folder;
+      as that exact object otherwise (a name with an extension). The
+      <file>.aa.json sidecar is uploaded too, and the object gets custom
+      metadata aa-product-hash / aa-base / aa-tool from the file's
+      provenance. An object that already holds the same product (same
+      aa-product-hash) or the same bytes (same MD5) is not uploaded again
+      (--force uploads anyway). Prints the gs:// URI of each object, or the
+      local path with --tee. --ship_name/--as-is etc. do not apply.
 
     Arguments:
       PATH                        File or directory to upload. May be a
@@ -166,6 +250,9 @@ def print_help() -> None:
                                   --gcp_env).
 
     Other:
+      --tee                       gs:// mode: print the local path instead of
+                                  the object URI.
+      --force                     gs:// mode: upload even if identical.
       --dry-run, --dry_run        Resolve mode, validate everything,
                                   set up the GCP bucket object, but do
                                   NOT call the upload functions. Useful
@@ -216,35 +303,17 @@ def print_help() -> None:
     print(help_text)
 
 
-def main() -> None:
-    # Stdin / no-args handling — same shape as aa-ed: empty-stdin
-    # invocation prints help instead of blocking on readline.
-    if len(sys.argv) == 1:
-        if not sys.stdin.isatty():
-            stdin_data = sys.stdin.readline().strip()
-            if stdin_data:
-                sys.argv.append(stdin_data)
-            else:
-                print_help()
-                sys.exit(0)
-        else:
-            print_help()
-            sys.exit(0)
-
-    if "--help" in sys.argv or "-h" in sys.argv:
-        print_help()
-        sys.exit(0)
-
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Upload a file or directory to GCP via aalibrary.egress.",
         add_help=False,
     )
 
     parser.add_argument(
-        "path",
+        "paths",
         type=str,
-        nargs="?",
-        help="File or directory to upload.",
+        nargs="*",
+        help="File or directory to upload, and/or a gs:// destination.",
     )
 
     # Echosounder-mode metadata
@@ -281,6 +350,23 @@ def main() -> None:
                         help="Enable verbose DEBUG-level logging.")
     parser.add_argument("--quiet", action="store_true", default=False,
                         help="Suppress INFO logs.")
+    parser.add_argument("--tee", action="store_true", default=False,
+                        help="gs:// mode: print the local path instead of the URI.")
+    parser.add_argument("--force", action="store_true", default=False,
+                        help="gs:// mode: upload even if the object is identical.")
+    return parser
+
+
+def main() -> None:
+    # A bare command on a terminal: help. An empty pipe is an error (the
+    # previous stage failed); printing help to stdout would feed it onward.
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
+        print_help()
+        sys.exit(0)
+
+    parser = _build_parser()
+    if show_help(SPEC, HELP, None, full=print_help_full):
+        sys.exit(0)
 
     args = parser.parse_args()
 
@@ -290,17 +376,33 @@ def main() -> None:
 
     _configure_logging(args.quiet, args.debug)
 
+    if any(uris.is_gcs(p) for p in args.paths):
+        # gs:// destination mode (the original modes never took gs:// paths).
+        # The destination is the last argument.
+        dest = args.paths[-1] if uris.is_gcs(args.paths[-1]) else None
+        if dest is None:
+            logger.error("Put the gs:// destination last: aa-upload [FILE ...] gs://bucket/prefix/")
+            sys.exit(2)
+        sources = args.paths[:-1]
+        _main_gcs(args, sources, dest)
+        return
+
+    if len(args.paths) > 1:
+        logger.error("Original modes take one PATH. To upload several files, give a "
+                     "gs:// destination: aa-upload FILE ... gs://bucket/prefix/")
+        sys.exit(2)
+    args.path = args.paths[0] if args.paths else None
+
     # ---------------------------
     # Resolve input path (stdin fallback, basename behavior NOT applied
     # — unlike aa-ed, here the directory portion IS meaningful: we
     # need the actual filesystem location to read bytes from)
     # ---------------------------
     if args.path is None:
-        if sys.stdin.isatty():
-            logger.error("No path provided and no stdin available.")
-            sys.exit(1)
-        args.path = sys.stdin.readline().strip()
+        args.path = stdio.one_input(None, SPEC.name)
         logger.info(f"Read path from stdin: {args.path}")
+    else:
+        args.path = stdio.normalize_token(args.path) or args.path
 
     if not args.path:
         logger.error("Empty path.")
@@ -414,24 +516,8 @@ def main() -> None:
     # Dispatch
     # ---------------------------
     try:
-        if mode == "as-is":
-            _upload_as_is(
-                local_folder=input_path,
-                destination_prefix=args.destination_prefix,
-                gcp_bucket=gcp_bucket,
-                dry_run=args.dry_run,
-            )
-        else:  # echosounder
-            _upload_echosounder(
-                input_path=input_path,
-                ship_name=args.ship_name,
-                survey_name=args.survey_name,
-                sonar_model=args.sonar_model,
-                data_source=args.data_source,
-                gcp_bucket=gcp_bucket,
-                debug=args.debug,
-                dry_run=args.dry_run,
-            )
+        with contextlib.redirect_stdout(sys.stderr):
+            _dispatch(mode, args, input_path, gcp_bucket)
     except SystemExit:
         raise
     except Exception as e:
@@ -452,7 +538,185 @@ def main() -> None:
     # Pipeline contract: pass the input path through unchanged so
     # aa-upload can sit between stages as a tee. Downstream tools see
     # the same local path the user gave us.
-    print(input_path)
+    stdio.emit(input_path)
+
+
+def _dispatch(mode: str, args, input_path: Path, gcp_bucket) -> None:
+    """Run the original-mode upload (called with library stdout on stderr)."""
+    if mode == "as-is":
+        _upload_as_is(
+            local_folder=input_path,
+            destination_prefix=args.destination_prefix,
+            gcp_bucket=gcp_bucket,
+            dry_run=args.dry_run,
+        )
+    else:  # echosounder
+        _upload_echosounder(
+            input_path=input_path,
+            ship_name=args.ship_name,
+            survey_name=args.survey_name,
+            sonar_model=args.sonar_model,
+            data_source=args.data_source,
+            gcp_bucket=gcp_bucket,
+            debug=args.debug,
+            dry_run=args.dry_run,
+        )
+
+
+# --------------------------------------------------------------------------- #
+# gs:// destination mode
+# --------------------------------------------------------------------------- #
+def _object_uri(dest: str, source_name: str, *, into: bool) -> str:
+    return uris.join(dest, source_name) if into else dest
+
+
+def _looks_like_object(dest: str) -> bool:
+    """'gs://b/p/x.nc' names an object; 'gs://b/p/' and 'gs://b/p' a prefix."""
+    _, key = uris.parse_gcs(dest)
+    last = key.rsplit("/", 1)[-1]
+    return bool(last) and not key.endswith("/") and "." in last
+
+
+def _remote_zarr_hash(uri: str) -> Optional[str]:
+    """aa_product_hash in a remote Zarr store's root attributes, if any."""
+    bucket, key = uris.parse_gcs(uri)
+    for meta in ("zarr.json", ".zattrs"):
+        info = uris.backend().stat(bucket, f"{key.rstrip('/')}/{meta}")
+        if info is None:
+            continue
+        with tempfile.TemporaryDirectory(prefix="aa-upload-") as tmp:
+            local = Path(tmp) / meta
+            uris.backend().download(bucket, info.key, local)
+            data = json.loads(local.read_text(encoding="utf-8"))
+        attrs = data.get("attributes", data) if meta == "zarr.json" else data
+        value = attrs.get(provenance.ATTR_HASH)
+        return str(value) if value else None
+    return None
+
+
+def _already_there(local: Path, uri: str, prov: Optional[dict]) -> bool:
+    """Does the object already hold this product (or these exact bytes)?"""
+    product = (prov or {}).get("product") or {}
+    derived = bool(prov) and product.get("role") != "source"
+    if local.is_dir():
+        return derived and _remote_zarr_hash(uri) == product.get("hash")
+    info = uris.stat(uri)
+    if info is None:
+        return False
+    remote_id = identity.gcs_identity(info.md5, info.size)
+    if remote_id is not None and remote_id == identity.file_identity(local):
+        return True                       # byte-identical
+    recorded_md5 = info.metadata.get(uris.META_MD5)
+    if recorded_md5 and info.md5 and recorded_md5 != info.md5:
+        return False                      # rewritten since it was published
+    return derived and info.metadata.get(uris.META_HASH) == product.get("hash")
+
+
+def _held_product(uri: str) -> Optional[str]:
+    """The product hash an existing object claims, if any (for the replace note)."""
+    try:
+        info = uris.stat(uri)
+    except Exception:
+        return None
+    return (info.metadata.get(uris.META_HASH) if info is not None else None) or None
+
+
+def _note(args, msg: str) -> None:
+    if not args.quiet:
+        print(f"aa-upload: {msg}", file=sys.stderr)
+
+
+def _main_gcs(args, sources: list, dest: str) -> None:
+    """Upload each input to the gs:// destination; print the object URIs."""
+    if args.as_is or args.destination_prefix or args.ship_name or args.survey_name \
+            or args.sonar_model or args.gcp_env or args.gcp_bucket_name:
+        logger.error("With a gs:// destination the URI decides the bucket and path; "
+                     "--as-is/--destination_prefix/--ship_name/--survey_name/--sonar_model/"
+                     "--gcp_env/--gcp_bucket_name do not apply.")
+        sys.exit(2)
+    if args.project_id:
+        os.environ["AALIBRARY_GCP_PROJECT_ID"] = args.project_id
+    tokens = stdio.many_inputs(sources, SPEC.name)
+
+    # Resolve every input and its object URI first, so two inputs that would
+    # land on the same object are refused before anything is uploaded.
+    plan = []
+    code = 0
+    for token in tokens:
+        try:
+            if uris.is_gcs(token):
+                local = uris.localize(token).path
+            else:
+                local = Path(os.path.abspath(Path(uris.from_file_uri(token)).expanduser()))
+                if not local.exists():
+                    raise FileNotFoundError(f"no such file: {token}")
+        except FileNotFoundError as exc:
+            print(f"aa-upload: {exc}", file=sys.stderr)
+            code = 1
+            continue
+        except Exception as exc:  # credentials, network
+            print(f"aa-upload: cannot read {token}: {exc}", file=sys.stderr)
+            code = 1
+            continue
+        into = (len(tokens) > 1 or local.is_dir() or not _looks_like_object(dest))
+        name = uris.basename(token) if uris.is_gcs(token) else local.name
+        plan.append((token, local, _object_uri(dest, name, into=into)))
+    seen: dict = {}
+    for token, _, uri in plan:
+        if uri in seen:
+            stdio.fail(SPEC.name, f"{seen[uri]} and {token} would both be uploaded to {uri}; "
+                                  "upload them separately or rename one", 2)
+        seen[uri] = token
+
+    for token, local, uri in plan:
+        try:
+            prov = provenance.read(local)
+            product = (prov or {}).get("product") or {}
+            derived = bool(prov) and product.get("role") != "source"
+            if not args.force and _already_there(local, uri, prov):
+                what = (f"product aa:{str(product.get('hash', ''))[:8]}"
+                        if derived else "file (same MD5)")
+                _note(args, f"reusing {uri} (it already holds this {what}; "
+                            "--force uploads again)")
+            elif args.dry_run:
+                size = (sum(p.stat().st_size for p in local.rglob("*") if p.is_file())
+                        if local.is_dir() else local.stat().st_size)
+                _note(args, f"[dry-run] would upload {local} -> {uri} ({size:,} bytes)")
+            else:
+                metadata = None
+                if derived:
+                    metadata = {
+                        uris.META_HASH: product.get("hash", ""),
+                        uris.META_BASE: prov.get("base", ""),
+                        uris.META_TOOL: ((prov.get("pipeline") or [{}])[-1]).get("tool", ""),
+                    }
+                    if product.get("recipe"):
+                        metadata[uris.META_RECIPE] = product["recipe"]
+                if local.is_file():
+                    held = _held_product(uri)
+                    if held and held != product.get("hash"):
+                        _note(args, f"replacing {uri} (it held product aa:{held[:8]})")
+                    if metadata is not None:
+                        metadata[uris.META_MD5] = identity.md5_b64(local)
+                    with contextlib.redirect_stdout(sys.stderr):
+                        uris.publish(local, uri, metadata=metadata, keep_in_cache=False)
+                    _note(args, f"uploaded {local} -> {uri}")
+                else:
+                    with contextlib.redirect_stdout(sys.stderr):
+                        up, same, gone = uris.publish_tree(local, uri, metadata=metadata)
+                    _note(args, f"uploaded {local} -> {uri}: {up} files uploaded, "
+                                f"{same} unchanged" + (f", {gone} stale objects removed"
+                                                       if gone else ""))
+            stdio.emit(local if args.tee else uri)
+        except SystemExit:
+            raise
+        except FileNotFoundError as exc:
+            print(f"aa-upload: {exc}", file=sys.stderr)
+            code = 1
+        except Exception as exc:  # credentials, permissions, network
+            print(f"aa-upload: cannot upload {token}: {exc}", file=sys.stderr)
+            code = 1
+    sys.exit(code)
 
 
 def _resolve_gcp_bucket(

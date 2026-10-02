@@ -89,7 +89,91 @@ def _read_input_path_from_stdin() -> Optional[str]:
     return token or None
 
 
+from aalibrary.console._core import (
+    Help, Run, ToolSpec, add_common_flags, canon, render, show_help, stdio,
+)
+
+SPEC = ToolSpec(
+    name="aa-graph",
+    role="representation",
+    kind="echogram",
+    op="aa_graph.echogram",
+    op_version=1,
+    ext=".png",
+    engines=(),
+    # Options that change the picture. They identify the image (so the
+    # same rendering is reused); the science shown is the input product's.
+    params={
+        "var": canon.text, "channel": canon.integer, "frequency": canon.number,
+        "single": canon.boolean, "vmin": canon.number, "vmax": canon.number,
+        "cmap": canon.text, "figwidth": canon.number, "rowheight": canon.number,
+        "no_flip": canon.boolean, "no_pie": canon.boolean, "pie_height": canon.number,
+        "decimate": canon.integer, "ymin": canon.number, "ymax": canon.number,
+        "dpi": canon.integer,
+    },
+)
+
+HELP = Help(
+    summary="Draw an echogram PNG of a NetCDF product (Sv, MVBS, masks, clusters).",
+    does=(
+        "Plots one variable, one panel per channel, with a pie row showing the "
+        "distribution of values or cluster labels. Categorical data (masks, "
+        "cluster labels) gets a discrete palette automatically."
+    ),
+    stdin=("One flat NetCDF path or gs:// URI (Sv, MVBS, NASC, a mask, ...). After "
+           "aa-clean the file holds both Sv (unchanged) and Sv_corrected (cleaned): "
+           "the default draws Sv; add --var Sv_corrected to see the cleaned data."),
+    stdout="The PNG's absolute path (or gs:// URI). The last stdout line is the "
+           "image, which aa_show() in notebooks relies on.",
+    options=[
+        ("--var NAME", "variable to plot (default: Sv, then other common names)"),
+        ("--channel N | --frequency HZ | --single", "plot one channel only"),
+        ("--vmin DB --vmax DB", "colour limits (defaults per variable, e.g. Sv -80/-30)"),
+        ("--decimate N", "plot every Nth ping (large files)"),
+        ("--ymin M --ymax M", "depth window"),
+        ("-o, --output_path PATH", "explicit output (.png, .svg or .pdf); local or gs://"),
+        ("--dpi N", "resolution (default 100)"),
+    ],
+    files=(
+        "Writes <name of the input product>.png beside the input: the image of "
+        "HB1603_..._35e8864f.nc is HB1603_..._35e8864f.png. Re-drawing with the "
+        "same options reuses the existing PNG; different options replace it "
+        "(use -o to keep several renderings)."
+    ),
+    pipeline=("Last stage: ... | aa-sv | aa-graph, or ... | aa-clean | aa-graph "
+              "--var Sv_corrected."),
+    science={
+        "var": "variable drawn (default: Sv, then other common names)",
+        "channel": "draw only channel index N",
+        "frequency": "draw only the channel nearest F Hz",
+        "single": "draw only the first channel",
+        "vmin": "lower colour limit (default per variable, Sv -80 dB)",
+        "vmax": "upper colour limit (default per variable, Sv -30 dB)",
+        "cmap": "matplotlib colour map",
+        "figwidth": "figure width, inches",
+        "rowheight": "height of each channel row, inches",
+        "no_flip": "don't put depth increasing downwards",
+        "no_pie": "no distribution (pie) row",
+        "pie_height": "height of the pie row, inches",
+        "decimate": "draw every Nth ping",
+        "ymin": "top of the depth window",
+        "ymax": "bottom of the depth window",
+        "dpi": "resolution",
+    },
+    examples=[
+        "aa-nc x.raw --sonar_model EK60 | aa-sv | aa-graph --vmin -80 --vmax -30",
+        "... | aa-clean | aa-graph --var Sv_corrected",
+        "aa-graph gs://bucket/derived/x_35e8864f.nc --frequency 38000 --dest gs://bucket/figs/",
+    ],
+)
+
+
 def print_help() -> None:
+    """Curated help (also used by the docs generator)."""
+    sys.stdout.write(render(SPEC, HELP, _build_parser()))
+
+
+def print_help_full() -> None:
     help_text = r"""
 Usage: aa-graph [OPTIONS] [INPUT_PATH]
 
@@ -133,10 +217,21 @@ Subsetting / performance:
   --ymax FLOAT              Crop upper y-limit (in metres if axis is depth).
 
 Output:
-  -o, --output_path PATH    Output PNG path (default: <stem>_graph.png).
+  -o, --output_path PATH    Output path, local or gs:// (.png, .svg, .pdf; .png
+                            added when there is no extension). Default: the
+                            input product's name with .png, beside the input
+                            (AA_NAMING=legacy: <stem>_graph.png).
   --dpi INT                 Output DPI (default: 100).
   --quiet                   Suppress INFO logs; final path still prints.
-  -h, --help                Show this help and exit.
+  --base NAME               Name the image NAME.png instead.
+  --dest DIR|gs://PREFIX    Write the default-named image there.
+  --force                   Redraw even if an identical image exists.
+  -h, --help                Short help; --help-all shows this text.
+
+Variables: after aa-clean the file holds Sv (unchanged) and Sv_corrected
+(cleaned); pass --var Sv_corrected to draw the cleaned data. Input may be a
+gs:// URI. Provenance of the product drawn is embedded in the PNG (see
+aa-metadata).
 
 By default, multi-channel datasets are plotted with one subplot per channel,
 vertically stacked, sharing the x-axis. Subplot titles are short and
@@ -167,6 +262,8 @@ _VAR_DISPLAY_DEFAULTS = {
     # name        : (vmin, vmax, units)
     "Sv":          (-80, -30, "dB"),
     "Sv_clean":    (-80, -30, "dB"),
+    "Sv_corrected": (-80, -30, "dB"),   # aa-clean's cleaned Sv
+    "Sv_noise":    (-150, -80, "dB"),   # aa-clean / aa-noise-est noise estimate
     "MVBS":        (-80, -30, "dB"),
     "TS":          (-90, -20, "dB"),    # single-target TS spans wider than Sv
     "NASC":        (None, None, "m\u00b2 nmi\u207b\u00b2"),  # linear; autoscale
@@ -297,8 +394,16 @@ def _resolve_y_axis(ds, da, x_dim: str):
     Echopype's raw Sv output stores `echo_range` as a 2-D data variable
     (channel, ping_time, range_sample) rather than a 1-D coord — so a
     naive plot ends up with integer sample indices on the y-axis. This
-    helper reduces echo_range / depth across non-range dims to a 1-D
+    helper reduces echo_range / depth for the panel's own channel to a 1-D
     vector and swaps it onto the range dimension.
+
+    Built per channel. The previous version averaged across every channel
+    and every ping. In a combined file, channels (and source files) can
+    have different sample counts and spacing, NaN-padded to a common
+    length. Past the shortest channel's last sample that average stepped
+    backwards, and pcolormesh refused the non-monotonic axis ("The input
+    coordinate is not sorted in increasing order"). It also labelled each
+    channel with a blend of the other channels' ranges.
 
     A simplified, no-fluff version of aa-plot's `_ensure_y_axis_coord`.
     """
@@ -321,23 +426,62 @@ def _resolve_y_axis(ds, da, x_dim: str):
         if range_dim is None:
             continue
 
+        # Use only this panel's channel. echogram() has already reduced `da`
+        # to one channel with .isel, which leaves the channel as a scalar
+        # coord; select the same one from `src`.
+        for d in src.dims:
+            if (d != range_dim and d not in da.dims and d in da.coords
+                    and da.coords[d].ndim == 0):
+                src = src.sel({d: da.coords[d].values})
+
         other_dims = [d for d in src.dims if d != range_dim]
         try:
-            if other_dims:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")  # "Mean of empty slice"
-                    vec = src.mean(dim=other_dims, skipna=True)
-            else:
-                vec = src
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # "Mean of empty slice"
+                vec = src.mean(dim=other_dims, skipna=True) if other_dims else src
+                spread = (
+                    (src.max(dim=other_dims, skipna=True)
+                     - src.min(dim=other_dims, skipna=True))
+                    if other_dims else None
+                )
             if vec.ndim != 1:
                 continue
-            vals = np.asarray(vec.values)
-            if vals.dtype.kind == "f" and not np.any(np.isfinite(vals)):
+            vals = np.asarray(vec.values, dtype=float)
+            finite = np.isfinite(vals)
+            if not finite.any():
                 continue  # all-NaN; not useful
-            da = da.assign_coords({cand: (range_dim, vals)})
+
+            # Samples that no ping reaches are padding from the combine.
+            # They hold no data for this channel, so drop them.
+            keep = np.flatnonzero(finite)
+            vals = vals[keep]
+            da_k = da.isel({range_dim: keep})
+
+            if vals.size > 1 and not np.all(np.diff(vals) > 0):
+                logger.warning(
+                    f"'{cand}' is not strictly increasing for this channel; "
+                    f"plotting against '{range_dim}' instead."
+                )
+                continue
+
+            # One depth axis per channel is exact only if every ping shares
+            # the same range bins. If the sample spacing changed during the
+            # window (e.g. a pulse-length change between files), say so.
+            if spread is not None and vals.size > 1:
+                spr = np.asarray(spread.values, dtype=float)[keep]
+                step = float(np.median(np.diff(vals)))
+                if np.nanmax(spr, initial=0.0) > 0.5 * step:
+                    logger.warning(
+                        f"'{cand}' differs between pings for this channel "
+                        "(settings changed during the window?). The y-axis "
+                        "uses the average, so some pings are drawn at "
+                        "approximate depths."
+                    )
+
+            da_k = da_k.assign_coords({cand: (range_dim, vals)})
             if cand != range_dim:
-                da = da.swap_dims({range_dim: cand})
-            return da, cand
+                da_k = da_k.swap_dims({range_dim: cand})
+            return da_k, cand
         except Exception:
             continue
 
@@ -1350,21 +1494,12 @@ def echogram(
 # CLI entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    # Empty argv + piped stdin → inject the path token so argparse sees it.
-    if len(sys.argv) == 1:
-        token = _read_input_path_from_stdin()
-        if token:
-            sys.argv.append(token)
-        else:
-            print_help()
-            raise SystemExit(0)
-
+def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Lightweight echogram plotter (PNG output, Jupyter-friendly).",
         add_help=False,
     )
-    p.add_argument("input_path", type=Path, nargs="?")
+    p.add_argument("input_path", type=str, nargs="?")
     p.add_argument("--var", default=None)
     p.add_argument("--channel", type=int, default=None)
     p.add_argument("--frequency", type=float, default=None)
@@ -1383,16 +1518,24 @@ def main() -> None:
     p.add_argument("--decimate", type=int, default=1)
     p.add_argument("--ymin", type=float, default=None)
     p.add_argument("--ymax", type=float, default=None)
-    p.add_argument("-o", "--output_path", type=Path, default=None)
+    p.add_argument("-o", "--output_path", type=str, default=None)
     p.add_argument("--dpi", type=int, default=100)
     p.add_argument("--quiet", action="store_true")
-    p.add_argument("-h", "--help", action="store_true")
+    add_common_flags(p)
+    return p
 
-    args = p.parse_args()
 
-    if args.help:
+def main() -> None:
+    # No args on a terminal: help. (An empty pipe is an error: see stdio.)
+    if len(sys.argv) == 1 and not stdio.stdin_is_piped():
         print_help()
         raise SystemExit(0)
+
+    p = _build_parser()
+    if show_help(SPEC, HELP, p, full=print_help_full):
+        raise SystemExit(0)
+
+    args = p.parse_args()
 
     _configure_logging(args.quiet)
 
@@ -1402,19 +1545,6 @@ def main() -> None:
     import os
     os.environ.setdefault("MPLBACKEND", "Agg")
 
-    # Resolve input path (positional > stdin > fail)
-    if args.input_path is None:
-        token = _read_input_path_from_stdin()
-        if not token:
-            logger.error("No INPUT_PATH provided and no stdin token available.")
-            raise SystemExit(2)
-        args.input_path = Path(token)
-        logger.info(f"Read input path from stdin: {args.input_path}")
-
-    if not args.input_path.exists():
-        logger.error(f"Input file does not exist: {args.input_path}")
-        raise SystemExit(1)
-
     # Mutually exclusive selection flags
     if args.single and (args.channel is not None or args.frequency is not None):
         logger.error("Use either --single OR a specific --channel/--frequency (not both).")
@@ -1423,21 +1553,39 @@ def main() -> None:
         logger.error("Use either --channel OR --frequency (not both).")
         raise SystemExit(2)
 
+    # Resolve input (positional > stdin; local path or gs:// URI)
+    token = stdio.one_input(args.input_path, SPEC.name)
+    run = Run(SPEC, args)
+    src = run.input(token)
+
     chan = args.channel
     if args.single and chan is None:
         chan = 0
 
-    # Resolve output path
-    if args.output_path is None:
-        args.output_path = (
-            args.input_path.with_stem(args.input_path.stem + "_graph")
-            .with_suffix(".png")
-        )
+    # Resolve output. -o is used as given; a missing extension gets .png
+    # (matplotlib would write .png anyway, and the printed path must match).
+    explicit = None
+    ext = ".png"
+    if args.output_path:
+        explicit = args.output_path
+        suffix = Path(explicit.rsplit("/", 1)[-1]).suffix
+        if suffix:
+            ext = suffix.lower()
+        else:
+            explicit = explicit + ".png"
+    out = run.plan(
+        ext=ext,
+        explicit=explicit,
+        legacy=lambda: src.local.with_stem(src.local.stem + "_graph").with_suffix(".png"),
+    )
+    if run.reusable(out):
+        run.finish(out)
+        return
 
     try:
-        logger.info(f"Plotting {args.input_path.name}")
+        logger.info(f"Plotting {src.name}")
         fig = echogram(
-            args.input_path,
+            src.local,
             var=args.var,
             channel=chan,
             frequency=args.frequency,
@@ -1454,15 +1602,15 @@ def main() -> None:
             pie_height=args.pie_height,
         )
 
-        args.output_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Saving PNG: {args.output_path}")
-        fig.savefig(args.output_path, dpi=args.dpi, bbox_inches="tight")
+        out.local.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving image: {out.target}")
+        fig.savefig(out.local, dpi=args.dpi, bbox_inches="tight")
 
         import matplotlib.pyplot as plt
         plt.close(fig)
 
-        # Pipeline contract: print the final PNG path on stdout.
-        print(args.output_path.resolve())
+        # Pipeline contract: print the final image path (or URI) on stdout.
+        run.finish(out)
 
     except Exception as e:
         logger.exception(f"aa-graph failed: {e}")
