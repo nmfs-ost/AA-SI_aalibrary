@@ -286,7 +286,14 @@ def process_file(
     import echopype as ep  # deferred so --help stays fast
 
     logger.info(f"Loading EchoData from {input_path}")
-    ed = ep.open_converted(str(input_path))
+    # Memory must not grow with the length of the survey (see aa-combine):
+    #  * chunks={}: dask arrays in the file's own chunking, so compute_Sv
+    #    builds a graph and to_netcdf below streams it. Opened plainly, a
+    #    combined survey is read whole and Sv needs several times its size.
+    #  * A 1 MB HDF5 chunk cache per variable instead of netCDF-C's 64 MB:
+    #    every read is of whole chunks, so a bigger cache only holds memory.
+    _small_read_cache()
+    ed = ep.open_converted(str(input_path), chunks={})
 
     # Build kwargs lazily — only pass waveform_mode / encode_mode when the
     # user explicitly provided them. echopype's compute_Sv treats these as
@@ -310,8 +317,50 @@ def process_file(
     output_path = Path(output_path).with_suffix(".nc")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"Saving Sv dataset to {output_path}")
-    ds_Sv.to_netcdf(output_path)
+    _write_streaming(ds_Sv, output_path)
     logger.success(f"Sv computation complete: {output_path}")
+
+
+def _write_streaming(ds, output_path: Path) -> None:
+    """Write *ds* to NetCDF in memory that does not grow with its length.
+
+    * Each HDF5 chunk is one dask chunk, so every write is a whole chunk,
+      never read back and rewritten.
+    * One chunk is computed at a time: with threads, computed chunks queued
+      in memory for the locked writer.
+    * The large arrays are written one per pass. Sv is computed from
+      echo_range, so written together dask keeps every echo_range chunk it
+      made for Sv until echo_range's own turn comes: one whole
+      channel x ping x sample array (0.8 GB for 48,000 EK60 pings; 30 GB
+      or more for a long survey). Apart, echo_range is computed twice, and
+      memory stays flat.
+    """
+    import dask
+
+    for variable in ds.variables.values():
+        chunks = getattr(variable.data, "chunksize", None)
+        if chunks and variable.ndim and variable.dtype.kind in "biufcmM":
+            variable.encoding["chunksizes"] = tuple(int(c) for c in chunks)
+            variable.encoding.pop("contiguous", None)
+
+    large = [
+        name for name, variable in ds.data_vars.items()
+        if getattr(variable.data, "npartitions", 1) > 1
+    ]
+    with dask.config.set(scheduler="synchronous"):
+        ds.drop_vars(large).to_netcdf(output_path)
+        for name in large:
+            ds[[name]].to_netcdf(output_path, mode="a")
+
+
+def _small_read_cache(size: int = 1 << 20) -> None:
+    """Give NetCDF files opened from now on an HDF5 chunk cache of *size*."""
+    try:
+        import netCDF4
+    except ImportError:  # pragma: no cover - h5netcdf-only installs
+        return
+    _, nelems, preemption = netCDF4.get_chunk_cache()
+    netCDF4.set_chunk_cache(size, nelems, preemption)
 
 
 if __name__ == "__main__":

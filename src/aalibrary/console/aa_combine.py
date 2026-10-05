@@ -1183,6 +1183,64 @@ def _seams(
 # --------------------------------------------------------------------------- #
 # Writing
 # --------------------------------------------------------------------------- #
+#: Pings per NetCDF chunk when --chunk_pings is not given.
+_NETCDF_CHUNK_PINGS = 1000
+
+
+def _align_netcdf_chunks(echodata, pings: int) -> None:
+    """Chunk every ping_time group evenly and write HDF5 chunks to match.
+
+    The combined arrays carry each source file's own chunking, which is
+    uneven at every file boundary, while NetCDF picks one chunk shape per
+    variable. Mismatched, every output chunk is written in pieces, read back
+    and recompressed, which made a 24-file combine five times slower. Even
+    dask chunks with the same HDF5 chunk shape make each write one whole
+    chunk.
+    """
+    for group in echodata.group_paths:
+        ds = echodata[group]
+        if ds is None or "ping_time" not in ds.dims:
+            continue
+        ds = ds.chunk({"ping_time": pings})
+        for variable in ds.variables.values():
+            chunks = getattr(variable.data, "chunksize", None)
+            if chunks and variable.ndim:
+                variable.encoding["chunksizes"] = tuple(int(c) for c in chunks)
+                variable.encoding.pop("contiguous", None)
+        echodata[group] = ds
+
+
+#: HDF5 chunk cache per variable per open NetCDF file (netCDF-C's default is 64 MB).
+_READ_CACHE_BYTES = 1 << 20
+
+
+def _set_read_cache(size: int) -> Optional[tuple]:
+    """Give NetCDF files opened from now on an HDF5 chunk cache of *size*.
+
+    Returns the previous setting, or None when netCDF4 is not installed.
+    """
+    try:
+        import netCDF4
+    except ImportError:  # pragma: no cover - h5netcdf-only installs
+        return None
+    previous = netCDF4.get_chunk_cache()
+    netCDF4.set_chunk_cache(size, previous[1], previous[2])
+    return previous
+
+
+@contextlib.contextmanager
+def _small_read_cache(size: int = _READ_CACHE_BYTES):
+    """NetCDF files opened inside get a small HDF5 chunk cache (see combine())."""
+    previous = _set_read_cache(size)
+    try:
+        yield
+    finally:
+        if previous is not None:
+            import netCDF4
+
+            netCDF4.set_chunk_cache(*previous)
+
+
 def _supported(function, wanted: dict) -> dict:
     """Keep only the kwargs *function* actually accepts, and say what was cut.
 
@@ -1862,16 +1920,50 @@ def combine(
     storage_options: dict,
     progress: bool,
 ) -> None:
-    """Open, combine and write. Everything blocking has already been checked."""
+    """Open, combine and write. Everything blocking has already been checked.
+
+    Memory must not grow with the number of files. Three things made it:
+
+    * Opened without dask chunks, each file is lazily *indexed* but not lazily
+      *computed*, so xr.concat inside combine_echodata loaded every file
+      whole: ~8x the on-disk size, which a 5-hour EK60 range (39 files) took
+      past 31 GB. Opening with chunks={} keeps every variable a dask array in
+      the file's own chunking; combining builds a graph and the write streams
+      it.
+    * HDF5 keeps a read cache per variable per open file, 64 MB by default,
+      and filled it as the write read through the inputs. The small cache is
+      in force for the whole run, not just while opening: xarray reopens
+      files it has closed with whatever default is current, and HDF5 hands a
+      file that is already open (the QC pass's) its existing caches. main()
+      therefore sets it before the QC pass opens anything. The output does
+      not need a bigger one, because it is written in whole chunks (below).
+    * With threads, reads ran ahead of the locked, compressing NetCDF writer
+      and waited in memory for their turn.
+    """
+    with _small_read_cache():
+        _combine(paths, target, channel_selection, overwrite, compression,
+                 chunk_pings, consolidated, storage_options, progress)
+
+
+def _combine(
+    paths: list[Path],
+    target: Target,
+    channel_selection: Optional[list[str]],
+    overwrite: bool,
+    compression: str,
+    chunk_pings: Optional[int],
+    consolidated: bool,
+    storage_options: dict,
+    progress: bool,
+) -> None:
     import echopype as ep
 
     _progress(progress, "progress", done=0, total=len(paths) + 1, unit="files")
     echodatas = []
     for index, path in enumerate(paths, start=1):
         logger.info(f"Opening {path.name}")
-        # Lazy, and it must stay lazy: combine_echodata refuses objects with
-        # no source file, and an eagerly-loaded survey does not fit in memory.
-        echodatas.append(ep.open_converted(str(path)))
+        # chunks={}: lazy and dask-backed; see combine() for why it matters.
+        echodatas.append(ep.open_converted(str(path), chunks={}))
         _progress(progress, "progress", done=index, total=len(paths) + 1, unit="files")
 
     combine_kwargs = _supported(
@@ -1917,7 +2009,12 @@ def combine(
             },
         )
         logger.info(f"Writing {target.raw} (NetCDF export)")
-        combined.to_netcdf(**write_kwargs)
+        _align_netcdf_chunks(combined, chunk_pings or _NETCDF_CHUNK_PINGS)
+        # One chunk at a time (see combine()).
+        import dask
+
+        with dask.config.set(scheduler="synchronous"):
+            combined.to_netcdf(**write_kwargs)
         return
 
     controlled = bool(chunk_pings) or compression not in {"default", "zlib"}
@@ -2058,6 +2155,15 @@ def main() -> None:
     if "--describe" in sys.argv:
         print(json.dumps(describe(parser), separators=(",", ":"), default=str))
         sys.exit(0)
+
+    # Small HDF5 read caches for every NetCDF file this run opens, the QC
+    # pass included, for the life of the process (see combine()). Set
+    # outright, not by entering _small_read_cache() by hand: a context
+    # manager nobody keeps is closed as soon as it is collected, which
+    # restored the 64 MB default at once. The QC pass then opened every
+    # input with big caches, HDF5 shares a file that is opened twice, and the
+    # combine read through those caches: memory grew with every file.
+    _set_read_cache(_READ_CACHE_BYTES)
 
     if len(sys.argv) == 1 and not stdio.stdin_is_piped():
         print_help()

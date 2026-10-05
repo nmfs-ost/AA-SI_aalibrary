@@ -446,6 +446,8 @@ def _resolve_y_axis(ds, da, x_dim: str):
                 )
             if vec.ndim != 1:
                 continue
+            # One read of the source for all three reductions.
+            vec, spread = _computed(vec, spread)
             vals = np.asarray(vec.values, dtype=float)
             finite = np.isfinite(vals)
             if not finite.any():
@@ -516,6 +518,13 @@ def _is_categorical(da) -> bool:
     if da.dtype.kind in ("i", "u", "b"):
         return True
     try:
+        # A lazy array is thinned before it is read: the check below looks
+        # at 50,000 values, and reading the whole panel to find them grows
+        # with the length of the survey.
+        if _is_lazy(da) and da.size > _CATEGORICAL_SAMPLE_CELLS:
+            longest = max(da.dims, key=lambda d: da.sizes[d])
+            step = -(-da.size // _CATEGORICAL_SAMPLE_CELLS)
+            da = da.isel({longest: slice(None, None, step)})
         vals = np.asarray(da.values).ravel()
         finite = vals[np.isfinite(vals)]
         if finite.size == 0:
@@ -568,14 +577,47 @@ def _cluster_label_stats(da):
     integer label values when every finite value is integer-valued,
     which is the common case.
     """
-    vals = np.asarray(da.values).ravel()
-    finite = vals[np.isfinite(vals)]
-    if finite.size == 0:
+    # Counted a block at a time and merged, so a lazy panel is never whole
+    # in memory.
+    parts = [part for part in _per_block(da, _unique_finite) if part[0].size]
+    if not parts:
         return np.array([], dtype=np.int64), np.array([], dtype=np.int64)
-    if np.all(np.equal(np.mod(finite, 1.0), 0.0)):
-        finite = finite.astype(np.int64)
-    unique, counts = np.unique(finite, return_counts=True)
+    labels = np.concatenate([u for u, _ in parts])
+    unique, inverse = np.unique(labels, return_inverse=True)
+    counts = np.bincount(
+        inverse, weights=np.concatenate([c for _, c in parts]), minlength=unique.size
+    ).astype(np.int64)
+    if np.all(np.equal(np.mod(unique, 1.0), 0.0)):
+        unique = unique.astype(np.int64)
     return unique, counts
+
+
+def _finite(block) -> np.ndarray:
+    values = np.asarray(block).ravel()
+    return values[np.isfinite(values)]
+
+
+def _unique_finite(block):
+    return np.unique(_finite(block), return_counts=True)
+
+
+def _per_block(da, function) -> list:
+    """``function`` of each block of *da*'s data: one block if in memory.
+
+    For a dask-backed panel, one chunk is in memory per worker at a time,
+    whatever the length of the survey.
+    """
+    data = da.data
+    if not hasattr(data, "to_delayed"):
+        return [function(np.asarray(data))]
+    import dask
+
+    return list(dask.compute(*[dask.delayed(function)(block)
+                               for block in data.to_delayed().ravel()]))
+
+
+def _is_lazy(da) -> bool:
+    return getattr(da, "chunks", None) is not None
 
 
 def _build_discrete_cmap(cmap_name: str, labels):
@@ -830,18 +872,27 @@ def _pie_data_continuous(da_panel, cmap_name, eff_vmin, eff_vmax,
     """
     import matplotlib.pyplot as plt
 
-    vals = np.asarray(da_panel.values).ravel()
-    finite = vals[np.isfinite(vals)]
-    if finite.size == 0:
+    # Block by block (see _per_block): the panel is never whole in memory.
+    def extent(block):
+        finite = _finite(block)
+        if not finite.size:
+            return None
+        return float(finite.min()), float(finite.max())
+
+    extents = [e for e in _per_block(da_panel, extent) if e is not None]
+    if not extents:
         return np.array([]), [], []
 
-    lo = eff_vmin if eff_vmin is not None else float(np.nanmin(finite))
-    hi = eff_vmax if eff_vmax is not None else float(np.nanmax(finite))
+    lo = eff_vmin if eff_vmin is not None else min(e[0] for e in extents)
+    hi = eff_vmax if eff_vmax is not None else max(e[1] for e in extents)
     if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
         return np.array([]), [], []
 
     edges = np.linspace(lo, hi, n_bins + 1)
-    counts, _ = np.histogram(finite, bins=edges)
+    counts = np.sum(
+        _per_block(da_panel, lambda block: np.histogram(_finite(block), bins=edges)[0]),
+        axis=0,
+    )
     centers = (edges[:-1] + edges[1:]) / 2.0
     norm_centers = (centers - lo) / (hi - lo)
 
@@ -1200,6 +1251,67 @@ def _nearest_freq_index(ds, chan_dim: str, target_hz: float) -> Optional[int]:
 # Subsetting helpers
 # ---------------------------------------------------------------------------
 
+def _computed(*arrays):
+    """Compute lazy DataArrays together, so shared reads happen once.
+
+    None passes through. Arrays that are already in memory are returned as
+    they are.
+    """
+    lazy = [a for a in arrays if a is not None and getattr(a, "chunks", None)]
+    if not lazy:
+        return arrays
+    import dask
+
+    done = iter(dask.compute(*lazy))
+    return tuple(
+        next(done) if a is not None and getattr(a, "chunks", None) else a
+        for a in arrays
+    )
+
+
+def _small_read_cache(size: int = 1 << 20) -> None:
+    """Give NetCDF files opened from now on an HDF5 chunk cache of *size*."""
+    try:
+        import netCDF4
+    except ImportError:  # pragma: no cover - h5netcdf-only installs
+        return
+    _, nelems, preemption = netCDF4.get_chunk_cache()
+    netCDF4.set_chunk_cache(size, nelems, preemption)
+
+
+#: Values the categorical check reads from a lazy panel.
+_CATEGORICAL_SAMPLE_CELLS = 1_000_000
+
+#: Cells drawn per output pixel, at most, along each axis.
+_CELLS_PER_PIXEL = 2
+
+
+def _for_display(da, x_dim: str, y_dim: str, width_in: float, height_in: float,
+                 dpi: Optional[float]):
+    """The panel thinned to what the picture can show.
+
+    A PNG 10 inches wide at 100 dpi has 1,000 pixel columns. Drawing
+    48,000 pings into it puts 48 into each, of which the rasterizer shows
+    one, while matplotlib holds a mesh of every cell in memory: about 1 GB
+    per 10 million, and a kill for a survey drawn without --decimate.
+    Keeping every Nth cell, no more than two per pixel, draws the same
+    picture in memory that does not grow with the survey. The pie and the
+    colour scale still use every value (they are counted block by block).
+    """
+    resolution = float(dpi) if dpi else 100.0
+    for dim, inches in ((x_dim, width_in), (y_dim, height_in)):
+        if dim not in da.dims or not inches or inches <= 0:
+            continue
+        limit = max(1, int(_CELLS_PER_PIXEL * inches * resolution))
+        size = da.sizes[dim]
+        if size > limit:
+            step = -(-size // limit)
+            logger.debug(f"Drawing every {step}th of {size} along {dim} "
+                         f"({limit} cells for the picture's pixels)")
+            da = da.isel({dim: slice(0, None, step)})
+    return da
+
+
 def _decimate(da, x_dim: str, step: int):
     if step <= 1 or x_dim not in da.dims:
         return da
@@ -1241,6 +1353,7 @@ def echogram(
     flip_y: bool = True,
     pie: bool = True,
     pie_height: float = 2.6,
+    dpi: Optional[float] = None,
 ):
     """Plot a Sv-style echogram from a NetCDF file. Returns the matplotlib Figure.
 
@@ -1253,12 +1366,22 @@ def echogram(
     A pie-chart row is drawn beneath the echogram showing the
     distribution of clusters (categorical data) or value bins
     (continuous data); pass ``pie=False`` to suppress it.
+
+    ``dpi`` is the resolution the figure will be saved at (100 if not
+    given). No more cells are drawn than it can show; see _for_display.
     """
     import xarray as xr
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
 
-    ds = xr.open_dataset(path)
+    # Memory must not grow with the length of the survey. chunks={}: dask
+    # arrays, so the depth axis below is reduced a chunk at a time and only
+    # the decimated panel is ever whole in memory (opened plainly, every
+    # reduction read a channel's full echo_range: 6 GB and a kill for a
+    # 3 GB Sv file). A 1 MB HDF5 chunk cache instead of netCDF-C's 64 MB per
+    # variable: every read is of whole chunks.
+    _small_read_cache()
+    ds = xr.open_dataset(path, chunks={})
     var = _ensure_variable(ds, var)
     da = ds[var]
 
@@ -1397,7 +1520,8 @@ def echogram(
                         "vmin/vmax are ignored for categorical/cluster data; "
                         "using full label range."
                     )
-                da_panel.plot.pcolormesh(
+                drawn = _for_display(da_panel, x_dim, y_dim, figwidth, rowheight, dpi)
+                drawn.plot.pcolormesh(
                     x=x_dim, y=y_dim, ax=ax,
                     cmap=listed_cmap, norm=norm,
                     yincrease=not do_flip,
@@ -1427,7 +1551,8 @@ def echogram(
             eff_vmin = vmin if vmin is not None else default_vmin
             eff_vmax = vmax if vmax is not None else default_vmax
             cbar_label = f"{var} ({units})" if units else f"{var}"
-            da_panel.plot.pcolormesh(
+            drawn = _for_display(da_panel, x_dim, y_dim, figwidth, rowheight, dpi)
+            drawn.plot.pcolormesh(
                 x=x_dim,
                 y=y_dim,
                 ax=ax,
@@ -1600,6 +1725,7 @@ def main() -> None:
             flip_y=not args.no_flip,
             pie=not args.no_pie,
             pie_height=args.pie_height,
+            dpi=args.dpi,
         )
 
         out.local.parent.mkdir(parents=True, exist_ok=True)
