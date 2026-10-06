@@ -80,9 +80,10 @@ HELP = Help(
     ),
     options=[
         ("--method basic|blackwell", "REQUIRED. Detector."),
-        ("--param KEY=VALUE ...", "Detector arguments. Both methods need var_name=Sv and "
-                                  "channel=<an id from the 'channel' coordinate; quote "
-                                  "it, it contains spaces>. basic: threshold (-50 = "
+        ("--param KEY=VALUE ...", "Detector arguments. channel=38kHz (by frequency) or "
+                                  "the channel's id (quote it, it contains spaces); "
+                                  "default: the channel nearest 38 kHz. var_name "
+                                  "defaults to Sv. basic: threshold (-50 = "
                                   "window -50..-40 dB; or (min,max)), offset_m (0.5), "
                                   "bin_skip_from_surface (200). blackwell: threshold "
                                   "(-75 or (Sv,theta,phi)), offset, r0, r1, wtheta, wphi."),
@@ -179,10 +180,12 @@ def print_help_full():
                                 key=value pairs. Values are safely parsed
                                 (int / float / bool / None / tuple) when
                                 possible; strings like '10m' remain strings.
-                                Both methods require var_name (e.g. Sv) and
-                                channel (an id from the 'channel' coordinate;
-                                quote the pair, the id contains spaces). List
-                                the ids with:
+                                channel: by frequency (channel=38kHz) or by
+                                its id from the 'channel' coordinate (quote the
+                                pair, the id contains spaces); default: the
+                                channel nearest 38 kHz. var_name: default Sv.
+                                Either way the id is what is hashed. List the
+                                ids with:
                                   python -c "import xarray as xr; print(*xr.open_dataset('Sv.nc').channel.values, sep=chr(10))"
                                 basic:     threshold (default -50: the window
                                            -50..-40 dB; or a (min, max) tuple),
@@ -337,6 +340,19 @@ def main():
     run = Run(SPEC, args, params={"param": _with_method_defaults(args.method, params)})
     src = run.input(token)
 
+    # The channel may be named by frequency (channel=38kHz) or left out (the
+    # one nearest 38 kHz), and var_name defaults to Sv: both are made explicit
+    # here, before anything is planned, so the hash holds the channel's id,
+    # exactly as if it had been written out.
+    try:
+        resolved = _resolve_channel(src.local, params)
+    except ValueError as e:
+        logger.error(str(e))
+        sys.exit(1)
+    if resolved != params:
+        params = resolved
+        run.params["param"] = canon.normalize(_with_method_defaults(args.method, params))
+
     allowed_extensions = {".netcdf4", ".nc"}
     ext = src.local.suffix.lower()
     if ext not in allowed_extensions:
@@ -484,6 +500,69 @@ def _with_method_defaults(method: str, params: dict) -> dict:
                 merged[name] = p.default
     merged.update(params)
     return merged
+
+
+def _channel_ids(path: Path) -> list[tuple[str, float]]:
+    """(channel id, nominal frequency Hz) of an Sv file, or of an EchoData's beams."""
+    import xarray as xr
+
+    for group in (None, "Sonar/Beam_group1", "Environment"):
+        try:
+            ds = xr.open_dataset(path, group=group) if group else xr.open_dataset(path)
+        except Exception:  # noqa: BLE001 - not that layout: try the next
+            continue
+        with ds:
+            if "channel" not in ds.coords and "channel" not in ds.dims:
+                continue
+            ids = [str(c) for c in ds["channel"].values]
+            if "frequency_nominal" in ds:
+                freqs = [float(f) for f in ds["frequency_nominal"].values.ravel()]
+            else:
+                freqs = [float("nan")] * len(ids)
+            return list(zip(ids, freqs))
+    return []
+
+
+def _resolve_channel(path: Path, params: dict) -> dict:
+    """var_name defaults to Sv; channel by frequency (or none: nearest 38 kHz)
+    becomes the channel id. A channel given as an id is left as it is."""
+    from aalibrary.console._calibration import parse_frequency
+
+    out = dict(params)
+    out.setdefault("var_name", "Sv")
+    given = out.get("channel")
+    if isinstance(given, str) and not _looks_like_frequency(given):
+        return out
+    channels = _channel_ids(path)
+    if not channels:
+        if given is None:
+            raise ValueError("No channels found to choose from; give --param channel=<id>.")
+        return out
+    want = 38000.0 if given is None else parse_frequency(str(given))
+    with_freq = [(cid, f) for cid, f in channels if f == f]
+    if not with_freq:
+        raise ValueError("The file has no frequency_nominal; give --param channel=<id>.")
+    cid, f = min(with_freq, key=lambda c: abs(c[1] - want))
+    if given is not None and abs(f - want) > 0.05 * want:
+        found = ", ".join(f"{fr / 1000:g} kHz" for _, fr in with_freq)
+        raise ValueError(f"No channel at {want / 1000:g} kHz (there are {found}).")
+    same = [c for c, fr in with_freq if fr == f]
+    if len(same) > 1:
+        raise ValueError(f"{len(same)} channels at {f / 1000:g} kHz; give the one to use: "
+                         + "; ".join(f"channel={c}" for c in same))
+    logger.info(f"Channel {cid!r} ({f / 1000:g} kHz)")
+    out["channel"] = cid
+    return out
+
+
+def _looks_like_frequency(text: str) -> bool:
+    from aalibrary.console._calibration import parse_frequency
+
+    try:
+        parse_frequency(text.strip())
+    except ValueError:
+        return False
+    return True
 
 
 def _parse_kv_pairs(pairs):

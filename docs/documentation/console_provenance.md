@@ -197,8 +197,10 @@ still runs on local files; the core moves bytes at the edges:
   gcsfuse mount that shows the object (e.g. `~/ggn-nmfs-aa-prod-1-data`),
   or a download into the cache (checked against the object's MD5).
 - **Writing** stages the file in the cache, uploads it with its sidecar,
-  stamps `aa-recipe`, `aa-product-hash`, `aa-base`, `aa-tool` and `aa-content-md5` into
-  the object's custom metadata, and keeps the staged copy in the cache so
+  stamps `aa-recipe`, `aa-product-hash`, `aa-base`, `aa-tool`, `aa-content-md5`
+  and `aa-kind` (what the product is: one tool can write several kinds, as
+  aa-annotate writes line and region files) into the object's custom metadata,
+  and keeps the staged copy in the cache so
   the next stage reads it without downloading. Every product published to
   gs:// gets a `<object>.aa.json` sidecar beside it (a store: `<store>.aa.json`),
   so its provenance can be read without downloading the product.

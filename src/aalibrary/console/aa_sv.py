@@ -49,7 +49,17 @@ SPEC = ToolSpec(
     kind="sv",
     op="echopype.calibrate.compute_Sv",
     op_version=1,
-    params={"waveform_mode": _waveform, "encode_mode": canon.choice("lower")},
+    params={
+        "waveform_mode": _waveform,
+        "encode_mode": canon.choice("lower"),
+        # Added later: hashed only when given, so plain runs keep their hash.
+        # The parsed dicts are passed to Run() (see main); a per-channel key
+        # is spelled name@<Hz>. The ECS file is an input (role
+        # "calibration"): its content enters the hash.
+        "env_params": canon.kv(),
+        "cal_params": canon.kv(),
+    },
+    optional=frozenset({"env_params", "cal_params"}),
 )
 
 HELP = Help(
@@ -64,12 +74,25 @@ HELP = Help(
     options=[
         ("-o, --output_path PATH", "Explicit output; '_Sv' is appended to its stem, as "
                                    "always. Local path or gs:// URI."),
+        ("--ecs FILE", "An Echoview calibration supplement (.ecs), local or gs://: "
+                       "per-transducer values, matched to channels by frequency "
+                       "(aa-ecs writes and shows them)."),
+        ("--env-param KEY=VALUE", "Override an environmental value (sound_speed, "
+                                  "sound_absorption, temperature, salinity, pressure, "
+                                  "pH); KEY@38kHz=VALUE for one channel. Repeatable."),
+        ("--cal-param KEY=VALUE", "Override a calibration value (gain_correction, "
+                                  "sa_correction, equivalent_beam_angle, ...); "
+                                  "KEY@38kHz=VALUE for one channel. Repeatable."),
         ("--waveform_mode CW|BB|FM", "EK80 only. Omit for EK60."),
         ("--encode_mode complex|power", "EK80 only. Omit for EK60."),
     ],
     science={
         "waveform_mode": "EK80 waveform. FM and BB are the same computation.",
         "encode_mode": "EK80 encoding.",
+        "env_params": "Environmental overrides (--env-param), as numbers. Hashed only "
+                      "when given.",
+        "cal_params": "Calibration overrides (--cal-param), as numbers. Hashed only "
+                      "when given.",
     },
     files=(
         "Reads EchoData .nc or .zarr, local or gs://. Writes <base>_<hash>.nc "
@@ -82,9 +105,14 @@ HELP = Help(
     examples=[
         "aa-nc D20160703-T060000.raw --sonar_model EK60 | aa-sv",
         "aa-sv file.nc --waveform_mode BB --encode_mode complex   # EK80",
+        "aa-sv file.nc --ecs gs://bucket/cal/HB1603.ecs",
+        "aa-sv file.nc --cal-param gain_correction@38kHz=26.12 --env-param sound_speed=1490",
     ],
     notes=["EK80 needs both --waveform_mode and --encode_mode; echopype refuses "
-           "EK80 data without them."],
+           "EK80 data without them.",
+           "An ECS file and --env-param/--cal-param cannot be combined: echopype "
+           "ignores the overrides when it has an ECS. Put the values in the ECS "
+           "(aa-ecs write) instead."],
 )
 
 
@@ -167,6 +195,30 @@ def _build_parser():
         help="Path to save processed output. '_Sv' is appended to the stem.",
     )
     parser.add_argument(
+        "--ecs",
+        type=str,
+        default=None,
+        metavar="FILE",
+        help="Echoview calibration supplement (.ecs), local path or gs:// URI.",
+    )
+    parser.add_argument(
+        "--env-param",
+        dest="env_params",
+        action="append",
+        default=None,
+        metavar="KEY=VALUE",
+        help="Environmental override (repeatable), e.g. sound_speed=1490; "
+             "KEY@38kHz=VALUE for one channel.",
+    )
+    parser.add_argument(
+        "--cal-param",
+        dest="cal_params",
+        action="append",
+        default=None,
+        metavar="KEY=VALUE",
+        help="Calibration override (repeatable), e.g. gain_correction@38kHz=26.12.",
+    )
+    parser.add_argument(
         "--waveform_mode",
         type=str,
         default=None,
@@ -199,9 +251,24 @@ def main():
     # ---------------------------
     # Validate input
     # ---------------------------
+    from aalibrary.console import _calibration as calib
+
+    try:
+        env_kv = calib.parse_kv(args.env_params, text_keys=calib.TEXT_ENV)
+        cal_kv = calib.parse_kv(args.cal_params)
+    except ValueError as exc:
+        logger.error(f"aa-sv: {exc}")
+        sys.exit(2)
+    if args.ecs and (env_kv or cal_kv):
+        logger.error("aa-sv: --ecs cannot be combined with --env-param/--cal-param "
+                     "(echopype ignores the overrides when it has an ECS); put the "
+                     "values in the ECS instead (aa-ecs write).")
+        sys.exit(2)
+
     token = stdio.one_input(args.input_path, SPEC.name)
-    run = Run(SPEC, args)
+    run = Run(SPEC, args, params={"env_params": env_kv, "cal_params": cal_kv})
     src = run.input(token)
+    ecs = run.param_file(args.ecs, role="calibration") if args.ecs else None
 
     allowed_extensions = {".netcdf4", ".nc", ".zarr"}
     ext = src.local.suffix.lower()
@@ -253,6 +320,9 @@ def main():
             output_path=out.local,
             waveform_mode=args.waveform_mode,
             encode_mode=args.encode_mode,
+            ecs_file=ecs.local if ecs else None,
+            env_kv=env_kv,
+            cal_kv=cal_kv,
         )
 
         logger.success(f"Generated {out.target} with aa-sv. Passing it to stdout...")
@@ -281,6 +351,9 @@ def process_file(
     output_path: Path,
     waveform_mode=None,
     encode_mode=None,
+    ecs_file=None,
+    env_kv=None,
+    cal_kv=None,
 ):
     """Load EchoData from NetCDF, compute Sv, and save to NetCDF."""
     import echopype as ep  # deferred so --help stays fast
@@ -310,6 +383,23 @@ def process_file(
         logger.info(f"Computing Sv (EK80 mode: {compute_kwargs})")
     else:
         logger.info("Computing Sv (using echopype defaults for this sonar)")
+
+    if ecs_file is not None:
+        logger.info(f"Calibration from ECS {ecs_file}")
+        compute_kwargs["ecs_file"] = str(ecs_file)
+    if env_kv or cal_kv:
+        from aalibrary.console import _calibration as calib
+
+        needs_base = any("@" in k for k in {**(env_kv or {}), **(cal_kv or {})})
+        base = (calib.summarize(calib.calibrator(ed, waveform_mode=waveform_mode,
+                                                 encode_mode=encode_mode))
+                if needs_base else None)
+        env = calib.overrides_for_echopype(ed, env_kv, kind="env", base=base)
+        cal = calib.overrides_for_echopype(ed, cal_kv, kind="cal", base=base)
+        if env:
+            compute_kwargs["env_params"] = env
+        if cal:
+            compute_kwargs["cal_params"] = cal
 
     ds_Sv = ep.calibrate.compute_Sv(ed, **compute_kwargs)
     ds_Sv = clean_attrs(ds_Sv)

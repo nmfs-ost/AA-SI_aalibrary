@@ -11,6 +11,8 @@ One implementation of the rules every tool follows:
     stdio       the pipe contract (what a stage reads and prints)
     helptext    curated --help, same shape for every tool
     tool        ToolSpec + Run: the five calls a product tool makes
+    chaining    what each tool reads, writes, adds and needs (front ends)
+    describe    --describe: a tool as JSON
 
 See docs/documentation/console_provenance.md for the design and
 docs/documentation/console_tool_authoring.md for how to write a tool.
@@ -20,13 +22,14 @@ from __future__ import annotations
 
 import sys
 
-from . import canon, helptext, identity, naming, provenance, stdio, uris
+from . import canon, chaining, describe, helptext, identity, naming, provenance, stdio, uris
 from .helptext import Help, render
 from .tool import Input, Output, Run, ToolSpec, add_common_flags, record_source
 
 
 def help_mode(argv: list[str] | None = None) -> str | None:
-    """'full' for --help-all, 'curated' for -h/--help, else None.
+    """'full' for --help-all, 'curated' for -h/--help, 'describe' for
+    --describe, else None.
 
     Only flags before a bare '--' count, and only as whole arguments.
     """
@@ -38,6 +41,8 @@ def help_mode(argv: list[str] | None = None) -> str | None:
             return "full"
         if arg in ("-h", "--help"):
             return "curated"
+        if arg == "--describe":
+            return "describe"
     return None
 
 
@@ -48,7 +53,9 @@ def show_help(spec: ToolSpec, help_: Help, parser=None, *, full=None,
     if mode is None:
         return False
     try:
-        if mode == "full" and full is not None:
+        if mode == "describe":
+            sys.stdout.write(describe.dumps(spec, help_, parser) + "\n")
+        elif mode == "full" and full is not None:
             full()
         else:
             sys.stdout.write(render(spec, help_, parser))
@@ -59,7 +66,8 @@ def show_help(spec: ToolSpec, help_: Help, parser=None, *, full=None,
 
 
 __all__ = [
-    "canon", "helptext", "identity", "naming", "provenance", "stdio", "uris",
+    "canon", "chaining", "describe", "helptext", "identity", "naming", "provenance", "stdio",
+    "uris",
     "Help", "render", "Input", "Output", "Run", "ToolSpec", "add_common_flags", "record_source",
     "help_mode", "show_help",
 ]

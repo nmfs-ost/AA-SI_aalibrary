@@ -52,6 +52,7 @@ META_BASE = "aa-base"
 META_TOOL = "aa-tool"
 META_MD5 = "aa-content-md5"     # the MD5 the tool published; a rewrite changes the object's
 META_RECIPE = "aa-recipe"       # the processing recipe (the <hash8> in the name, in full)
+META_KIND = "aa-kind"           # what the product is (sv, mask, lines, ...): one tool can write several
 
 
 # ---------------------------------------------------------------------------
@@ -546,7 +547,7 @@ def publish(local: Path, uri: str, *, metadata: dict | None = None,
 
 
 __all__ = [
-    "SIDECAR_SUFFIX", "META_HASH", "META_BASE", "META_TOOL", "META_MD5", "META_RECIPE",
+    "SIDECAR_SUFFIX", "META_HASH", "META_BASE", "META_TOOL", "META_MD5", "META_RECIPE", "META_KIND",
     "is_gcs", "is_remote", "parse_gcs", "join", "basename", "to_uri", "from_file_uri",
     "ObjectInfo", "backend", "stat", "cache_dir", "mounted_path", "Localized", "safe_relpath",
     "localize", "stage", "publish", "publish_tree", "prune_mirror",

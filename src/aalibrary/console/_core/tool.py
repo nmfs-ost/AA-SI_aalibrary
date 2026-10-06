@@ -60,6 +60,10 @@ class ToolSpec:
     # same computation (aa-ed and aa-nc both run echopype.open_raw and write
     # the same file) share one, so their products are interchangeable.
     identity: str = ""
+    # Scientific options added after products were already made: left out of
+    # the hash while unset, so a run without them keeps the product hash it
+    # always had (and finds the products already in the bucket).
+    optional: frozenset = frozenset()
 
     def __post_init__(self):
         if self.role not in ROLES:
@@ -221,7 +225,10 @@ def _source_sidecar_is_current(local: Path, prov: dict) -> bool:
 def canonical_params(spec: ToolSpec, args: Any) -> dict:
     out = {}
     for dest, fn in (spec.params or {}).items():
-        out[dest] = fn(getattr(args, dest, None)) if args is not None else None
+        value = fn(getattr(args, dest, None)) if args is not None else None
+        if value is None and dest in spec.optional:
+            continue
+        out[dest] = value
     return out
 
 
@@ -234,7 +241,11 @@ class Run:
         self.args = args
         base_params = canonical_params(spec, args)
         if params:
-            base_params.update({k: canon.normalize(v) for k, v in params.items()})
+            for k, v in params.items():
+                if (v is None or v == {}) and k in spec.optional:
+                    base_params.pop(k, None)
+                else:
+                    base_params[k] = canon.normalize(v)
         self.params = base_params
         self.inputs: list[Input] = []
         self.force = bool(getattr(args, "force", False)) or os.getenv("AA_REUSE", "1") == "0"
@@ -593,6 +604,8 @@ class Run:
             if out.remote and publish and out.staging is not None:
                 metadata = {uris.META_HASH: out.hash, uris.META_BASE: out.base,
                             uris.META_TOOL: self.spec.name, uris.META_RECIPE: out.recipe}
+                if out.kind:
+                    metadata[uris.META_KIND] = out.kind
                 if out.local.is_file():
                     metadata[uris.META_MD5] = identity.md5_b64(out.local)
                 side = provenance.sidecar_path(out.local)

@@ -74,6 +74,8 @@ HELP = Help(
                                   "e.g. --env-param sound_speed=1500"),
         ("--cal-param KEY=VALUE", "override a calibration value; repeatable, "
                                   "e.g. --cal-param gain_correction=25.9"),
+        ("--ecs FILE", "an Echoview calibration supplement (.ecs), local or gs://; "
+                       "cannot be combined with --env-param/--cal-param"),
         ("--waveform_mode CW|BB|FM", "EK80 waveform (default: CW). EK60/AZFP: always CW."),
         ("--encode_mode complex|power", "EK80 encoding (default: complex). EK60/AZFP: "
                                         "always power."),
@@ -225,6 +227,13 @@ def _build_parser():
         help="Calibration parameter override (repeatable). Example: gain_correction=1.0",
     )
     parser.add_argument(
+        "--ecs",
+        type=str,
+        default=None,
+        metavar="FILE",
+        help="Echoview calibration supplement (.ecs), local path or gs:// URI.",
+    )
+    parser.add_argument(
         "--waveform_mode",
         type=str,
         default="CW",
@@ -269,8 +278,13 @@ def main():
     # ---------------------------
     token = stdio.one_input(args.input_path, SPEC.name)
     # Hash exactly the dicts echopype receives.
+    if args.ecs and (env_params or cal_params):
+        logger.error("aa-ts: --ecs cannot be combined with --env-param/--cal-param "
+                     "(echopype ignores the overrides when it has an ECS).")
+        sys.exit(2)
     run = Run(SPEC, args, params={"env_params": env_params, "cal_params": cal_params})
     src = run.input(token)
+    ecs = run.param_file(args.ecs, role="calibration") if args.ecs else None
 
     allowed_extensions = {".netcdf4": "netcdf", ".nc": "netcdf"}
     ext = src.local.suffix.lower()
@@ -327,6 +341,7 @@ def main():
             cal_params=cal_params,
             waveform_mode=args.waveform_mode,
             encode_mode=args.encode_mode,
+            ecs_file=ecs.local if ecs else None,
         )
 
         logger.success(f"Generated {out.target} with aa-ts.")
@@ -357,6 +372,7 @@ def process_file(
     cal_params=None,
     waveform_mode: str = "CW",
     encode_mode: str = "complex",
+    ecs_file=None,
 ):
     """Load EchoData from NetCDF, compute TS, and save to NetCDF."""
     import echopype as ep  # deferred so --help stays fast
@@ -381,6 +397,8 @@ def process_file(
         compute_kwargs["env_params"] = env_params
     if cal_params is not None:
         compute_kwargs["cal_params"] = cal_params
+    if ecs_file is not None:
+        compute_kwargs["ecs_file"] = str(ecs_file)
 
     ds_TS = ep.calibrate.compute_TS(ed, **compute_kwargs)
     ds_TS = clean_attrs(ds_TS)

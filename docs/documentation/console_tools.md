@@ -214,6 +214,80 @@ COMMON OPTIONS
   --help-all			  the complete reference, every option
 ```
 
+## aa_annotate
+
+```bash
+aa-annotate — Write lines and regions as Echoview .evl/.evr products; read
+  them back as JSON.
+  [scientific transform (hashed) · product: lines]
+
+WHAT IT DOES
+  From a JSON description (the Workbench's drawing, or your own) writes an
+  Echoview line file (.evl: time, depth, status per point) or region file
+  (.evr: polygons with a class and a type: analysis, bad data, marker, ...).
+  From a detected bottom (aa-detect-seafloor's 'seafloor' per ping) writes the
+  bottom as a line, every ping (or thinned with --tolerance).
+
+  --json does the reverse: prints the line, regions or detected bottom as JSON
+  shapes, thinned to --max-points so a long line can be drawn.
+
+INPUT (argument or stdin)
+  One .json, .evl, .evr or seafloor .nc path or gs:// URI.
+
+OUTPUT (stdout)
+  The written file's path (or gs:// URI); with --json, one line of JSON.
+
+METADATA
+  Reads the input's provenance, appends this step with its canonical
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
+
+OPTIONS
+  --json                  print the input as JSON shapes instead of writing
+  --name NAME             name part of the file (default: the JSON's name,
+                          else bottom/regions)
+  --reference PRODUCT     the product the shapes were drawn on (recorded;
+                          gives the base name)
+  --tolerance M           thin a detected bottom: keep the line within M
+                          metres (default 0: every ping)
+  --max-points N          most points in --json output (default 4000)
+  -o, --output_path PATH  exact output; local or gs://
+
+SCIENTIFIC OPTIONS (change the product hash)
+  --name        Part of the name.
+  --tolerance   Thinning tolerance for a detected bottom, metres.
+  --max-points  Most points kept for a detected bottom. (default: 4000)
+  The hash is the content written (points, classes, types), not how it was
+  given.
+
+FILES & URIs
+  Reads local or gs://. Writes <base>_<name>_<hash8>.evl|.evr beside the input
+  (current directory for gs:// input), or -o, or --dest, with <file>.aa.json.
+  An identical file already there is reused.
+
+IN A PIPELINE
+  aa-detect-seafloor ... | aa-annotate --name bottom  ->  a bottom.evl for
+  aa-evl --evl / aa-integrate --bottom.
+
+EXAMPLES
+  aa-annotate shapes.json --reference sv.nc --dest gs://bucket/prefix/
+  aa-annotate seafloor.nc --name bottom
+  aa-annotate regions.evr --json
+
+COMMON OPTIONS
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
+  --dest DIR|gs://PREFIX  write the default-named output there instead of
+                          beside the input
+  --help-all              the complete reference, every option
+```
+
 ## aa_attenuated
 
 ```bash
@@ -612,54 +686,78 @@ MORE
 ## aa_crop
 
 ```bash
-aa-crop — PLACEHOLDER: copies EchoData unchanged. Not installed as a command.
-  [utility]
+aa-crop — Cut a time / range / channel window out of an Sv, TS, MVBS or mask
+  product.
+  [scientific transform (hashed) · product: sv]
 
 WHAT IT DOES
-  Nothing scientific yet. It is meant to crop an echogram / EchoData to a
-  (ping, range) window. Today it loads the input with echopype, applies
-  transform_echo_data(), which returns the EchoData unchanged, and writes it
-  to NetCDF. --ping_num, --range_sample_num, --background_noise_max and
-  --snr_threshold are parsed but not used (left over from the background-noise
-  template the file was copied from).
+  Selects, on every (ping_time x range) variable and its coordinates:
+
+    --start / --end      pings in this time span (inclusive; ISO times, UTC)
+    --pings A:B          pings by index (Python slice: A included, B not)
+    --min-range / --max-range   samples whose range (echo_range of the first channel at the first ping; depth when the range dimension is depth) is in this span, metres
+    --samples A:B        samples by index
+    --frequency 38kHz    channels by nominal frequency (repeatable or comma list)
+
+  The output is the same kind of product as the input (cropped Sv is Sv), with
+  every other variable kept. Nothing is resampled.
 
 INPUT (argument or stdin)
-  Does not read stdin. One local input path as the argument (.raw, .nc or
-  .netcdf4).
+  One flat product (.nc or .zarr) path or gs:// URI: Sv, TS, MVBS, a mask.
 
 OUTPUT (stdout)
-  The output path.
+  The cropped product's path (or gs:// URI).
 
 METADATA
-  Records no provenance and computes no product hash.
+  Reads the input's provenance, appends this step with its canonical
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
-  INPUT_PATH				a converted EchoData .nc/.netcdf4 (or .raw; see
-							NOTE)
-  -o, --output_path PATH	output file (default <input stem>_processed.nc)
-  --ping_num N			  required, unused
-  --range_sample_num N	  required, unused
-  --background_noise_max X  unused
-  --snr_threshold DB		unused (default 3.0)
+  --start TIME / --end TIME     time span, ISO (UTC)
+  --pings A:B                   ping indices
+  --min-range M / --max-range M
+                                range (or depth) span in metres
+  --samples A:B                 sample indices
+  --frequency F                 keep only these channels (38kHz, 120000, ...)
+  -o, --output_path PATH        exact output; local or gs://
+
+SCIENTIFIC OPTIONS (change the product hash)
+  --start      Start of the time span (canonical ISO).
+  --end        End of the time span.
+  --min-range  Shallowest range kept, metres.
+  --max-range  Deepest range kept, metres.
+  --pings      Ping index span.
+  --samples    Sample index span.
+  --frequency  Channels kept, by nominal frequency in Hz (order-free).
+  Flag order, alias spellings and explicit defaults do not change the hash.
 
 FILES & URIs
-  Local files only. Writes beside the input unless -o is given.
+  Reads NetCDF or Zarr, local or gs://. Writes <base>_<hash8>.nc beside the
+  input (current directory for gs:// input), or -o, or --dest. An identical
+  earlier product is reused.
 
 IN A PIPELINE
-  Not installed as a command (there is no aa-crop entry point in
-  pyproject.toml), so it is not part of any pipeline. Run it as python -m
-  aalibrary.console.aa_crop.
+  Anywhere after aa-sv: ... | aa-sv | aa-crop --start 2016-07-03T06:10 --end
+  2016-07-03T06:20 --max-range 200 | aa-graph
 
 EXAMPLES
-  python -m aalibrary.console.aa_crop x.nc --ping_num 1 --range_sample_num 1
+  aa-crop sv.nc --start 2016-07-03T06:10 --end 2016-07-03T06:20
+  aa-crop sv.nc --frequency 38kHz --max-range 250
+  aa-crop mvbs.nc --pings 0:500
 
-NOTE
-  .raw input fails: echopype.open_raw is called without a sonar model.
-  Re-saving a converted .nc can also fail with recent xarray versions
-  ("unexpected encoding parameters for 'netCDF4' backend").
-
-MORE
-  --help-all  the complete reference, every option
+COMMON OPTIONS
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
+  --dest DIR|gs://PREFIX  write the default-named output there instead of
+                          beside the input
+  --help-all              the complete reference, every option
 ```
 
 ## aa_cruisepack
@@ -842,38 +940,39 @@ METADATA
 
 OPTIONS
   --method basic|blackwell  REQUIRED. Detector.
-  --param KEY=VALUE ...	 Detector arguments. Both methods need var_name=Sv
-							and channel=<an id from the 'channel' coordinate;
-							quote it, it contains spaces>. basic: threshold
-							(-50 = window -50..-40 dB; or (min,max)), offset_m
-							(0.5), bin_skip_from_surface (200). blackwell:
-							threshold (-75 or (Sv,theta,phi)), offset, r0, r1,
-							wtheta, wphi.
-  --emit-mask			   also write the below-bottom mask (kind mask)
-  --apply				   also write Sv with sub-bottom samples removed
-							(kind sv)
-  --range-label NAME		variable compared with the bottom line (a depth)
-							to build the mask. Default echo_range, which
-							equals depth only when aa-depth applied no
-							transducer depth offset, tilt, or Platform/Beam
-							offsets or angles; otherwise use 'depth' (the tool
-							warns when they differ).
-  --no-overwrite			exit 1, before writing anything, if any requested
-							output exists and is not the identical product
-  -o, --output_path PATH	Explicit bottom-line output; the extension is
-							forced to .nc. Local path or gs:// URI. Does not
-							move the mask/cleaned outputs.
+  --param KEY=VALUE ...     Detector arguments. channel=38kHz (by frequency)
+                            or the channel's id (quote it, it contains
+                            spaces); default: the channel nearest 38 kHz.
+                            var_name defaults to Sv. basic: threshold (-50 =
+                            window -50..-40 dB; or (min,max)), offset_m (0.5),
+                            bin_skip_from_surface (200). blackwell: threshold
+                            (-75 or (Sv,theta,phi)), offset, r0, r1, wtheta,
+                            wphi.
+  --emit-mask               also write the below-bottom mask (kind mask)
+  --apply                   also write Sv with sub-bottom samples removed
+                            (kind sv)
+  --range-label NAME        variable compared with the bottom line (a depth)
+                            to build the mask. Default echo_range, which
+                            equals depth only when aa-depth applied no
+                            transducer depth offset, tilt, or Platform/Beam
+                            offsets or angles; otherwise use 'depth' (the tool
+                            warns when they differ).
+  --no-overwrite            exit 1, before writing anything, if any requested
+                            output exists and is not the identical product
+  -o, --output_path PATH    Explicit bottom-line output; the extension is
+                            forced to .nc. Local path or gs:// URI. Does not
+                            move the mask/cleaned outputs.
 
 SCIENTIFIC OPTIONS (change the product hash)
-  --method	   Detector (echopype dispatcher key), e.g. basic, blackwell.
-  --param		Detector arguments, parsed as Python literals ('10m' stays
-				 text). Arguments left out are hashed with the method's own
-				 defaults (read from the installed echopype), so writing a
-				 default out, key order, and 5 vs 5.0 give the same hash; pass
-				 integers where echopype wants them
-				 (bin_skip_from_surface=200).
+  --method       Detector (echopype dispatcher key), e.g. basic, blackwell.
+  --param        Detector arguments, parsed as Python literals ('10m' stays
+                 text). Arguments left out are hashed with the method's own
+                 defaults (read from the installed echopype), so writing a
+                 default out, key order, and 5 vs 5.0 give the same hash; pass
+                 integers where echopype wants them
+                 (bin_skip_from_surface=200).
   --range-label  Variable compared with the bottom line (depth). Changes only
-				 the --emit-mask and --apply outputs. (default: echo_range)
+                 the --emit-mask and --apply outputs. (default: echo_range)
   Flag order, alias spellings and explicit defaults do not change the hash.
 
 FILES & URIs
@@ -892,7 +991,7 @@ IN A PIPELINE
 EXAMPLES
   SV=$(aa-nc D20160703-T060000.raw --sonar_model EK60 | aa-sv | aa-depth)
   aa-detect-seafloor "$SV" --method basic --param var_name=Sv \
-	"channel=GPT   38 kHz 00907205c001-1 ES38B" "threshold=(-30,10)" --emit-mask --apply
+    "channel=GPT   38 kHz 00907205c001-1 ES38B" "threshold=(-30,10)" --emit-mask --apply
 
 NOTE
   Before this version --apply kept only the sub-bottom samples (the mask was
@@ -900,13 +999,13 @@ NOTE
   mask file itself is unchanged: True = below the bottom.
 
 COMMON OPTIONS
-  --force				 recompute even if an identical product already
-						  exists
-  --base NAME			 name outputs after NAME instead of the input's base
-						  name
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
   --dest DIR|gs://PREFIX  write the default-named output there instead of
-						  beside the input
-  --help-all			  the complete reference, every option
+                          beside the input
+  --help-all              the complete reference, every option
 ```
 
 ## aa_detect_shoal
@@ -1228,6 +1327,91 @@ EXAMPLES
 
 MORE
   --help-all  the complete reference, every option
+```
+
+## aa_ecs
+
+```bash
+aa-ecs — Show the calibration echopype will use; write it as an Echoview .ecs
+  file.
+  [scientific transform (hashed) · product: calibration]
+
+WHAT IT DOES
+  Builds echopype's own calibrator for the EchoData (as compute_Sv does) and
+  reports, per channel, each calibration and environment value: the one in the
+  file and the one that will be used with an ECS or overrides.
+
+  --write writes those values as an Echoview calibration supplement (.ECS):
+  one SourceCal per channel, matched by frequency; environment values shared
+  by every channel in FileSet. echopype (aa-sv --ecs) and Echoview read it.
+  Every channel gets every value, so the ECS never leaves a channel to
+  echopype's NaN for a missing entry.
+
+  Given an .ecs file instead of EchoData, prints the file as echopype
+  interprets it (FileSet < SourceCal < LocalCal).
+
+INPUT (argument or stdin)
+  One EchoData .nc/.zarr (or an .ecs) path or gs:// URI.
+
+OUTPUT (stdout)
+  Show: a table, or one line of JSON with --json. --write: the ECS file's path
+  or gs:// URI.
+
+METADATA
+  Reads the input's provenance, appends this step with its canonical
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
+
+OPTIONS
+  --ecs FILE                    apply this ECS (local or gs://) when showing,
+                                or start from it when writing
+  --env-param KEY=VALUE         environment override; KEY@38kHz=VALUE for one
+                                channel
+  --cal-param KEY=VALUE         calibration override; KEY@38kHz=VALUE for one
+                                channel
+  --values FILE.json            values to write, {"channels": [{"frequency":
+                                Hz, "values": {name: number}}]} (the
+                                Workbench's form)
+  --write                       write an ECS instead of showing
+  --label TEXT                  name part of the ECS (default cal):
+                                <base>_<label>_<hash8>.ecs
+  --json                        show as one line of JSON
+  --waveform_mode / --encode_mode
+                                EK80 only, as for aa-sv
+  -o, --output_path PATH        exact path for --write; local or gs://
+
+SCIENTIFIC OPTIONS (change the product hash)
+  --label  Part of the name; recorded. (default: cal)
+  --write: the hash is the values written (every channel, every value), not
+  the options that produced them.
+
+FILES & URIs
+  Reads EchoData .nc/.zarr and .ecs, local or gs://. --write writes
+  <base>_<label>_<hash8>.ecs beside the input, in --dest DIR|gs://PREFIX, or
+  at -o, with <file>.aa.json. An identical ECS already there is reused.
+
+IN A PIPELINE
+  Before aa-sv: aa-ecs ED.nc --write --cal-param gain_correction@38kHz=26.1
+  then aa-sv ED.nc --ecs <that file>.
+
+EXAMPLES
+  aa-ecs HB1603.nc
+  aa-ecs HB1603.nc --ecs cal.ecs --json
+  aa-ecs HB1603.nc --write --cal-param gain_correction@38kHz=26.12 --dest gs://b/cal/
+  aa-ecs cal.ecs
+
+COMMON OPTIONS
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
+  --dest DIR|gs://PREFIX  write the default-named output there instead of
+                          beside the input
+  --help-all              the complete reference, every option
 ```
 
 ## aa_ed
@@ -2178,6 +2362,121 @@ COMMON OPTIONS
   --help-all			  the complete reference, every option
 ```
 
+## aa_integrate
+
+```bash
+aa-integrate — Echoview-style echo integration into cells / regions; NASC,
+  Sv_mean, ABC as CSV.
+  [scientific transform (hashed) · product: integration]
+
+WHAT IT DOES
+  Integrates Sv (linear) over cells: intervals along the track
+  (--interval-type time | distance | ping, --interval 5min | 0.5nmi | 100) by
+  layers (--layer-type depth | range | surface | bottom, --layer 10). Samples
+  above the surface line (--surface FILE.evl or --surface-depth M) and below
+  the bottom line (--bottom FILE.evl or a seafloor product, plus
+  --bottom-offset) are excluded; bad-data regions (--bad FILE.evr) are
+  excluded (type bad) or counted as empty water (type bad_empty); samples
+  below --min-sv count as empty water; above --max-sv are set to it.
+
+  --by cells (default): one row per channel x interval x layer. --by regions:
+  one row per analysis region of --regions (whole region). --by region-cells:
+  one row per region-cell intersection with PRC_NASC / PRC_ABC, which add up
+  to the cell.
+
+  Columns are Echoview's (Interval, Layer, Sv_mean, NASC, ABC, Height_mean,
+  Thickness_mean, Depth_mean, Layer_depth_min/max, Samples, Good_samples,
+  No_data_samples, Ping_S/E, Date_S/E/M (YYYYMMDD), Time_S/E/M
+  (HH:MM:SS.ssss), Lat/Lon_S/E/M, Dist_S/E/M (metres along the track),
+  VL_start/VL_end (nmi), Exclude_above/below_line_depth_mean, threshold
+  columns, Frequency, Channel), plus Region_ID, Region_name, Region_class,
+  PRC_NASC, PRC_ABC for region exports. Depths are in metres, from 'depth'
+  (aa-depth) or else echo_range.
+
+INPUT (argument or stdin)
+  One Sv product (.nc or .zarr) path or gs:// URI; depth (aa-depth)
+  recommended; latitude/longitude (aa-location) for distance intervals and
+  positions.
+
+OUTPUT (stdout)
+  The CSV's path (or gs:// URI).
+
+METADATA
+  Reads the input's provenance, appends this step with its canonical
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
+
+OPTIONS
+  --by cells|regions|region-cells
+                                what a row is (default cells)
+  --interval-type time|distance|ping
+                                along-track cells (default: from --interval's
+                                unit; else distance with a track, else time)
+  --interval Q                  cell length: 0.5nmi, 926m, 5min, 300s, 100
+                                (pings)
+  --layer-type depth|range|surface|bottom
+                                vertical reference (default depth)
+  --layer M                     layer thickness, metres (default 10)
+  --surface FILE.evl / --surface-depth M
+                                exclude above this line / depth
+  --bottom FILE                 exclude below this line (.evl, or a seafloor
+                                product)
+  --bottom-offset M             added to the bottom line (negative:
+                                shallower), default 0
+  --surface-offset M            added to the surface line, default 0
+  --bad FILE.evr                bad-data regions (types bad, bad_empty);
+                                repeatable
+  --regions FILE.evr            analysis regions for --by regions /
+                                region-cells
+  --min-sv DB / --max-sv DB     integration thresholds
+  --frequency F                 only these channels (38kHz, ...); repeatable
+  --echodata FILE               EchoData for the track when the Sv has no
+                                position
+  -o, --output_path PATH        exact output; local or gs://
+
+SCIENTIFIC OPTIONS (change the product hash)
+  --by              Rows: cells, regions or region-cells. (default: cells)
+  --interval-type   Along-track cell type. (default: auto)
+  --interval        Along-track cell length.
+  --layer-type      Vertical reference of the layers. (default: depth)
+  --layer           Layer thickness, metres. (default: 10.0)
+  --min-sv          Minimum integration threshold, dB.
+  --max-sv          Maximum integration threshold, dB.
+  --surface-depth   Fixed exclude-above depth, metres.
+  --bottom-offset   Metres added to the bottom line.
+  --surface-offset  Metres added to the surface line.
+  --frequency       Channels integrated (Hz).
+  --var             The Sv variable integrated.
+  Flag order, alias spellings and explicit defaults do not change the hash.
+
+FILES & URIs
+  Reads NetCDF or Zarr, local or gs://; line and region files too (their
+  content is in the hash). Writes <base>_<hash8>.csv beside the input (current
+  directory for gs:// input), or -o, or --dest, with <file>.aa.json.
+
+IN A PIPELINE
+  ... | aa-sv | aa-depth | aa-location | aa-integrate --bottom bottom.evl
+  --bottom-offset -0.5 --interval 0.5nmi --layer 10 --min-sv -70
+
+EXAMPLES
+  aa-integrate sv.nc --interval 0.5nmi --layer 10 --min-sv -70 --bottom bottom.evl
+  aa-integrate sv.nc --by region-cells --regions schools.evr --interval 5min
+  aa-integrate sv.nc --layer-type bottom --layer 5 --bottom seafloor.nc
+
+COMMON OPTIONS
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
+  --dest DIR|gs://PREFIX  write the default-named output there instead of
+                          beside the input
+  --help-all              the complete reference, every option
+```
+
 ## aa_location
 
 ```bash
@@ -2249,6 +2548,74 @@ COMMON OPTIONS
   --dest DIR|gs://PREFIX  write the default-named output there instead of
 						  beside the input
   --help-all			  the complete reference, every option
+```
+
+## aa_mask
+
+```bash
+aa-mask — Apply masks to Sv: remove noise, or keep only a selection
+  (Echoview's Mask).
+  [scientific transform (hashed) · product: sv]
+
+WHAT IT DOES
+  Reads the masks' boolean variable (impulse_mask, shoal_mask, ...; NaN counts
+  as False) and sets every (ping_time x range) variable of the input to NaN
+  where a sample is removed. Axis variables (echo_range, depth, ...) are left
+  alone. A mask without a channel dimension applies to every channel; one with
+  channels is matched by channel.
+
+  A sample survives when no --remove mask is True there and every --keep mask
+  is True there. --mask uses the meaning of the aa-* mask variables
+  (impulse/transient/attenuated/seafloor: remove; shoal/freqdiff/region and
+  aa-detect-transient's VALID mask: keep).
+
+INPUT (argument or stdin)
+  One Sv / MVBS / TS product (.nc or .zarr) path or gs:// URI.
+
+OUTPUT (stdout)
+  The masked product's path (or gs:// URI).
+
+METADATA
+  Reads the input's provenance, appends this step with its canonical
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
+
+OPTIONS
+  --remove FILE           drop samples where this mask is True; repeatable
+  --keep FILE             keep only samples where this mask is True;
+                          repeatable
+  --mask FILE             use the mask's own meaning (aa-* masks); repeatable
+  --var NAME              the mask's variable, when the file has several
+  -o, --output_path PATH  exact output; local or gs://
+
+SCIENTIFIC OPTIONS (change the product hash)
+  --var  The mask variable read (when given).
+  Flag order, alias spellings and explicit defaults do not change the hash.
+
+FILES & URIs
+  Reads NetCDF or Zarr, local or gs://; masks too. Writes <base>_<hash8>.nc
+  beside the input (current directory for gs:// input), or -o, or --dest. The
+  masks are recorded as inputs and their content is in the hash.
+
+IN A PIPELINE
+  ... | aa-sv | aa-mask --remove impulse.nc --remove transient.nc | aa-mvbs
+
+EXAMPLES
+  aa-mask sv.nc --mask sv_impulse.nc --mask sv_attenuated.nc
+  aa-mask sv.nc --keep krill_freqdiff.nc
+
+COMMON OPTIONS
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
+  --dest DIR|gs://PREFIX  write the default-named output there instead of
+                          beside the input
+  --help-all              the complete reference, every option
 ```
 
 ## aa_metadata
@@ -3588,6 +3955,155 @@ MORE
   --help-all  the complete reference, every option
 ```
 
+## aa_threshold
+
+```bash
+aa-threshold — Minimum / maximum Sv thresholds (Echoview's Threshold
+  operator).
+  [scientific transform (hashed) · product: sv]
+
+WHAT IT DOES
+  Applies the thresholds to the values variable (Sv by default, or --var) and
+  leaves every other variable as it is.
+
+  Below --min: empty water (-999 dB, a linear zero that still counts in
+  averages) or, with --below nodata, NaN (left out of averages). Above --max:
+  NaN (default), empty water (--above empty), or the --max value itself
+  (--above clip). NaN in the input stays NaN.
+
+INPUT (argument or stdin)
+  One Sv / MVBS / TS product (.nc or .zarr) path or gs:// URI.
+
+OUTPUT (stdout)
+  The thresholded product's path (or gs:// URI).
+
+METADATA
+  Reads the input's provenance, appends this step with its canonical
+  scientific options, and embeds it all in the output (NetCDF attributes
+  aa_provenance, aa_recipe, aa_product_hash, aa_base, aa_tool, history). Two
+  hashes: the recipe (this step and every step before it, without the data:
+  the <hash8> in the name, the same for any data processed this way) and the
+  product hash (this recipe applied to this input: decides reuse). The base
+  name is carried through unchanged. Inspect with: aa-metadata FILE
+
+OPTIONS
+  --min DB                   minimum threshold, dB
+  --max DB                   maximum threshold, dB
+  --below empty|nodata       what a sample below --min becomes (default empty)
+  --above nodata|empty|clip  what a sample above --max becomes (default
+                             nodata)
+  --var NAME                 the values variable (default Sv, Sv_corrected,
+                             MVBS, TS...)
+  -o, --output_path PATH     exact output; local or gs://
+
+SCIENTIFIC OPTIONS (change the product hash)
+  --min    Minimum threshold, dB.
+  --max    Maximum threshold, dB.
+  --below  What samples below --min become. (default: empty)
+  --above  What samples above --max become. (default: nodata)
+  --var    The variable thresholded (as resolved).
+  Flag order, alias spellings and explicit defaults do not change the hash.
+
+FILES & URIs
+  Reads NetCDF or Zarr, local or gs://. Writes <base>_<hash8>.nc beside the
+  input (current directory for gs:// input), or -o, or --dest.
+
+IN A PIPELINE
+  ... | aa-sv | aa-clean | aa-threshold --min -70 | aa-mvbs
+
+EXAMPLES
+  aa-threshold sv.nc --min -70
+  aa-threshold sv.nc --min -80 --max -30 --above clip
+
+COMMON OPTIONS
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
+  --dest DIR|gs://PREFIX  write the default-named output there instead of
+                          beside the input
+  --help-all              the complete reference, every option
+```
+
+## aa_tiles
+
+```bash
+aa-tiles — Echogram tile pack (.tiles) of an Sv / MVBS / TS / mask product,
+  for viewers.
+  [representation (renders a product) · product: tiles]
+
+WHAT IT DOES
+  Reads one (ping_time x range) variable of every channel, puts it on a
+  regular range (or depth) grid, and writes a pyramid of 256 x 256 tiles:
+  level 0 is the data itself; each level above averages twice as many pings,
+  and (after --lag levels) twice as many samples. dB values are averaged in
+  the linear domain (--reduce mean) or the strongest is kept (--reduce max);
+  masks keep the fraction (mean) or any (max) of their True samples.
+
+  The pack also holds each ping's time and, when the product (or --echodata)
+  has them, its latitude and longitude, and each channel's value percentiles
+  for default display thresholds.
+
+  dB values are stored to 0.004 dB (-180 .. +82 dB; weaker is -180, empty
+  water at -999 dB too); other values as float32.
+
+INPUT (argument or stdin)
+  One flat product (.nc or .zarr) path or gs:// URI: Sv, Sv with depth, MVBS,
+  TS, a mask.
+
+OUTPUT (stdout)
+  The tile pack's path (or gs:// URI).
+
+METADATA
+  Copies the provenance of the product it shows into the output (PNG text
+  chunks, or a JSON block in the HTML head) and adds a non-scientific
+  rendering step. The output is named after the product it shows, with its own
+  extension.
+
+OPTIONS
+  --var NAME              the variable (default: Sv, Sv_corrected, MVBS, TS,
+                          or the mask)
+  --y range|depth|sample  vertical axis (default: depth when the product has
+                          it, else range)
+  --reduce mean|max       how cells are combined (default: mean; max for
+                          masks)
+  --tile N                tile size (default 256)
+  --lag N                 levels before range is reduced too (default 2)
+  --echodata FILE         EchoData to read the ship's track from, when the
+                          product has no latitude/longitude
+  -o, --output_path PATH  exact output; local or gs://
+
+RENDERING OPTIONS (identify this rendering; the science shown is the input's)
+  --var     The variable drawn.
+  --y       Vertical axis. (default: auto)
+  --tile    Tile size. (default: 256)
+  --lag     Levels before range is reduced. (default: 2)
+  --reduce  How cells are combined. (default: auto)
+
+FILES & URIs
+  Reads NetCDF or Zarr, local or gs://. Writes <product name>.tiles beside the
+  input (current directory for gs:// input), or -o, or --dest, with
+  <file>.aa.json. An identical pack already there is reused.
+
+IN A PIPELINE
+  After any product: ... | aa-sv | aa-depth | aa-tiles. The Workbench runs it
+  when an echogram is opened.
+
+EXAMPLES
+  aa-tiles sv.nc
+  aa-tiles gs://bucket/derived_products/me/HB1603/x/x_1234abcd.nc --dest gs://bucket/derived_products/me/HB1603/x/
+  aa-tiles mask.nc --reduce max
+
+COMMON OPTIONS
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
+  --dest DIR|gs://PREFIX  write the default-named output there instead of
+                          beside the input
+  --help-all              the complete reference, every option
+```
+
 ## aa_transient
 
 ```bash
@@ -3838,4 +4354,3 @@ EXAMPLES
 MORE
   --help-all  the complete reference, every option
 ```
-

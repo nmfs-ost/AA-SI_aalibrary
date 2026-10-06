@@ -221,8 +221,12 @@ MAKE ECHODATA (starts the provenance chain)
                       <base>.zarr (or .nc); run --check first for QC
 
 CALIBRATE AND ADD COORDINATES
-  aa-sv               EchoData -> Sv
+  aa-sv               EchoData -> Sv (--ecs FILE, or --cal-param /
+                      --env-param KEY[@38kHz]=VALUE overrides)
   aa-ts               EchoData -> TS (target strength)
+  aa-ecs              [end] EchoData -> the calibration values echopype will
+                      use; --write: an Echoview .ecs file of them (with
+                      --cal-param/--env-param/--values changes)
   aa-depth            Sv -> Sv with a depth coordinate
   aa-location         Sv -> Sv with latitude/longitude (--echodata FILE)
   aa-splitbeam-angle  Sv -> Sv with split-beam angles (--echodata FILE
@@ -252,6 +256,13 @@ NOISE, MASKS AND LINES
                       .evl lines (--evl)
   aa-evr              Sv -> Sv kept only inside Echoview .evr regions
                       (--evr); [menu] without --evr: draw regions in a browser
+  aa-mask             Sv -> Sv with masks applied (--remove FILE: drop where
+                      the mask is True; --keep FILE: keep only there;
+                      --mask FILE: the aa-* mask's own meaning)
+  aa-threshold        Sv -> Sv with --min DB (empty water) / --max DB
+  aa-crop             Sv/MVBS/mask -> a time, range, ping or channel window
+  aa-annotate         drawn shapes (.json) or a detected bottom -> Echoview
+                      .evl/.evr product; --json reads them back
   Mask tools print the MASK. With --apply they also write a masked copy of
   Sv as a side file; the next stage in the pipe still receives the mask.
   aa-impulse, aa-min, aa-transient and aa-attenuated need depth: put
@@ -262,6 +273,10 @@ GRID AND INTEGRATE
   aa-mvbs-index       Sv -> MVBS on a sample x ping grid
   aa-nasc             Sv -> NASC in range x distance bins (the input needs
                       depth, latitude and longitude; see example 3)
+  aa-integrate        Sv -> Echoview-style integration CSV: cells
+                      (--interval 0.5nmi|5min|100, --layer 10), exclusion
+                      lines (--surface, --bottom), bad-data regions (--bad),
+                      thresholds; --by regions|region-cells (PRC_NASC)
 
 ECHOMETRICS (echopype.metrics along echo_range; Sv -> one value per ping
              and channel)
@@ -278,6 +293,8 @@ SEAWATER (no input file)
 LOOK AND CHECK
   aa-graph            product -> echogram PNG named after the product
   aa-plot             product -> interactive HTML echogram
+  aa-tiles            product -> echogram tile pack (.tiles) for viewers
+                      (the Workbench's Echogram panel)
   aa-show             [end] print a file's xarray summary (dimensions,
                       coordinates, variables); the full channel names follow
                       on stderr, under "channels:"
