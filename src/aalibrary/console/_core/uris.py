@@ -116,6 +116,8 @@ class ObjectInfo:
     crc32c: str | None = None
     generation: str | None = None
     metadata: dict = field(default_factory=dict)
+    #: GCS storage class (STANDARD, NEARLINE, COLDLINE, ARCHIVE): what keeping it costs.
+    storage_class: str | None = None
 
     @property
     def uri(self) -> str:
@@ -144,12 +146,14 @@ class _GcsBackend:
         if blob is None:
             return None
         return ObjectInfo(bucket, key, int(blob.size or 0), blob.md5_hash,
-                          blob.crc32c, str(blob.generation), dict(blob.metadata or {}))
+                          blob.crc32c, str(blob.generation), dict(blob.metadata or {}),
+                          blob.storage_class)
 
     def list(self, bucket: str, prefix: str) -> Iterator[ObjectInfo]:
         for blob in self._client.list_blobs(bucket, prefix=prefix):
             yield ObjectInfo(bucket, blob.name, int(blob.size or 0), blob.md5_hash,
-                             blob.crc32c, str(blob.generation), dict(blob.metadata or {}))
+                             blob.crc32c, str(blob.generation), dict(blob.metadata or {}),
+                             blob.storage_class)
 
     def download(self, bucket: str, key: str, dest: Path, generation: str | None = None) -> None:
         gen = int(generation) if generation and str(generation).isdigit() else None
@@ -194,7 +198,8 @@ class _FakeBackend:
         md5 = base64.b64encode(hashlib.md5(p.read_bytes()).digest()).decode()
         return ObjectInfo(bucket, key, p.stat().st_size, md5, None,
                           str(meta.get("generation", p.stat().st_mtime_ns)),
-                          dict(meta.get("metadata", {})))
+                          dict(meta.get("metadata", {})),
+                          str(meta.get("storageClass") or "STANDARD"))
 
     def list(self, bucket: str, prefix: str) -> Iterator[ObjectInfo]:
         base = self.root / bucket

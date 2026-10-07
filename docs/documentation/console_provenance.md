@@ -184,8 +184,56 @@ aa-metadata FILE                 # summary: product, base, inputs, sources, pipe
 aa-metadata FILE --verify        # recompute the hash; check it matches the file name
 aa-metadata FILE --json          # the document
 aa-metadata gs://bucket/x.nc     # works on objects too
+aa-metadata FILE --commands      # the commands that made it, as a script
 ... | aa-metadata --tee | ...    # in the middle of a pipe
 ```
+
+## Remaking a product: `aa-metadata --commands`
+
+The record says which tools made a product, with which settings, from which
+inputs, so it can be turned back into console commands. `aa-metadata
+--commands` writes them as a Bash script that anyone can run on their own
+workstation:
+
+```bash
+#!/usr/bin/env bash
+# Remake SYNTH2601_e99e4b09.nc (product aa:a817283c) with the AA-SI console tools.
+set -euo pipefail
+RAW="${RAW:-./raw}"     # a folder holding the raw files named below
+DEST="${DEST:-.}"       # where the products go: a folder, or gs://bucket/folder/
+NC1=$(aa-nc "$RAW/D20260614-T090000.raw" --sonar_model EK60 --dest "$DEST")
+...
+SV=$(aa-sv "$COMBINED" --dest "$DEST")
+DEPTH=$(aa-depth "$SV" --dest "$DEST")
+echo "$DEPTH"
+```
+
+How the script is written:
+
+- **No paths from the machine that made it.** Raw files are `"$RAW/<name>"`,
+  products go to `--dest "$DEST"`, and inputs in a bucket keep their `gs://`
+  URIs.
+- **The tools' own flags.** Each step's flags come from its recorded settings,
+  rendered through that tool's parser. Only settings that differ from the
+  defaults are written.
+- **The same products.** The same inputs and settings make the same product
+  hash, so a run of the script on someone else's workstation remakes the
+  products under the same names. Products already there are reused.
+- **Steps that are not computations** (lines and regions drawn in a viewer,
+  `aa-annotate`; calibration written from values, `aa-ecs`) are referenced by
+  their URI and not rerun.
+
+`--json --commands` prints the provenance document and then a second line:
+
+```json
+{"schema": "aa-commands/1", "product": "…", "command": "…", "script": "…", "notes": […]}
+```
+
+- `command` is the last step alone, from the product's direct inputs.
+- `script` is the whole chain from the raw files.
+- `notes` lists anything that could not be written as a command.
+
+The Workbench shows both under **Metadata ▸ Remake it**.
 
 ## gs:// URIs
 

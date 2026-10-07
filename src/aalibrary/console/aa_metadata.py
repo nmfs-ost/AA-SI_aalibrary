@@ -11,6 +11,7 @@ and gs:// URIs, for every format the tools write (.nc, .zarr, .png,
     aa-metadata FILE --json              the provenance document (one line per file)
     aa-metadata FILE --hash              just the product hash
     aa-metadata FILE --verify            recompute the hash from the recorded step
+    aa-metadata FILE --commands          the commands that made it, to rerun anywhere
     ... | aa-metadata --tee | aa-next    summary to stderr, path passed through
 
 Exit codes: 0 ok, 1 unreadable input, 3 no provenance, 4 --verify mismatch.
@@ -44,11 +45,16 @@ HELP = Help(
     ),
     stdin="Paths or gs:// URIs, one per line (or as arguments). aa/1 JSON handles work too.",
     stdout=("A summary per file; with --json the provenance document; with --hash the "
-            "hash; with --tee the input path unchanged (summary goes to stderr)."),
+            "hash; with --commands a Bash script that remakes it (with --json, also a "
+            "second line: {schema: aa-commands/1, command, script, notes}); with --tee "
+            "the input path unchanged (summary goes to stderr)."),
     options=[
         ("--json", "print the provenance document (compact, one line per file)"),
         ("--hash", "print only the product hash (--full for all 64 hex digits)"),
         ("--verify", "recompute the hash from the recorded step; exit 4 on mismatch"),
+        ("--commands", ("the console commands that made it: the last step from its "
+                        "inputs, and the whole chain from the raw files, with no "
+                        "local paths (raw files under $RAW, outputs to $DEST)")),
         ("--tee", "pass the path through on stdout; summary to stderr"),
     ],
     files=(
@@ -80,6 +86,7 @@ def _build_parser():
     p.add_argument("--hash", action="store_true")
     p.add_argument("--full", action="store_true")
     p.add_argument("--verify", action="store_true")
+    p.add_argument("--commands", action="store_true")
     p.add_argument("--tee", action="store_true")
     return p
 
@@ -260,6 +267,36 @@ def _load(token: str) -> tuple[dict | None, str]:
     return provenance.read(p), str(p.resolve())
 
 
+def _commands(doc: dict) -> dict:
+    """The commands that made *doc*'s product; inputs of inputs are found by
+    reading the records of the inputs in the bucket (kilobytes each)."""
+    from aalibrary.console._core import replay
+
+    found: dict[str, str] = {}
+    pending = [str(i.get("uri") or "") for i in doc.get("inputs") or []]
+    pending = [u for u in pending if uris.is_gcs(u)]
+    visited: set[str] = set()
+
+    def resolve(pid: str) -> str:
+        while pid not in found and pending and len(visited) < 40:
+            uri = pending.pop(0)
+            if uri in visited:
+                continue
+            visited.add(uri)
+            try:
+                sub = _remote_doc(uri)
+            except Exception:  # noqa: BLE001 - an unreadable record leaves a placeholder
+                sub = None
+            for item in (sub or {}).get("inputs") or []:
+                u = str(item.get("uri") or "")
+                if item.get("id") and uris.is_gcs(u):
+                    found.setdefault(str(item["id"]), u)
+                    pending.append(u)
+        return found.get(pid, "")
+
+    return replay.commands(doc, resolve=resolve)
+
+
 def main():
     if len(sys.argv) == 1 and not stdio.stdin_is_piped():
         print_help()
@@ -296,8 +333,13 @@ def _report(tokens: list[str], args, out) -> int:
             if args.tee:
                 stdio.emit(token)
             continue
-        if args.json:
+        if args.commands and not args.json:
+            print(_commands(doc)["script"], file=out, end="")
+        elif args.json:
             print(json.dumps(doc, separators=(",", ":"), sort_keys=True), file=out)
+            if args.commands:
+                print(json.dumps(_commands(doc), separators=(",", ":"), sort_keys=True),
+                      file=out)
         elif args.hash:
             h = doc.get("product", {}).get("hash", "")
             print(h if args.full else h[:8], file=out)

@@ -2640,16 +2640,21 @@ INPUT (argument or stdin)
 
 OUTPUT (stdout)
   A summary per file; with --json the provenance document; with --hash the
-  hash; with --tee the input path unchanged (summary goes to stderr).
+  hash; with --commands a Bash script that remakes it (with --json, also a
+  second line: {schema: aa-commands/1, command, script, notes}); with --tee
+  the input path unchanged (summary goes to stderr).
 
 METADATA
   Read-only: reads files and metadata, writes nothing.
 
 OPTIONS
-  --json	print the provenance document (compact, one line per file)
-  --hash	print only the product hash (--full for all 64 hex digits)
-  --verify  recompute the hash from the recorded step; exit 4 on mismatch
-  --tee	 pass the path through on stdout; summary to stderr
+  --json      print the provenance document (compact, one line per file)
+  --hash      print only the product hash (--full for all 64 hex digits)
+  --verify    recompute the hash from the recorded step; exit 4 on mismatch
+  --commands  the console commands that made it: the last step from its
+              inputs, and the whole chain from the raw files, with no local
+              paths (raw files under $RAW, outputs to $DEST)
+  --tee       pass the path through on stdout; summary to stderr
 
 FILES & URIs
   Local files, directories (.zarr) and gs:// URIs. For gs:// the file is read

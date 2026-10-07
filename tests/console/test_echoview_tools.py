@@ -377,3 +377,82 @@ def test_describe_and_chaining(tmp_path):
         for kinds in traits["inputs"].values():
             assert set(kinds) <= set(table["kinds"]), name
     assert identity.product_hash({"a": 1}) == identity.product_hash({"a": 1.0})
+
+
+# --------------------------------------------------------------------------- #
+# The commands that made a product
+# --------------------------------------------------------------------------- #
+def test_commands_remake_the_same_product_without_local_paths(survey, tmp_path):
+    root = survey["root"]
+    product = survey["depth"]          # aa-nc -> aa-sv -> aa-depth -> aa-location
+    done = tool(root, "metadata", product, "--json", "--commands")
+    lines = [json.loads(line) for line in done.stdout.splitlines() if line.startswith("{")]
+    doc, cmds = lines[0], lines[1]
+    assert cmds["schema"] == "aa-commands/1"
+    assert cmds["command"].startswith("aa-location ")
+    script = cmds["script"]
+    # Portable: no folder of this machine, in either form.
+    for text in (script, cmds["command"]):
+        assert str(root) not in text and str(Path.home()) not in text
+    assert '"$RAW/D20160703-T060000.raw"' in script and "--echodata" in script
+    # Run it elsewhere, from the raw file: the same product hash.
+    (tmp_path / "out").mkdir()
+    env = _env(tmp_path)
+    env.update({"RAW": str(root), "DEST": str(tmp_path / "out"),
+                "PATH": str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")})
+    run = subprocess.run(["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True,
+                         text=True, timeout=600, check=False)
+    assert run.returncode == 0, run.stderr[-2000:]
+    remade = run.stdout.strip().splitlines()[-1]
+    again = json.loads(out(tool(root, "metadata", remade, "--json")))
+    assert again["product"]["hash"] == doc["product"]["hash"]
+
+
+def test_flags_for_canonical_settings():
+    from aalibrary.console._core import replay
+
+    actions = replay.tool_actions("aa-detect-seafloor")
+    argv, _missing = replay.flags_for(actions, {
+        "method": "basic", "param": {"channel": "GPT 38 kHz", "threshold": (-40, 10)},
+        "range_label": "echo_range"})
+    assert argv[:2] == ["--method", "basic"] and "threshold=(-40,10)" in argv
+    assert "--range-label" not in argv          # the default: nothing to say
+    argv, _ = replay.flags_for(replay.tool_actions("aa-depth"), {
+        "downward": False, "use_beam_angles": True, "depth_offset": None})
+    assert "--use-beam-angles" in argv and "--no-downward" in argv
+
+
+def test_a_record_cannot_put_a_command_in_the_script(tmp_path):
+    """Names, ops and settings come from a record anyone with write access to
+    the bucket could have edited: the script quotes them, so running it runs
+    the console tools and nothing else."""
+    from aalibrary.console._core import replay
+
+    marker = tmp_path / "pwned"
+    doc = {
+        "product": {"hash": "ab" * 32, "name": f"x\ntouch {marker}_name #"},
+        "sources": [{"id": "aa:raw1", "name": "D1.raw"}],
+        "inputs": [],
+        "pipeline": [
+            {"tool": "aa-annotate", "op": "lines", "product": "a1", "inputs": [],
+             "params": {"name": f"my line\ntouch {marker}_label"}},
+            {"tool": "aa-nc", "op": f"convert\ntouch {marker}_op #", "product": "p1",
+             "inputs": ["aa:raw1"],
+             "params": {"sonar_model": f'"$(touch {marker}_param)"'}},
+            {"tool": "aa-sv", "op": "x", "product": "p2", "inputs": ["aa:p1", "aa:a1"],
+             "params": {}, "recipe_inputs": [{"recipe": "aa:a1", "role": "lines:bottom"}]},
+        ],
+    }
+    script = replay.commands(doc)["script"]
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    for name in ("aa-nc", "aa-sv"):
+        (stubs / name).write_text('#!/bin/sh\necho "gs://b/out"\n')
+        (stubs / name).chmod(0o755)
+    env = {"PATH": f"{stubs}{os.pathsep}/usr/bin:/bin", "RAW": str(tmp_path), "DEST": "."}
+    run = subprocess.run(["bash", "-c", script], cwd=tmp_path, env=env,
+                         capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr + script
+    assert not list(tmp_path.glob("pwned*")), script
+    # A drawn line's name ("my line …") became a variable the shell accepted.
+    assert "MY_LINE" in script
