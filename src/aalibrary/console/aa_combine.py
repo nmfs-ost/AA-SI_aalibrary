@@ -39,8 +39,8 @@ panel and the tool cannot disagree: a gap is a gap when the dead time exceeds
     --check      run the QC pass, write nothing, exit 4 if anything is wrong
     --strict     refuse to write across a seam rather than warning about it
 
-Three things echopype gets wrong on this path, worked around here
------------------------------------------------------------------
+Four things echopype gets wrong on this path, worked around here
+----------------------------------------------------------------
 1. A .nc -> .zarr combine fails outright. `open_converted` leaves NetCDF
    encoding on every variable (zlib, chunksizes, fletcher32, szip...);
    `set_zarr_encodings` copies that dict wholesale into the Zarr encoding; and
@@ -60,6 +60,23 @@ Three things echopype gets wrong on this path, worked around here
    the root attributes — on success, and from its SIGTERM handler — which is
    what lets `aa-store verify` tell sparsity from an interrupted write, and
    what makes exit 3 mean something a job runner can act on.
+
+4. `EchoData.to_zarr("gs://bucket/x.zarr")` writes a local folder
+   `bucket/x.zarr` in the current directory, and nothing to the bucket: it
+   hands xarray the URL's path without its protocol. Stores are written
+   group by group here instead (_core.zarr_io: echopype's groups and
+   encodings, the URL itself), so a gs:// store is written in place.
+
+Reading stores in place
+-----------------------
+A gs:// .zarr input is never copied here: it is identified by its own sealed
+provenance (its root attributes, a few kilobytes) and opened where it is,
+lazily (a gcsfuse mount, else gcsfs). Per-file stores written by
+`aa-ed --format zarr` can therefore be combined into a store in the bucket
+with no local disk at all, and memory bounded as above. A store without aa
+provenance is identified by its content, which means reading it all, so it
+is copied as before. gs:// .nc inputs are downloaded (NetCDF needs a local
+file).
 
 Provenance and reuse
 --------------------
@@ -91,6 +108,7 @@ Typical usage:
     aa-combine ./converted/ --check
     aa-combine *.nc -o HB1603_L1.zarr --chunk-pings 500
     aa-combine -o gs://bucket/surveys/HB1603_L1.zarr --workdir ./converted
+    aa-combine gs://bucket/files/a.zarr gs://bucket/files/b.zarr -o gs://bucket/ab.zarr
     aa-ed ./raw/ | aa-combine -o out.zarr --json | aa-store verify --json
 """
 from __future__ import annotations
@@ -131,7 +149,7 @@ if hasattr(signal, "SIGPIPE"):
 
 from aalibrary.console._core import (  # noqa: E402 - after the log silencing above
     Help, Run, ToolSpec, add_common_flags, canon, naming, provenance, render, show_help,
-    stdio, uris,
+    stdio, uris, zarr_io,
 )
 
 
@@ -193,11 +211,10 @@ NETCDF_SUFFIXES = {".nc", ".netcdf4"}
 
 # Encoding keys the Zarr backend understands. Everything else is dropped
 # before the write — see _strip_netcdf_encoding.
-ZARR_SAFE_ENCODING = {
-    "dtype", "_FillValue", "units", "calendar", "scale_factor", "add_offset",
-    "compressor", "compressors", "filters", "serializer", "write_empty_chunks",
-    "shards",
-}
+# Never a codec or chunking from the source: the output's are chosen here (or
+# by echopype), and a variable that keeps a Zarr 3 store's `compressors` next
+# to the `compressor` echopype adds is refused by xarray.
+ZARR_SAFE_ENCODING = set(zarr_io.KEEP_ENCODING) | {"write_empty_chunks"}
 
 COMPRESSIONS = ("default", "none", "zlib", "blosc-lz4", "blosc-zstd")
 
@@ -617,14 +634,14 @@ class Target:
     def staged(self) -> bool:
         """Written locally, then uploaded by the core: a gs:// NetCDF export.
 
-        A gs:// store is normally written in place through gcsfs (a large store
-        should not need twice its size on local disk). With AA_GCS_FAKE_ROOT set
-        there is no real bucket to write to, so a store is staged and published
-        into the fake one like any other product, and never reaches real GCS.
+        A gs:// store is written in place through fsspec (a large store should
+        not need its size on local disk): gcsfs on GCS, and with
+        AA_GCS_FAKE_ROOT the stand-in bucket's folder, which fsspec's gs:// is
+        pointed at (uris.install_fake_fsspec), so it never reaches GCS.
         """
         if not (self.remote and uris.is_gcs(self.raw)):
             return False
-        return self.is_netcdf or bool(os.getenv("AA_GCS_FAKE_ROOT"))
+        return self.is_netcdf
 
     def exists(self) -> bool:
         if not self.remote:
@@ -1484,40 +1501,19 @@ def _write_direct(
     this is not a reimplementation of the writer, it is the same write with
     two values supplied rather than derived.
     """
-    groups = [group for group in combined.group_paths if group != "Top-level"]
-    total = len(groups) + 1
-
-    root = combined["Top-level"]
-    root.to_zarr(
-        store=target.raw,
-        mode="w" if overwrite else "w-",
-        consolidated=False,
-        storage_options=storage_options or None,
+    groups = zarr_io.groups_of(combined)
+    # Every group gets the requested chunk shape and codec (the root has
+    # attributes only). A dask chunking that disagrees with the encoding
+    # chunks makes xarray raise rather than choose, so the writer rechunks
+    # to it, as echopype does.
+    zarr_io.write_echodata(
+        combined, target.raw, storage_options=storage_options, overwrite=overwrite,
+        encoding=lambda dataset: _build_encoding(dataset, chunk_pings, compression),
+        consolidate=False,
+        on_group=lambda done, total: _progress(progress, "progress", done=done, total=total,
+                                                unit="groups"),
     )
-    _progress(progress, "progress", done=1, total=total, unit="groups")
-
-    for index, group in enumerate(groups, start=2):
-        dataset = combined[group]
-        if dataset is None:
-            continue
-        encoding = _build_encoding(dataset, chunk_pings, compression)
-        for name, spec in encoding.items():
-            # Same reason echopype does it: a dask chunking that disagrees
-            # with the encoding chunks makes xarray raise rather than choose.
-            if "chunks" in spec and hasattr(dataset[name].data, "chunks"):
-                dataset[name] = dataset[name].chunk(
-                    dict(zip(dataset[name].dims, spec["chunks"]))
-                )
-        dataset.to_zarr(
-            store=target.raw,
-            group=group,
-            mode="a",
-            encoding=encoding,
-            consolidated=False,
-            storage_options=storage_options or None,
-        )
-        _progress(progress, "progress", done=index, total=total, unit="groups")
-    logger.info(f"Wrote {len(groups) + 1} group(s) with the requested chunk shape and codec")
+    logger.info(f"Wrote {len(groups)} group(s) with the requested chunk shape and codec")
 
 
 def _consolidate(target: Target, storage_options: dict) -> None:
@@ -1910,7 +1906,7 @@ def _reuse_handle(
 
 
 def combine(
-    paths: list[Path],
+    paths: list,
     target: Target,
     channel_selection: Optional[list[str]],
     overwrite: bool,
@@ -1946,7 +1942,7 @@ def combine(
 
 
 def _combine(
-    paths: list[Path],
+    paths: list,
     target: Target,
     channel_selection: Optional[list[str]],
     overwrite: bool,
@@ -1961,9 +1957,14 @@ def _combine(
     _progress(progress, "progress", done=0, total=len(paths) + 1, unit="files")
     echodatas = []
     for index, path in enumerate(paths, start=1):
-        logger.info(f"Opening {path.name}")
+        logger.info(f"Opening {uris.basename(str(path))}")
         # chunks={}: lazy and dask-backed; see combine() for why it matters.
-        echodatas.append(ep.open_converted(str(path), chunks={}))
+        # A gs:// store is opened where it is (fsspec), never copied here.
+        if uris.is_remote(str(path)):
+            echodatas.append(ep.open_converted(str(path), chunks={},
+                                               storage_options=storage_options or {}))
+        else:
+            echodatas.append(ep.open_converted(str(path), chunks={}))
         _progress(progress, "progress", done=index, total=len(paths) + 1, unit="files")
 
     combine_kwargs = _supported(
@@ -2023,17 +2024,16 @@ def _combine(
             combined, target, chunk_pings, compression, overwrite, storage_options, progress
         )
     else:
-        write_kwargs = _supported(
-            type(combined).to_zarr,
-            {
-                "save_path": target.raw,
-                "overwrite": overwrite,
-                "compress": compression != "none",
-                "output_storage_options": storage_options,
-            },
-        )
+        # echopype's groups and encodings, written by xarray to the store as
+        # named: EchoData.to_zarr would write a gs:// store to a local folder
+        # (see the module docstring, 4).
         logger.info(f"Writing {target.raw}")
-        combined.to_zarr(**write_kwargs)
+        zarr_io.write_echodata(
+            combined, target.raw, storage_options=storage_options, overwrite=overwrite,
+            compress=compression != "none", consolidate=False,
+            on_group=lambda done, total: _progress(progress, "progress", done=done,
+                                                    total=total, unit="groups"),
+        )
 
     if consolidated:
         # Deliberately not passed as a kwarg. echopype writes the groups one
@@ -2363,11 +2363,14 @@ def main() -> None:
                 input_uris.append(item)
     else:
         # Each input's identity is its own product hash when it carries aa
-        # provenance (aa-nc / aa-ed output), else its content. gs:// inputs
-        # are read through a gcsfuse mount or the download cache.
+        # provenance (aa-nc / aa-ed output), else its content. A gs:// store
+        # is read where it is (its provenance in place, its data lazily
+        # through a gcsfuse mount or fsspec): nothing is copied here. A gs://
+        # .nc is read through a mount or the download cache.
         for item in items:
+            in_place = not isinstance(item, Path) and uris.is_store(item)
             try:
-                registered = run.input(str(item))
+                registered = run.input(str(item), fetch=not in_place)
             except Exception as exc:  # noqa: BLE001 - a missing or unreadable gs:// object
                 logger.error(f"Input does not exist: {item} ({exc})")
                 sys.exit(1)
@@ -2375,8 +2378,12 @@ def main() -> None:
                 paths.append(item)
                 input_uris.append(_to_uri(item))
             else:
-                paths.append(registered.local)
+                paths.append(registered.read_at if registered.remote
+                             else Path(registered.read_at))
                 input_uris.append(registered.uri)
+        in_place_count = sum(1 for item in run.inputs if item.via in ("in-place", "mount"))
+        if in_place_count:
+            logger.info(f"{in_place_count} store(s) read where they are; nothing copied here")
         # Canonical order: the combined product is sorted by time whatever
         # order the inputs arrive in, so the hash must not depend on it.
         run.inputs.sort(key=lambda registered: (registered.id, registered.uri))
@@ -2487,7 +2494,9 @@ def main() -> None:
         )
     elif args.sort == "name":
         records.sort(key=lambda item: item["name"])
-    paths = [Path(item["path"]) for item in records if not item.get("error")]
+    # A gs:// store stays a URI (opened in place); everything else a path.
+    paths = [item["path"] if uris.is_remote(item["path"]) else Path(item["path"])
+             for item in records if not item.get("error")]
     report["order"] = [item["name"] for item in records if not item.get("error")]
     report["sort"] = args.sort
 

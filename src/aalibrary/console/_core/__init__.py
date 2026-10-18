@@ -8,6 +8,7 @@ One implementation of the rules every tool follows:
     naming      the base-name and file-name rule
     provenance  file-level provenance: build, embed, read
     uris        gs:// URIs as first-class inputs and outputs
+    zarr_io     an EchoData written as a Zarr store, local or gs:// in place
     stdio       the pipe contract (what a stage reads and prints)
     helptext    curated --help, same shape for every tool
     tool        ToolSpec + Run: the five calls a product tool makes
@@ -22,7 +23,8 @@ from __future__ import annotations
 
 import sys
 
-from . import canon, chaining, describe, helptext, identity, naming, provenance, stdio, uris
+from . import (canon, chaining, describe, helptext, identity, naming, provenance, stdio,
+               uris, zarr_io)
 from .helptext import Help, render
 from .tool import Input, Output, Run, ToolSpec, add_common_flags, record_source
 
@@ -67,7 +69,7 @@ def show_help(spec: ToolSpec, help_: Help, parser=None, *, full=None,
 
 __all__ = [
     "canon", "chaining", "describe", "helptext", "identity", "naming", "provenance", "stdio",
-    "uris",
+    "uris", "zarr_io",
     "Help", "render", "Input", "Output", "Run", "ToolSpec", "add_common_flags", "record_source",
     "help_mode", "show_help",
 ]

@@ -31,7 +31,7 @@ import pprint
 from pathlib import Path
 
 from aalibrary.console._core import (
-    Help, Run, ToolSpec, add_common_flags, canon, naming, render, show_help, stdio,
+    Help, Run, ToolSpec, add_common_flags, canon, naming, render, show_help, stdio, uris,
 )
 
 
@@ -95,9 +95,9 @@ HELP = Help(
                       "when given.",
     },
     files=(
-        "Reads EchoData .nc or .zarr, local or gs://. Writes <base>_<hash>.nc "
-        "beside the input (current directory for gs:// input), or -o, or --dest. "
-        "An identical earlier result is reused."
+        "Reads EchoData .nc or .zarr, local or gs:// (a gs:// .zarr is read where it is, "
+        "not copied). Writes <base>_<hash>.nc beside the input (current directory for "
+        "gs:// input), or -o, or --dest. An identical earlier result is reused."
     ),
     pipeline=("Second stage: aa-nc | aa-sv | aa-graph, or aa-nc | aa-sv | aa-depth | "
               "... (see aa-guide). Note: aa-clean writes the cleaned values to "
@@ -267,11 +267,13 @@ def main():
 
     token = stdio.one_input(args.input_path, SPEC.name)
     run = Run(SPEC, args, params={"env_params": env_kv, "cal_params": cal_kv})
-    src = run.input(token)
+    # A gs:// Zarr store is read where it is (lazily, through a gcsfuse mount
+    # or fsspec), never copied here; anything else through the cache.
+    src = run.input(token, fetch=not (uris.is_gcs(token) and uris.is_store(token)))
     ecs = run.param_file(args.ecs, role="calibration") if args.ecs else None
 
     allowed_extensions = {".netcdf4", ".nc", ".zarr"}
-    ext = src.local.suffix.lower()
+    ext = Path(src.name).suffix.lower() if src.local is None else src.local.suffix.lower()
     if ext not in allowed_extensions:
         logger.error(
             f"'{src.name}' is not a supported file type. "
@@ -287,11 +289,12 @@ def main():
     out = run.plan(
         ext=".nc",
         explicit=explicit,
-        legacy=lambda: naming.with_stem_suffix(src.local, "_Sv", ".nc"),
+        legacy=lambda: naming.with_stem_suffix(src.local or src.name, "_Sv", ".nc"),
     )
 
     # Guard against clobbering the input
-    if not out.remote and Path(out.target).resolve() == src.local.resolve():
+    if (not out.remote and src.local is not None
+            and Path(out.target).resolve() == src.local.resolve()):
         logger.error(f"Refusing to overwrite input file: {src.local.resolve()}")
         sys.exit(1)
 
@@ -316,7 +319,7 @@ def main():
         )
 
         process_file(
-            input_path=src.local,
+            input_path=src.read_at,
             output_path=out.local,
             waveform_mode=args.waveform_mode,
             encode_mode=args.encode_mode,
@@ -366,7 +369,11 @@ def process_file(
     #  * A 1 MB HDF5 chunk cache per variable instead of netCDF-C's 64 MB:
     #    every read is of whole chunks, so a bigger cache only holds memory.
     _small_read_cache()
-    ed = ep.open_converted(str(input_path), chunks={})
+    if uris.is_remote(str(input_path)):
+        # A store read in place: lazily, through fsspec.
+        ed = ep.open_converted(str(input_path), chunks={}, storage_options={})
+    else:
+        ed = ep.open_converted(str(input_path), chunks={})
 
     # Build kwargs lazily — only pass waveform_mode / encode_mode when the
     # user explicitly provided them. echopype's compute_Sv treats these as

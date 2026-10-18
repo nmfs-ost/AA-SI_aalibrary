@@ -641,21 +641,21 @@ METADATA
   'combined'.
 
 OPTIONS
-  INPUTS | --workdir DIR		files/directories to combine (default: stdin,
-								else .)
-  -o, --output_path PATH		.zarr store or .nc export; local, gs:// or
-								s3:// (default: <base>.zarr in --workdir or .)
-  --channels A,B				channels to keep; needed when inputs differ
-  --check | --plan			  QC only | estimate only (exit 4 on findings)
-  --strict					  block on seams, overlaps and duplicate pings
+  INPUTS | --workdir DIR        files/directories to combine (default: stdin,
+                                else .)
+  -o, --output_path PATH        .zarr store or .nc export; local, gs:// or
+                                s3:// (default: <base>.zarr in --workdir or .)
+  --channels A,B                channels to keep; needed when inputs differ
+  --check | --plan              QC only | estimate only (exit 4 on findings)
+  --strict                      block on seams, overlaps and duplicate pings
   --chunk-pings N, --compression C
-								store layout; not scientific
-  --json						print an aa/1 handle instead of the path
-  --overwrite				   replace an existing output (always rewrites)
-  --force					   rebuild even when the identical output exists
-  --base NAME				   product base name (default: the -o stem, else
-								'combined')
-  --dest DIR|gs://PREFIX		write <base>.zarr there instead of --workdir/.
+                                store layout; not scientific
+  --json                        print an aa/1 handle instead of the path
+  --overwrite                   replace an existing output (always rewrites)
+  --force                       rebuild even when the identical output exists
+  --base NAME                   product base name (default: the -o stem, else
+                                'combined')
+  --dest DIR|gs://PREFIX        write <base>.zarr there instead of --workdir/.
 
 SCIENTIFIC OPTIONS (change the product hash)
   --channels  Channels kept, in this order (sets the output channel order).
@@ -1417,15 +1417,18 @@ COMMON OPTIONS
 ## aa_ed
 
 ```bash
-aa-ed — Raw file name, path or folder -> EchoData NetCDF (aa-raw + aa-nc in
-  one step).
+aa-ed — Raw file name, path or folder -> EchoData NetCDF or Zarr (aa-raw +
+  aa-nc in one step).
   [EchoData builder (starts the chain) · product: echodata]
 
 WHAT IT DOES
   A bare NCEI file name is looked up in the NCEI BigQuery cache (ship, survey,
   echosounder), downloaded from NCEI and converted with echopype.open_raw. A
   local .raw (or gs:// URI) is converted offline, the sonar model read from
-  its header. A directory: every .raw in it.
+  its header. A directory: every .raw in it. Several files with --dest: one at
+  a time, each by a fresh aa-ed (with --cleanup-raw the disk holds one raw
+  file at a time). --format zarr writes a Zarr store, read in place
+  downstream.
 
 INPUT (argument or stdin)
   One token (argument or first stdin line): a bare file name, a .raw path, a
@@ -1433,8 +1436,9 @@ INPUT (argument or stdin)
   an error (exit 1).
 
 OUTPUT (stdout)
-  The .nc's absolute path; its gs:// URI with --print-uri/--cloud-only or
-  -o/--dest gs://...; the directory itself in directory mode.
+  The .nc's (or .zarr's) absolute path; its gs:// URI with
+  --print-uri/--cloud-only or -o/--dest gs://...; the directory itself in
+  directory mode; one product per line, in the order given, for several files.
 
 METADATA
   Starts the provenance chain: the .nc records the .raw's identity, the sonar
@@ -1443,31 +1447,40 @@ METADATA
   (s3://noaa-wcsd-pds/data/raw/...), which the .nc records too.
 
 OPTIONS
-  FILE_NAME | PATH.raw | DIR	what to convert (mode is auto-detected)
-  -o, --output_path PATH		the .nc (suffix forced to .nc); local or gs://
+  FILE_NAME | PATH.raw | DIR ...
+                                what to convert (mode is auto-detected);
+                                several files need --dest
+  -o, --output_path PATH        the output (suffix forced to .nc, or .zarr for
+                                NAME.zarr / --format zarr); local or gs://
+  --format {nc,zarr}            NetCDF (default) or a Zarr store, read in
+                                place by aa-combine and aa-sv
   --file_download_directory DIR
-								where NCEI downloads land (default: .)
+                                where NCEI downloads land (default: .)
   --ship_name/--survey_name/--sonar_model
-								override the lookup; all three skip BigQuery
-  -r, --recursive			   directory mode: include subfolders
-  --cleanup-raw				 delete the downloaded .raw after converting
+                                override the lookup; all three skip BigQuery
+  -r, --recursive               directory mode: include subfolders
+  --cleanup-raw                 delete the downloaded .raw (or the cached copy
+                                of a gs:// .raw) after converting
+  --progress                    several files: NDJSON progress (files done) on
+                                stderr
   --gcs-uri URI | --gcs-prefix P
-								use a bucket object as a cache of the .nc (see
-								--help-all)
-  -f, --force				   download and convert again
+                                use a bucket object as a cache of the .nc (see
+                                --help-all)
+  -f, --force                   download and convert again
 
 SCIENTIFIC OPTIONS (change the product hash)
   --sonar_model  Which echopype parser reads the file: --sonar_model, else the
-				 NCEI cache (bare name) or the .raw header.
+                 NCEI cache (bare name) or the .raw header.
   Flag order, alias spellings and explicit defaults do not change the hash.
 
 FILES & URIs
-  Writes <raw stem>.nc beside the .raw (NCEI: in --file_download_directory;
-  gs:// raw: the current directory), or -o / --dest. Reused without
-  converting: a .nc holding the same product; in NCEI mode one recorded as
-  converted from the same NCEI object and sonar model (no lookup, no
-  download); one made before provenance existed (by name, with a note). A
-  different product is converted again.
+  Writes <raw stem>.nc (or .zarr) beside the .raw (NCEI: in
+  --file_download_directory; gs:// raw: the current directory), or -o /
+  --dest. Reused without converting: an output holding the same product; in
+  NCEI mode one recorded as converted from the same NCEI object and sonar
+  model (no lookup, no download); for a gs:// .raw and --sonar_model, one made
+  from the same object (no download); one made before provenance existed (by
+  name, with a note). A different product is converted again.
 
 IN A PIPELINE
   First stage: aa-ed FILE.raw | aa-sv | aa-clean ...  Directory mode feeds
@@ -1475,17 +1488,18 @@ IN A PIPELINE
 
 EXAMPLES
   aa-ed HB1603_L1-D20160703-T183957.raw | aa-sv
-  aa-ed ./data/D20160703-T060000.raw		  # offline, .nc beside the .raw
+  aa-ed ./data/D20160703-T060000.raw          # offline, .nc beside the .raw
   aa-ed ./raw/ | aa-combine -o HB1603_L1.zarr
+  aa-ed a.raw b.raw c.raw --format zarr --dest gs://bucket/files/ --cleanup-raw
 
 COMMON OPTIONS
-  --force				 recompute even if an identical product already
-						  exists
-  --base NAME			 name outputs after NAME instead of the input's base
-						  name
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
   --dest DIR|gs://PREFIX  write the default-named output there instead of
-						  beside the input
-  --help-all			  the complete reference, every option
+                          beside the input
+  --help-all              the complete reference, every option
 ```
 
 ## aa_evenness
@@ -3805,20 +3819,35 @@ METADATA
   name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
-  -o, --output_path PATH	   Explicit output; '_Sv' is appended to its stem,
-							   as always. Local path or gs:// URI.
-  --waveform_mode CW|BB|FM	 EK80 only. Omit for EK60.
+  -o, --output_path PATH       Explicit output; '_Sv' is appended to its stem,
+                               as always. Local path or gs:// URI.
+  --ecs FILE                   An Echoview calibration supplement (.ecs),
+                               local or gs://: per-transducer values, matched
+                               to channels by frequency (aa-ecs writes and
+                               shows them).
+  --env-param KEY=VALUE        Override an environmental value (sound_speed,
+                               sound_absorption, temperature, salinity,
+                               pressure, pH); KEY@38kHz=VALUE for one channel.
+                               Repeatable.
+  --cal-param KEY=VALUE        Override a calibration value (gain_correction,
+                               sa_correction, equivalent_beam_angle, ...);
+                               KEY@38kHz=VALUE for one channel. Repeatable.
+  --waveform_mode CW|BB|FM     EK80 only. Omit for EK60.
   --encode_mode complex|power  EK80 only. Omit for EK60.
 
 SCIENTIFIC OPTIONS (change the product hash)
   --waveform_mode  EK80 waveform. FM and BB are the same computation.
-  --encode_mode	EK80 encoding.
+  --encode_mode    EK80 encoding.
+  --env-param      Environmental overrides (--env-param), as numbers. Hashed
+                   only when given.
+  --cal-param      Calibration overrides (--cal-param), as numbers. Hashed
+                   only when given.
   Flag order, alias spellings and explicit defaults do not change the hash.
 
 FILES & URIs
-  Reads EchoData .nc or .zarr, local or gs://. Writes <base>_<hash>.nc beside
-  the input (current directory for gs:// input), or -o, or --dest. An
-  identical earlier result is reused.
+  Reads EchoData .nc or .zarr, local or gs:// (a gs:// .zarr is read where it
+  is, not copied). Writes <base>_<hash>.nc beside the input (current directory
+  for gs:// input), or -o, or --dest. An identical earlier result is reused.
 
 IN A PIPELINE
   Second stage: aa-nc | aa-sv | aa-graph, or aa-nc | aa-sv | aa-depth | ...
@@ -3828,19 +3857,26 @@ IN A PIPELINE
 EXAMPLES
   aa-nc D20160703-T060000.raw --sonar_model EK60 | aa-sv
   aa-sv file.nc --waveform_mode BB --encode_mode complex   # EK80
+  aa-sv file.nc --ecs gs://bucket/cal/HB1603.ecs
+  aa-sv file.nc --cal-param gain_correction@38kHz=26.12 --env-param sound_speed=1490
 
 NOTE
   EK80 needs both --waveform_mode and --encode_mode; echopype refuses EK80
   data without them.
 
+NOTE
+  An ECS file and --env-param/--cal-param cannot be combined: echopype ignores
+  the overrides when it has an ECS. Put the values in the ECS (aa-ecs write)
+  instead.
+
 COMMON OPTIONS
-  --force				 recompute even if an identical product already
-						  exists
-  --base NAME			 name outputs after NAME instead of the input's base
-						  name
+  --force                 recompute even if an identical product already
+                          exists
+  --base NAME             name outputs after NAME instead of the input's base
+                          name
   --dest DIR|gs://PREFIX  write the default-named output there instead of
-						  beside the input
-  --help-all			  the complete reference, every option
+                          beside the input
+  --help-all              the complete reference, every option
 ```
 
 ## aa_swap_freq

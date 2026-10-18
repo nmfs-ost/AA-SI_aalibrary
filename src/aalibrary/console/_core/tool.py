@@ -84,18 +84,26 @@ class ToolSpec:
 @dataclass
 class Input:
     token: str               # as given (path or URI)
-    local: Path              # readable local path
+    local: Path | None       # readable local path (None: read in place, not fetched)
     uri: str                 # file:// or gs:// URI recorded in provenance
     prov: dict | None
     id: str                  # identity used in the hash
     base: str
     role: str = "source"
-    via: str = "local"       # local | mount | cache | download
+    via: str = "local"       # local | mount | cache | download | in-place
     recipe: str = identity.DATA   # what this input adds to a recipe (see identity)
+    #: What to open to read it: the local path, or (read in place) a gs://
+    #: URI for fsspec. See Run.input(fetch=False).
+    read_at: str = ""
 
     @property
     def name(self) -> str:
         return uris.basename(self.token)
+
+    @property
+    def remote(self) -> bool:
+        """Read in place through fsspec (a gs:// URI), not from a local path."""
+        return uris.is_remote(self.read_at)
 
     def record(self) -> dict:
         rec = {"role": self.role, "uri": self.uri, "id": self.id, "name": self.name}
@@ -256,8 +264,24 @@ class Run:
     # -- inputs ------------------------------------------------------------
 
     def input(self, token: str | os.PathLike, *, role: str = "source",
-              must_exist: bool = True) -> Input:
+              must_exist: bool = True, fetch: bool = True) -> Input:
+        """Register an input: its identity (for the hash) and where to read it.
+
+        ``fetch=False``: a gs:// input is not copied here. A Zarr store is
+        identified by its own sealed provenance, read in place (a few
+        kilobytes), and read where it is (``read_at``: a gcsfuse mount, else
+        the URI, for fsspec); a store without aa provenance is identified by
+        content, which means reading all of it, so it is copied as before.
+        Any other object is identified by its MD5 from the object's metadata,
+        the identity a copy would get, and copied only when the tool calls
+        ``fetch(input)``, so a product that already exists is found without
+        downloading anything.
+        """
         token = str(token)
+        if uris.is_gcs(token) and not fetch:
+            found = self._input_in_place(token, role)
+            if found is not None:
+                return found
         via = "local"
         info = None
         if uris.is_gcs(token):
@@ -298,9 +322,114 @@ class Run:
         base = (naming.sanitize_base(recorded) if recorded
                 else naming.base_of(local.name if local.name else token))
         inp = Input(token, local, uri, prov, ident, base, role, via,
-                    identity.input_recipe(role, prov, ident))
+                    identity.input_recipe(role, prov, ident), str(local))
         self.inputs.append(inp)
         return inp
+
+    def _input_in_place(self, token: str, role: str) -> Input | None:
+        """Run.input(fetch=False) for a gs:// input; None: copy it after all."""
+        store = uris.is_store(token)
+        # A store is read where it is (a mount, else fsspec). Any other object
+        # is read only once fetch() asks for it, through localize, which
+        # checks a mount's copy against the object before using it.
+        where = uris.in_place(token) if store else token
+        mounted = where != token
+        info = None
+        try:
+            if store:
+                prov, status = provenance.inspect_store(where)
+                if prov is None:
+                    if status == "copied":
+                        print(f"{self.spec.name}: note: {uris.basename(token)} carries aa "
+                              "provenance copied from another product; identifying it by "
+                              "content", file=sys.stderr)
+                    print(f"{self.spec.name}: {uris.basename(token)} has no aa provenance of "
+                          "its own, so it is identified by its content: copying it here",
+                          file=sys.stderr)
+                    return None
+            else:
+                try:
+                    info = uris.stat(token)
+                except Exception:  # noqa: BLE001 - no API access: as before, by copy
+                    if uris.mounted_path(token) is not None:
+                        return None   # localize reads it through the mount
+                    raise
+                if info is None:
+                    if uris.mounted_path(token) is not None:
+                        return None   # the mount shows it; the API does not
+                    stdio.fail(self.spec.name, f"input not found: {token}")
+                prov = self._source_sidecar(token)
+                if prov is not None and not self._sidecar_is_current(prov, info):
+                    print(f"{self.spec.name}: warning: {uris.basename(token)} has changed since "
+                          f"its {provenance.SIDECAR_SUFFIX} sidecar was written; ignoring the "
+                          "sidecar (origin unknown)", file=sys.stderr)
+                    prov = None
+        except SystemExit:
+            raise
+        except Exception as exc:  # credentials, network, permissions
+            stdio.fail(self.spec.name, f"cannot read {token}: {exc}")
+        ident = identity.of_provenance(prov)
+        if ident is None and info is not None:
+            ident = identity.gcs_identity(info.md5, info.size)
+        if ident is None:
+            return None                   # no MD5 on the object: identify by content
+        recorded = (prov or {}).get("base")
+        base = (naming.sanitize_base(recorded) if recorded
+                else naming.base_of(uris.basename(token)))
+        local = Path(where) if mounted else None
+        inp = Input(token, local, token, prov, ident, base, role,
+                    "mount" if mounted else "in-place",
+                    identity.input_recipe(role, prov, ident), where)
+        self.inputs.append(inp)
+        return inp
+
+    @staticmethod
+    def _sidecar_is_current(prov: dict, info) -> bool:
+        """A source sidecar describes the object that is there now: the same
+        content identity as the object's own MD5 and size (as for a copy,
+        tool._source_sidecar_is_current)."""
+        content_id = (prov.get("product") or {}).get("content_id") or ""
+        current = identity.gcs_identity(info.md5, info.size)
+        return not (content_id and current) or content_id == current
+
+    @staticmethod
+    def _source_sidecar(token: str) -> dict | None:
+        """A source object's <key>.aa.json (where it came from), read without
+        fetching the object; None when there is none."""
+        side = token + provenance.SIDECAR_SUFFIX
+        if uris.stat(side) is None:
+            return None
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory(dir=str(uris.cache_dir())) as tmp:
+            path = Path(tmp) / "side.json"
+            bucket, key = uris.parse_gcs(side)
+            uris.backend().download(bucket, key, path)
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+            except ValueError:
+                return None
+        product = (doc or {}).get("product") or {}
+        return doc if product.get("role") == "source" else None
+
+    def fetch(self, inp: Input) -> Path:
+        """A local copy of an input registered with fetch=False (downloaded
+        into the cache, or the mount's path), checked to be the object whose
+        identity is already in the hash."""
+        if inp.local is not None:
+            return inp.local
+        try:
+            loc = uris.localize(inp.token)
+        except Exception as exc:  # noqa: BLE001
+            stdio.fail(self.spec.name, f"cannot read {inp.token}: {exc}")
+        if loc.info is not None:
+            got = identity.gcs_identity(loc.info.md5, loc.info.size)
+            if got is not None and got != inp.id and not inp.id.startswith("aa:"):
+                stdio.fail(self.spec.name, f"{inp.token} changed while it was being read; "
+                                           "run again")
+        inp.local, inp.via, inp.read_at = loc.path, loc.via, str(loc.path)
+        return loc.path
 
     def param_file(self, token: str | os.PathLike, *, role: str,
                    uri: str | None = None) -> Input:
@@ -415,8 +544,9 @@ class Run:
         elif legacy is not None and naming.mode() == "legacy":
             target = str(legacy())
             if (not uris.is_remote(target) and primary is not None and primary.via != "local"
-                    and Path(os.path.abspath(Path(target).expanduser())).parent
-                    == Path(os.path.abspath(primary.local)).parent):
+                    and (primary.local is None
+                         or Path(os.path.abspath(Path(target).expanduser())).parent
+                         == Path(os.path.abspath(primary.local)).parent)):
                 # Beside a cached or mounted gs:// input is the cache or a
                 # (read-only) mount: use the current directory instead.
                 target = str(Path.cwd() / Path(target).name)
@@ -497,6 +627,12 @@ class Run:
             if not uris.is_gcs(out.target):
                 return None
             info = uris.stat(out.target)
+            if info is None and uris.is_store(out.target):
+                # A store published by finish(): the hash is stamped on its
+                # root metadata, which goes up last, so a store whose upload
+                # never finished has none (or the previous product's).
+                meta = uris.store_meta_info(out.target)
+                return meta.metadata.get(uris.META_HASH) if meta is not None else None
             if info is None:
                 return None
             recorded_md5 = info.metadata.get(uris.META_MD5)
@@ -514,7 +650,9 @@ class Run:
             if not uris.is_gcs(out.target):
                 return False
             try:
-                return uris.stat(out.target) is not None
+                return (uris.stat(out.target) is not None
+                        or (uris.is_store(out.target)
+                            and uris.store_meta_info(out.target) is not None))
             except Exception:
                 return False
         return Path(out.target).exists()

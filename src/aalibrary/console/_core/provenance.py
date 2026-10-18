@@ -453,6 +453,58 @@ def _read_zarr(path: Path) -> tuple[dict | None, bool]:
     return doc, seal.get(SEAL_ATTR) is not None and str(seal.get(SEAL_ATTR)) == _hash_of(doc)
 
 
+def _remote_json(where: str, name: str, storage_options: dict | None) -> dict | None:
+    """``<where>/<name>`` parsed as JSON, through fsspec; None if absent."""
+    import fsspec
+
+    if str(where).startswith(("gs://", "gcs://")) and os.getenv("AA_GCS_FAKE_ROOT"):
+        from . import uris
+
+        uris.install_fake_fsspec()   # the stand-in bucket, never GCS
+
+    fs, root = fsspec.core.url_to_fs(where, **(storage_options or {}))
+    key = f"{root.rstrip('/')}/{name}"
+    try:
+        with fs.open(key, "rb") as handle:
+            return json.loads(handle.read().decode("utf-8"))
+    except FileNotFoundError:
+        return None
+
+
+def inspect_store(where: str | Path,
+                  storage_options: dict | None = None) -> tuple[dict | None, str]:
+    """(document, status) for a Zarr store read where it is: a local path or a
+    gs:// URI (through fsspec: gcsfs, or the stand-in bucket). Only the root
+    attributes and the seal are read, a few kilobytes, never the data.
+
+    status: "embedded" (sealed), "copied" (aa attributes without a matching
+    seal: not this store's own), or "none".
+    """
+    if "://" not in str(where):
+        doc, sealed = _read_zarr(Path(where))
+    else:
+        def attrs_of(prefix: str) -> dict | None:
+            for name in ("zarr.json", ".zattrs"):
+                data = _remote_json(str(where), f"{prefix}{name}", storage_options)
+                if data is not None:
+                    return data.get("attributes", {}) if name == "zarr.json" else data
+            return None
+
+        attrs = attrs_of("")
+        if not attrs or ATTR not in attrs:
+            return None, "none"
+        doc = _loads(attrs.get(ATTR))
+        seal = attrs_of(f"{SEAL_GROUP}/") or {}
+        sealed = seal.get(SEAL_ATTR) is not None and str(seal.get(SEAL_ATTR)) == _hash_of(doc)
+    if doc is None:
+        return None, "none"
+    if not sealed:
+        return None, "copied"
+    if doc.get("schema") != SCHEMA:
+        return None, "none"
+    return doc, "embedded"
+
+
 def _read_png(path: Path) -> dict | None:
     from PIL import Image
 
@@ -660,7 +712,7 @@ def _write_html(path: Path, doc: dict) -> None:
 __all__ = [
     "SCHEMA", "SIDECAR_SUFFIX", "ATTR", "ATTR_HASH", "ATTR_BASE", "ATTR_TOOL", "ATTR_KIND",
     "ATTR_RECIPE",
-    "SEAL_GROUP", "SEAL_ATTR", "inspect", "write_zarr_group", "write_sidecar",
+    "SEAL_GROUP", "SEAL_ATTR", "inspect", "inspect_store", "write_zarr_group", "write_sidecar",
     "now", "software_versions", "merge_pipelines", "sources_of", "build", "history_line",
     "flat_attrs",
     "compact", "sidecar_path", "read", "write", "png_text",

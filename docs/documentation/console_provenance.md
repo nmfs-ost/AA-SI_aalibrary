@@ -252,11 +252,30 @@ still runs on local files; the core moves bytes at the edges:
   the next stage reads it without downloading. Every product published to
   gs:// gets a `<object>.aa.json` sidecar beside it (a store: `<store>.aa.json`),
   so its provenance can be read without downloading the product.
+- **Reading a Zarr store in place.** `aa-combine` and `aa-sv` never copy a
+  gs:// `.zarr` input: its identity is its own sealed provenance, read from the
+  store's root metadata (kilobytes), and its data is opened where it is, lazily
+  (through a gcsfuse mount, else gcsfs). The identity is the one a copy would
+  get, so reading in place never changes a hash. A store without aa provenance
+  is identified by its content, which means reading all of it, so it is copied
+  as before. In the code: `run.input(token, fetch=False)`, then open
+  `input.read_at`; `run.fetch(input)` when a local copy is needed after all.
+  `aa-ed` registers a gs:// `.raw` the same way, by the object's MD5, so a
+  product already made from it is found without downloading the raw file.
+- **A store published to gs://** (`aa-ed --format zarr -o gs://…`) goes up
+  object by object with its root metadata last and the product hash stamped on
+  that root object, so a store whose upload never finished is never taken for
+  the finished product. `aa-combine` writes its store in place through fsspec.
+  Both write echopype's groups and encodings with `_core.zarr_io`, never
+  `EchoData.to_zarr`, which writes a gs:// store to a local folder named after
+  the bucket (echopype 0.11).
 - **`aa-metadata gs://…`** reads that sidecar first and trusts it only when it
   names the product hash the object itself carries; for a store without one it
   reads only the root metadata and the seal; only then does it download.
 - `AA_GCS_FAKE_ROOT=/dir` makes a local directory play the object store
-  (tests and rehearsals): nothing reaches GCS, stores included.
+  (tests and rehearsals): nothing reaches GCS, stores included. fsspec's
+  `gs://` is pointed at the same directory, so stores read and written in
+  place land there too.
 - `AA_CACHE_DIR` sets the cache (default `~/.cache/aalibrary`). Point it at
   a tmpfs to keep a whole pipeline in RAM.
 - `AA_GCS_MOUNTS="bucket=/path"` declares mounts that `/proc/mounts`

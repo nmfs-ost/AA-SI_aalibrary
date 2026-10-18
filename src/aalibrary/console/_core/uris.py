@@ -18,6 +18,12 @@ still works on local files, so this module moves bytes at the edges:
     A prefix (a Zarr store) is mirrored, and files the bucket no longer has
     are removed from the mirror.
 
+``in_place(uri)``
+    What to open to read a Zarr store where it is, with no copy: a gcsfuse
+    mount that shows it, else the gs:// URI itself (read lazily through
+    fsspec). Tools that can read a store in place (aa-combine, aa-sv) use
+    this instead of ``localize``, so a store never has to fit on this disk.
+
 ``stage(uri)`` / ``publish(local, uri)``
     Writing to gs://: the tool writes to a local staging file, then
     ``publish`` uploads it (plus sidecar), stamps the product hash into the
@@ -29,7 +35,10 @@ Environment:
                        Point it at a tmpfs to keep everything in RAM.
     AA_GCS_MOUNTS      explicit mounts, "bucket=/path[,bucket2=/path2]".
                        gcsfuse mounts in /proc/mounts are found automatically.
-    AA_GCS_FAKE_ROOT   use a local directory as the object store (tests).
+    AA_GCS_FAKE_ROOT   use a local directory as the object store (tests and
+                       rehearsals). fsspec's gs:// is pointed at it too, so a
+                       store read or written through fsspec (in place, as on
+                       GCS) lands in the same folder and never reaches GCS.
 """
 
 from __future__ import annotations
@@ -241,8 +250,138 @@ def backend():
     global _BACKEND
     if _BACKEND is None:
         fake = os.getenv("AA_GCS_FAKE_ROOT")
+        if fake:
+            install_fake_fsspec()
         _BACKEND = _FakeBackend(fake) if fake else _GcsBackend()
     return _BACKEND
+
+
+# ---------------------------------------------------------------------------
+# The stand-in bucket, for fsspec too.
+# ---------------------------------------------------------------------------
+
+def _fake_root() -> Path:
+    root = os.getenv("AA_GCS_FAKE_ROOT")
+    if not root:
+        # Registered for a stand-in bucket that is no longer set: refuse
+        # rather than fall through to anything that could reach GCS.
+        raise RuntimeError("gs:// is the stand-in bucket, but AA_GCS_FAKE_ROOT is not set")
+    return Path(root).expanduser().resolve()
+
+
+_FAKE_FS = None
+
+
+def install_fake_fsspec() -> None:
+    """Point fsspec's gs:// (and gcs://) at AA_GCS_FAKE_ROOT.
+
+    The tools read and write Zarr stores in place through fsspec, as gcsfs
+    does on GCS. With the stand-in bucket those reads and writes must land
+    in the same folder the object store above uses (<root>/<bucket>/<key>),
+    and must never reach GCS: registering this filesystem for the gs://
+    protocol (in place of gcsfs) does both. A local filesystem whose paths
+    are the stand-in's; storage options meant for gcsfs are ignored.
+    """
+    global _FAKE_FS
+    import fsspec
+
+    if _FAKE_FS is None:
+        from fsspec.implementations.local import LocalFileSystem
+
+        class FakeGcsFileSystem(LocalFileSystem):
+            protocol = ("gs", "gcs")
+
+            def __init__(self, *args, **kwargs):  # noqa: ARG002 - gcsfs options
+                super().__init__(auto_mkdir=True)
+
+            @classmethod
+            def _strip_protocol(cls, path):
+                if isinstance(path, (list, tuple)):
+                    return [cls._strip_protocol(p) for p in path]
+                path = str(path)
+                for prefix in ("gs://", "gcs://"):
+                    if path.startswith(prefix):
+                        key = path[len(prefix):].strip("/")
+                        return str(_fake_root() / safe_relpath(key)) if key else str(_fake_root())
+                return LocalFileSystem._strip_protocol(path)
+
+            def unstrip_protocol(self, name):
+                name, root = str(name), str(_fake_root())
+                if name == root or name.startswith(root + "/"):
+                    return "gs://" + name[len(root):].lstrip("/")
+                return name
+
+        _FAKE_FS = FakeGcsFileSystem
+    for protocol in ("gs", "gcs"):
+        fsspec.register_implementation(protocol, _FAKE_FS, clobber=True)
+
+
+if os.getenv("AA_GCS_FAKE_ROOT"):
+    try:
+        install_fake_fsspec()
+    except ImportError:  # pragma: no cover - fsspec comes with xarray/echopype
+        pass
+
+
+def is_store(value: object) -> bool:
+    """A Zarr store, by name: '<anything>.zarr' (local or gs://)."""
+    return isinstance(value, (str, Path)) and str(value).rstrip("/").lower().endswith(".zarr")
+
+
+def in_place(uri: str) -> str:
+    """What to open to read a gs:// store (or object) where it is, with no copy.
+
+    A gcsfuse mount that shows it, else the URI itself, for fsspec (gcsfs on
+    GCS; the stand-in folder under AA_GCS_FAKE_ROOT). Nothing is downloaded.
+    """
+    mounted = mounted_path(uri)
+    if mounted is not None:
+        return str(mounted)
+    if os.getenv("AA_GCS_FAKE_ROOT"):
+        install_fake_fsspec()
+    return uri
+
+
+def store_meta_info(uri: str) -> ObjectInfo | None:
+    """The root metadata object of a gs:// Zarr store (zarr.json, or .zattrs
+    for Zarr 2), which is where publish stamps the product hash; None if
+    the store has none (absent, or never finished)."""
+    for name in ("zarr.json", ".zattrs"):
+        try:
+            info = stat(join(uri, name))
+        except Exception:  # noqa: BLE001 - unreadable is "unknown"
+            info = None
+        if info is not None:
+            return info
+    return None
+
+
+def evict(uri: str) -> int:
+    """Drop the download cache's copy of a gs:// object (and its sidecar);
+    bytes freed. A mount or the bucket is never touched."""
+    bucket, key = parse_gcs(uri)
+    try:
+        path = _cache_path(bucket, key.rstrip("/"))
+    except ValueError:
+        return 0
+    freed = 0
+    for item in (path, path.with_name(path.name + SIDECAR_SUFFIX)):
+        try:
+            if item.is_dir() and not item.is_symlink():
+                freed += sum(p.stat().st_size for p in item.rglob("*") if p.is_file())
+                shutil.rmtree(item, ignore_errors=True)
+            elif item.exists():
+                freed += item.stat().st_size
+                item.unlink()
+        except OSError:
+            continue
+        record = _cache_record(item)
+        if record.is_file():
+            try:
+                record.unlink()
+            except OSError:
+                pass
+    return freed
 
 
 def stat(uri: str) -> ObjectInfo | None:
@@ -482,6 +621,13 @@ def publish_tree(local: Path, uri: str, *, metadata: dict | None = None,
     deleted, so a rewritten store is never mixed with the old one, and the
     root metadata goes up last, so a half-finished upload doesn't look like
     a complete store. ``metadata`` is stamped on the root metadata object.
+
+    Replacing a store: its old root metadata is deleted first and the old
+    objects the new store does not have are deleted before the new root goes
+    up. A replacement stopped at any point leaves a store with no root
+    metadata (unreadable, and never taken for a finished product) rather than
+    the old product's stamp over a body that is partly new, or the new
+    product's stamp over leftover chunks of the old one.
     """
     bucket, key = parse_gcs(uri)
     prefix = key.rstrip("/") + "/"
@@ -496,22 +642,39 @@ def publish_tree(local: Path, uri: str, *, metadata: dict | None = None,
         raise FileNotFoundError(f"nothing to upload in {local}")
     root_meta = [p for p in files if p.parent == local and p.name in _STORE_ROOT_META]
     body = [p for p in files if p not in root_meta]
+    deleted = 0
+    if is_store:
+        # The old product's root goes first: from here until the new root is
+        # up, the store is visibly unfinished. (Counted as deleted only when
+        # the new store has no such object.)
+        replaced = {p.name for p in root_meta}
+        for rel in sorted(r for r in remote if "/" not in r and r in _STORE_ROOT_META):
+            backend().delete(bucket, prefix + rel)
+            remote.pop(rel)
+            deleted += rel not in replaced
     uploaded = unchanged = 0
-    for p in body + root_meta:
+    for p in body:
         rel = p.relative_to(local).as_posix()
-        stamp = metadata if (p in root_meta and p.name in ("zarr.json", ".zattrs")) else None
+        obj = remote.get(rel)
+        if obj is not None and obj.md5 and obj.md5 == _md5_b64_of(p):
+            unchanged += 1
+            continue
+        backend().upload(p, bucket, prefix + rel, None)
+        uploaded += 1
+    if prune:
+        keep = {p.relative_to(local).as_posix() for p in files}
+        for rel in sorted(set(remote) - keep):
+            backend().delete(bucket, prefix + rel)
+            deleted += 1
+    for p in root_meta:
+        rel = p.relative_to(local).as_posix()
+        stamp = metadata if p.name in ("zarr.json", ".zattrs") else None
         obj = remote.get(rel)
         if obj is not None and obj.md5 and obj.md5 == _md5_b64_of(p) and not stamp:
             unchanged += 1
             continue
         backend().upload(p, bucket, prefix + rel, stamp)
         uploaded += 1
-    deleted = 0
-    if prune:
-        keep = {p.relative_to(local).as_posix() for p in files}
-        for rel in sorted(set(remote) - keep):
-            backend().delete(bucket, prefix + rel)
-            deleted += 1
     return uploaded, unchanged, deleted
 
 
@@ -555,5 +718,6 @@ __all__ = [
     "SIDECAR_SUFFIX", "META_HASH", "META_BASE", "META_TOOL", "META_MD5", "META_RECIPE", "META_KIND",
     "is_gcs", "is_remote", "parse_gcs", "join", "basename", "to_uri", "from_file_uri",
     "ObjectInfo", "backend", "stat", "cache_dir", "mounted_path", "Localized", "safe_relpath",
-    "localize", "stage", "publish", "publish_tree", "prune_mirror",
+    "localize", "stage", "publish", "publish_tree", "prune_mirror", "install_fake_fsspec",
+    "is_store", "in_place", "store_meta_info", "evict",
 ]
