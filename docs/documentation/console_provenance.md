@@ -268,7 +268,9 @@ still runs on local files; the core moves bytes at the edges:
   the finished product. `aa-combine` writes its store in place through fsspec.
   Both write echopype's groups and encodings with `_core.zarr_io`, never
   `EchoData.to_zarr`, which writes a gs:// store to a local folder named after
-  the bucket (echopype 0.11).
+  the bucket (echopype 0.11). Codecs are spelled for the installed zarr:
+  echopype 0.11's `compressor` (refused by xarray 2026.9) becomes
+  `compressors: [codec]` with zarr 3.
 - **`aa-metadata gs://…`** reads that sidecar first and trusts it only when it
   names the product hash the object itself carries; for a store without one it
   reads only the root metadata and the seal; only then does it download.

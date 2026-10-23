@@ -153,6 +153,35 @@ def test_zarr_io_hands_xarray_the_url_itself(tmp_path, monkeypatch):
     assert stores and set(stores) == {"gs://b/x/a.zarr"}
 
 
+def test_codecs_are_spelled_the_way_the_installed_zarr_takes_them():
+    """echopype 0.11 names its codec 'compressor', which xarray 2026.9 refuses
+    ("unexpected encoding parameters for zarr backend: ['compressor']"). With
+    zarr 3 it becomes 'compressors': [a zarr 3 codec]."""
+    import numcodecs
+    import zarr
+    from zarr.codecs import BloscCodec
+
+    if int(zarr.__version__.split(".")[0]) < 3:
+        pytest.skip("zarr 2 takes 'compressor' as it is")
+    blosc3 = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")
+    spec = zarr_io.zarr_codecs({
+        "a": {"compressor": blosc3, "chunks": (2,)},
+        "b": {"compressor": numcodecs.Blosc(cname="lz4", clevel=5,
+                                             shuffle=numcodecs.Blosc.SHUFFLE)},
+        "c": {"compressor": None},
+        "d": {"compressors": [blosc3]},
+    })
+    assert spec["a"] == {"compressors": [blosc3], "chunks": (2,)}
+    (b,) = spec["b"]["compressors"]
+    def word(x):
+        return str(getattr(x, "value", x))
+
+    assert isinstance(b, BloscCodec) and word(b.cname) == "lz4" and b.clevel == 5
+    assert word(b.shuffle) == "shuffle"
+    assert spec["c"] == {"compressors": None} and spec["d"] == {"compressors": [blosc3]}
+    assert all("compressor" not in item for item in spec.values())
+
+
 # --------------------------------------------------------------------------- #
 # aa-ed --format zarr
 # --------------------------------------------------------------------------- #

@@ -13,6 +13,13 @@ AA_GCS_FAKE_ROOT) and a local one is written where it was named.
 Encodings a variable carries from where it was read (a Zarr 3 store's
 ``compressors``, a NetCDF file's ``zlib``) are dropped first: the output's
 codec is chosen here, and xarray refuses a variable that names two.
+
+Codecs are spelled the way the installed zarr takes them. echopype 0.11 names
+its codec ``compressor`` (Zarr 2's spelling), which xarray 2026.9 no longer
+accepts: "unexpected encoding parameters for zarr backend: ['compressor']",
+from echopype's own ``to_zarr`` too. With zarr 3 it becomes
+``compressors: [codec]``, as a zarr 3 codec (echopype already gives one; an
+older numcodecs codec is translated); with zarr 2 it stays as it is.
 """
 
 from __future__ import annotations
@@ -43,6 +50,58 @@ def echopype_encoding(dataset, compress: bool = True) -> dict:
 
     return set_storage_encodings(dataset, COMPRESSION_SETTINGS["zarr"] if compress else None,
                                  "zarr")
+
+
+def _zarr_major() -> int:
+    import zarr
+
+    try:
+        return int(str(zarr.__version__).split(".")[0])
+    except ValueError:
+        return 3
+
+
+def as_zarr3_codec(codec):
+    """A codec as zarr 3 takes it in ``compressors``: zarr 3 codecs as they
+    are; a numcodecs codec (Zarr 2) translated to its zarr 3 equivalent."""
+    from zarr.abc.codec import BytesBytesCodec
+
+    if isinstance(codec, BytesBytesCodec):
+        return codec
+    import zarr.codecs
+
+    config = dict(codec.get_config()) if hasattr(codec, "get_config") else {}
+    name = str(config.pop("id", getattr(codec, "codec_id", "")))
+    if name == "blosc":
+        cname = config.get("cname", "zstd")
+        cname = cname.decode() if isinstance(cname, bytes) else str(cname)
+        # numcodecs: 0 none, 1 byte, 2 bit, -1 automatic (zarr 3: None).
+        shuffle = {0: "noshuffle", 1: "shuffle", 2: "bitshuffle"}.get(config.get("shuffle"))
+        return zarr.codecs.BloscCodec(cname=cname, clevel=int(config.get("clevel", 5)),
+                                      shuffle=shuffle, blocksize=int(config.get("blocksize", 0)))
+    if name == "zstd":
+        return zarr.codecs.ZstdCodec(level=int(config.get("level", 0)))
+    if name in ("zlib", "gzip"):
+        return zarr.codecs.GzipCodec(level=int(config.get("level", 5)))
+    try:  # numcodecs' own zarr 3 wrappers (numcodecs >= 0.14)
+        import numcodecs.zarr3 as wrappers
+
+        return getattr(wrappers, type(codec).__name__)(**config)
+    except Exception as exc:  # noqa: BLE001 - say which codec, not a TypeError deep in zarr
+        raise ValueError(f"no zarr 3 form of the codec {codec!r}") from exc
+
+
+def zarr_codecs(spec: dict) -> dict:
+    """Each variable's codec spelled the way the installed zarr takes it:
+    ``compressor`` (Zarr 2's word, which echopype 0.11 uses and xarray
+    2026.9 refuses) becomes ``compressors: [codec]`` with zarr 3."""
+    if _zarr_major() < 3:
+        return spec
+    for item in spec.values():
+        if isinstance(item, dict) and "compressor" in item:
+            codec = item.pop("compressor")
+            item.setdefault("compressors", None if codec is None else [as_zarr3_codec(codec)])
+    return spec
 
 
 def groups_of(echodata) -> list[str]:
@@ -79,7 +138,9 @@ def write_echodata(echodata, store: str, *, storage_options: dict | None = None,
         if dataset is None:
             continue
         clean_encoding(dataset)
-        spec = encoding(dataset) if encoding is not None else echopype_encoding(dataset, compress)
+        spec = zarr_codecs(
+            encoding(dataset) if encoding is not None else echopype_encoding(dataset, compress)
+        )
         for name, item in spec.items():
             chunks = item.get("chunks")
             if chunks and hasattr(dataset[name].data, "chunks"):
@@ -112,4 +173,4 @@ def consolidate_store(store: str, storage_options: dict | None = None) -> None:
 
 
 __all__ = ["KEEP_ENCODING", "clean_encoding", "echopype_encoding", "groups_of",
-           "write_echodata", "consolidate_store"]
+           "as_zarr3_codec", "zarr_codecs", "write_echodata", "consolidate_store"]
