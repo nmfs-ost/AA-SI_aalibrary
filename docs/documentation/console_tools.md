@@ -1463,6 +1463,8 @@ OPTIONS
                                 of a gs:// .raw) after converting
   --progress                    several files: NDJSON progress (files done) on
                                 stderr
+  --swap auto|on|off            expand the data on disk, not in memory (auto:
+                                files of 200 MB or more, or memory short)
   --gcs-uri URI | --gcs-prefix P
                                 use a bucket object as a cache of the .nc (see
                                 --help-all)

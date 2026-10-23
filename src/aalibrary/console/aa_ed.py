@@ -217,6 +217,8 @@ HELP = Help(
         ("--cleanup-raw", "delete the downloaded .raw (or the cached copy of a gs:// "
                           ".raw) after converting"),
         ("--progress", "several files: NDJSON progress (files done) on stderr"),
+        ("--swap auto|on|off", "expand the data on disk, not in memory (auto: files of "
+                               "200 MB or more, or memory short)"),
         ("--gcs-uri URI | --gcs-prefix P", "use a bucket object as a cache of the .nc "
                                            "(see --help-all)"),
         ("-f, --force", "download and convert again"),
@@ -384,6 +386,16 @@ def print_help_full() -> None:
                                   file on stderr ({"event":"progress",
                                   "done":3,"total":40,"unit":"files"}).
 
+      --swap {auto,on,off}        echopype expands a file's pings into
+                                  arrays several times the file's size.
+                                  auto (default): for a file of 200 MB or
+                                  more they are written to a temporary
+                                  store in the cache and read from there
+                                  (memory stays small; the store is deleted
+                                  after), else echopype decides from the
+                                  memory free. on / off: always / never.
+                                  Never changes the product.
+
       --force, -f                 Re-download and re-convert even when the
                                   .raw / .nc are already on disk. Default
                                   behavior is to treat both as cached: an
@@ -514,6 +526,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Several files: NDJSON progress events (files done) on stderr.",
+    )
+    parser.add_argument(
+        "--swap",
+        choices=["auto", "on", "off"],
+        default="auto",
+        help="Expand the parsed data on disk instead of in memory: auto (default) for "
+             "files of 200 MB or more, else when echopype finds memory short.",
     )
     parser.add_argument(
         "--file_download_directory",
@@ -800,6 +819,8 @@ def _run_list_mode(inputs: list[str], args) -> None:
             passthrough += [flag, value]
     if args.file_download_directory != ".":
         passthrough += ["--file_download_directory", args.file_download_directory]
+    if args.swap != "auto":
+        passthrough += ["--swap", args.swap]
     for flag, on in (("--cleanup-raw", args.cleanup_raw), ("--force", args.force),
                      ("--upload_to_gcp", args.upload_to_gcp), ("--debug", args.debug),
                      ("--quiet", args.quiet)):
@@ -844,8 +865,18 @@ def _run_list_mode(inputs: list[str], args) -> None:
             in_a_row = 0
             continue
         failed.append((item, f"exit {child.returncode}"))
-        logger.error(f"[{index}/{total}] {item} failed (exit {child.returncode}); "
-                     "its error is above.")
+        if child.returncode == -9:
+            # SIGKILL: the system's out-of-memory killer, almost always; the
+            # child had no chance to say anything.
+            logger.error(f"[{index}/{total}] {item} was killed by the system (signal 9), "
+                         "almost certainly for running out of memory. Run it again with "
+                         "--swap on, or on a machine with more memory.")
+        elif child.returncode < 0:
+            logger.error(f"[{index}/{total}] {item} was stopped by signal "
+                         f"{-child.returncode}.")
+        else:
+            logger.error(f"[{index}/{total}] {item} failed (exit {child.returncode}); "
+                         "its error is above.")
         in_a_row += 1
         if in_a_row >= MAX_FAILURES_IN_A_ROW and index < total:
             logger.error(f"{in_a_row} files in a row failed: stopping, {total - index} not "
@@ -1501,7 +1532,7 @@ def main() -> None:
 
     try:
         _convert(raw_path=raw_path, nc_path=out.local, sonar_model=metadata["sonar_model"],
-                 fmt=_ext(args))
+                 fmt=_ext(args), swap=args.swap)
     except SystemExit:
         _drop_staging()
         raise
@@ -2019,40 +2050,42 @@ def _acquire_raw(
     return True
 
 
-def _convert(raw_path: Path, nc_path: Path, sonar_model: str, fmt: str = ".nc") -> None:
+def _convert(raw_path: Path, nc_path: Path, sonar_model: str, fmt: str = ".nc",
+             swap: str = "auto") -> None:
     """Convert raw_path to EchoData at nc_path (echopype.open_raw): a NetCDF
-    file, or with fmt ".zarr" a Zarr store (consolidated)."""
+    file, or with fmt ".zarr" a Zarr store (consolidated). A large file is
+    expanded on disk, not in memory (see _core.rawio and --swap)."""
     try:
-        import echopype as ep
+        import echopype  # noqa: F401 - fail here, with this message, if it is missing
+        from aalibrary.console._core import rawio
     except Exception as e:
         logger.exception(f"Failed to import echopype: {e}")
         sys.exit(1)
 
+    use = rawio.use_swap_for(raw_path, swap)
     logger.info(
         f"Loading {raw_path} into EchoData "
-        f"(sonar_model={sonar_model})"
+        f"(sonar_model={sonar_model}"
+        + (", expanded on disk" if use is True else "") + ")"
     )
-    ed = ep.open_raw(
-        raw_file=raw_path,
-        sonar_model=sonar_model,
-    )
+    with rawio.open_raw(raw_path, sonar_model, swap=swap) as ed:
+        logger.info(f"Saving EchoData to {nc_path}")
+        Path(nc_path).parent.mkdir(parents=True, exist_ok=True)
+        if fmt == ".zarr":
+            # The same groups and encodings echopype writes, with consolidated
+            # metadata, so the store opens in one read where it lies.
+            from aalibrary.console._core import zarr_io
 
-    logger.info(f"Saving EchoData to {nc_path}")
-    Path(nc_path).parent.mkdir(parents=True, exist_ok=True)
-    if fmt == ".zarr":
-        # The same groups and encodings echopype writes, with consolidated
-        # metadata, so the store opens in one read where it lies.
-        from aalibrary.console._core import zarr_io
-
-        if Path(nc_path).exists():
-            shutil.rmtree(nc_path, ignore_errors=True)
-        zarr_io.write_echodata(ed, str(nc_path), overwrite=True)
-    else:
-        # overwrite=True: we only get here when the existing file (if any)
-        # is not this product, or --force was given. echopype's default
-        # (False) kept the old file and returned as if it had written —
-        # which is why `aa-ed FILE --force` used to leave a stale .nc behind.
-        ed.to_netcdf(save_path=nc_path, overwrite=True)
+            if Path(nc_path).exists():
+                shutil.rmtree(nc_path, ignore_errors=True)
+            zarr_io.write_echodata(ed, str(nc_path), overwrite=True)
+        else:
+            # overwrite=True: we only get here when the existing file (if any)
+            # is not this product, or --force was given. echopype's default
+            # (False) kept the old file and returned as if it had written —
+            # which is why `aa-ed FILE --force` used to leave a stale .nc
+            # behind.
+            ed.to_netcdf(save_path=nc_path, overwrite=True)
 
     if not Path(nc_path).exists():
         # Defensive: to_netcdf shouldn't return silently on failure, but
@@ -2186,7 +2219,7 @@ def _convert_one_local(
     # the import is cached after the first call, so the cost is paid
     # once across the batch.
     try:
-        import echopype as ep
+        import echopype  # noqa: F401 - a missing echopype fails this file, by name
     except Exception as e:
         return {
             "status": "failed",
@@ -2202,8 +2235,11 @@ def _convert_one_local(
         # an existing file.
         if nc_path.exists():
             nc_path.unlink()
-        ed = ep.open_raw(raw_file=raw_path, sonar_model=sonar_model)
-        ed.to_netcdf(save_path=nc_path, overwrite=True)
+        from aalibrary.console._core import rawio
+
+        with rawio.open_raw(raw_path, sonar_model,
+                            swap=getattr(args, "swap", "auto") or "auto") as ed:
+            ed.to_netcdf(save_path=nc_path, overwrite=True)
     except Exception as e:
         return {
             "status": "failed",

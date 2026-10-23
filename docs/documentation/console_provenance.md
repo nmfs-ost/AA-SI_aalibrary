@@ -80,7 +80,8 @@ different datasets never share a product even when they share a recipe.
 **Only scientific options count.** Each tool declares which options can
 change its numbers (they are listed under *SCIENTIFIC OPTIONS* in
 `aa-x --help`); paths, verbosity, compression, chunking and performance
-switches never enter the hash.
+switches never enter the hash (`aa-ed --swap`, which only chooses whether
+the data wait on disk or in memory while a file is read, is one of them).
 
 **Spelling doesn't matter.** Values are canonicalized before hashing, so
 these pairs give the same product:

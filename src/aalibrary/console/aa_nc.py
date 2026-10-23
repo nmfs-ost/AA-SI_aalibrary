@@ -252,17 +252,17 @@ def process_file(input_path: Path, output_path: Path, sonar_model: str):
     No Sv computation, no noise removal — those happen downstream in
     aa-sv and aa-clean. This is just the conversion stage.
     """
-    import echopype as ep  # deferred so --help stays fast
+    from aalibrary.console._core import rawio  # deferred so --help stays fast
 
     logger.info(f"Loading {input_path} into EchoData (sonar_model={sonar_model})")
-    ed = ep.open_raw(raw_file=str(input_path), sonar_model=sonar_model)
-
-    logger.info(f"Saving EchoData to {output_path}")
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    # overwrite=True: we only get here when the existing file (if any) is not
-    # the same product, so replacing it is correct. echopype's default
-    # (False) used to keep a stale file while reporting success.
-    ed.to_netcdf(save_path=str(output_path), overwrite=True)
+    # A large file is expanded on disk, not in memory (_core.rawio).
+    with rawio.open_raw(input_path, sonar_model) as ed:
+        logger.info(f"Saving EchoData to {output_path}")
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        # overwrite=True: we only get here when the existing file (if any) is
+        # not the same product, so replacing it is correct. echopype's default
+        # (False) used to keep a stale file while reporting success.
+        ed.to_netcdf(save_path=str(output_path), overwrite=True)
     logger.success(f"RAW → NetCDF conversion complete: {output_path}")
 
 
