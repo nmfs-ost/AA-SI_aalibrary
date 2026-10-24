@@ -104,6 +104,45 @@ def zarr_codecs(spec: dict) -> dict:
     return spec
 
 
+#: Bytes of float64 per chunk of a ping_time dataset written here (one
+#: channel, a run of pings, every sample): small enough to compute one at a
+#: time, large enough that a bucket store is not millions of objects.
+CHUNK_BYTES = 64 * 1000 * 1000
+
+
+def ping_chunk_for(dataset, chunk_bytes: int = CHUNK_BYTES) -> int:
+    """Pings per chunk for a channel x ping_time x range_sample dataset."""
+    depth = int(dataset.sizes.get("range_sample", 1) or 1)
+    return max(1, int(chunk_bytes // (8 * depth)))
+
+
+def chunked_encoding(dataset, ping_chunk: int, compress: bool = True) -> dict:
+    """Per-variable encoding: one channel, ``ping_chunk`` pings and the whole
+    of every other axis per chunk; echopype's codec for the dtype (none when
+    ``compress`` is False), spelled for the installed zarr."""
+    try:
+        from echopype.utils.coding import COMPRESSION_SETTINGS, get_zarr_compression
+    except Exception:  # noqa: BLE001 - internals may move: the backend's default codec
+        COMPRESSION_SETTINGS, get_zarr_compression = None, None
+    spec: dict = {}
+    for name, variable in dataset.variables.items():
+        item: dict = {}
+        if not compress:
+            item["compressor"] = None
+        elif get_zarr_compression is not None:
+            try:
+                item.update(get_zarr_compression(variable, COMPRESSION_SETTINGS["zarr"]))
+            except Exception:  # noqa: BLE001
+                pass
+        if variable.ndim:
+            item["chunks"] = tuple(
+                ping_chunk if dim == "ping_time" else (1 if dim == "channel" else size)
+                for dim, size in variable.sizes.items())
+        if item:
+            spec[str(name)] = item
+    return zarr_codecs(spec)
+
+
 def groups_of(echodata) -> list[str]:
     """Top-level first, then every other group echopype has, in its order."""
     paths = [g for g in (getattr(echodata, "group_paths", None) or []) if g != "Top-level"]
@@ -172,5 +211,6 @@ def consolidate_store(store: str, storage_options: dict | None = None) -> None:
         zarr.consolidate_metadata(str(store))
 
 
-__all__ = ["KEEP_ENCODING", "clean_encoding", "echopype_encoding", "groups_of",
-           "as_zarr3_codec", "zarr_codecs", "write_echodata", "consolidate_store"]
+__all__ = ["KEEP_ENCODING", "CHUNK_BYTES", "clean_encoding", "echopype_encoding", "groups_of",
+           "as_zarr3_codec", "zarr_codecs", "ping_chunk_for", "chunked_encoding",
+           "write_echodata", "consolidate_store"]

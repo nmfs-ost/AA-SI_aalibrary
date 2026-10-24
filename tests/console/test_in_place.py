@@ -323,6 +323,9 @@ def test_combine_reads_stores_in_place_and_writes_one_in_the_bucket(archive, tmp
     doc, status = provenance.inspect_store(target)
     assert status == "embedded"
     assert sorted(i["uri"] for i in doc["inputs"]) == sorted(stores)
+    # Its record beside it, as every published product has.
+    side = json.loads((tmp_path / "gcs" / BUCKET / "out" / "all.zarr.aa.json").read_text())
+    assert side["product"]["hash"] == doc["product"]["hash"]
     # The same inputs again: the store is reused, still with nothing copied.
     again = tool(tmp_path, "combine", *stores, "-o", target, "--sonar_model", "EK60", cwd=work)
     assert "reusing" in again.stderr and cached_files(tmp_path) == []

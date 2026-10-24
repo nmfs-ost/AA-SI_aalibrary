@@ -90,7 +90,7 @@ def _read_input_path_from_stdin() -> Optional[str]:
 
 
 from aalibrary.console._core import (
-    Help, Run, ToolSpec, add_common_flags, canon, render, show_help, stdio,
+    Help, Run, ToolSpec, add_common_flags, canon, render, show_help, stdio, uris,
 )
 
 SPEC = ToolSpec(
@@ -1336,6 +1336,21 @@ def _crop_y(da, y_dim: str, ymin, ymax):
 # Public function: usable directly in Jupyter, also called by main()
 # ---------------------------------------------------------------------------
 
+def _open(path):
+    """The dataset at *path*, lazily: a local file or store, or a gs:// store
+    read in place (fsspec; the stand-in bucket under AA_GCS_FAKE_ROOT)."""
+    import os
+
+    import xarray as xr
+
+    text = str(path)
+    if uris.is_remote(text):
+        if text.startswith(("gs://", "gcs://")) and os.getenv("AA_GCS_FAKE_ROOT"):
+            uris.install_fake_fsspec()
+        return xr.open_zarr(text, chunks={}, storage_options={})
+    return xr.open_dataset(path, chunks={})
+
+
 def echogram(
     path,
     *,
@@ -1370,7 +1385,6 @@ def echogram(
     ``dpi`` is the resolution the figure will be saved at (100 if not
     given). No more cells are drawn than it can show; see _for_display.
     """
-    import xarray as xr
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
 
@@ -1381,7 +1395,7 @@ def echogram(
     # 3 GB Sv file). A 1 MB HDF5 chunk cache instead of netCDF-C's 64 MB per
     # variable: every read is of whole chunks.
     _small_read_cache()
-    ds = xr.open_dataset(path, chunks={})
+    ds = _open(path)
     var = _ensure_variable(ds, var)
     da = ds[var]
 
@@ -1681,7 +1695,9 @@ def main() -> None:
     # Resolve input (positional > stdin; local path or gs:// URI)
     token = stdio.one_input(args.input_path, SPEC.name)
     run = Run(SPEC, args)
-    src = run.input(token)
+    # A gs:// Zarr store (a range's Sv) is read where it is, a chunk at a
+    # time, never copied here; anything else through the cache, as before.
+    src = run.input(token, fetch=not (uris.is_gcs(token) and uris.is_store(token)))
 
     chan = args.channel
     if args.single and chan is None:
@@ -1701,7 +1717,8 @@ def main() -> None:
     out = run.plan(
         ext=ext,
         explicit=explicit,
-        legacy=lambda: src.local.with_stem(src.local.stem + "_graph").with_suffix(".png"),
+        legacy=lambda: (src.local or Path(src.name)).with_stem(
+            (src.local or Path(src.name)).stem + "_graph").with_suffix(".png"),
     )
     if run.reusable(out):
         run.finish(out)
@@ -1710,7 +1727,7 @@ def main() -> None:
     try:
         logger.info(f"Plotting {src.name}")
         fig = echogram(
-            src.local,
+            src.read_at,
             var=args.var,
             channel=chan,
             frequency=args.frequency,

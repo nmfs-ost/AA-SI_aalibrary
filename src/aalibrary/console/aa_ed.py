@@ -483,7 +483,7 @@ def print_help_full() -> None:
     Several files, into the bucket as Zarr, one raw file on disk at a time:
       aa-ed HB1603_L1-D20160703-T060000.raw HB1603_L1-D20160703-T062000.raw \
             --ship_name Henry_B._Bigelow --survey_name HB1603 --sonar_model EK60 \
-            --format zarr --dest gs://my-bucket/HB1603/per_file/EK60/ \
+            --format zarr --dest gs://my-bucket/HB1603/EK60/ \
             --cleanup-raw --file_download_directory ./raw
 
     Cloud example (reuse-if-exists, else convert-and-upload):

@@ -620,7 +620,10 @@ WHAT IT DOES
   overlaps, and seams: transit gaps that would make MVBS average across water
   the ship was not in), then runs echopype.combine_echodata in time order and
   writes one store with an unbroken ping axis. A QC report is written beside
-  it.
+  it. Given Sv instead (aa-sv's, one per raw file), it joins them, in time
+  order, into the range's Sv: the same QC, then each file's Sv appended a
+  chunk at a time (a gs:// store written in place), the shallower files
+  padded, values that differ from file to file kept per ping.
 
 INPUT (argument or stdin)
   Used only when no INPUTS and no --workdir are given: paths, directories or
@@ -668,6 +671,8 @@ FILES & URIs
   holding the identical product in the same layout is reused once QC passes;
   anything else needs --overwrite (else exit 2). QC report: named after the
   output (<output stem>.qc.json), beside it (in the bucket when remote).
+  Joined Sv is named like any derived product, <base>_<recipe8>.zarr (--dest
+  and --base, or -o); a join that never finished is written again.
 
 IN A PIPELINE
   N:1 stage after aa-nc / aa-ed: aa-ed ./raw/ | aa-combine -o HB1603_L1.zarr |
@@ -676,6 +681,7 @@ IN A PIPELINE
 
 EXAMPLES
   aa-combine ./converted/ --check
+  aa-combine gs://b/HB1603/EK60/*_401d977d.zarr --dest gs://b/HB1603/RANGE/ --base HB1603_RANGE   # each file's Sv, joined
   aa-combine *.nc -o HB1603_L1.zarr --chunk-pings 500
   aa-ed ./raw/ | aa-combine -o gs://bucket/HB1603_L1.zarr --json | aa-store verify --json
 
@@ -3806,10 +3812,11 @@ WHAT IT DOES
   ping_time x range_sample).
 
 INPUT (argument or stdin)
-  One EchoData .nc/.zarr path or gs:// URI, from aa-nc, aa-ed or aa-combine.
+  EchoData .nc/.zarr paths or gs:// URIs, from aa-nc, aa-ed or aa-combine.
 
 OUTPUT (stdout)
-  The Sv file's absolute path (or gs:// URI).
+  The Sv file's absolute path (or gs:// URI); with several inputs, one per
+  input, as each is made.
 
 METADATA
   Reads the input's provenance, appends this step with its canonical
@@ -3821,21 +3828,29 @@ METADATA
   name is carried through unchanged. Inspect with: aa-metadata FILE
 
 OPTIONS
-  -o, --output_path PATH       Explicit output; '_Sv' is appended to its stem,
-                               as always. Local path or gs:// URI.
-  --ecs FILE                   An Echoview calibration supplement (.ecs),
-                               local or gs://: per-transducer values, matched
-                               to channels by frequency (aa-ecs writes and
-                               shows them).
-  --env-param KEY=VALUE        Override an environmental value (sound_speed,
-                               sound_absorption, temperature, salinity,
-                               pressure, pH); KEY@38kHz=VALUE for one channel.
-                               Repeatable.
-  --cal-param KEY=VALUE        Override a calibration value (gain_correction,
-                               sa_correction, equivalent_beam_angle, ...);
-                               KEY@38kHz=VALUE for one channel. Repeatable.
-  --waveform_mode CW|BB|FM     EK80 only. Omit for EK60.
-  --encode_mode complex|power  EK80 only. Omit for EK60.
+  -o, --output_path PATH        Explicit output; '_Sv' is appended to its
+                                stem, as always. Local path or gs:// URI.
+  --format nc|zarr              NetCDF (default) or a Zarr store. A gs://
+                                store is written here, then uploaded with its
+                                root metadata last.
+  INPUT INPUT ... --dest DIR|gs://PREFIX
+                                Several inputs: each file's Sv in turn, by a
+                                fresh aa-sv, into --dest.
+  --progress                    NDJSON progress events on stderr (several
+                                inputs).
+  --ecs FILE                    An Echoview calibration supplement (.ecs),
+                                local or gs://: per-transducer values, matched
+                                to channels by frequency (aa-ecs writes and
+                                shows them).
+  --env-param KEY=VALUE         Override an environmental value (sound_speed,
+                                sound_absorption, temperature, salinity,
+                                pressure, pH); KEY@38kHz=VALUE for one
+                                channel. Repeatable.
+  --cal-param KEY=VALUE         Override a calibration value (gain_correction,
+                                sa_correction, equivalent_beam_angle, ...);
+                                KEY@38kHz=VALUE for one channel. Repeatable.
+  --waveform_mode CW|BB|FM      EK80 only. Omit for EK60.
+  --encode_mode complex|power   EK80 only. Omit for EK60.
 
 SCIENTIFIC OPTIONS (change the product hash)
   --waveform_mode  EK80 waveform. FM and BB are the same computation.
@@ -3848,8 +3863,9 @@ SCIENTIFIC OPTIONS (change the product hash)
 
 FILES & URIs
   Reads EchoData .nc or .zarr, local or gs:// (a gs:// .zarr is read where it
-  is, not copied). Writes <base>_<hash>.nc beside the input (current directory
-  for gs:// input), or -o, or --dest. An identical earlier result is reused.
+  is, not copied). Writes <base>_<hash>.nc (or .zarr) beside the input
+  (current directory for gs:// input), or -o, or --dest. An identical earlier
+  result is reused.
 
 IN A PIPELINE
   Second stage: aa-nc | aa-sv | aa-graph, or aa-nc | aa-sv | aa-depth | ...
@@ -3861,6 +3877,7 @@ EXAMPLES
   aa-sv file.nc --waveform_mode BB --encode_mode complex   # EK80
   aa-sv file.nc --ecs gs://bucket/cal/HB1603.ecs
   aa-sv file.nc --cal-param gain_correction@38kHz=26.12 --env-param sound_speed=1490
+  aa-sv gs://b/RL2107/EK80/*.zarr --format zarr --dest gs://b/RL2107/EK80/ --waveform_mode CW --encode_mode power   # each file's Sv
 
 NOTE
   EK80 needs both --waveform_mode and --encode_mode; echopype refuses EK80

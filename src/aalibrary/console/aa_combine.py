@@ -169,6 +169,22 @@ SPEC = ToolSpec(
     params={"channels": canon.ordered()},
 )
 
+#: Joining Sv: the per-file Sv of a range (aa-sv, one per raw file) into the
+#: range's Sv, in time order. A different product from combining EchoData and
+#: calibrating the result, so its own operation: each file's pings keep the
+#: calibration and environment that file recorded. Named like any derived
+#: product, <base>_<recipe8>.zarr; the recipe is the same for 3 files or 300.
+SPEC_SV = ToolSpec(
+    name=TOOL,
+    role="transform",
+    kind="sv",
+    op="aa.join_sv",
+    op_version=1,
+    ext=".zarr",
+    params={"channels": canon.ordered()},
+    engines=("echopype", "xarray"),
+)
+
 # Root attributes a combined store must not inherit from its first input.
 # combine_echodata copies the first input's Top-level attributes, so without
 # this an interrupted store would carry the first input's product hash (and,
@@ -249,7 +265,11 @@ HELP = Help(
         "QC-checks the inputs first (sonar model, file names, channels, ping order, "
         "overlaps, and seams: transit gaps that would make MVBS average across water "
         "the ship was not in), then runs echopype.combine_echodata in time order and "
-        "writes one store with an unbroken ping axis. A QC report is written beside it."
+        "writes one store with an unbroken ping axis. A QC report is written beside it. "
+        "Given Sv instead (aa-sv's, one per raw file), it joins them, in time order, into "
+        "the range's Sv: the same QC, then each file's Sv appended a chunk at a time "
+        "(a gs:// store written in place), the shallower files padded, values that "
+        "differ from file to file kept per ping."
     ),
     stdin=(
         "Used only when no INPUTS and no --workdir are given: paths, directories or "
@@ -290,7 +310,9 @@ HELP = Help(
         "gs:// or s3://, a gs:// .nc is staged and uploaded. An existing output holding "
         "the identical product in the same layout is reused once QC passes; anything "
         "else needs --overwrite (else exit 2). QC report: named after the output "
-        "(<output stem>.qc.json), beside it (in the bucket when remote)."
+        "(<output stem>.qc.json), beside it (in the bucket when remote). Joined Sv is "
+        "named like any derived product, <base>_<recipe8>.zarr (--dest and --base, or "
+        "-o); a join that never finished is written again."
     ),
     # The shared --force/--base/--dest texts ("the input's base name",
     # "beside the input") don't describe a combine; they're listed above.
@@ -302,6 +324,8 @@ HELP = Help(
     ),
     examples=[
         "aa-combine ./converted/ --check",
+        ("aa-combine gs://b/HB1603/EK60/*_401d977d.zarr --dest gs://b/HB1603/RANGE/ "
+         "--base HB1603_RANGE   # each file's Sv, joined"),
         "aa-combine *.nc -o HB1603_L1.zarr --chunk-pings 500",
         "aa-ed ./raw/ | aa-combine -o gs://bucket/HB1603_L1.zarr --json | aa-store verify --json",
     ],
@@ -1591,6 +1615,7 @@ def _annotate(
     parents: list[str],
     report: dict,
     storage_options: dict,
+    kind: Optional[str] = "l1",
 ) -> None:
     """Everything the store should be able to say about itself once it exists.
 
@@ -1605,7 +1630,8 @@ def _annotate(
         if group is None:
             logger.warning("Store written but could not annotate it")
             return
-        group.attrs["aa_kind"] = "l1"
+        if kind:
+            group.attrs["aa_kind"] = kind
         group.attrs["provenance"] = {
             "tool": TOOL,
             "version": VERSION,
@@ -2046,6 +2072,399 @@ def _combine(
         _consolidate(target, storage_options)
 
 
+# --------------------------------------------------------------------------- #
+# Joining Sv
+# --------------------------------------------------------------------------- #
+def _kind_of(item) -> Optional[str]:
+    """The aa product kind of an input ("sv", "echodata", ...), from its own
+    provenance, read without copying it (a gs:// store's root metadata); None
+    when it has none or cannot be read here (a gs:// .nc: treated as before)."""
+    try:
+        if isinstance(item, Path):
+            doc = provenance.read(item)
+        elif uris.is_gcs(str(item)) and uris.is_store(str(item)):
+            doc, _status = provenance.inspect_store(uris.in_place(str(item)))
+        else:
+            return None
+    except Exception as exc:  # noqa: BLE001 - unknown, not fatal: judged as before
+        logger.debug(f"Could not read the provenance of {item}: {exc}")
+        return None
+    return ((doc or {}).get("product") or {}).get("kind")
+
+
+def _open_sv(path, storage_options: dict):
+    """An Sv dataset, lazily (dask, in its own chunks): a Zarr store local or
+    gs:// (read where it is), or a local NetCDF."""
+    import xarray as xr
+
+    text = str(path)
+    if uris.is_remote(text):
+        if text.startswith(("gs://", "gcs://")) and os.getenv("AA_GCS_FAKE_ROOT"):
+            uris.install_fake_fsspec()   # the stand-in bucket, never GCS
+        return xr.open_zarr(text, chunks={}, storage_options=storage_options or None)
+    if text.rstrip("/").endswith(".zarr") or Path(text).is_dir():
+        return xr.open_zarr(text, chunks={})
+    return xr.open_dataset(text, chunks={})
+
+
+def _sonar_of(doc: Optional[dict]) -> Optional[str]:
+    """The sonar model a product was converted with, from its pipeline."""
+    for step in (doc or {}).get("pipeline") or []:
+        model = (step.get("params") or {}).get("sonar_model")
+        if model:
+            return str(model)
+    return None
+
+
+def _inspect_sv(paths: list, progress: bool, uri_list: list[str], docs: list,
+                storage_options: dict) -> list[dict]:
+    """What the QC pass needs from each Sv input (as inspect_inputs does for
+    EchoData): its ping times, channels and depth; the sonar model from its
+    provenance."""
+    records: list[dict] = []
+    total = len(paths)
+    for index, path in enumerate(paths, start=1):
+        _progress(progress, "progress", done=index - 1, total=total, unit="files")
+        record: dict[str, Any] = {"path": str(path), "uri": uri_list[index - 1],
+                                  "name": uris.basename(str(path)), "error": None,
+                                  "sonar_model": _sonar_of(docs[index - 1])}
+        try:
+            dataset = _open_sv(path, storage_options)
+        except Exception as exc:  # noqa: BLE001 - one bad file must not stop the pass
+            record["error"] = f"{type(exc).__name__}: {exc}"
+            logger.error(f"Could not open {path}: {exc}")
+            records.append(record)
+            continue
+        if "Sv" not in dataset.data_vars or "ping_time" not in dataset.dims:
+            record["error"] = "not an Sv dataset (no Sv on ping_time)"
+            records.append(record)
+            continue
+        times = dataset["ping_time"].values
+        if len(times):
+            record["pings"] = int(len(times))
+            record["start"] = _iso(times.min())
+            record["end"] = _iso(times.max())
+            record["start_epoch"] = _epoch(times.min())
+            record["end_epoch"] = _epoch(times.max())
+            record["duplicate_pings"] = int(len(times) - len(set(times.tolist())))
+            record["monotonic"] = bool((times[1:] >= times[:-1]).all()) if len(times) > 1 else True
+        channels = dataset["channel"].values.tolist() if "channel" in dataset.coords else []
+        record["channels"] = [str(channel) for channel in channels]
+        record["duplicate_channels"] = len(record["channels"]) != len(set(record["channels"]))
+        if "range_sample" in dataset.dims:
+            record["range_samples"] = int(dataset.sizes["range_sample"])
+        records.append(record)
+    _progress(progress, "progress", done=total, total=total, unit="files")
+    return records
+
+
+def _same_values(a, b) -> bool:
+    import numpy as np
+
+    a, b = np.asarray(a), np.asarray(b)
+    if a.shape != b.shape:
+        return False
+    if a.dtype.kind in "fc" and b.dtype.kind in "fc":
+        return bool(np.array_equal(a, b, equal_nan=True))
+    return bool(np.array_equal(a, b))
+
+
+def join_sv(paths: list, target: Target, channel_selection: Optional[list[str]],
+            overwrite: bool, chunk_pings: Optional[int], compression: str,
+            storage_options: dict, progress: bool) -> dict:
+    """Write the Sv of every input, in the order given, as one store.
+
+    Memory does not grow with the number of files or their length: each
+    input is appended along ping_time a chunk at a time (one channel, a run
+    of pings, every sample), each dask chunk exactly one chunk of the store,
+    so nothing is ever read back and rewritten. A gs:// target is written in
+    place, never here.
+
+    * Depth: inputs shallower than the deepest are padded with NaN below
+      their last sample, as combining EchoData pads.
+    * Values without ping_time (beamwidths, equivalent beam angle, ...) that
+      are the same in every file are kept as they are; any that differ
+      between files are kept per ping, so each ping carries its own file's.
+    * source_filenames lists every file's.
+    Returns notes on what was done for the QC report.
+    """
+    import dask
+    import numpy as np
+
+    datasets = [_open_sv(path, storage_options) for path in paths]
+    if channel_selection:
+        datasets = [dataset.sel(channel=channel_selection) for dataset in datasets]
+    depth = max(int(dataset.sizes.get("range_sample", 1)) for dataset in datasets)
+    first = datasets[0]
+    on_files = {name for name in first.variables if "filenames" in first[name].dims}
+    fixed = [name for name in first.variables
+             if name not in first.dims and name not in on_files
+             and "ping_time" not in first[name].dims]
+    along = [name for name in first.variables
+             if name not in on_files and "ping_time" in first[name].dims]
+    missing = sorted({name for dataset in datasets[1:] for name in fixed + along
+                      if name not in dataset.variables})
+    varying = sorted(name for name in fixed if name not in missing and any(
+        not _same_values(dataset[name].values, first[name].values) for dataset in datasets[1:]))
+    names: list[str] = []
+    for dataset in datasets:
+        for name in on_files & set(dataset.data_vars):
+            names += [str(value) for value in np.atleast_1d(dataset[name].values)]
+    if missing:
+        logger.warning("Not in every input, so left out: " + ", ".join(missing))
+    if varying:
+        logger.info("Different from file to file, so kept per ping: " + ", ".join(varying))
+
+    pings = chunk_pings or max(1, int(zarr_io.CHUNK_BYTES // (8 * depth)))
+    store = target.raw
+    options = (storage_options or None) if target.remote else None
+    if target.remote and store.startswith(("gs://", "gcs://")) and os.getenv("AA_GCS_FAKE_ROOT"):
+        uris.install_fake_fsspec()
+    # The store's root attributes: the first file's own (echopype's), less
+    # its aa ones, plus the marker saying the join has not finished. Every
+    # write below gives the same, since xarray replaces them on each.
+    root_attrs = {key: value for key, value in first.attrs.items()
+                  if not str(key).startswith("aa_") and key not in INHERITED_ATTRS}
+    root_attrs[WRITE_MARKER] = {"complete": False, "tool": TOOL, "version": VERSION,
+                                "at": _now(), "stage": "joining"}
+    offset = 0
+    total = len(datasets)
+    _progress(progress, "progress", done=0, total=total, unit="files")
+    for index, dataset in enumerate(datasets):
+        dataset = dataset.drop_vars([n for n in list(on_files) + missing
+                                     if n in dataset.variables])
+        if "range_sample" in dataset.dims and dataset.sizes["range_sample"] < depth:
+            dataset = dataset.reindex(range_sample=np.arange(depth))
+        for name in varying:
+            dataset[name] = dataset[name].expand_dims(ping_time=dataset["ping_time"].values)
+        zarr_io.clean_encoding(dataset)
+        count = int(dataset.sizes["ping_time"])
+        head = min(count, pings - offset % pings)
+        sizes = [head] + [pings] * ((count - head) // pings)
+        if sum(sizes) < count:
+            sizes.append(count - sum(sizes))
+        chunks = {"ping_time": tuple(sizes)}
+        for name in dataset.data_vars:
+            variable = dataset[name]
+            if "ping_time" in variable.dims:
+                dataset[name] = variable.chunk({**{d: (1 if d == "channel" else -1)
+                                                   for d in variable.dims}, **chunks})
+        with dask.config.set(scheduler="synchronous"):
+            if index == 0:
+                # Unfinished until the end (the marker): a join stopped part
+                # way is never taken for the product, and the next run
+                # writes it again.
+                dataset.attrs = dict(root_attrs)
+                encoding = zarr_io.chunked_encoding(dataset, pings,
+                                                    compress=compression != "none")
+                dataset.to_zarr(store, mode="w" if overwrite else "w-", encoding=encoding,
+                                consolidated=False, storage_options=options)
+            else:
+                appended = dataset.drop_vars([n for n in dataset.variables
+                                              if "ping_time" not in dataset[n].dims])
+                appended.attrs = dict(root_attrs)
+                appended.to_zarr(store, mode="a", append_dim="ping_time", consolidated=False,
+                                 storage_options=options)
+        offset += count
+        logger.info(f"[{index + 1}/{total}] {uris.basename(str(paths[index]))}: "
+                    f"{count} pings joined")
+        _progress(progress, "progress", done=index + 1, total=total, unit="files")
+    if names:
+        import xarray as xr
+
+        listing = xr.Dataset({"source_filenames": ("filenames", np.array(names, dtype=str))},
+                             coords={"filenames": np.arange(len(names))},
+                             attrs=dict(root_attrs))
+        listing.to_zarr(store, mode="a", consolidated=False, storage_options=options)
+    return {"pings": offset, "depth": depth, "perPing": varying, "leftOut": missing}
+
+
+def _main_sv(args, items: list, channel_selection: Optional[list[str]],
+             storage_options: dict, workdir) -> None:
+    """aa-combine given Sv: the per-file Sv of a range joined, in time order,
+    into one Sv store; QC, reuse, provenance and the report as for EchoData."""
+    if args.check or args.plan:
+        logger.error("--check/--plan are for EchoData; Sv inputs are checked as they are "
+                     "joined.")
+        sys.exit(2)
+    run = Run(SPEC_SV, args)
+    run.base_override = _output_base(args)
+    default_dir = workdir if workdir is not None else "."
+    paths: list = []
+    input_uris: list[str] = []
+    for item in items:
+        in_place = not isinstance(item, Path) and uris.is_store(str(item))
+        try:
+            registered = run.input(str(item), fetch=not in_place)
+        except Exception as exc:  # noqa: BLE001 - a missing or unreadable gs:// object
+            logger.error(f"Input does not exist: {item} ({exc})")
+            sys.exit(1)
+        if isinstance(item, Path):
+            paths.append(item)
+            input_uris.append(_to_uri(item))
+        else:
+            paths.append(registered.read_at if registered.remote else Path(registered.read_at))
+            input_uris.append(registered.uri)
+    docs = [registered.prov for registered in run.inputs]
+    in_place_count = sum(1 for item in run.inputs if item.via in ("in-place", "mount"))
+    if in_place_count:
+        logger.info(f"{in_place_count} store(s) read where they are; nothing copied here")
+    run.inputs.sort(key=lambda registered: (registered.id, registered.uri))
+
+    explicit = None
+    if args.output_path is not None:
+        explicit = uris.from_file_uri(str(args.output_path))
+        if "." not in uris.basename(explicit):
+            explicit = explicit.rstrip("/") + ".zarr"
+    out = run.plan(ext=".zarr", explicit=explicit, directory=default_dir, stage=False)
+    target = Target(out.target)
+    if target.suffix != ".zarr":
+        logger.error(f"-o {target.name}: joined Sv is a Zarr store (.zarr), written a "
+                     "chunk at a time; a NetCDF would be written whole.")
+        sys.exit(2)
+    if not target.remote and any(isinstance(item, Path) and _same_target(item, target)
+                                 for item in items):
+        logger.error(f"Refusing to overwrite an input: {target.raw}")
+        sys.exit(1)
+
+    existing = None
+    reuse = False
+    replace = bool(args.overwrite)
+    layout = _layout(args, target)
+    if target.exists():
+        existing = _existing_product(target, storage_options, run, out)
+        same = existing["hash"] == out.hash
+        finished = existing["complete"] is True
+        if same and finished and existing["layout"] == layout and not (args.overwrite
+                                                                         or run.force):
+            reuse = True
+        elif args.overwrite or (run.force and same):
+            replace = True
+        elif existing["hash"] is None and existing["complete"] is False:
+            # This tool's own join, stopped before it finished (its marker
+            # says so, and the name carries this recipe): write it again.
+            logger.info(f"{target.raw}: an earlier join never finished; writing it again.")
+            replace = True
+        else:
+            logger.error(f"{target.raw} exists. Pass --overwrite to replace it.")
+            if existing["hash"] and not same:
+                logger.info(f"It holds a different product (aa:{str(existing['hash'])[:8]}; "
+                            f"this one is aa:{out.short}).")
+            sys.exit(2)
+
+    def _on_signal(signum, _frame):
+        if target.exists():
+            _stamp(target, False, storage_options, extra={"interruptedBy": int(signum)})
+            logger.warning(f"Interrupted (signal {signum}); {target.raw} marked incomplete.")
+        _progress(args.progress, "done", exit=3)
+        sys.exit(3)
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(signum, _on_signal)
+        except (ValueError, OSError):  # pragma: no cover - not the main thread
+            pass
+
+    _progress(args.progress, "start", inputs=len(paths))
+    records = _inspect_sv(paths, args.progress, input_uris, docs, storage_options)
+    report = qc(records, channel_selection, args.sonar_model, args.gap_seconds,
+                args.gap_factor, sort_mode=args.sort)
+    report["kind"] = "sv"
+    if args.sort == "time":
+        order = sorted(range(len(records)), key=lambda i: (
+            records[i].get("start_epoch") is None, records[i].get("start_epoch") or 0))
+    elif args.sort == "name":
+        order = sorted(range(len(records)), key=lambda i: records[i]["name"])
+    else:
+        order = list(range(len(records)))
+    records = [records[i] for i in order]
+    paths = [item["path"] if uris.is_remote(item["path"]) else Path(item["path"])
+             for item in records if not item.get("error")]
+    report["order"] = [item["name"] for item in records if not item.get("error")]
+    report["sort"] = args.sort
+    for warning in report["warnings"]:
+        logger.warning(f"[{warning['code']}] {warning.get('file', '')} "
+                       f"{warning.get('detail', '')}".strip())
+    for problem in report["problems"]:
+        logger.error(f"[{problem['code']}] {problem.get('file', '')} "
+                     f"{problem.get('detail', '')}".strip())
+    report_uri = None
+    if not args.no_report and args.report != "none":
+        destination = uris.from_file_uri(args.report) if args.report else target.sibling(".qc.json")
+        report_uri = _write_report(report, destination, storage_options)
+    if report["problems"] or (args.strict and report["warnings"]):
+        logger.error("Refusing to join. Fix the problems above, or re-run without --strict "
+                     "if the warnings are understood and intended.")
+        _progress(args.progress, "done", exit=4)
+        sys.exit(4)
+
+    parents = [item["uri"] for item in records if not item.get("error")]
+    if reuse:
+        out.reused = True
+        if not args.quiet:
+            print(f"{TOOL}: reusing {target.raw} (identical product aa:{out.short} already "
+                  "exists; --force recomputes)", file=sys.stderr)
+        _progress(args.progress, "done", exit=0)
+        print(target.raw)
+        sys.exit(0)
+
+    if replace and target.exists():
+        logger.info(f"Overwriting {target.raw}")
+    try:
+        joined = join_sv(paths, target, channel_selection, replace or not target.exists(),
+                         args.chunk_pings, args.compression, storage_options, args.progress)
+    except Exception as exc:  # noqa: BLE001
+        if target.exists():
+            _stamp(target, False, storage_options, extra={"error": str(exc)})
+        logger.exception(f"Error while joining Sv: {exc}")
+        _progress(args.progress, "done", exit=1)
+        sys.exit(1)
+
+    starts = [item["start"] for item in report["inputs"] if item.get("start")]
+    ends = [item["end"] for item in report["inputs"] if item.get("end")]
+    time_range = [min(starts), max(ends)] if starts and ends else None
+    extra = {TOOL: {"time": time_range, "report": report_uri, "sort": args.sort,
+                    "layout": layout, "joined": joined}}
+    try:
+        if target.remote:
+            _embed_remote(run, out, target, storage_options, extra)
+            run.finish(out, embed=False, publish=False, emit=False)
+        else:
+            run.finish(out, extra=extra, emit=False)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(f"Could not record the aa provenance in {target.raw}: {exc}")
+        _progress(args.progress, "done", exit=1)
+        sys.exit(1)
+    _annotate(target, report_uri, parents, report, storage_options, kind=None)
+    _stamp(target, True, storage_options, extra={"inputs": len(parents)})
+    _consolidate(target, storage_options)
+    if target.remote:
+        _sidecar_remote(run, out, target, extra)
+    logger.success(f"Generated {target.raw} with aa-combine ({len(parents)} files' Sv "
+                   "joined).")
+    _progress(args.progress, "done", exit=0)
+    print(target.raw)
+    sys.exit(0)
+
+
+def _sidecar_remote(run: Run, out, target: Target, extra: dict) -> None:
+    """<store>.aa.json beside a store written in place, as every published
+    product has: its record, readable without opening the store."""
+    if not uris.is_gcs(target.raw):
+        return
+    import tempfile
+
+    try:
+        with tempfile.TemporaryDirectory(dir=str(uris.cache_dir())) as tmp:
+            local = Path(tmp) / (target.name + provenance.SIDECAR_SUFFIX)
+            local.write_text(json.dumps(run.document(out, extra=extra), indent=2,
+                                        sort_keys=True), encoding="utf-8")
+            uris.publish(local, target.raw.rstrip("/") + provenance.SIDECAR_SUFFIX,
+                         keep_in_cache=False)
+    except Exception as exc:  # noqa: BLE001 - the store carries the same record
+        logger.warning(f"Could not write {target.name}{provenance.SIDECAR_SUFFIX}: {exc}")
+
+
 def _tree_bytes(path: Path) -> int:
     """Size of a file, or of every file under a store directory."""
     try:
@@ -2246,6 +2665,17 @@ def main() -> None:
         if not channel_selection:
             logger.error("--channels was given but parsed to an empty list.")
             sys.exit(2)
+
+    # Sv inputs (aa-sv's, per file) are joined, not combined: see _main_sv.
+    kinds = [_kind_of(item) for item in items]
+    if "sv" in kinds:
+        if any(kind != "sv" for kind in kinds):
+            odd = [uris.basename(str(item)) for item, kind in zip(items, kinds) if kind != "sv"]
+            logger.error("Some inputs are Sv and some are not (" + ", ".join(odd[:5])
+                         + "): join Sv with Sv, combine EchoData with EchoData.")
+            sys.exit(2)
+        _main_sv(args, items, channel_selection, storage_options, workdir)
+        return
 
     # ---------------------------
     # Resolve output
@@ -2683,6 +3113,10 @@ def main() -> None:
         args.consolidated or _has_consolidated(write_target, storage_options)
     ):
         _consolidate(write_target, storage_options)
+    if target.remote and not target.staged:
+        # A store written in place gets the record beside it that every
+        # published product has (a staged .nc gets it from the core).
+        _sidecar_remote(run, out, target, extra)
 
     logger.success(f"Generated {target.raw} with aa-combine.")
     _progress(args.progress, "done", exit=0)

@@ -287,6 +287,46 @@ still runs on local files; the core moves bytes at the edges:
   gs://bucket/prefix/` uploads with the same metadata. Re-uploading a
   `.zarr` store replaces it completely.
 
+## Sv file by file
+
+A range too long for the workstation's disk is calibrated one raw file at a
+time, every product in the bucket, read where it is:
+
+```bash
+D=gs://BUCKET/derived_products/YOU/Reuben_Lasker/RL2107/EK80/
+aa-ed RAW1 RAW2 … --format zarr --dest $D --sonar_model EK80 --cleanup-raw   # each file's EchoData
+aa-sv $D/RAW1.zarr $D/RAW2.zarr … --format zarr --dest $D \
+      --waveform_mode CW --encode_mode power                                 # each file's Sv, beside it
+aa-combine $D/RAW1_<recipe>.zarr … --dest gs://…/RANGE/ --base RANGE        # the range's Sv
+aa-graph gs://…/RANGE/RANGE_<recipe>.zarr --dest gs://…/RANGE/ --var Sv      # its echogram
+```
+
+- **One file at a time.** `aa-sv` given several inputs calibrates each in a
+  fresh process into `--dest` (an identical Sv already there is reused), so a
+  stopped run keeps what it made. Each file's Sv is written here, then
+  uploaded with its root metadata last. On a 1 GB EK60 file: 0.9 GB of memory,
+  2 GB of local disk (the Sv store), under 2 minutes.
+- **The join.** `aa-combine` given Sv (inputs whose provenance kind is `sv`)
+  appends each file's Sv along `ping_time`, in time order, a chunk at a time,
+  into a store written in place in the bucket: nothing local, about 1.3 GB of
+  memory whatever the length. The QC pass is the EchoData one. Files shallower
+  than the deepest are padded with NaN; values without `ping_time` that
+  differ between files (a gain changed mid-survey) are kept per ping. A join
+  stopped part way is marked unfinished and written again by the next run.
+- **Its identity.** The joined Sv's pipeline is `aa-ed` ×N → `aa-sv` ×N →
+  `aa-combine` (`aa.join_sv`): a different recipe, so a different name, from
+  `aa-combine` → `aa-sv` (the Sv of the combined EchoData), and neither is
+  reused for the other. The numbers are the same where the environment is
+  recorded per ping (EK60, tested). Where it is recorded once per file (EK80),
+  each file here is calibrated with its own values, while echopype
+  interpolates them linearly between files for a combined EchoData; the two
+  differ only if sound speed or absorption changed between files.
+- **Memory of any `aa-sv`.** A file's per-ping values (pulse length, power,
+  sample interval) are stored in one chunk spanning every ping; echopype
+  broadcasts them against range, which made one chunk of Sv the size of the
+  whole file (4.6 GB for a 1 GB file). `aa-sv` now chunks them as the
+  backscatter is chunked: the same values, 0.8 GB.
+
 ## The pipe contract
 
 - stdout carries results only: one path or URI per line (a few tools print
