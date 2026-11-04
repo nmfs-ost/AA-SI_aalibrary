@@ -678,6 +678,21 @@ def publish_tree(local: Path, uri: str, *, metadata: dict | None = None,
     return uploaded, unchanged, deleted
 
 
+def drop_store_sidecar(uri: str) -> bool:
+    """Delete a ``<store>.aa.json`` left beside a Zarr store in the bucket.
+
+    Stores keep their record in their root metadata; a sidecar beside one
+    was written by older tools and describes whatever store was there then,
+    so once the store is replaced it is wrong. Returns whether one was there.
+    """
+    bucket, key = parse_gcs(uri)
+    side = key.rstrip("/") + SIDECAR_SUFFIX
+    if backend().stat(bucket, side) is None:
+        return False
+    backend().delete(bucket, side)
+    return True
+
+
 def publish(local: Path, uri: str, *, metadata: dict | None = None,
             keep_in_cache: bool = True) -> ObjectInfo | None:
     """Upload a finished local file (and its sidecar) to ``uri``.
@@ -691,6 +706,8 @@ def publish(local: Path, uri: str, *, metadata: dict | None = None,
         side = local.with_name(local.name + SIDECAR_SUFFIX)
         if side.is_file():
             backend().upload(side, bucket, key.rstrip("/") + SIDECAR_SUFFIX, None)
+        elif _is_store_root(local):
+            drop_store_sidecar(uri)
         return None
     if not key or key.endswith("/"):
         raise ValueError(f"publish needs a full object URI, got {uri!r}")
@@ -715,7 +732,7 @@ def publish(local: Path, uri: str, *, metadata: dict | None = None,
 
 
 __all__ = [
-    "SIDECAR_SUFFIX", "META_HASH", "META_BASE", "META_TOOL", "META_MD5", "META_RECIPE", "META_KIND",
+    "SIDECAR_SUFFIX", "drop_store_sidecar", "META_HASH", "META_BASE", "META_TOOL", "META_MD5", "META_RECIPE", "META_KIND",
     "is_gcs", "is_remote", "parse_gcs", "join", "basename", "to_uri", "from_file_uri",
     "ObjectInfo", "backend", "stat", "cache_dir", "mounted_path", "Localized", "safe_relpath",
     "localize", "stage", "publish", "publish_tree", "prune_mirror", "install_fake_fsspec",

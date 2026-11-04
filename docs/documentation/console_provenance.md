@@ -269,9 +269,12 @@ still runs on local files; the core moves bytes at the edges:
   and `aa-kind` (what the product is: one tool can write several kinds, as
   aa-annotate writes line and region files) into the object's custom metadata,
   and keeps the staged copy in the cache so
-  the next stage reads it without downloading. Every product published to
-  gs:// gets a `<object>.aa.json` sidecar beside it (a store: `<store>.aa.json`),
-  so its provenance can be read without downloading the product.
+  the next stage reads it without downloading. Every file published to
+  gs:// gets a `<object>.aa.json` sidecar beside it, so its provenance can be
+  read without downloading the product. A Zarr store gets none: its record is
+  in its root metadata (`zarr.json`), which is read in place, and publishing a
+  store deletes any `<store>.aa.json` older tools left beside it (it would
+  describe the store that was replaced).
 - **Reading a Zarr store in place.** `aa-combine` and `aa-sv` never copy a
   gs:// `.zarr` input: its identity is its own sealed provenance, read from the
   store's root metadata (kilobytes), and its data is opened where it is, lazily

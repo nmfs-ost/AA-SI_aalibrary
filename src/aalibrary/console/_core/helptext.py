@@ -52,7 +52,8 @@ _METADATA = {
         "it shows, with its own extension."
     ),
     "sink": (
-        "Never changes the file. Uploads it with its .aa.json sidecar and "
+        "Never changes the file. Uploads it with its .aa.json sidecar (a .zarr "
+        "store carries its record inside, and gets none) and "
         "stamps aa-product-hash / aa-base / aa-tool into the object's custom "
         "metadata, so the bucket can answer 'is this product already here?'."
     ),

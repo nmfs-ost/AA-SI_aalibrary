@@ -86,7 +86,7 @@ def test_aa_sv_writes_each_file_s_sv_beside_it_and_reuses_it(stores, tmp_path):
         doc, status = provenance.inspect_store(uri)
         assert status == "embedded" and doc["product"]["kind"] == "sv"
         assert uris.store_meta_info(uri).metadata[uris.META_HASH] == doc["product"]["hash"]
-        assert uris.stat(uri + ".aa.json") is not None
+        assert uris.stat(uri + ".aa.json") is None   # the record is in the store
     assert [p for p in cached_files(tmp_path) if ".zarr" in p] == []
 
     again = tool(tmp_path, "sv", *stores["stores"], "--format", "zarr", "--dest",
@@ -161,7 +161,7 @@ def test_joined_sv_is_each_file_s_sv_in_time_order(stores, per_file_sv, tmp_path
     steps = [(s["tool"], s.get("count")) for s in doc["pipeline"]]
     assert steps == [("aa-ed", 3), ("aa-sv", 3), ("aa-combine", None)]
     assert sorted(s["name"] for s in doc["sources"]) == sorted(stores["names"])
-    assert uris.stat(joined + ".aa.json") is not None
+    assert uris.stat(joined + ".aa.json") is None   # the record is in the store
     # JSON text, so the joined Sv can be saved to NetCDF as it is.
     assert json.loads(j.attrs["aa_write"])["complete"] is True
     assert j.attrs["processing_software_name"] == "echopype"

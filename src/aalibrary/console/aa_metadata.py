@@ -212,9 +212,10 @@ def _remote_doc(token: str) -> dict | None:
     """Provenance of a gs:// product without downloading it, when possible.
 
     Products published by the tools have a small ``<key>.aa.json`` beside
-    them; a Zarr store keeps it in its root metadata. Either is kilobytes,
-    where the product may be gigabytes. The sidecar is trusted only when it
-    names the product hash the object itself carries.
+    them; a Zarr store keeps it in its root metadata (and only there: a
+    sidecar beside a store, from older tools, is not read). Either is
+    kilobytes, where the product may be gigabytes. The sidecar is trusted
+    only when it names the product hash the object itself carries.
     """
     import json
     import tempfile
@@ -223,7 +224,8 @@ def _remote_doc(token: str) -> dict | None:
     key = key.rstrip("/")
     backend = uris.backend()
     info = backend.stat(bucket, key) if key else None
-    side = backend.stat(bucket, key + uris.SIDECAR_SUFFIX) if key else None
+    side = (backend.stat(bucket, key + uris.SIDECAR_SUFFIX)
+            if key and info is not None else None)
     with tempfile.TemporaryDirectory(prefix="aa-metadata-") as tmp:
         if side is not None:
             local = Path(tmp) / "side.json"

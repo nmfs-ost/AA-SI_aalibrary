@@ -2461,21 +2461,15 @@ def _main_sv(args, items: list, channel_selection: Optional[list[str]],
 
 
 def _sidecar_remote(run: Run, out, target: Target, extra: dict) -> None:
-    """<store>.aa.json beside a store written in place, as every published
-    product has: its record, readable without opening the store."""
+    """A store written in place keeps its record in its root metadata, with
+    no <store>.aa.json beside it. One left there by older tools describes the
+    store that was replaced, so it is deleted."""
     if not uris.is_gcs(target.raw):
         return
-    import tempfile
-
     try:
-        with tempfile.TemporaryDirectory(dir=str(uris.cache_dir())) as tmp:
-            local = Path(tmp) / (target.name + provenance.SIDECAR_SUFFIX)
-            local.write_text(json.dumps(run.document(out, extra=extra), indent=2,
-                                        sort_keys=True), encoding="utf-8")
-            uris.publish(local, target.raw.rstrip("/") + provenance.SIDECAR_SUFFIX,
-                         keep_in_cache=False)
-    except Exception as exc:  # noqa: BLE001 - the store carries the same record
-        logger.warning(f"Could not write {target.name}{provenance.SIDECAR_SUFFIX}: {exc}")
+        uris.drop_store_sidecar(target.raw)
+    except Exception as exc:  # noqa: BLE001 - the store carries the record
+        logger.warning(f"Could not delete the old {target.name}{provenance.SIDECAR_SUFFIX}: {exc}")
 
 
 def _tree_bytes(path: Path) -> int:

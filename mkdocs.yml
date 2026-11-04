@@ -85,6 +85,8 @@ plugins:
     default_handler: python
     handlers:
       python:
+        # Document the code in this clone, not whichever aalibrary is installed.
+        paths: [src]
         options:
           show_source: false
           group_by_category: true

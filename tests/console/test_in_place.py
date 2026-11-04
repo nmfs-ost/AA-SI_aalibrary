@@ -193,12 +193,12 @@ def test_aa_ed_publishes_a_store_and_reuses_it(archive, tmp_path):
     assert lines(first)[-1] == target
     store = root / "gcs" / BUCKET / "files" / "one.zarr"
     assert store.is_dir()
-    # Provenance in the store, sealed, and beside it for readers that do not
-    # open stores; the hash stamped on the root metadata, uploaded last.
+    # Provenance in the store, sealed, and only there: no one.zarr.aa.json
+    # beside it to disagree with it; the hash stamped on the root metadata,
+    # uploaded last.
     doc, status = provenance.inspect_store(target)
     assert status == "embedded" and doc["product"]["kind"] == "echodata"
-    side = json.loads((store.parent / "one.zarr.aa.json").read_text())
-    assert side["product"]["hash"] == doc["product"]["hash"]
+    assert not (store.parent / "one.zarr.aa.json").exists()
     assert uris.store_meta_info(target).metadata[uris.META_HASH] == doc["product"]["hash"]
     assert cached_files(root) == []            # the staging folder is gone
 
@@ -323,9 +323,8 @@ def test_combine_reads_stores_in_place_and_writes_one_in_the_bucket(archive, tmp
     doc, status = provenance.inspect_store(target)
     assert status == "embedded"
     assert sorted(i["uri"] for i in doc["inputs"]) == sorted(stores)
-    # Its record beside it, as every published product has.
-    side = json.loads((tmp_path / "gcs" / BUCKET / "out" / "all.zarr.aa.json").read_text())
-    assert side["product"]["hash"] == doc["product"]["hash"]
+    # Its record is in it, and nothing beside it.
+    assert not (tmp_path / "gcs" / BUCKET / "out" / "all.zarr.aa.json").exists()
     # The same inputs again: the store is reused, still with nothing copied.
     again = tool(tmp_path, "combine", *stores, "-o", target, "--sonar_model", "EK60", cwd=work)
     assert "reusing" in again.stderr and cached_files(tmp_path) == []
@@ -446,3 +445,42 @@ def test_replacing_a_store_never_shows_the_wrong_stamp(tmp_path):
     stale = [i for i, c in enumerate(calls) if c[0] == "del" and c[1] != "zarr.json"]
     assert stale and max(stale) < last_upload_of_root        # leftovers gone before it
     assert uris.store_meta_info(target).metadata[uris.META_HASH] == "new"
+
+
+# --------------------------------------------------------------------------- #
+# No <store>.aa.json beside a store
+# --------------------------------------------------------------------------- #
+def _stale_sidecar(tmp_path: Path, key: str) -> Path:
+    side = tmp_path / "gcs" / BUCKET / (key + provenance.SIDECAR_SUFFIX)
+    side.parent.mkdir(parents=True, exist_ok=True)
+    side.write_text(json.dumps({"schema": provenance.SCHEMA, "base": "OLD",
+                                "product": {"hash": "0" * 64, "kind": "echodata"}}))
+    return side
+
+
+def test_publishing_a_store_removes_an_old_sidecar_beside_it(archive, tmp_path):
+    side = _stale_sidecar(tmp_path, "files/two.zarr")
+    raw = archive["raw"] / archive["names"][1]
+    tool(tmp_path, "ed", raw, "-o", f"gs://{BUCKET}/files/two.zarr", "--sonar_model", "EK60")
+    assert not side.exists()
+
+
+def test_aa_metadata_reads_a_store_not_the_sidecar_beside_it(archive, tmp_path):
+    raw = archive["raw"] / archive["names"][2]
+    target = f"gs://{BUCKET}/files/three.zarr"
+    tool(tmp_path, "ed", raw, "-o", target, "--sonar_model", "EK60")
+    side = _stale_sidecar(tmp_path, "files/three.zarr")   # written by something else
+    doc = json.loads(lines(tool(tmp_path, "metadata", target, "--json"))[-1])
+    assert doc["base"] != "OLD" and doc["product"]["hash"] != "0" * 64
+    assert side.exists()       # reading never deletes anything
+
+
+def test_aa_upload_of_a_store_removes_an_old_sidecar_beside_it(archive, tmp_path):
+    raw = archive["raw"] / archive["names"][3]
+    local = tmp_path / "four.zarr"
+    tool(tmp_path, "ed", raw, "-o", local, "--sonar_model", "EK60")
+    side = _stale_sidecar(tmp_path, "up/four.zarr")
+    done = tool(tmp_path, "upload", local, f"gs://{BUCKET}/up/")   # a folder goes under it
+    assert lines(done)[-1] == f"gs://{BUCKET}/up/four.zarr"
+    assert not side.exists()
+    assert (tmp_path / "gcs" / BUCKET / "up" / "four.zarr" / "zarr.json").is_file()

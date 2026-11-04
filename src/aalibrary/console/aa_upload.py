@@ -93,7 +93,8 @@ HELP = Help(
     summary="Upload files and products to a GCS bucket.",
     does=(
         "With a gs:// destination (aa-upload [FILE ...] gs://bucket/prefix/): "
-        "uploads each input there, with its .aa.json sidecar, stamps the "
+        "uploads each input there, with its .aa.json sidecar (a .zarr store "
+        "carries its record inside, and needs none), stamps the "
         "product hash into the object's metadata, and skips objects that "
         "already hold the same product or the same bytes. Folders (.zarr "
         "stores) are uploaded recursively.\n\n"
@@ -729,6 +730,10 @@ def _main_gcs(args, sources: list, dest: str) -> None:
                 else:
                     with contextlib.redirect_stdout(sys.stderr):
                         up, same, gone = uris.publish_tree(local, uri, metadata=metadata)
+                        # A store carries its record; a sidecar left beside an
+                        # older one there would describe that one.
+                        if local.suffix.lower() == ".zarr" and uris.drop_store_sidecar(uri):
+                            gone += 1
                     _note(args, f"uploaded {local} -> {uri}: {up} files uploaded, "
                                 f"{same} unchanged" + (f", {gone} stale objects removed"
                                                        if gone else ""))

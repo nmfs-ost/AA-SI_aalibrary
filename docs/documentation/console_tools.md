@@ -4356,9 +4356,10 @@ aa-upload — Upload files and products to a GCS bucket.
 
 WHAT IT DOES
   With a gs:// destination (aa-upload [FILE ...] gs://bucket/prefix/): uploads
-  each input there, with its .aa.json sidecar, stamps the product hash into
-  the object's metadata, and skips objects that already hold the same product
-  or the same bytes. Folders (.zarr stores) are uploaded recursively.
+  each input there, with its .aa.json sidecar (a .zarr store carries its
+  record inside, and needs none), stamps the product hash into the object's
+  metadata, and skips objects that already hold the same product or the same
+  bytes. Folders (.zarr stores) are uploaded recursively.
 
   Without one, the original modes: echosounder mode keeps aalibrary's
   data/raw/<ship>/<survey>/<sonar>/ layout (needs --ship_name, --survey_name,
@@ -4375,31 +4376,32 @@ OUTPUT (stdout)
   unchanged.
 
 METADATA
-  Never changes the file. Uploads it with its .aa.json sidecar and stamps
-  aa-product-hash / aa-base / aa-tool into the object's custom metadata, so
-  the bucket can answer 'is this product already here?'.
+  Never changes the file. Uploads it with its .aa.json sidecar (a .zarr store
+  carries its record inside, and gets none) and stamps aa-product-hash /
+  aa-base / aa-tool into the object's custom metadata, so the bucket can
+  answer 'is this product already here?'.
 
 OPTIONS
-  gs://BUCKET/PREFIX/		   destination; ending in / (or several inputs,
-								or a folder) means 'put it under this prefix';
-								a name with an extension is the exact object
-  --tee						 gs:// mode: print the local path, so the pipe
-								continues locally
-  --force					   gs:// mode: upload even if the object is
-								identical
-  --dry-run					 show what would be uploaded; upload nothing
+  gs://BUCKET/PREFIX/           destination; ending in / (or several inputs,
+                                or a folder) means 'put it under this prefix';
+                                a name with an extension is the exact object
+  --tee                         gs:// mode: print the local path, so the pipe
+                                continues locally
+  --force                       gs:// mode: upload even if the object is
+                                identical
+  --dry-run                     show what would be uploaded; upload nothing
   --ship_name/--survey_name/--sonar_model
-								echosounder mode (all three)
-  --no-metadata				 echosounder mode: upload the files only; don't
-								record their metadata in BigQuery (no BigQuery
-								access needed)
-  --provisional-ship-name	   echosounder mode: the ship or platform isn't
-								in the ICES ship list yet; upload under its
-								name anyway
+                                echosounder mode (all three)
+  --no-metadata                 echosounder mode: upload the files only; don't
+                                record their metadata in BigQuery (no BigQuery
+                                access needed)
+  --provisional-ship-name       echosounder mode: the ship or platform isn't
+                                in the ICES ship list yet; upload under its
+                                name anyway
   --as-is --destination_prefix PFX
-								as-is mode
+                                as-is mode
   --gcp_env prod|dev, --project_id, --gcp_bucket_name
-								which project/bucket the original modes use
+                                which project/bucket the original modes use
 
 FILES & URIs
   Reads local files and folders (or gs:// objects). Writes gs:// objects with

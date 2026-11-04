@@ -747,11 +747,12 @@ class Run:
                 if out.local.is_file():
                     metadata[uris.META_MD5] = identity.md5_b64(out.local)
                 side = provenance.sidecar_path(out.local)
-                if doc is not None and not side.exists():
+                if doc is not None and not side.exists() and not out.local.is_dir():
                     # A bucket object's provenance is embedded, but reading it
                     # means downloading the product. The small .aa.json beside
                     # it lets aa-metadata (and anyone browsing the bucket) read
-                    # the record without that.
+                    # the record without that. A Zarr store needs none: its
+                    # record is in its root metadata, which is read in place.
                     provenance.write_sidecar(out.local, doc)
                 uris.publish(out.local, out.target, metadata=metadata)
         self.discard(out)
