@@ -3,7 +3,7 @@
 aa-setup
 
 (Re)install the AA-SI workstation environment on a Google Cloud VM: fetch
-and run the AA-SI_GPCSetup init.sh, activate ~/venv313, log in for
+and run the AA-SI_GCPSetup init.sh, activate ~/venv313, log in for
 Application Default Credentials, and set the gcloud project.
 
     aa-setup                          run the setup
@@ -20,7 +20,7 @@ import sys
 
 from aalibrary.console._core import Help, ToolSpec, render, show_help
 
-INIT_URL = "https://raw.githubusercontent.com/nmfs-ost/AA-SI_GPCSetup/main/init.sh"
+INIT_URL = "https://raw.githubusercontent.com/nmfs-ost/AA-SI_GCPSetup/main/init.sh"
 PROJECT = "ggn-nmfs-aa-dev-1"
 
 SPEC = ToolSpec(name="aa-setup", role="utility", engines=())
@@ -28,7 +28,7 @@ SPEC = ToolSpec(name="aa-setup", role="utility", engines=())
 HELP = Help(
     summary="Reinstall the AA-SI workstation environment on a Google Cloud VM.",
     does=(
-        "Downloads the current init.sh from the AA-SI_GPCSetup repository into "
+        "Downloads the current init.sh from the AA-SI_GCPSetup repository into "
         "your home directory (replacing any old copy), runs it, activates "
         "~/venv313, runs 'gcloud auth application-default login' (opens a "
         "browser sign-in; this is the credential every aa-* tool uses for "
@@ -70,7 +70,7 @@ def print_help_full():
     Usage: aa-setup [--account EMAIL]
 
     Description:
-    Reinstalls the startup script for the AA-SI GPCSetup environment on a
+    Reinstalls the startup script for the AA-SI GCPSetup environment on a
     Google Cloud VM, then logs in for Application Default Credentials and
     sets the gcloud project. Runs, in order, stopping at the first failure:
 

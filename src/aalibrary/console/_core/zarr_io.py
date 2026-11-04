@@ -144,8 +144,16 @@ def chunked_encoding(dataset, ping_chunk: int, compress: bool = True) -> dict:
 
 
 def groups_of(echodata) -> list[str]:
-    """Top-level first, then every other group echopype has, in its order."""
-    paths = [g for g in (getattr(echodata, "group_paths", None) or []) if g != "Top-level"]
+    """Top-level first, then every other group echopype has, in its order.
+
+    Never an input's aa_seal group (an EchoData read from a store sealed
+    before catch-up 16 carries one): a new product gets its own seal, and an
+    EchoData with a group echopype doesn't know can't be displayed.
+    """
+    from .provenance import SEAL_GROUP
+
+    paths = [g for g in (getattr(echodata, "group_paths", None) or [])
+             if g != "Top-level" and g.split("/", 1)[0] != SEAL_GROUP]
     return ["Top-level", *paths]
 
 

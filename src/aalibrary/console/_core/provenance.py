@@ -50,19 +50,41 @@ Flat attributes are written beside the JSON so tools that only look at
 The seal. xarray copies global attributes when a dataset is saved, so a
 product modified in a notebook and saved as a new file would still claim
 the original product hash, and the next tool would reuse results made
-from the unmodified data. NetCDF and Zarr products therefore also get a
-small subgroup ``aa_seal`` (attribute ``product_hash``). Saving a dataset
-with xarray (or echopype) copies the attributes but not the subgroup, so
-provenance without a matching seal is recognised as copied and ignored:
-the file is then treated like any file without provenance (identified by
-its content). Known limit: editing a product *in place* (netCDF4 'a'
-mode) keeps the seal.
+from the unmodified data. NetCDF and Zarr products therefore also carry a
+seal: the product hash, and ``shape``, a fingerprint of every array's path
+and shape in the product as written. Provenance whose seal is missing,
+names another product, or whose shape no longer matches the file is
+recognised as copied and ignored: the file is then treated like any file
+without provenance (identified by its content).
+
+Where the seal lives:
+    EchoData     attribute ``aa_seal`` (JSON text) of its ``Provenance``
+                 group. echopype names every group of an EchoData and
+                 refuses to display one it does not know (KeyError), so an
+                 EchoData gets no group of ours.
+    other        a small subgroup ``aa_seal`` (attributes ``product_hash``,
+                 ``shape``). Saving a dataset with xarray never copies a
+                 subgroup.
+echopype's own combine and DataTree copies carry every group and attribute
+along, seal included; the shape is what tells those copies apart (a combine
+has more pings, a subset fewer). Seals written before the shape existed
+(an ``aa_seal`` group with ``product_hash`` only) are still honoured, and an
+EchoData sealed that way is also refused when its Provenance lists a
+different number of source files than its record.
+
+Records and the other aa attributes are written as JSON text (Zarr stores
+written before held them as JSON objects; both are read), so a product
+opened with xarray or echopype can be saved to NetCDF unchanged.
+
+Known limit: editing a product *in place* (netCDF4 'a' mode, or a Zarr
+array) without changing any shape keeps the seal.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
 import getpass
+import hashlib
 import json
 import os
 import platform
@@ -81,8 +103,12 @@ ATTR_BASE = "aa_base"
 ATTR_TOOL = "aa_tool"
 ATTR_KIND = "aa_product_kind"
 ATTR_RECIPE = "aa_recipe"
-SEAL_GROUP = "aa_seal"
+SEAL_GROUP = "aa_seal"            # the seal of a product that is not EchoData
 SEAL_ATTR = "product_hash"
+SEAL_SHAPE_ATTR = "shape"
+SEAL_ECHODATA_GROUP = "Provenance"  # an EchoData's seal: an attribute of this group,
+SEAL_ECHODATA_ATTR = "aa_seal"      # named so, holding {product_hash, shape} as JSON text
+SHAPE_SCHEME = "s1"
 # HDF5 compact attribute storage tops out near 64 KiB; stay well under it.
 MAX_EMBED_BYTES = 48_000
 
@@ -412,45 +438,334 @@ def _hash_of(doc: dict | None) -> str | None:
     return ((doc or {}).get("product") or {}).get("hash")
 
 
+def attr_json(value: Any) -> Any:
+    """An attribute that holds JSON: parsed from text (how aa attributes are
+    written, and how NetCDF always held them), or as stored (a JSON object,
+    in Zarr stores written before catch-up 16). None if it doesn't parse."""
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", "replace")
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return None
+    return value
+
+
+# ---------------------------------------------------------------------------
+# The seal (see the module docstring).
+# ---------------------------------------------------------------------------
+
+def _is_seal_path(path: str) -> bool:
+    return str(path).strip("/").split("/", 1)[0] == SEAL_GROUP
+
+
+def shape_print(shapes: dict[str, Any]) -> str:
+    """The seal's fingerprint of a product: every array's path and shape
+    (the seal group itself excluded), hashed. Values are not looked at."""
+    lines = sorted(
+        f"{str(path).strip('/')}={'x'.join(str(int(n)) for n in (shape or ()))}"
+        for path, shape in shapes.items() if not _is_seal_path(path))
+    digest = hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
+    return f"{SHAPE_SCHEME}:{digest}"
+
+
+def _seal_record(attrs: dict | None, *, echodata: bool) -> dict | None:
+    """{"hash", "shape"} from the attributes the seal is kept in (the
+    Provenance group's for an EchoData, the aa_seal group's otherwise); shape
+    is None for a seal written before it existed."""
+    if not attrs:
+        return None
+    if echodata:
+        value = attr_json(attrs.get(SEAL_ECHODATA_ATTR))
+        if isinstance(value, dict) and value.get(SEAL_ATTR):
+            return {"hash": str(value[SEAL_ATTR]), "shape": value.get(SEAL_SHAPE_ATTR)}
+        return None
+    value = attrs.get(SEAL_ATTR)
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", "replace")
+    if not value:
+        return None
+    shape = attrs.get(SEAL_SHAPE_ATTR)
+    if isinstance(shape, (bytes, bytearray)):
+        shape = shape.decode("utf-8", "replace")
+    return {"hash": str(value), "shape": shape or None}
+
+
+def _source_count(doc: dict) -> int | None:
+    """How many raw files the record says the product came from."""
+    if doc.get("sources_truncated"):
+        try:
+            return int(doc["sources_truncated"])
+        except (TypeError, ValueError):
+            return None
+    return len(doc.get("sources") or []) or None
+
+
+def _judge(doc: dict | None, seal: dict | None, *, shapes, walk, echodata_sources,
+           name: str | None = None) -> bool:
+    """Whether ``doc`` is the product's own record.
+
+    shapes():  the product's array shapes from its consolidated metadata (one
+               read already made), or None when there is none.
+    walk():    the same, from the arrays themselves; None if unreadable.
+    echodata_sources(): the length of Provenance/source_filenames, or None
+               (not an EchoData, or unreadable).
+    name:      the file or store's own name, where it lies.
+    """
+    product = _hash_of(doc)
+    if not product or seal is None or seal["hash"] != product:
+        return False
+    if seal.get("shape"):
+        listed = shapes()
+        if listed is not None and shape_print(listed) == seal["shape"]:
+            return True
+        walked = walk()
+        if walked is None:
+            # Nothing to compare with but unreadable metadata: as before shapes.
+            return listed is None
+        return shape_print(walked) == seal["shape"]
+    # Sealed before shapes were recorded, so a copy that carried the seal
+    # along (echopype's combine, a DataTree saved elsewhere) has only these to
+    # give it away: a record naming another file or store, and for an
+    # EchoData combine, more source files in its Provenance than the record has.
+    recorded_name = str(((doc or {}).get("product") or {}).get("name") or "")
+    if name and recorded_name and recorded_name != str(name).rstrip("/"):
+        return False
+    files, recorded = echodata_sources(), _source_count(doc)
+    return files is None or recorded is None or files == recorded
+
+
+def _name_of(where: str | Path) -> str:
+    return str(where).rstrip("/").rsplit("/", 1)[-1]
+
+
 def _read_netcdf(path: Path) -> tuple[dict | None, bool]:
     """(document, sealed)."""
     try:
         import netCDF4
-
+    except ImportError:
+        netCDF4 = None
+    if netCDF4 is not None:
         with netCDF4.Dataset(str(path), "r") as nc:
             if ATTR not in nc.ncattrs():
                 return None, False
             doc = _loads(nc.getncattr(ATTR))
-            seal = nc.groups.get(SEAL_GROUP)
-            value = (seal.getncattr(SEAL_ATTR)
-                     if seal is not None and SEAL_ATTR in seal.ncattrs() else None)
-            return doc, value is not None and str(value) == _hash_of(doc)
-    except ImportError:
-        import h5py
+            seal = _nc_seal(nc)
+            shapes = _nc_shapes(nc)
+            prov = nc.groups.get(SEAL_ECHODATA_GROUP)
+            files = prov.variables.get("source_filenames") if prov is not None else None
+            return doc, _judge(doc, seal, shapes=lambda: shapes, walk=lambda: shapes,
+                               echodata_sources=lambda: (files.shape[0] if files is not None
+                                                         and files.ndim == 1 else None),
+                               name=path.name)
+    import h5py
 
-        with h5py.File(str(path), "r") as h5:
-            doc = _loads(h5.attrs.get(ATTR))
-            value = h5[SEAL_GROUP].attrs.get(SEAL_ATTR) if SEAL_GROUP in h5 else None
-            if isinstance(value, bytes):
-                value = value.decode()
-            return doc, value is not None and str(value) == _hash_of(doc)
+    # Without netCDF4 the shapes are not compared (HDF5 lists netCDF
+    # dimensions as datasets of its own); the hash still must match.
+    with h5py.File(str(path), "r") as h5:
+        doc = _loads(h5.attrs.get(ATTR))
+        seal = None
+        if SEAL_ECHODATA_GROUP in h5:
+            seal = _seal_record(dict(h5[SEAL_ECHODATA_GROUP].attrs), echodata=True)
+        if seal is None and SEAL_GROUP in h5:
+            seal = _seal_record(dict(h5[SEAL_GROUP].attrs), echodata=False)
+        if seal is not None:
+            seal["shape"] = None
+        return doc, _judge(doc, seal, shapes=lambda: None, walk=lambda: None,
+                           echodata_sources=lambda: None, name=path.name)
 
 
-def _zarr_attrs(path: Path) -> dict | None:
-    for meta in (path / "zarr.json", path / ".zattrs"):
-        if meta.is_file():
-            data = json.loads(meta.read_text(encoding="utf-8"))
-            return data.get("attributes", {}) if meta.name == "zarr.json" else data
-    return None
+def _nc_seal(nc) -> dict | None:
+    prov = nc.groups.get(SEAL_ECHODATA_GROUP)
+    if prov is not None and SEAL_ECHODATA_ATTR in prov.ncattrs():
+        seal = _seal_record({SEAL_ECHODATA_ATTR: prov.getncattr(SEAL_ECHODATA_ATTR)},
+                            echodata=True)
+        if seal is not None:
+            return seal
+    group = nc.groups.get(SEAL_GROUP)
+    if group is None:
+        return None
+    return _seal_record({k: group.getncattr(k) for k in group.ncattrs()}, echodata=False)
+
+
+def _nc_shapes(nc) -> dict[str, tuple]:
+    """Every variable's path and shape in an open netCDF4 file."""
+    out: dict[str, tuple] = {}
+
+    def visit(group, prefix: str) -> None:
+        for name, var in group.variables.items():
+            out[f"{prefix}{name}"] = tuple(int(n) for n in var.shape)
+        for name, sub in group.groups.items():
+            if not prefix and name == SEAL_GROUP:
+                continue
+            visit(sub, f"{prefix}{name}/")
+
+    visit(nc, "")
+    return out
+
+
+def _nc_is_echodata(nc) -> bool:
+    return SEAL_ECHODATA_GROUP in nc.groups and "Sonar" in nc.groups
+
+
+class _StoreMeta:
+    """A Zarr store's metadata documents, read on demand (local or fsspec)."""
+
+    def __init__(self, read_json) -> None:
+        self._read = read_json
+        self._docs: dict[str, Any] = {}
+        self.v3 = self.get("zarr.json") is not None
+
+    def get(self, rel: str) -> dict | None:
+        if rel not in self._docs:
+            try:
+                doc = self._read(rel)
+            except (OSError, ValueError):
+                doc = None
+            self._docs[rel] = doc if isinstance(doc, dict) else None
+        return self._docs[rel]
+
+    def attrs(self, group: str = "") -> dict | None:
+        prefix = f"{group}/" if group else ""
+        if self.v3:
+            doc = self.get(f"{prefix}zarr.json")
+            return None if doc is None else (doc.get("attributes") or {})
+        return self.get(f"{prefix}.zattrs")
+
+    def consolidated_shapes(self) -> dict | None:
+        if self.v3:
+            meta = ((self.get("zarr.json") or {}).get("consolidated_metadata") or {}).get(
+                "metadata")
+            if not isinstance(meta, dict):
+                return None
+            return {path: tuple(node.get("shape") or ()) for path, node in meta.items()
+                    if isinstance(node, dict) and node.get("node_type") == "array"}
+        meta = (self.get(".zmetadata") or {}).get("metadata")
+        if not isinstance(meta, dict):
+            return None
+        return {key[:-len(".zarray")].rstrip("/"): tuple(node.get("shape") or ())
+                for key, node in meta.items()
+                if key.endswith(".zarray") and isinstance(node, dict)}
+
+    def array_shape(self, path: str) -> tuple | None:
+        listed = self.consolidated_shapes()
+        if listed is not None:
+            return listed.get(path)
+        doc = self.get(f"{path}/zarr.json" if self.v3 else f"{path}/.zarray")
+        if not doc or (self.v3 and doc.get("node_type") != "array"):
+            return None
+        return tuple(doc.get("shape") or ())
+
+    def seal(self) -> dict | None:
+        """The seal: the Provenance group's attribute first (an EchoData),
+        then the aa_seal group (any product, and EchoData sealed before)."""
+        seal = _seal_record(self.attrs(SEAL_ECHODATA_GROUP), echodata=True)
+        return seal if seal is not None else _seal_record(self.attrs(SEAL_GROUP),
+                                                          echodata=False)
+
+    def echodata_sources(self) -> int | None:
+        shape = self.array_shape(f"{SEAL_ECHODATA_GROUP}/source_filenames")
+        return int(shape[0]) if shape and len(shape) == 1 else None
+
+
+def group_shapes(group) -> dict[str, tuple]:
+    """Every array's path and shape under an open zarr group (zarr 3 or 2),
+    the aa_seal group excluded."""
+    import zarr
+
+    out: dict[str, tuple] = {}
+    if hasattr(group, "members"):          # zarr 3
+        for name, node in group.members(max_depth=None):
+            if isinstance(node, zarr.Array) and not _is_seal_path(name):
+                out[name] = tuple(int(n) for n in node.shape)
+        return out
+
+    def visit(name, node):                 # zarr 2
+        if isinstance(node, zarr.Array) and not _is_seal_path(name):
+            out[name] = tuple(int(n) for n in node.shape)
+
+    group.visititems(visit)
+    return out
+
+
+def _fresh_group(group):
+    """The same store and group opened again without its consolidated
+    metadata, so a walk sees the arrays as they are, not as last listed."""
+    import zarr
+
+    try:
+        return zarr.open_group(store=group.store, path=group.path or "", mode="r",
+                               use_consolidated=False)
+    except TypeError:                      # zarr 2
+        return zarr.open_group(store=group.store, path=group.path or "", mode="r")
+
+
+def _walk_shapes(where: str | Path, storage_options: dict | None = None) -> dict | None:
+    """Array shapes read from the arrays themselves; None if unreadable."""
+    import zarr
+
+    try:
+        text = str(where)
+        if "://" in text:
+            if text.startswith(("gs://", "gcs://")) and os.getenv("AA_GCS_FAKE_ROOT"):
+                from . import uris
+
+                uris.install_fake_fsspec()   # the stand-in bucket, never GCS
+            try:
+                group = zarr.open_group(text, mode="r", use_consolidated=False,
+                                        storage_options=storage_options or None)
+            except TypeError:                # zarr 2
+                import fsspec
+
+                group = zarr.open_group(fsspec.get_mapper(text, **(storage_options or {})),
+                                        mode="r")
+        else:
+            try:
+                group = zarr.open_group(text, mode="r", use_consolidated=False)
+            except TypeError:
+                group = zarr.open_group(text, mode="r")
+        return group_shapes(group)
+    except Exception:  # noqa: BLE001 - unreadable is "unknown"
+        return None
+
+
+def _local_json(path: Path) -> dict | None:
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _store_reader(where: str | Path, storage_options: dict | None):
+    text = str(where).removeprefix("file://")
+    if "://" in text:
+        return text, lambda rel: _remote_json(text, rel, storage_options)
+    return text, lambda rel: _local_json(Path(text) / rel)
+
+
+def store_is_own(where: str | Path, doc: dict | None,
+                 storage_options: dict | None = None) -> bool:
+    """Whether ``doc`` (a record read from this Zarr store's root attributes)
+    is the store's own: sealed for it, in its present shape. ``where`` is a
+    local path, file://, or an fsspec URI (gs:// through gcsfs or the stand-in
+    bucket). A few small metadata reads; the arrays only when the
+    consolidated metadata disagrees or there is none."""
+    location, reader = _store_reader(where, storage_options)
+    meta = _StoreMeta(reader)
+    return _judge(doc, meta.seal(), shapes=meta.consolidated_shapes,
+                  walk=lambda: _walk_shapes(location, storage_options),
+                  echodata_sources=meta.echodata_sources, name=_name_of(location))
 
 
 def _read_zarr(path: Path) -> tuple[dict | None, bool]:
-    attrs = _zarr_attrs(path)
+    meta = _StoreMeta(lambda rel: _local_json(path / rel))
+    attrs = meta.attrs()
     if not attrs or ATTR not in attrs:
         return None, False
     doc = _loads(attrs.get(ATTR))
-    seal = _zarr_attrs(path / SEAL_GROUP) or {}
-    return doc, seal.get(SEAL_ATTR) is not None and str(seal.get(SEAL_ATTR)) == _hash_of(doc)
+    return doc, _judge(doc, meta.seal(), shapes=meta.consolidated_shapes,
+                       walk=lambda: _walk_shapes(path),
+                       echodata_sources=meta.echodata_sources, name=path.name)
 
 
 def _remote_json(where: str, name: str, storage_options: dict | None) -> dict | None:
@@ -475,7 +790,9 @@ def inspect_store(where: str | Path,
                   storage_options: dict | None = None) -> tuple[dict | None, str]:
     """(document, status) for a Zarr store read where it is: a local path or a
     gs:// URI (through fsspec: gcsfs, or the stand-in bucket). Only the root
-    attributes and the seal are read, a few kilobytes, never the data.
+    metadata and the seal are read, a few kilobytes, never the data (the
+    arrays' own metadata only when the consolidated listing disagrees with
+    the seal's shape).
 
     status: "embedded" (sealed), "copied" (aa attributes without a matching
     seal: not this store's own), or "none".
@@ -483,19 +800,15 @@ def inspect_store(where: str | Path,
     if "://" not in str(where):
         doc, sealed = _read_zarr(Path(where))
     else:
-        def attrs_of(prefix: str) -> dict | None:
-            for name in ("zarr.json", ".zattrs"):
-                data = _remote_json(str(where), f"{prefix}{name}", storage_options)
-                if data is not None:
-                    return data.get("attributes", {}) if name == "zarr.json" else data
-            return None
-
-        attrs = attrs_of("")
+        location, reader = _store_reader(where, storage_options)
+        meta = _StoreMeta(reader)
+        attrs = meta.attrs()
         if not attrs or ATTR not in attrs:
             return None, "none"
         doc = _loads(attrs.get(ATTR))
-        seal = attrs_of(f"{SEAL_GROUP}/") or {}
-        sealed = seal.get(SEAL_ATTR) is not None and str(seal.get(SEAL_ATTR)) == _hash_of(doc)
+        sealed = _judge(doc, meta.seal(), shapes=meta.consolidated_shapes,
+                        walk=lambda: _walk_shapes(location, storage_options),
+                        echodata_sources=meta.echodata_sources, name=_name_of(location))
     if doc is None:
         return None, "none"
     if not sealed:
@@ -610,24 +923,70 @@ def _write_netcdf(path: Path, doc: dict) -> None:
         old = nc.getncattr("history") if "history" in nc.ncattrs() else ""
         old = old if isinstance(old, str) else str(old)
         nc.setncattr("history", (old.rstrip("\n") + "\n" + line).lstrip("\n"))
-        seal = nc.groups.get(SEAL_GROUP) or nc.createGroup(SEAL_GROUP)
-        seal.setncattr(SEAL_ATTR, doc["product"]["hash"])
+        seal = {SEAL_ATTR: doc["product"]["hash"], SEAL_SHAPE_ATTR: shape_print(_nc_shapes(nc))}
+        if _nc_is_echodata(nc):
+            # An attribute of echopype's own Provenance group: a group of ours
+            # would make echopype refuse to display the EchoData. A seal group
+            # copied in from an input (netCDF4 cannot remove groups) is left
+            # behind; the Provenance seal is the one read.
+            nc.groups[SEAL_ECHODATA_GROUP].setncattr(SEAL_ECHODATA_ATTR, _seal_text(seal))
+        else:
+            group = nc.groups.get(SEAL_GROUP) or nc.createGroup(SEAL_GROUP)
+            for key, value in seal.items():
+                group.setncattr(key, value)
+
+
+def _seal_text(seal: dict) -> str:
+    return json.dumps(seal, separators=(",", ":"), sort_keys=True)
+
+
+def _zarr_is_echodata(group) -> bool:
+    try:
+        return SEAL_ECHODATA_GROUP in group and "Sonar" in group
+    except Exception:  # noqa: BLE001 - an unreadable member: not an EchoData we can seal there
+        return False
 
 
 def write_zarr_group(group, doc: dict) -> None:
     """Embed ``doc`` in an open zarr group (local or fsspec-backed).
 
-    Sets the flat aa_* attributes plus the full document and creates the
-    ``aa_seal`` subgroup. Consolidating metadata is left to the caller.
+    Sets the flat aa_* attributes (the full document as JSON text, which
+    NetCDF can hold too) and the seal: an attribute of the Provenance group
+    for an EchoData (any aa_seal group copied in from an input is removed),
+    the ``aa_seal`` subgroup otherwise. The seal's shape is read from the
+    arrays as written, so call this after the data. Consolidating metadata is
+    left to the caller.
     """
-    attrs = flat_attrs(doc)
-    attrs[ATTR] = doc  # Zarr attributes hold JSON natively
-    group.attrs.update(attrs)
+    group.attrs.update(flat_attrs(doc))
+    seal = {SEAL_ATTR: doc["product"]["hash"],
+            SEAL_SHAPE_ATTR: shape_print(group_shapes(_fresh_group(group)))}
+    if _zarr_is_echodata(group):
+        group[SEAL_ECHODATA_GROUP].attrs[SEAL_ECHODATA_ATTR] = _seal_text(seal)
+        try:
+            if SEAL_GROUP in group:
+                del group[SEAL_GROUP]
+        except Exception as exc:  # noqa: BLE001 - the Provenance seal is the one read
+            import logging
+
+            logging.getLogger(__name__).debug(f"could not remove an old {SEAL_GROUP}: {exc}")
+        return
     try:
-        seal = group[SEAL_GROUP]
+        sealed = group[SEAL_GROUP]
     except KeyError:
-        seal = group.create_group(SEAL_GROUP)
-    seal.attrs[SEAL_ATTR] = doc["product"]["hash"]
+        sealed = group.create_group(SEAL_GROUP)
+    sealed.attrs.update(seal)
+
+
+def drop_echodata_seal(echodata) -> bool:
+    """Remove an aa_seal group from an open EchoData (one read from a store
+    sealed before catch-up 16, or carried along by echopype's combine), so it
+    is neither displayed (echopype refuses groups it doesn't know) nor written
+    into a new product. True if there was one."""
+    tree = getattr(echodata, "_tree", None)
+    if tree is None or SEAL_GROUP not in getattr(tree, "children", {}):
+        return False
+    echodata._tree = tree.drop_nodes(SEAL_GROUP)
+    return True
 
 
 def _write_zarr(path: Path, doc: dict) -> None:
@@ -712,7 +1071,9 @@ def _write_html(path: Path, doc: dict) -> None:
 __all__ = [
     "SCHEMA", "SIDECAR_SUFFIX", "ATTR", "ATTR_HASH", "ATTR_BASE", "ATTR_TOOL", "ATTR_KIND",
     "ATTR_RECIPE",
-    "SEAL_GROUP", "SEAL_ATTR", "inspect", "inspect_store", "write_zarr_group", "write_sidecar",
+    "SEAL_GROUP", "SEAL_ATTR", "SEAL_SHAPE_ATTR", "SEAL_ECHODATA_GROUP", "SEAL_ECHODATA_ATTR",
+    "inspect", "inspect_store", "store_is_own", "write_zarr_group", "write_sidecar",
+    "attr_json", "shape_print", "group_shapes", "drop_echodata_seal",
     "now", "software_versions", "merge_pipelines", "sources_of", "build", "history_line",
     "flat_attrs",
     "compact", "sidecar_path", "read", "write", "png_text",

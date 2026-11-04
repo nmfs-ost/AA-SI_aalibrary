@@ -1841,7 +1841,7 @@ aa-raw --file_name D20190804-T113723.raw --ship_name Henry_B._Bigelow \
 Usage: aa-setup
 
 Description:
-Reinstalls the startup script for the AA-SI GPCSetup environment on a Google Cloud VM.
+Reinstalls the startup script for the AA-SI GCPSetup environment on a Google Cloud VM.
 </tool_manpage>
 
 <tool_manpage name="aa-show">

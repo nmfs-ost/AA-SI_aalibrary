@@ -89,11 +89,10 @@ from aalibrary.console._core import (  # noqa: E402 - after the log silencing ab
     Help, ToolSpec, provenance as _provenance, render, show_help,
 )
 
-# The provenance seal: a subgroup whose product_hash attribute must match
-# aa_provenance for the provenance to be the store's own (xarray copies root
-# attributes into a re-saved store, but not the seal).
+# The provenance seal (judged by _provenance.store_is_own): an EchoData's is
+# an attribute of its Provenance group, any other product's the aa_seal
+# subgroup, which the object census leaves out as bookkeeping.
 SEAL_GROUP = _provenance.SEAL_GROUP
-SEAL_ATTR = _provenance.SEAL_ATTR
 
 SPEC = ToolSpec(name="aa-store", role="inspector", engines=())
 
@@ -630,6 +629,9 @@ def _itemsize(dtype: str) -> int:
 
 
 def _expected_chunks(shape, chunks) -> int:
+    if shape is not None and len(shape) == 0:
+        # A 0-d array (a scalar such as Sv's water_level) is one chunk.
+        return 1
     if not shape or not chunks or len(shape) != len(chunks):
         return 0
     total = 1
@@ -826,10 +828,12 @@ def describe(
     if include_arrays:
         summary["arrays"] = entries
 
-    marker = root_attributes.get(WRITE_MARKER)
+    # JSON text since catch-up 16 (so a store can be saved to NetCDF as it
+    # is), JSON objects before; reported as objects either way.
+    marker = _provenance.attr_json(root_attributes.get(WRITE_MARKER))
     if isinstance(marker, dict):
         summary["write"] = marker
-    provenance = root_attributes.get("provenance")
+    provenance = _provenance.attr_json(root_attributes.get("provenance"))
     if isinstance(provenance, dict):
         summary["provenance"] = provenance
     if root_attributes.get("report"):
@@ -844,15 +848,14 @@ def describe(
 
     # Additive: the shared aa provenance, when the store carries its own.
     document = _aa_provenance(root_attributes)
-    if document is not None:
-        seal = _seal_hash(store)
-        if seal != (document.get("product") or {}).get("hash"):
-            # No seal, or another product's: provenance copied into a re-saved
-            # store (xarray copies root attributes, not the seal), or written
-            # before seals existed. Either way not this store's own
-            # (aalibrary.console._core.provenance.inspect calls it "copied").
-            logger.debug("aa_provenance present but not sealed for this store; not reported")
-            document = None
+    if document is not None and not _sealed_for(uri, document):
+        # No seal, another product's, or one for a different shape:
+        # provenance copied into a re-saved store (xarray copies root
+        # attributes; echopype's combine copies the seal too, not the shape),
+        # or written before seals existed. Either way not this store's own
+        # (aalibrary.console._core.provenance.inspect calls it "copied").
+        logger.debug("aa_provenance present but not sealed for this store; not reported")
+        document = None
     if document is not None:
         product = document.get("product") or {}
         summary["product"] = product.get("hash") or root_attributes.get(AA_HASH_ATTR)
@@ -870,20 +873,15 @@ AA_BASE_ATTR = "aa_base"
 AA_PROVENANCE_SCHEMA = "aa-provenance/1"
 
 
-def _seal_hash(store) -> Optional[str]:
-    """The product hash recorded in the store's aa_seal subgroup, or None."""
-    for rel in (f"{SEAL_GROUP}/zarr.json", f"{SEAL_GROUP}/.zattrs"):
-        raw = store.read_text(rel)
-        if not raw:
-            continue
-        try:
-            document = json.loads(raw)
-        except json.JSONDecodeError:
-            return None
-        attrs = document.get("attributes", {}) if rel.endswith("zarr.json") else document
-        value = (attrs or {}).get(SEAL_ATTR)
-        return str(value) if value else None
-    return None
+def _sealed_for(uri: str, document: dict) -> bool:
+    """Whether the store's seal names this document's product, in the store's
+    present shape (aalibrary.console._core.provenance.store_is_own: the
+    Provenance group's seal for an EchoData, the aa_seal group otherwise)."""
+    try:
+        return _provenance.store_is_own(uri, document)
+    except Exception as exc:  # noqa: BLE001 - unreadable is "not proven"
+        logger.debug(f"Could not read the seal: {exc}")
+        return False
 
 
 def _aa_provenance(attributes: dict) -> Optional[dict]:
@@ -906,7 +904,7 @@ def _aa_provenance(attributes: dict) -> Optional[dict]:
             return None
     if not isinstance(value, dict) or value.get("schema") != AA_PROVENANCE_SCHEMA:
         return None
-    lineage = attributes.get("provenance")
+    lineage = _provenance.attr_json(attributes.get("provenance"))
     steps = value.get("pipeline") or []
     last_tool = steps[-1].get("tool") if steps and isinstance(steps[-1], dict) else None
     if isinstance(lineage, dict) and lineage.get("tool") and last_tool \

@@ -234,20 +234,14 @@ def _remote_doc(token: str) -> dict | None:
                     claimed is None or claimed == doc.get("product", {}).get("hash")):
                 return doc
         if info is None:
-            # A prefix: read a store's root metadata and its seal, nothing else.
-            store = Path(tmp) / "store.zarr"
-            got = False
-            for rel in ("zarr.json", ".zattrs", ".zgroup",
-                        f"{provenance.SEAL_GROUP}/zarr.json",
-                        f"{provenance.SEAL_GROUP}/.zattrs"):
-                obj = backend.stat(bucket, f"{key}/{rel}")
-                if obj is not None:
-                    target = store / rel
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    backend.download(bucket, obj.key, target)
-                    got = True
-            if got:
-                return provenance.read(store)
+            # A prefix: a store read where it is (a mount that shows it, or
+            # fsspec): its root metadata and seal, and the shapes the seal is
+            # checked against, never the data.
+            if backend.stat(bucket, f"{key}/zarr.json") is None \
+                    and backend.stat(bucket, f"{key}/.zattrs") is None:
+                return None
+            doc, status = provenance.inspect_store(uris.in_place(token))
+            return doc if status == "embedded" else None
     return None
 
 

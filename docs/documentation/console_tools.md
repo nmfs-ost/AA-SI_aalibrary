@@ -3476,7 +3476,7 @@ aa-setup — Reinstall the AA-SI workstation environment on a Google Cloud VM.
   [utility]
 
 WHAT IT DOES
-  Downloads the current init.sh from the AA-SI_GPCSetup repository into your
+  Downloads the current init.sh from the AA-SI_GCPSetup repository into your
   home directory (replacing any old copy), runs it, activates ~/venv313, runs
   'gcloud auth application-default login' (opens a browser sign-in; this is
   the credential every aa-* tool uses for gs:// and BigQuery), and sets the
@@ -3499,7 +3499,7 @@ OPTIONS
 FILES & URIs
   Writes ~/init.sh, downloaded (with sudo) from
 
-	https://raw.githubusercontent.com/nmfs-ost/AA-SI_GPCSetup/main/init.sh
+	https://raw.githubusercontent.com/nmfs-ost/AA-SI_GCPSetup/main/init.sh
 
   What init.sh installs is defined in that repository. Needs network access.
 

@@ -1427,7 +1427,14 @@ def _drop_inherited_attrs(echodata) -> None:
     combined store, its aa_write marker), which would make an interrupted
     store look like its first input, or like a finished write. This tool
     writes its own values for all of them once the combine has succeeded.
+    combine_echodata also carries along the first input's aa_seal group
+    (stores sealed before catch-up 16 have one), which is dropped here too.
     """
+    try:
+        if provenance.drop_echodata_seal(echodata):
+            logger.debug(f"Dropped the inherited {SEAL_GROUP} group")
+    except Exception as exc:  # noqa: BLE001 - the writer skips it as well
+        logger.debug(f"Could not drop the inherited {SEAL_GROUP} group: {exc}")
     try:
         top = echodata["Top-level"]
         dropped = [key for key in INHERITED_ATTRS if key in top.attrs]
@@ -1604,7 +1611,9 @@ def _stamp(
             marker = {"complete": complete, "tool": TOOL, "version": VERSION, "at": _now()}
             if extra:
                 marker.update(extra)
-            group.attrs["aa_write"] = marker
+            # JSON text, not an object: a store opened with xarray can then be
+            # saved to NetCDF as it is.
+            group.attrs["aa_write"] = json.dumps(marker, sort_keys=True)
     except Exception as exc:  # noqa: BLE001 - never let bookkeeping mask the outcome
         logger.debug(f"Could not stamp {target.raw}: {exc}")
 
@@ -1632,7 +1641,7 @@ def _annotate(
             return
         if kind:
             group.attrs["aa_kind"] = kind
-        group.attrs["provenance"] = {
+        group.attrs["provenance"] = json.dumps({
             "tool": TOOL,
             "version": VERSION,
             # Plural from the first line ever written. aa-combine is the first
@@ -1640,7 +1649,7 @@ def _annotate(
             # matters most is the one a singular `parent` cannot describe.
             "parents": parents,
             "at": _now(),
-        }
+        }, sort_keys=True)   # text, so the store can be saved to NetCDF as it is
         if report_uri:
             group.attrs["report"] = report_uri
         starts = [item["start"] for item in report["inputs"] if item.get("start")]
@@ -1703,20 +1712,23 @@ def _as_doc(value: Any) -> Optional[dict]:
     return None
 
 
-def _seal_hash(target: Target, storage_options: dict) -> Optional[str]:
-    """The product hash in the store's aa_seal subgroup, or None.
-
-    The seal is what makes a store's aa provenance genuine: xarray copies
-    root attributes into anything re-saved from a store, but not the seal.
+def _is_own(target: Target, doc: dict | None, storage_options: dict) -> bool:
+    """Whether the store's aa provenance is its own: sealed for it, in its
+    present shape (provenance.store_is_own). The seal is what makes it
+    genuine: xarray copies root attributes into anything re-saved from a
+    store, and echopype's combine copies the seal as well, but not the shape.
     """
-    for name in (f"{SEAL_GROUP}/zarr.json", f"{SEAL_GROUP}/.zattrs"):
-        document = _read_root_doc(target, name, storage_options)
-        if document is None:
-            continue
-        attrs = document.get("attributes", {}) if name.endswith("zarr.json") else document
-        value = (attrs or {}).get(SEAL_ATTR)
-        return str(value) if value else None
-    return None
+    try:
+        return provenance.store_is_own(target.raw, doc, storage_options)
+    except Exception as exc:  # noqa: BLE001 - unreadable is "not proven"
+        logger.debug(f"Could not read the seal of {target.raw}: {exc}")
+        return False
+
+
+def _marker(attrs: dict) -> dict | None:
+    """The aa_write marker: JSON text since catch-up 16, a JSON object before."""
+    marker = provenance.attr_json(attrs.get(WRITE_MARKER))
+    return marker if isinstance(marker, dict) else None
 
 
 def _existing_product(target: Target, storage_options: dict, run: Run, out) -> dict:
@@ -1746,15 +1758,15 @@ def _existing_product(target: Target, storage_options: dict, run: Run, out) -> d
             attrs = _root_attrs(target, storage_options)
             doc = _as_doc(attrs.get(provenance.ATTR))
             product_hash = ((doc or {}).get("product") or {}).get("hash")
-            if product_hash and _seal_hash(target, storage_options) != product_hash:
+            if product_hash and not _is_own(target, doc, storage_options):
                 logger.debug(f"{target.raw}: aa provenance without a matching seal; "
                              "not this store's own")
                 doc, product_hash = None, None
             info["attrs"] = attrs
             info["doc"] = doc
             info["hash"] = product_hash
-            marker = attrs.get(WRITE_MARKER)
-            info["complete"] = marker.get("complete") if isinstance(marker, dict) else None
+            marker = _marker(attrs)
+            info["complete"] = marker.get("complete") if marker is not None else None
         info["layout"] = (((info["doc"] or {}).get("extra") or {}).get(TOOL) or {}).get("layout")
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"Could not read the existing product at {target.raw}: {exc}")
@@ -1916,7 +1928,8 @@ def _reuse_handle(
             logger.debug(f"Could not read the provenance of {target.raw}: {exc}")
     doc = doc or {}
     recorded = ((doc.get("extra") or {}).get(TOOL)) or {}
-    lineage = attrs.get("provenance") if isinstance(attrs.get("provenance"), dict) else {}
+    lineage = provenance.attr_json(attrs.get("provenance"))
+    lineage = lineage if isinstance(lineage, dict) else {}
     return _handle(
         target,
         parents=parents,
@@ -2225,8 +2238,8 @@ def join_sv(paths: list, target: Target, channel_selection: Optional[list[str]],
     # write below gives the same, since xarray replaces them on each.
     root_attrs = {key: value for key, value in first.attrs.items()
                   if not str(key).startswith("aa_") and key not in INHERITED_ATTRS}
-    root_attrs[WRITE_MARKER] = {"complete": False, "tool": TOOL, "version": VERSION,
-                                "at": _now(), "stage": "joining"}
+    root_attrs[WRITE_MARKER] = json.dumps({"complete": False, "tool": TOOL, "version": VERSION,
+                                           "at": _now(), "stage": "joining"}, sort_keys=True)
     offset = 0
     total = len(datasets)
     _progress(progress, "progress", done=0, total=total, unit="files")

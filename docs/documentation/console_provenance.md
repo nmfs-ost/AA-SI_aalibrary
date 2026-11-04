@@ -128,9 +128,28 @@ Guards against reusing the wrong thing:
 
 - **Re-saved copies.** xarray copies attributes when a dataset is saved,
   so a product edited in a notebook would still claim the original hash.
-  NetCDF and Zarr products therefore carry a small `aa_seal` group that
-  xarray does not copy; provenance without a matching seal is ignored and
-  the file is treated as a plain file (a note says so on stderr).
+  NetCDF and Zarr products therefore carry a seal: the product hash and
+  `shape`, a fingerprint of every array's path and shape as written.
+  Provenance whose seal is missing, names another product, or no longer
+  matches the file's shape is ignored, and the file is treated as a plain
+  file (a note says so on stderr).
+  - An EchoData keeps its seal in an attribute `aa_seal` of its
+    `Provenance` group: echopype refuses to display an EchoData that has a
+    group it doesn't know (`KeyError: 'aa_seal'`).
+  - Any other product (Sv, MVBS, …) keeps it in a small `aa_seal` group,
+    which saving a dataset with xarray never copies.
+  - echopype's `combine_echodata` and DataTree copies carry every group and
+    attribute along, seal included. The shape tells them apart: a combine
+    has more pings, a subset fewer.
+  - Products sealed before November 2026 (catch-up 16) have an `aa_seal`
+    group holding the hash only. They are still their own and are reused.
+    An EchoData sealed that way is also refused when its Provenance lists a
+    different number of source files than its record, which is what an
+    echopype combine of it looks like. Displaying one in echopype still
+    needs `ed._tree = ed._tree.drop_nodes("aa_seal")` first.
+- **Saving products elsewhere.** Records and markers (`aa_provenance`,
+  `aa_write`, `provenance`) are JSON text, so a product opened with xarray
+  saves to NetCDF as it is.
 - **Rewritten objects.** Objects record the MD5 they were published with
   (`aa-content-md5`); an object rewritten afterwards is not reused.
 - **Replaced raw files.** A `.raw` whose `.aa.json` sidecar describes
@@ -169,8 +188,8 @@ from, carried forward through every step.
 
 | Format | Where the document is |
 |---|---|
-| `.nc` | root attributes `aa_provenance` (plus `aa_recipe`, `aa_product_hash`, `aa_base`, `aa_tool`, `aa_product_kind`, a `history` line) and the `aa_seal` group |
-| `.zarr` | root attributes, same names, plus `aa_seal`; consolidated metadata is refreshed |
+| `.nc` | root attributes `aa_provenance` (plus `aa_recipe`, `aa_product_hash`, `aa_base`, `aa_tool`, `aa_product_kind`, a `history` line) and the seal |
+| `.zarr` | root attributes, same names (the record as JSON text), plus the seal; consolidated metadata is refreshed |
 | `.png` | text chunks |
 | `.html` | a `<script type="application/json" id="aa-provenance">` block at the top of `<head>` |
 | anything else | a `<file>.aa.json` sidecar |
@@ -341,6 +360,9 @@ aa-graph gs://…/RANGE/RANGE_<recipe>.zarr --dest gs://…/RANGE/ --var Sv     
 
 - Editing a product *in place* (opening it with netCDF4 in append mode
   and changing data) keeps its seal and hash. Save edits to a new file.
+- A copy that changes values but keeps every array's shape and the seal
+  (a DataTree saved whole after editing values) passes as the product. The
+  seal compares shapes, never values.
 - Some spellings a library would reject (`20S`, `-125` without `dB`)
   canonicalize to a valid value; if that product already exists it is
   reused rather than the run failing. It can never return a different

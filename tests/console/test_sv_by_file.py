@@ -162,7 +162,8 @@ def test_joined_sv_is_each_file_s_sv_in_time_order(stores, per_file_sv, tmp_path
     assert steps == [("aa-ed", 3), ("aa-sv", 3), ("aa-combine", None)]
     assert sorted(s["name"] for s in doc["sources"]) == sorted(stores["names"])
     assert uris.stat(joined + ".aa.json") is not None
-    assert j.attrs["aa_write"]["complete"] is True
+    # JSON text, so the joined Sv can be saved to NetCDF as it is.
+    assert json.loads(j.attrs["aa_write"])["complete"] is True
     assert j.attrs["processing_software_name"] == "echopype"
 
     again = tool(tmp_path, "combine", *per_file_sv, "--dest",
