@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/noaa_favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -684,6 +684,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Uploading Echosounder Files To GCP">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#uploading-without-the-metadata-and-adding-it-later" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading Without The Metadata, And Adding It Later
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ships-and-platforms-without-an-ices-code-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ships And Platforms Without An ICES Code Yet
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading-one-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading One File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading-a-whole-survey-with-localsurvey" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading A Whole Survey With LocalSurvey
+      
+    </span>
+  </a>
+  
 </li>
       
         <li class="md-nav__item">
@@ -954,6 +1004,34 @@
     
   
     RawFile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../documentation/survey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LocalSurvey
   
 
     
@@ -1396,6 +1474,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Uploading Echosounder Files To GCP">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#uploading-without-the-metadata-and-adding-it-later" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading Without The Metadata, And Adding It Later
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ships-and-platforms-without-an-ices-code-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ships And Platforms Without An ICES Code Yet
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading-one-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading One File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading-a-whole-survey-with-localsurvey" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading A Whole Survey With LocalSurvey
+      
+    </span>
+  </a>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1453,48 +1581,123 @@
 <p>By default, <code>aalibrary</code> uses the prod GCP project and bucket. If you would like to switch to the dev environment, simply call aalibrary.config.use_gcp_dev() before running your functions. If you would like to use a custom environment, follow the instructions outlined <a href="../configuration/#gcp-environment-configuration">here</a>.</p>
 </div>
 <h2 id="uploading-echosounder-files-to-gcp">Uploading Echosounder Files To GCP</h2>
-<p>In order to upload selective Echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet. This function maintains the formatting and folder structure that AALibrary uses. This makes retrieval of the files using the AALibrary possible.</p>
+<p>To upload a folder of echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet. This function maintains the formatting and folder structure that AALibrary uses. This makes retrieval of the files using the AALibrary possible.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.egress</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">upload_local_echosounder_files_from_directory_to_gcp_storage_bucket</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.cloud_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">setup_gcp_storage_objs</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">gcp_stor_client</span><span class="p">,</span> <span class="n">gcp_bucket_name</span><span class="p">,</span> <span class="n">gcp_bucket</span> <span class="o">=</span> <span class="p">(</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">setup_gcp_storage_objs</span><span class="p">(</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="n">project_id</span><span class="o">=</span><span class="s2">"ggn-nmfs-aa-dev-1"</span><span class="p">,</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="n">gcp_bucket_name</span><span class="o">=</span><span class="s2">"ggn-nmfs-aa-dev-1-data"</span><span class="p">,</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="p">)</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">upload_local_echosounder_files_from_directory_to_gcp_storage_bucket</span><span class="p">(</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">local_echosounder_directory_to_upload</span><span class="o">=</span><span class="sa">r</span><span class="s2">"C:/data/DX2301/EK80"</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">ship_name</span><span class="o">=</span><span class="s2">"Henry B. Bigelow"</span><span class="p">,</span>   <span class="c1"># normalized to Henry_B_Bigelow</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">survey_name</span><span class="o">=</span><span class="s2">"DX2301"</span><span class="p">,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">echosounder</span><span class="o">=</span><span class="s2">"EK80"</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">data_source</span><span class="o">=</span><span class="s2">"HDD"</span><span class="p">,</span>  <span class="c1"># &lt;== Refers to the fact that this is uploaded from local.</span>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">upload_local_echosounder_files_from_directory_to_gcp_storage_bucket</span><span class="p">(</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="n">local_echosounder_directory_to_upload</span><span class="o">=</span><span class="s2">"./Reuben_Lasker/RL2107/EK80/"</span><span class="p">,</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="n">ship_name</span><span class="o">=</span><span class="s2">"Reuben_Lasker"</span><span class="p">,</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>        <span class="n">survey_name</span><span class="o">=</span><span class="s2">"RL2107"</span><span class="p">,</span>
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>        <span class="n">echosounder</span><span class="o">=</span><span class="s2">"EK80"</span><span class="p">,</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>        <span class="n">data_source</span><span class="o">=</span><span class="s2">"HDD"</span><span class="p">,</span> <span class="c1"># &lt;== Refers to the fact that this is uploaded from local.</span>
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>        <span class="n">gcp_bucket</span><span class="o">=</span><span class="n">gcp_bucket</span><span class="p">,</span>
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>        <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="p">)</span>
 </span></code></pre></div>
+<p>The files go to <code>HDD/Henry_B_Bigelow/DX2301/EK80/data/raw/</code> (and <code>.../data/netcdf/</code> for .nc files) in the bucket aalibrary is configured for; pass <code>gcp_bucket=</code> to choose another. Then the .raw and .nc files' metadata is recorded in BigQuery.</p>
+<p>Before anything is uploaded, it checks:</p>
+<ul>
+<li>the folder and the names (the echosounder and data source must be ones aalibrary knows);</li>
+<li>the ship name, against the ICES ship list (see <a href="#ships-and-platforms-without-an-ices-code-yet">ships without an ICES code</a>);</li>
+<li>that your account can add rows to the BigQuery metadata tables. If it can't, nothing is uploaded and the message says what to do.</li>
+</ul>
+<p>Files already in the bucket aren't uploaded again, and files whose metadata is already in BigQuery don't get a second row. So if an upload is interrupted, run the same call again.</p>
+<h3 id="uploading-without-the-metadata-and-adding-it-later">Uploading Without The Metadata, And Adding It Later</h3>
+<p>Recording metadata needs the <strong>BigQuery Data Editor</strong> role on the <code>metadata</code> dataset (ask a project admin). Without it, or when you just want the files up quickly, upload the files only:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">upload_local_echosounder_files_from_directory_to_gcp_storage_bucket</span><span class="p">(</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">local_echosounder_directory_to_upload</span><span class="o">=</span><span class="sa">r</span><span class="s2">"C:/data/DX2301/EK80"</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">ship_name</span><span class="o">=</span><span class="s2">"Henry B. Bigelow"</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">survey_name</span><span class="o">=</span><span class="s2">"DX2301"</span><span class="p">,</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">echosounder</span><span class="o">=</span><span class="s2">"EK80"</span><span class="p">,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">data_source</span><span class="o">=</span><span class="s2">"HDD"</span><span class="p">,</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">upload_metadata</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Later (from the same folder, with the same names), record their metadata. Nothing is uploaded to the bucket, and files that already have metadata are skipped:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.egress</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">upload_local_echosounder_metadata_from_directory_to_bigquery</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="p">)</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">upload_local_echosounder_metadata_from_directory_to_bigquery</span><span class="p">(</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">local_echosounder_directory</span><span class="o">=</span><span class="sa">r</span><span class="s2">"C:/data/DX2301/EK80"</span><span class="p">,</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">ship_name</span><span class="o">=</span><span class="s2">"Henry B. Bigelow"</span><span class="p">,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">survey_name</span><span class="o">=</span><span class="s2">"DX2301"</span><span class="p">,</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">echosounder</span><span class="o">=</span><span class="s2">"EK80"</span><span class="p">,</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">data_source</span><span class="o">=</span><span class="s2">"HDD"</span><span class="p">,</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>From the command line, <code>aa-upload</code> does the same: <code>--no-metadata</code> uploads the files only.</p>
+<h3 id="ships-and-platforms-without-an-ices-code-yet">Ships And Platforms Without An ICES Code Yet</h3>
+<p>An unlisted ship name is refused, since it's usually a misspelling (the message suggests the closest ICES names). For a new ship or platform that doesn't have an ICES code yet, say so:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">upload_local_echosounder_files_from_directory_to_gcp_storage_bucket</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="o">...</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">ship_name</span><span class="o">=</span><span class="s2">"DriX 1"</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">provisional_ship_name</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>   <span class="c1"># aa-upload: --provisional-ship-name</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>The files are filed under the name as given (normalized: <code>Drix_1</code>), and their metadata has no ICES code. If the name ICES approves is different, the files will need to be moved to the new name's folder.</p>
+<h2 id="uploading-one-file">Uploading One File</h2>
+<p><code>upload_file_to_gcp_storage_bucket</code> uploads a single file. Tell it where the file is with <code>file_location</code>: the file's full path, or the folder it's in together with <code>file_name</code>.</p>
+<p>To put it in the standard place (where the directory uploader would), give the names and leave out <code>gcp_storage_bucket_location</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.egress</span><span class="w"> </span><span class="kn">import</span> <span class="n">upload_file_to_gcp_storage_bucket</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">f</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="sa">r</span><span class="s2">"C:/data/DX2301/EK80/D20231017-T211129.idx"</span><span class="p">)</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">upload_file_to_gcp_storage_bucket</span><span class="p">(</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">file_location</span><span class="o">=</span><span class="n">f</span><span class="p">,</span>              <span class="c1"># or file_location=f.parent, file_name=f.name</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">ship_name</span><span class="o">=</span><span class="s2">"Henry B. Bigelow"</span><span class="p">,</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">survey_name</span><span class="o">=</span><span class="s2">"DX2301"</span><span class="p">,</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">echosounder</span><span class="o">=</span><span class="s2">"EK80"</span><span class="p">,</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">data_source</span><span class="o">=</span><span class="s2">"HDD"</span><span class="p">,</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="p">)</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1"># -&gt; HDD/Henry_B_Bigelow/DX2301/EK80/data/raw/D20231017-T211129.idx</span>
+</span></code></pre></div>
+<p>To put it somewhere else, give <code>gcp_storage_bucket_location</code>: a folder in the bucket (the file keeps its name), or the full object path. A Windows-style path, a leading <code>gs://bucket/</code> or the bucket's name are all fine:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">upload_file_to_gcp_storage_bucket</span><span class="p">(</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">file_location</span><span class="o">=</span><span class="n">f</span><span class="p">,</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">gcp_storage_bucket_location</span><span class="o">=</span><span class="s2">"HDD/Henry_B_Bigelow/DX2301/EK80/test/"</span><span class="p">,</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">)</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># -&gt; HDD/Henry_B_Bigelow/DX2301/EK80/test/D20231017-T211129.idx</span>
+</span></code></pre></div>
+<p>It prints the <code>gs://</code> address the file went to, skips a file that's already there, and returns the object's path in the bucket (or <code>None</code> if it couldn't be uploaded). It doesn't record BigQuery metadata.</p>
+<p><code>file_type</code> is the file name suffix (e.g. "raw", "idx", "nc", without the dot); it's taken from the file name when you leave it out.</p>
+<h2 id="uploading-a-whole-survey-with-localsurvey">Uploading A Whole Survey With <code>LocalSurvey</code></h2>
+<p><code>LocalSurvey</code> looks through a survey's folder, subfolders included, and works out where every file belongs in the bucket. You can then upload them all and check the uploads by checksum. It uploads files only: no BigQuery metadata, and no ICES check on the ship name.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.survey</span><span class="w"> </span><span class="kn">import</span> <span class="n">LocalSurvey</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">survey</span> <span class="o">=</span> <span class="n">LocalSurvey</span><span class="p">(</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">directory_path</span><span class="o">=</span><span class="sa">r</span><span class="s2">"C:/data/DX2301"</span><span class="p">,</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">ship_name</span><span class="o">=</span><span class="s2">"Henry B. Bigelow"</span><span class="p">,</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">survey_name</span><span class="o">=</span><span class="s2">"DX2301"</span><span class="p">,</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">echosounder</span><span class="o">=</span><span class="s2">"EK80"</span><span class="p">,</span>   <span class="c1"># or leave it out if the files sit in folders named after it (.../EK80/...)</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">data_source</span><span class="o">=</span><span class="s2">"HDD"</span><span class="p">,</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="p">)</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">survey</span><span class="p">)</span>                       <span class="c1"># counts and sizes of what was found</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="n">survey</span><span class="o">.</span><span class="n">print_all_files_in_directory</span><span class="p">()</span>  <span class="c1"># each file and where it will go</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="n">survey</span><span class="o">.</span><span class="n">upload_files</span><span class="p">()</span>               <span class="c1"># files already in the bucket are skipped</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="n">survey</span><span class="o">.</span><span class="n">verify_gcp_uploads</span><span class="p">()</span>         <span class="c1"># compares checksums with the bucket</span>
+</span></code></pre></div>
+<p>See the <a href="../../documentation/survey/">LocalSurvey reference</a> for everything it offers.</p>
 <h2 id="uploading-a-surveyfolder-as-is-to-gcp">Uploading A Survey/Folder <code>As-Is</code> To GCP</h2>
 <p>If you would like to upload a folder to the GCP storage bucket as-is, you can use this function.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.egress</span><span class="w"> </span><span class="kn">import</span> <span class="n">upload_folder_as_is_to_gcp</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.cloud_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">setup_gcp_storage_objs</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Here we specify the project and bucket we would like to upload to</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">gcp_stor_client</span><span class="p">,</span> <span class="n">gcp_bucket_name</span><span class="p">,</span> <span class="n">gcp_bucket</span> <span class="o">=</span> <span class="p">(</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">setup_gcp_storage_objs</span><span class="p">(</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="n">project_id</span><span class="o">=</span><span class="s2">"ggn-nmfs-aa-dev-1"</span><span class="p">,</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>        <span class="n">gcp_bucket_name</span><span class="o">=</span><span class="s2">"ggn-nmfs-aa-dev-1-data"</span><span class="p">,</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="p">)</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">)</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="c1"># You can also specify a 'destination prefix'; used for putting the folder</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># in a certain place within the bucket.</span>
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="n">upload_folder_as_is_to_gcp</span><span class="p">(</span>
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">local_folder_path</span><span class="o">=</span><span class="s2">"./test_data_dir/Reuben_Lasker/"</span><span class="p">,</span>
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">gcp_bucket</span><span class="o">=</span><span class="n">gcp_bucket</span><span class="p">,</span>
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="n">destination_prefix</span><span class="o">=</span><span class="s2">"other/deletable/"</span><span class="p">,</span>
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.egress</span><span class="w"> </span><span class="kn">import</span> <span class="n">upload_folder_as_is_to_gcp</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary.utils.cloud_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">setup_gcp_storage_objs</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Here we specify the project and bucket we would like to upload to</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">gcp_stor_client</span><span class="p">,</span> <span class="n">gcp_bucket_name</span><span class="p">,</span> <span class="n">gcp_bucket</span> <span class="o">=</span> <span class="p">(</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">setup_gcp_storage_objs</span><span class="p">(</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>        <span class="n">project_id</span><span class="o">=</span><span class="s2">"ggn-nmfs-aa-dev-1"</span><span class="p">,</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>        <span class="n">gcp_bucket_name</span><span class="o">=</span><span class="s2">"ggn-nmfs-aa-dev-1-data"</span><span class="p">,</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="p">)</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="p">)</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="c1"># You can also specify a 'destination prefix'; used for putting the folder</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="c1"># in a certain place within the bucket.</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="n">upload_folder_as_is_to_gcp</span><span class="p">(</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>    <span class="n">local_folder_path</span><span class="o">=</span><span class="s2">"./test_data_dir/Reuben_Lasker/"</span><span class="p">,</span>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    <span class="n">gcp_bucket</span><span class="o">=</span><span class="n">gcp_bucket</span><span class="p">,</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    <span class="n">destination_prefix</span><span class="o">=</span><span class="s2">"other/deletable/"</span><span class="p">,</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="p">)</span>
 </span></code></pre></div>
 <h2 id="uploading-to-ocean-data-lake">Uploading To Ocean Data Lake</h2>
 <p>!!! note: Your ability to upload data to the Ocean Data Lake depends on your permission level. Most are granted read-only permissions, and you might have to reach out to get permission to upload.</p>
@@ -1519,7 +1722,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="October 2, 2026 00:02:06 UTC">October 2, 2026</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="November 4, 2026 19:33:54 UTC">November 4, 2026</span>
   </span>
 
     
@@ -1571,10 +1774,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
         <script src="../../js/open_in_new_tab.js"></script>
       

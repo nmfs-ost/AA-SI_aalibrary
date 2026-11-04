@@ -1615,7 +1615,7 @@
       "disk_write": true
     },
     "args": [],
-    "full_help": "Usage: aa-setup\n\nDescription:\nReinstalls the startup script for the AA-SI GPCSetup environment on a Google Cloud VM."
+    "full_help": "Usage: aa-setup\n\nDescription:\nReinstalls the startup script for the AA-SI GCPSetup environment on a Google Cloud VM."
   },
   {
     "tool": "aa-show",

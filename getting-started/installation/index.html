@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/noaa_favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1024,6 +1024,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../documentation/survey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LocalSurvey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../documentation/tugboat_api/" class="md-nav__link">
         
   
@@ -1574,9 +1602,9 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>gcloud<span class="w"> </span>auth<span class="w"> </span>application-default<span class="w"> </span>login
 </span></code></pre></div>
 <h3 id="step-21-set-your-account-as-the-active-account-for-gcloud">Step 2.1 - Set Your Account As The Active Account For <code>gcloud</code></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>gcloud<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>account<span class="w"> </span><span class="o">{</span>ACCOUNT<span class="o">}</span><span class="w"> </span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>gcloud<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>account<span class="w"> </span>first.last@noaa.gov
 </span></code></pre></div>
-<p>Here, <code>{ACCOUNT}</code> should be your noaa.gov email. The same one you used to sign-in in the step above.</p>
+<p>Use your own noaa.gov email, the one you signed in with above. Type the address itself: <code>gcloud</code> accepts any text here, and a placeholder such as <code>ACCOUNT</code> becomes the name of the folder your derived products are filed under.</p>
 <h3 id="step-22-set-the-aa-gcp-project-as-the-active-project-for-gcloud">Step 2.2 - Set The AA GCP Project As The Active Project For <code>gcloud</code></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>gcloud<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>project<span class="w"> </span>ggn-nmfs-aa-dev-1<span class="w"> </span>
 </span></code></pre></div>
@@ -1600,28 +1628,44 @@
 </div>
 </div>
 <h2 id="step-4-its-finally-pip-install-time">Step 4 - It's Finally <code>pip install</code> Time</h2>
+<div class="admonition info">
+<p class="admonition-title">Python versions</p>
+<p>AALibrary needs Python 3.13 or newer. Python 3.14 works too, on Windows as well: every dependency is installed from a ready-made package, with nothing to compile. (Earlier versions of aalibrary required one exact version of <code>numcodecs</code> that has no package for Python 3.14, so on Windows pip tried to compile it and failed with "Failed building wheel for numcodecs", and then <code>import aalibrary</code> said "No module named 'aalibrary'". If you saw that, upgrade pip and install again.)</p>
+</div>
 <p>To finally be able to pip-install the library use the following command:</p>
 <p>If you do not have a virtual environment set up:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
 </span></code></pre></div>
 <p>If you do have a virtual environment set up:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>my-venv/bin/pip<span class="w"> </span>install<span class="w"> </span>aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">Windows</label><label for="__tabbed_3_2">Linux</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bat highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>.\my-venv\Scripts\python -m pip install --upgrade pip
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>.\my-venv\Scripts\pip install aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
 </span></code></pre></div>
+<p>A Windows-specific walkthrough is kept in the <a href="https://github.com/nmfs-ost/AA-SI_WindowsVM/tree/main">AA-SI_WindowsVM README</a> ("Install aalibrary").</p>
+</div>
+<div class="tabbed-block">
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>my-venv/bin/pip<span class="w"> </span>install<span class="w"> </span>aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
+</span></code></pre></div>
+</div>
+</div>
+</div>
 <div class="admonition note">
 <p class="admonition-title">NOTE: If using virtual environments:</p>
 <p>Since we have created a virtual environment, in order to use <code>aalibrary</code> simply replace all <code>python</code> commands with <code>{virtual env name}/bin/python</code> and all <code>pip</code> commands with <code>{virtual env name}/bin/pip</code>.</p>
 </div>
 <h2 id="step-5-test-it-out">Step 5 - Test it Out</h2>
 <p>Now that the library is installed, we can finally test it out. Open up a python  using the following command:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># If you do not have a virtual environment</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>python
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># If you have a virtual environment</span>
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>my-venv/bin/python
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># If you do not have a virtual environment</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>python
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># If you have a virtual environment</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>my-venv/bin/python
 </span></code></pre></div>
 <p>Next, we will enter the following code line-by-line. This will run a test function that will allow us to quickly test connectivity in our environment.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary</span><span class="w"> </span><span class="kn">import</span> <span class="n">quick_test</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">quick_test</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aalibrary</span><span class="w"> </span><span class="kn">import</span> <span class="n">quick_test</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">quick_test</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
 </span></code></pre></div>
 
 
@@ -1643,7 +1687,7 @@
     <span class="md-icon" title="Last update">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"/></svg>
     </span>
-    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="September 24, 2025 19:57:30 UTC">September 24, 2025</span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-date" title="November 4, 2026 19:33:54 UTC">November 4, 2026</span>
   </span>
 
     
@@ -1695,10 +1739,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
         <script src="../../js/open_in_new_tab.js"></script>
       
