@@ -58,6 +58,120 @@ else:
     )
 
 
+# The BigQuery tables (dataset.table, in the configured project) that hold the
+# metadata rows the upload functions add.
+RAW_FILE_METADATA_TABLE = "metadata.aalibrary_file_metadata"
+NETCDF_FILE_METADATA_TABLE = "metadata.aalibrary_netcdf_metadata"
+DERIVED_FILE_METADATA_TABLE = "metadata.aalibrary_derived_file_metadata"
+
+# Adding rows needs this on the table (BigQuery Data Editor has it).
+_WRITE_PERMISSION = "bigquery.tables.updateData"
+
+_log = logging.getLogger(__name__)
+
+
+def check_metadata_write_access(
+    tables=(RAW_FILE_METADATA_TABLE,), project_id: str | None = None
+):
+    """Asks BigQuery whether your account (your application-default
+    credentials) can add rows to the metadata tables. Nothing is written.
+
+    Args:
+        tables (Iterable[str], optional): "dataset.table" names. Defaults to
+            the .raw file metadata table.
+        project_id (str, optional): The GCP project. Defaults to the one
+            aalibrary is configured for.
+
+    Returns:
+        str: A sentence saying which table can't be written, or None when all
+            can (or when BigQuery couldn't be asked; the write itself will
+            then tell).
+    """
+    project_id = project_id or config.get_current_gcp_project_id()
+    try:
+        client = bigquery.Client(project=project_id)
+    except Exception as e:  # noqa: BLE001 - whatever the reason, it can't tell
+        _log.warning("Couldn't ask BigQuery about access: %s", e)
+        return None
+    refused = []
+    for table in tables:
+        try:
+            response = client.test_iam_permissions(
+                f"{project_id}.{table}", [_WRITE_PERMISSION]
+            )
+        except Exception as e:  # noqa: BLE001 - it can't tell
+            _log.warning(
+                "Couldn't ask BigQuery about access to %s: %s", table, e
+            )
+            continue
+        if _WRITE_PERMISSION not in (response or {}).get("permissions", []):
+            refused.append(f"{project_id}:{table}")
+    if not refused:
+        return None
+    dataset = refused[0].split(".")[0]
+    return (
+        "Your Google account can't add rows to the BigQuery metadata "
+        f"table{'s' if len(refused) > 1 else ''} {', '.join(refused)} (it "
+        f"lacks {_WRITE_PERMISSION} on dataset {dataset}, or the table "
+        "doesn't exist), so the files' metadata can't be recorded."
+    )
+
+
+def metadata_already_recorded(
+    gcp_uris, table: str, project_id: str | None = None
+):
+    """Which of these bucket paths already have a row in a metadata table.
+
+    Args:
+        gcp_uris (Iterable[str]): Object paths within the bucket (the GCP_URI
+            column).
+        table (str): The "dataset.table" name.
+        project_id (str, optional): The GCP project. Defaults to the one
+            aalibrary is configured for.
+
+    Returns:
+        set: The paths that have a row, or None if BigQuery couldn't be asked.
+    """
+    uris = sorted({uri for uri in gcp_uris if uri})
+    if not uris:
+        return set()
+    project_id = project_id or config.get_current_gcp_project_id()
+    try:
+        client = bigquery.Client(project=project_id)
+        job = client.query(
+            f"SELECT DISTINCT GCP_URI FROM `{project_id}.{table}` "
+            "WHERE GCP_URI IN UNNEST(@uris)",
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ArrayQueryParameter("uris", "STRING", uris)
+                ]
+            ),
+        )
+        return {row["GCP_URI"] for row in job.result()}
+    except Exception as e:  # noqa: BLE001 - it can't tell
+        _log.warning(
+            "Couldn't check which files already have metadata in %s: %s",
+            table,
+            e,
+        )
+        return None
+
+
+def is_permission_error(error: BaseException) -> bool:
+    """Whether an error from writing metadata is BigQuery refusing access (a
+    403), looking through the errors it was raised from."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if getattr(error, "code", None) == 403:
+            return True
+        text = str(error)
+        if "403" in text and ("ermission" in text or "Access Denied" in text):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
 def create_and_upload_metadata_df_for_raw(
     rf: RawFile = None,
     user_email: str = "",
@@ -158,7 +272,7 @@ def create_and_upload_metadata_df_for_raw(
     # Upload to GCP BigQuery
     pandas_gbq.to_gbq(
         dataframe=aalibrary_metadata_df,
-        destination_table="metadata.aalibrary_file_metadata",
+        destination_table=RAW_FILE_METADATA_TABLE,
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",
     )
@@ -251,7 +365,7 @@ def create_and_upload_metadata_df_for_derived_files(
     # Upload to GCP BigQuery
     pandas_gbq.to_gbq(
         dataframe=aalibrary_metadata_df,
-        destination_table="metadata.aalibrary_derived_file_metadata",
+        destination_table=DERIVED_FILE_METADATA_TABLE,
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",
     )
@@ -328,7 +442,7 @@ def create_and_upload_metadata_df_for_netcdf(
     # Upload to GCP BigQuery
     pandas_gbq.to_gbq(
         dataframe=aalibrary_metadata_df,
-        destination_table="metadata.aalibrary_netcdf_metadata",
+        destination_table=NETCDF_FILE_METADATA_TABLE,
         project_id=config.get_current_gcp_project_id(),
         if_exists="append",
     )

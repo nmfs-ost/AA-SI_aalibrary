@@ -4390,6 +4390,12 @@ OPTIONS
   --dry-run					 show what would be uploaded; upload nothing
   --ship_name/--survey_name/--sonar_model
 								echosounder mode (all three)
+  --no-metadata				 echosounder mode: upload the files only; don't
+								record their metadata in BigQuery (no BigQuery
+								access needed)
+  --provisional-ship-name	   echosounder mode: the ship or platform isn't
+								in the ICES ship list yet; upload under its
+								name anyway
   --as-is --destination_prefix PFX
 								as-is mode
   --gcp_env prod|dev, --project_id, --gcp_bucket_name

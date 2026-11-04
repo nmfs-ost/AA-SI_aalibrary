@@ -3,6 +3,7 @@ https://vocab.ices.dk/?ref=315
 Specifically the `SHIPC` platform code which refers to ship names.
 """
 
+import functools
 from typing import List
 from difflib import get_close_matches
 
@@ -17,16 +18,10 @@ else:
     from aalibrary.utils.helpers import normalize_ship_name
 
 
-def get_all_ship_info() -> List:
-    """Gets all of the ship's info from the following URL:
-    https:/vocab.ices.dk/services/api/Code/7f9a91e1-fb57-464a-8eb0-697e4b0235b5
-
-
-    Returns:
-        List: A list with dicts of all the ships, including name, ices code,
-            uuids and other fields.
-    """
-
+@functools.lru_cache(maxsize=1)
+def _fetch_all_ship_info() -> tuple:
+    """Asks ICES for the ship list, once per Python session. (A failure isn't
+    remembered: the next call asks again.)"""
     response = requests.get(
         url=(
             "https://vocab.ices.dk/services/api/Code/"
@@ -34,9 +29,35 @@ def get_all_ship_info() -> List:
         ),
         timeout=10
     )
-    all_ship_info = response.json()
+    response.raise_for_status()
+    return tuple(response.json())
 
-    return all_ship_info
+
+def get_all_ship_info() -> List:
+    """Gets all of the ship's info from the following URL:
+    https:/vocab.ices.dk/services/api/Code/7f9a91e1-fb57-464a-8eb0-697e4b0235b5
+    The list is fetched once per Python session and reused.
+
+    Returns:
+        List: A list with dicts of all the ships, including name, ices code,
+            uuids and other fields.
+    """
+
+    return list(_fetch_all_ship_info())
+
+
+@functools.lru_cache(maxsize=1)
+def _normalized_ices_ship_names() -> tuple:
+    return tuple(get_all_ices_ship_names(normalize_ship_names=True))
+
+
+class NormalizedIcesShipNames:
+    """A class attribute holding the normalized ICES ship names, fetched from
+    ICES the first time it's read rather than when aalibrary is imported (so
+    importing aalibrary doesn't need ICES to answer)."""
+
+    def __get__(self, obj, objtype=None) -> list:
+        return list(_normalized_ices_ship_names())
 
 
 def get_all_ices_ship_codes_and_names(

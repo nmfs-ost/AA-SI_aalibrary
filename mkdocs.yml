@@ -62,6 +62,7 @@ nav:
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
     - "RawFile": documentation/raw_file.md
+    - "LocalSurvey": documentation/survey.md
     - "Tugboat API": documentation/tugboat_api.md
     - "Console Tools": documentation/console_tools.md
     - "Console Products & Provenance": documentation/console_provenance.md

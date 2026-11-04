@@ -175,7 +175,8 @@ def download_raw_file_from_azure(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
@@ -341,7 +342,8 @@ def download_raw_file_from_ncei(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
@@ -762,7 +764,8 @@ def download_netcdf_file(
     Args:
         raw_file_name (str, optional): The raw file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "netcdf".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".

@@ -39,10 +39,10 @@ gcloud auth application-default login
 ### Step 2.1 - Set Your Account As The Active Account For `gcloud`
 
 ```bash
-gcloud config set account {ACCOUNT} 
+gcloud config set account first.last@noaa.gov
 ```
 
-Here, `{ACCOUNT}` should be your noaa.gov email. The same one you used to sign-in in the step above.
+Use your own noaa.gov email, the one you signed in with above. Type the address itself: `gcloud` accepts any text here, and a placeholder such as `ACCOUNT` becomes the name of the folder your derived products are filed under.
 
 ### Step 2.2 - Set The AA GCP Project As The Active Project For `gcloud`
 
@@ -72,6 +72,9 @@ Some instances of Linux, such as GCP workstations, will not allow you to install
 
 ## Step 4 - It's Finally `pip install` Time
 
+!!! info "Python versions"
+    AALibrary needs Python 3.13 or newer. Python 3.14 works too, on Windows as well: every dependency is installed from a ready-made package, with nothing to compile. (Earlier versions of aalibrary required one exact version of `numcodecs` that has no package for Python 3.14, so on Windows pip tried to compile it and failed with "Failed building wheel for numcodecs", and then `import aalibrary` said "No module named 'aalibrary'". If you saw that, upgrade pip and install again.)
+
 To finally be able to pip-install the library use the following command:
 
 If you do not have a virtual environment set up:
@@ -83,10 +86,20 @@ python -m pip install aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.
 
 If you do have a virtual environment set up:
 
-```bash
+=== "Windows"
 
-my-venv/bin/pip install aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
-```
+    ```bat
+    .\my-venv\Scripts\python -m pip install --upgrade pip
+    .\my-venv\Scripts\pip install aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
+    ```
+
+    A Windows-specific walkthrough is kept in the [AA-SI_WindowsVM README](https://github.com/nmfs-ost/AA-SI_WindowsVM/tree/main) ("Install aalibrary").
+
+=== "Linux"
+
+    ```bash
+    my-venv/bin/pip install aalibrary@git+https://github.com/nmfs-ost/AA-SI_aalibrary.git
+    ```
 
 !!! note "NOTE: If using virtual environments:"
     Since we have created a virtual environment, in order to use `aalibrary` simply replace all `python` commands with `{virtual env name}/bin/python` and all `pip` commands with `{virtual env name}/bin/pip`.

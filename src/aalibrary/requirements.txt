@@ -22,10 +22,15 @@ pytest
 pytz>=2024.1
 tqdm
 azure-storage-file-datalake>=12.7.0
-zarr>=2.14
+# zarr 3.1+: echopype 0.11+ and the console tools use zarr-3 APIs, and stores
+# written since zarr 3.1 can't be read by 3.0. (aa-setup pins the same.)
+zarr>=3.1,<4
 inquirerpy
 loguru
-numcodecs==0.15.1; python_version>="3.11"
+# Not pinned to one release: numcodecs 0.15.1 has no wheels for Python 3.14,
+# so pip tried to compile it and failed on Windows (no C compiler). It was
+# pinned for zarr 2, which aalibrary no longer uses.
+numcodecs>=0.15.1; python_version>="3.11"
 mkdocs
 mkdocs-material
 mkdocstrings-python

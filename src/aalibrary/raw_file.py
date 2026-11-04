@@ -19,6 +19,7 @@ if __package__ is None or __package__ == "":
     import ices_ship_names
     from utils.helpers import get_parsed_datetime_from_filename
     from utils.get_datagram_data import (
+        get_datagram_dict_from_raw_file,
         stream_datagram_dict_from_ncei,
     )
     from aalibrary.utils.ncei_utils import (
@@ -31,11 +32,24 @@ else:
     from aalibrary import ices_ship_names
     from aalibrary.utils.helpers import get_parsed_datetime_from_filename
     from aalibrary.utils.get_datagram_data import (
+        get_datagram_dict_from_raw_file,
         stream_datagram_dict_from_ncei,
     )
     from aalibrary.utils.ncei_utils import (
         check_if_tugboat_metadata_json_exists_in_survey,
     )
+
+
+def _configuration_datagram(datagrams) -> dict:
+    """The configuration datagram among what the datagram readers return: a
+    dict, or a list whose first datagram is the configuration."""
+    if isinstance(datagrams, dict):
+        return datagrams
+    if isinstance(datagrams, (list, tuple)):
+        for datagram in datagrams:
+            if isinstance(datagram, dict) and "timestamp" in datagram:
+                return datagram
+    return {}
 
 
 class RawFile:
@@ -67,6 +81,20 @@ class RawFile:
         s3_resource (boto3.resource): The s3 resource object to use for
             checking if the file exists in s3, defaults to None (will create
             one).
+        provisional_ship_name (bool): Set to True for a ship or platform that
+            isn't in the ICES ship list yet (no ICES code). The name is used
+            as given (normalized), with a warning, and the ICES code is left
+            blank. Defaults to False: an unlisted name is refused, since it's
+            usually a misspelling.
+
+    Datagram attributes (set for every data source; None when unknown):
+        datagram_dict (dict): The file's first datagram (its configuration),
+            read from NCEI for NCEI files, otherwise from the local file at
+            `raw_file_download_path` when there is one.
+        datagram_timestamp (datetime): That datagram's timestamp.
+        file_datetime_timezone (str): The timestamp's time zone (Simrad
+            files record UTC).
+        transect_name (str): The transect name, which EK60 files record.
     """
 
     file_name: str = None
@@ -83,11 +111,14 @@ class RawFile:
     gcp_bucket_name: str = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
     gcp_bucket: storage.Client.bucket = None
     s3_resource: boto3.resource = None
+    provisional_ship_name: bool = False
     datagram_dict: dict = {}
-    # Get all valid and normalized ICES ship names
-    valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
-        normalize_ship_names=True
-    )
+    datagram_timestamp = None
+    file_datetime_timezone: str = None
+    transect_name: str = None
+    # All valid and normalized ICES ship names, fetched from ICES on first use
+    # (not when aalibrary is imported).
+    valid_ICES_ship_names = ices_ship_names.NormalizedIcesShipNames()
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -122,8 +153,8 @@ class RawFile:
         # Take care of an empty file_download_directory and treat it like the
         # cwd.
         if (
-            (self.__dict__["file_download_directory"] == "")
-            or ("file_download_directory" not in self.__dict__)
+            ("file_download_directory" not in self.__dict__)
+            or (self.__dict__["file_download_directory"] == "")
             or (self.__dict__["file_download_directory"] == "./")
             or (self.__dict__["file_download_directory"] == ".\\")
         ):
@@ -459,31 +490,51 @@ class RawFile:
             self.cruise_level_metadata_exists_in_gcp = False
 
     def _get_datagram_data(self):
-        """Gets datagram data from the raw file and adds it to the RawFile
-        object as a dictionary. If the file is from NCEI, it will stream the
-        datagram data from S3. If the file is not from NCEI, it will read the
-        datagram data from the raw file directly. The datagram data will be
-        stored in the `datagram_dict` attribute of the RawFile object."""
+        """Gets the file's first datagram (its configuration) and keeps it as
+        `datagram_dict`, with `datagram_timestamp`, `file_datetime_timezone`
+        and `transect_name` taken from it. NCEI files are streamed from S3 (only
+        that datagram is read); for any other data source the local file at
+        `raw_file_download_path` is read, when there is one. Whatever can't be
+        found is None, for every data source."""
+
+        self.datagram_dict = {}
+        self.datagram_timestamp = None
+        self.file_datetime_timezone = None
+        self.transect_name = None
 
         if self.data_source == "NCEI" and self.raw_file_exists_in_ncei:
-            self.datagram_dict = stream_datagram_dict_from_ncei(
+            datagrams = stream_datagram_dict_from_ncei(
                 s3_object_key=self.raw_file_s3_object_key
             )
-            # Assign the relevant metadata from the datagram to the RawFile
-            # object as attributes if they exist in the datagram.
-            if "timestamp" in self.datagram_dict:
-                self.datagram_timestamp = self.datagram_dict["timestamp"]
-                self.file_datetime_timezone = str(
-                    self.datagram_timestamp.tzinfo
-                )
-            else:
-                self.datagram_timestamp = None
-                self.file_datetime_timezone = None
+        elif self._local_raw_file_exists():
+            datagrams = get_datagram_dict_from_raw_file(
+                self.raw_file_download_path, storage_options={}
+            )
+        else:
+            return
+        self.datagram_dict = _configuration_datagram(datagrams)
 
-            if "transect_name" in self.datagram_dict:
-                self.transect_name = self.datagram_dict["transect_name"]
-            else:
-                self.transect_name = None
+        timestamp = self.datagram_dict.get("timestamp")
+        if timestamp is not None:
+            self.datagram_timestamp = timestamp
+            tzinfo = getattr(timestamp, "tzinfo", None)
+            self.file_datetime_timezone = (
+                str(tzinfo) if tzinfo is not None else None
+            )
+        transect = self.datagram_dict.get("transect_name")
+        if isinstance(transect, bytes):
+            transect = transect.decode("ascii", "replace")
+        if isinstance(transect, str) and transect.strip("\x00 ").strip():
+            self.transect_name = transect.strip("\x00 ").strip()
+
+    def _local_raw_file_exists(self) -> bool:
+        """Whether this is a .raw file that's on this computer."""
+        path = getattr(self, "raw_file_download_path", "")
+        return (
+            str(self.file_name).lower().endswith(".raw")
+            and bool(path)
+            and os.path.isfile(path)
+        )
 
     def _check_for_assertion_errors(self):
         """Checks for errors in each variable in our self.__dict__."""
@@ -512,7 +563,21 @@ class RawFile:
             spell_check_list = get_close_matches(
                 self.ship_name, self.valid_ICES_ship_names, n=3, cutoff=0.6
             )
-            if len(spell_check_list) > 0:
+            if (
+                self.provisional_ship_name
+                and self.ship_name not in self.valid_ICES_ship_names
+            ):
+                logging.getLogger(__name__).warning(
+                    "`%s` isn't in the ICES ship list; using it as a "
+                    "provisional name (no ICES code).%s",
+                    self.ship_name,
+                    (
+                        f" Close ICES names: {spell_check_list}"
+                        if spell_check_list
+                        else ""
+                    ),
+                )
+            elif len(spell_check_list) > 0:
                 assert self.ship_name in self.valid_ICES_ship_names, (
                     f"This `ship_name` {self.ship_name} does not"
                     " exist in the ICES database. Did you mean one of the"

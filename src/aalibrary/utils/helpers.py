@@ -291,7 +291,8 @@ def parse_correct_gcp_storage_bucket_location_based_on_file_type(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
@@ -406,7 +407,8 @@ def parse_correct_gcp_storage_bucket_location(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
