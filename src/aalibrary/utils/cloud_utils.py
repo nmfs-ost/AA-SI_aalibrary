@@ -8,6 +8,7 @@ from typing import List, Tuple
 from azure.storage.filedatalake import DataLakeServiceClient
 import gcsfs
 from google.cloud import bigquery, storage
+from google.oauth2.credentials import Credentials
 from botocore import UNSIGNED
 from botocore.client import Config
 import boto3
@@ -27,7 +28,10 @@ from aalibrary.config import (
 
 
 def setup_gbq_client_objs(
-    location: str = "US", project_id: str = None, verbose: bool = False
+    location: str = "US",
+    project_id: str = None,
+    access_token: str = None,
+    verbose: bool = False,
 ) -> Tuple[bigquery.Client, gcsfs.GCSFileSystem]:
     """Sets up Google Big Query client objects used to execute queries and
     such.
@@ -40,6 +44,10 @@ def setup_gbq_client_objs(
             belongs to. Defaults to os.environ["AALIBRARY_GCP_PROJECT_ID"]
             which is "ggn-nmfs-aa-dev-1" by default but can be changed via
             `aalibrary.config.use_gcp_prod()`.
+        access_token (str, optional): The access token used to authenticate
+            with GCP.
+            Defaults to None, which will use the application
+            default credentials (ADC) to authenticate.
         verbose (bool, optional): Whether or not to notify the user of the
             bucket being created via print statement.
 
@@ -50,7 +58,13 @@ def setup_gbq_client_objs(
     if project_id is None:
         project_id = os.getenv("AALIBRARY_GCP_PROJECT_ID")
 
-    gcp_bq_client = bigquery.Client(location=location)
+    # Set creds to none if no access token is present.
+    if access_token is None:
+        creds = None
+    else:
+        creds = Credentials(token=access_token)
+
+    gcp_bq_client = bigquery.Client(location=location, credentials=creds)
 
     gcp_gcs_file_system = gcsfs.GCSFileSystem(project=project_id)
 
@@ -61,7 +75,10 @@ def setup_gbq_client_objs(
 
 
 def setup_gcp_storage_objs(
-    project_id: str = None, gcp_bucket_name: str = None, verbose: bool = False
+    project_id: str = None,
+    gcp_bucket_name: str = None,
+    access_token: str = None,
+    verbose: bool = False,
 ) -> Tuple[storage.Client, str, storage.Client.bucket]:
     """Sets up Google Cloud Platform storage objects for use in accessing and
     modifying storage buckets.
@@ -75,6 +92,10 @@ def setup_gcp_storage_objs(
             to access. Defaults to os.environ["AALIBRARY_GCP_BUCKET_NAME"]
             which is "ggn-nmfs-aa-dev-1-data" by default but can be changed via
             `aalibrary.config.use_gcp_prod()`.
+        access_token (str, optional): The access token used to authenticate
+            with GCP.
+            Defaults to None, which will use the application
+            default credentials (ADC) to authenticate.
         verbose (bool, optional): Whether or not to notify the user of the
             bucket being created via print statement.
 
@@ -89,7 +110,13 @@ def setup_gcp_storage_objs(
     if gcp_bucket_name is None:
         gcp_bucket_name = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
 
-    gcp_stor_client = storage.Client(project=project_id)
+    # Set creds to none if no access token is present.
+    if access_token is None:
+        creds = None
+    else:
+        creds = Credentials(token=access_token)
+
+    gcp_stor_client = storage.Client(project=project_id, credentials=creds)
 
     gcp_bucket = gcp_stor_client.bucket(gcp_bucket_name)
 
