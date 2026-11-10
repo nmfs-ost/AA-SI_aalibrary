@@ -551,6 +551,7 @@ def upload_file_to_gcp_storage_bucket(
     is_calibration_mapping_file: bool = False,
     is_auxiliary_file: bool = False,
     is_derived_product: bool = False,
+    force_upload: bool = False,
     verbose: bool = True,
     debug: bool = False,
 ):
@@ -596,6 +597,10 @@ def upload_file_to_gcp_storage_bucket(
             derived product. These can be analysis work products or anything
             else that is not a file that analysis can be derived from (netcdf).
             Defaults to False.
+        force_upload (bool, optional): Whether or not to force the upload of
+            the file to GCP. If True, the file will be uploaded regardless of
+            whether or not it already exists in GCP.
+            Defaults to False.
         verbose (bool, optional): Whether or not you want to print intermediate
             statements about uploads. Helpful for if you are using progress
             bars.
@@ -628,7 +633,7 @@ def upload_file_to_gcp_storage_bucket(
     file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
         gcp_bucket, file_path=gcp_storage_bucket_location
     )
-    if file_exists_in_gcp:
+    if file_exists_in_gcp and not force_upload:
         print(
             (
                 f"INFO: FILE `{file_name}` ALREADY EXISTS IN GCP AT "
