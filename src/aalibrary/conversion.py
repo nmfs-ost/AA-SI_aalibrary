@@ -248,7 +248,8 @@ def convert_raw_to_netcdf(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
@@ -375,7 +376,8 @@ def convert_raw_to_netcdf_ices(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".

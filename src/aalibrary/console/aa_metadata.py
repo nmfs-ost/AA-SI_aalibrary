@@ -11,6 +11,7 @@ and gs:// URIs, for every format the tools write (.nc, .zarr, .png,
     aa-metadata FILE --json              the provenance document (one line per file)
     aa-metadata FILE --hash              just the product hash
     aa-metadata FILE --verify            recompute the hash from the recorded step
+    aa-metadata FILE --commands          the commands that made it, to rerun anywhere
     ... | aa-metadata --tee | aa-next    summary to stderr, path passed through
 
 Exit codes: 0 ok, 1 unreadable input, 3 no provenance, 4 --verify mismatch.
@@ -44,11 +45,16 @@ HELP = Help(
     ),
     stdin="Paths or gs:// URIs, one per line (or as arguments). aa/1 JSON handles work too.",
     stdout=("A summary per file; with --json the provenance document; with --hash the "
-            "hash; with --tee the input path unchanged (summary goes to stderr)."),
+            "hash; with --commands a Bash script that remakes it (with --json, also a "
+            "second line: {schema: aa-commands/1, command, script, notes}); with --tee "
+            "the input path unchanged (summary goes to stderr)."),
     options=[
         ("--json", "print the provenance document (compact, one line per file)"),
         ("--hash", "print only the product hash (--full for all 64 hex digits)"),
         ("--verify", "recompute the hash from the recorded step; exit 4 on mismatch"),
+        ("--commands", ("the console commands that made it: the last step from its "
+                        "inputs, and the whole chain from the raw files, with no "
+                        "local paths (raw files under $RAW, outputs to $DEST)")),
         ("--tee", "pass the path through on stdout; summary to stderr"),
     ],
     files=(
@@ -80,6 +86,7 @@ def _build_parser():
     p.add_argument("--hash", action="store_true")
     p.add_argument("--full", action="store_true")
     p.add_argument("--verify", action="store_true")
+    p.add_argument("--commands", action="store_true")
     p.add_argument("--tee", action="store_true")
     return p
 
@@ -205,9 +212,10 @@ def _remote_doc(token: str) -> dict | None:
     """Provenance of a gs:// product without downloading it, when possible.
 
     Products published by the tools have a small ``<key>.aa.json`` beside
-    them; a Zarr store keeps it in its root metadata. Either is kilobytes,
-    where the product may be gigabytes. The sidecar is trusted only when it
-    names the product hash the object itself carries.
+    them; a Zarr store keeps it in its root metadata (and only there: a
+    sidecar beside a store, from older tools, is not read). Either is
+    kilobytes, where the product may be gigabytes. The sidecar is trusted
+    only when it names the product hash the object itself carries.
     """
     import json
     import tempfile
@@ -216,7 +224,8 @@ def _remote_doc(token: str) -> dict | None:
     key = key.rstrip("/")
     backend = uris.backend()
     info = backend.stat(bucket, key) if key else None
-    side = backend.stat(bucket, key + uris.SIDECAR_SUFFIX) if key else None
+    side = (backend.stat(bucket, key + uris.SIDECAR_SUFFIX)
+            if key and info is not None else None)
     with tempfile.TemporaryDirectory(prefix="aa-metadata-") as tmp:
         if side is not None:
             local = Path(tmp) / "side.json"
@@ -227,20 +236,14 @@ def _remote_doc(token: str) -> dict | None:
                     claimed is None or claimed == doc.get("product", {}).get("hash")):
                 return doc
         if info is None:
-            # A prefix: read a store's root metadata and its seal, nothing else.
-            store = Path(tmp) / "store.zarr"
-            got = False
-            for rel in ("zarr.json", ".zattrs", ".zgroup",
-                        f"{provenance.SEAL_GROUP}/zarr.json",
-                        f"{provenance.SEAL_GROUP}/.zattrs"):
-                obj = backend.stat(bucket, f"{key}/{rel}")
-                if obj is not None:
-                    target = store / rel
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    backend.download(bucket, obj.key, target)
-                    got = True
-            if got:
-                return provenance.read(store)
+            # A prefix: a store read where it is (a mount that shows it, or
+            # fsspec): its root metadata and seal, and the shapes the seal is
+            # checked against, never the data.
+            if backend.stat(bucket, f"{key}/zarr.json") is None \
+                    and backend.stat(bucket, f"{key}/.zattrs") is None:
+                return None
+            doc, status = provenance.inspect_store(uris.in_place(token))
+            return doc if status == "embedded" else None
     return None
 
 
@@ -258,6 +261,36 @@ def _load(token: str) -> tuple[dict | None, str]:
     if not p.exists():
         raise FileNotFoundError(f"no such file: {token}")
     return provenance.read(p), str(p.resolve())
+
+
+def _commands(doc: dict) -> dict:
+    """The commands that made *doc*'s product; inputs of inputs are found by
+    reading the records of the inputs in the bucket (kilobytes each)."""
+    from aalibrary.console._core import replay
+
+    found: dict[str, str] = {}
+    pending = [str(i.get("uri") or "") for i in doc.get("inputs") or []]
+    pending = [u for u in pending if uris.is_gcs(u)]
+    visited: set[str] = set()
+
+    def resolve(pid: str) -> str:
+        while pid not in found and pending and len(visited) < 40:
+            uri = pending.pop(0)
+            if uri in visited:
+                continue
+            visited.add(uri)
+            try:
+                sub = _remote_doc(uri)
+            except Exception:  # noqa: BLE001 - an unreadable record leaves a placeholder
+                sub = None
+            for item in (sub or {}).get("inputs") or []:
+                u = str(item.get("uri") or "")
+                if item.get("id") and uris.is_gcs(u):
+                    found.setdefault(str(item["id"]), u)
+                    pending.append(u)
+        return found.get(pid, "")
+
+    return replay.commands(doc, resolve=resolve)
 
 
 def main():
@@ -296,8 +329,13 @@ def _report(tokens: list[str], args, out) -> int:
             if args.tee:
                 stdio.emit(token)
             continue
-        if args.json:
+        if args.commands and not args.json:
+            print(_commands(doc)["script"], file=out, end="")
+        elif args.json:
             print(json.dumps(doc, separators=(",", ":"), sort_keys=True), file=out)
+            if args.commands:
+                print(json.dumps(_commands(doc), separators=(",", ":"), sort_keys=True),
+                      file=out)
         elif args.hash:
             h = doc.get("product", {}).get("hash", "")
             print(h if args.full else h[:8], file=out)

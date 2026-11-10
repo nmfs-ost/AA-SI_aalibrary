@@ -60,10 +60,8 @@ class Survey:
     gcp_bucket: storage.Client.bucket = None
     s3_resource: boto3.resource = None
     s3_client: boto3.client = None
-    # Get all valid and normalized ICES ship names
-    valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
-        normalize_ship_names=True
-    )
+    # All valid and normalized ICES ship names, fetched on first use.
+    valid_ICES_ship_names = ices_ship_names.NormalizedIcesShipNames()
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -320,10 +318,67 @@ class Survey:
 
 
 class LocalSurvey:
-    """Used to represent surveys that exist on your local machine. You can use
-    this object to automatically parse through a directory that contains
-    survey data, add metadata to the survey, and ultimately upload the data
-    to the appropriate location in GCP."""
+    """A survey's files on your computer. Making one analyses a folder (and
+    its subfolders): every file's size, type, echosounder and its standard
+    location in the GCP storage bucket. You can then upload the files there,
+    check the uploads against the bucket by checksum, or move the files into
+    the standard folder layout locally.
+
+    It uploads files only: no BigQuery metadata is recorded, and the ship name
+    isn't checked against the ICES ship list (so a ship or platform without an
+    ICES code yet works).
+
+    Example:
+        ```python
+        from aalibrary.survey import LocalSurvey
+
+        survey = LocalSurvey(
+            directory_path=r"C:/data/DX2301",
+            ship_name="Henry B. Bigelow",
+            survey_name="DX2301",
+            echosounder="EK80",
+            data_source="HDD",
+        )
+        print(survey)                 # what was found
+        survey.upload_files()         # upload everything (skips files
+                                      # already in the bucket)
+        survey.verify_gcp_uploads()   # compare checksums with the bucket
+        ```
+
+    Args:
+        directory_path (str): Required. The folder that holds the survey's
+            files. Subfolders are included.
+        ship_name (str): Required. The ship name, e.g. "Henry B. Bigelow"
+            (normalized to "Henry_B_Bigelow").
+        survey_name (str): Required. The survey name/identifier.
+        echosounder (str, optional): The echosounder, e.g. "EK80". Defaults to
+            "": each file's echosounder is taken from the name of a folder
+            above it (e.g. ".../EK80/file.raw"). Give it when the folders
+            aren't named after the echosounder; otherwise those files can't be
+            uploaded.
+        data_source (str, optional): One of ["NCEI", "OMAO", "HDD", "TEST"].
+            Defaults to "HDD" (files on a local drive).
+        relocation_path (str, optional): A local folder; when given, each
+            file's place in the standard layout under it is worked out, and
+            `relocate()` moves the files there. Defaults to "".
+        gcp_bucket (storage.Client.bucket, optional): The bucket to upload to.
+            Defaults to None: the bucket aalibrary is configured for.
+        gcp_project_id (str, optional): The GCP project. Defaults to the one
+            aalibrary is configured for.
+        gcp_bucket_name (str, optional): The bucket's name. Defaults to the
+            one aalibrary is configured for.
+        debug (bool, optional): Whether or not to print debug statements.
+            Defaults to False.
+
+    Attributes:
+        all_file_paths_in_directory (dict): For each file path: its "type"
+            (suffix), "size" (bytes), "echosounder" and
+            "gcp_storage_bucket_location" (and "relocation_path").
+        num_all_files_in_directory (int), num_raw_files_in_directory (int),
+        num_idx_files_in_directory (int), num_bot_files_in_directory (int):
+            File counts.
+        total_file_size_gb_in_directory (float): Total size.
+    """
 
     ship_name: str = ""
     survey_name: str = ""
@@ -796,6 +851,27 @@ class LocalSurvey:
 
         self._upload_to_gcp(files_to_upload=files_to_upload)
 
+    def upload_files(
+        self,
+        files_to_upload: list[str] | None = None,
+        save_results_loc: str = "",
+    ):
+        """Uploads the survey's files to their standard locations in the GCP
+        storage bucket (see `all_file_paths_in_directory`), smallest first.
+        Files already in the bucket aren't uploaded again. Prints the average
+        upload speed at the end.
+
+        Args:
+            files_to_upload (List[str], optional): The file paths to upload
+                (keys of `all_file_paths_in_directory`). Defaults to None: all
+                of the survey's files.
+            save_results_loc (str, optional): A folder to save a text file of
+                the upload timings in. Defaults to "": not saved.
+        """
+        self._upload_to_gcp(
+            files_to_upload=files_to_upload, save_results_loc=save_results_loc
+        )
+
     def _upload_to_gcp(
         self,
         files_to_upload: List[str] = None,
@@ -807,6 +883,26 @@ class LocalSurvey:
         if files_to_upload is None:
             # Upload all files.
             files_to_upload = self.all_files_sorted_by_size
+        # A file whose echosounder couldn't be found would go to a ".../None/"
+        # folder. Refuse before uploading anything.
+        no_echosounder = [
+            file
+            for file in files_to_upload
+            if "/None/"
+            in self.all_file_paths_in_directory[file][
+                "gcp_storage_bucket_location"
+            ]
+        ]
+        if no_echosounder:
+            raise ValueError(
+                f"{len(no_echosounder)} file(s) have no echosounder (e.g. "
+                f"`{no_echosounder[0]}`): none of the folders above them is "
+                "named after one. Give it when making the LocalSurvey, e.g. "
+                "echosounder=\"EK80\". Nothing has been uploaded."
+            )
+        if not files_to_upload:
+            print("NO FILES TO UPLOAD.")
+            return
         # Upload with timings to calculate upload speeds in megabytes.
         file_upload_timings = []  # in seconds
         file_sizes_in_bytes = []  # in bytes
@@ -843,8 +939,8 @@ class LocalSurvey:
             timedelta(seconds=total_elapsed_time_in_seconds)
         )
         # Average out the upload speeds:
-        upload_speed_bytes_per_sec = (
-            total_file_size_uploaded_in_bytes / total_elapsed_time_in_seconds
+        upload_speed_bytes_per_sec = total_file_size_uploaded_in_bytes / max(
+            total_elapsed_time_in_seconds, 1e-9
         )
         upload_speed_in_mbitsps = (upload_speed_bytes_per_sec) / 125000
 

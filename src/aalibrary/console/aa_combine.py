@@ -39,8 +39,8 @@ panel and the tool cannot disagree: a gap is a gap when the dead time exceeds
     --check      run the QC pass, write nothing, exit 4 if anything is wrong
     --strict     refuse to write across a seam rather than warning about it
 
-Three things echopype gets wrong on this path, worked around here
------------------------------------------------------------------
+Four things echopype gets wrong on this path, worked around here
+----------------------------------------------------------------
 1. A .nc -> .zarr combine fails outright. `open_converted` leaves NetCDF
    encoding on every variable (zlib, chunksizes, fletcher32, szip...);
    `set_zarr_encodings` copies that dict wholesale into the Zarr encoding; and
@@ -60,6 +60,23 @@ Three things echopype gets wrong on this path, worked around here
    the root attributes — on success, and from its SIGTERM handler — which is
    what lets `aa-store verify` tell sparsity from an interrupted write, and
    what makes exit 3 mean something a job runner can act on.
+
+4. `EchoData.to_zarr("gs://bucket/x.zarr")` writes a local folder
+   `bucket/x.zarr` in the current directory, and nothing to the bucket: it
+   hands xarray the URL's path without its protocol. Stores are written
+   group by group here instead (_core.zarr_io: echopype's groups and
+   encodings, the URL itself), so a gs:// store is written in place.
+
+Reading stores in place
+-----------------------
+A gs:// .zarr input is never copied here: it is identified by its own sealed
+provenance (its root attributes, a few kilobytes) and opened where it is,
+lazily (a gcsfuse mount, else gcsfs). Per-file stores written by
+`aa-ed --format zarr` can therefore be combined into a store in the bucket
+with no local disk at all, and memory bounded as above. A store without aa
+provenance is identified by its content, which means reading it all, so it
+is copied as before. gs:// .nc inputs are downloaded (NetCDF needs a local
+file).
 
 Provenance and reuse
 --------------------
@@ -91,6 +108,7 @@ Typical usage:
     aa-combine ./converted/ --check
     aa-combine *.nc -o HB1603_L1.zarr --chunk-pings 500
     aa-combine -o gs://bucket/surveys/HB1603_L1.zarr --workdir ./converted
+    aa-combine gs://bucket/files/a.zarr gs://bucket/files/b.zarr -o gs://bucket/ab.zarr
     aa-ed ./raw/ | aa-combine -o out.zarr --json | aa-store verify --json
 """
 from __future__ import annotations
@@ -131,7 +149,7 @@ if hasattr(signal, "SIGPIPE"):
 
 from aalibrary.console._core import (  # noqa: E402 - after the log silencing above
     Help, Run, ToolSpec, add_common_flags, canon, naming, provenance, render, show_help,
-    stdio, uris,
+    stdio, uris, zarr_io,
 )
 
 
@@ -149,6 +167,22 @@ SPEC = ToolSpec(
     # kept, and in what order (channel_selection sets the output order).
     # --sort is not here: a combine only happens in ascending time order.
     params={"channels": canon.ordered()},
+)
+
+#: Joining Sv: the per-file Sv of a range (aa-sv, one per raw file) into the
+#: range's Sv, in time order. A different product from combining EchoData and
+#: calibrating the result, so its own operation: each file's pings keep the
+#: calibration and environment that file recorded. Named like any derived
+#: product, <base>_<recipe8>.zarr; the recipe is the same for 3 files or 300.
+SPEC_SV = ToolSpec(
+    name=TOOL,
+    role="transform",
+    kind="sv",
+    op="aa.join_sv",
+    op_version=1,
+    ext=".zarr",
+    params={"channels": canon.ordered()},
+    engines=("echopype", "xarray"),
 )
 
 # Root attributes a combined store must not inherit from its first input.
@@ -193,11 +227,10 @@ NETCDF_SUFFIXES = {".nc", ".netcdf4"}
 
 # Encoding keys the Zarr backend understands. Everything else is dropped
 # before the write — see _strip_netcdf_encoding.
-ZARR_SAFE_ENCODING = {
-    "dtype", "_FillValue", "units", "calendar", "scale_factor", "add_offset",
-    "compressor", "compressors", "filters", "serializer", "write_empty_chunks",
-    "shards",
-}
+# Never a codec or chunking from the source: the output's are chosen here (or
+# by echopype), and a variable that keeps a Zarr 3 store's `compressors` next
+# to the `compressor` echopype adds is refused by xarray.
+ZARR_SAFE_ENCODING = set(zarr_io.KEEP_ENCODING) | {"write_empty_chunks"}
 
 COMPRESSIONS = ("default", "none", "zlib", "blosc-lz4", "blosc-zstd")
 
@@ -232,7 +265,11 @@ HELP = Help(
         "QC-checks the inputs first (sonar model, file names, channels, ping order, "
         "overlaps, and seams: transit gaps that would make MVBS average across water "
         "the ship was not in), then runs echopype.combine_echodata in time order and "
-        "writes one store with an unbroken ping axis. A QC report is written beside it."
+        "writes one store with an unbroken ping axis. A QC report is written beside it. "
+        "Given Sv instead (aa-sv's, one per raw file), it joins them, in time order, into "
+        "the range's Sv: the same QC, then each file's Sv appended a chunk at a time "
+        "(a gs:// store written in place), the shallower files padded, values that "
+        "differ from file to file kept per ping."
     ),
     stdin=(
         "Used only when no INPUTS and no --workdir are given: paths, directories or "
@@ -273,7 +310,9 @@ HELP = Help(
         "gs:// or s3://, a gs:// .nc is staged and uploaded. An existing output holding "
         "the identical product in the same layout is reused once QC passes; anything "
         "else needs --overwrite (else exit 2). QC report: named after the output "
-        "(<output stem>.qc.json), beside it (in the bucket when remote)."
+        "(<output stem>.qc.json), beside it (in the bucket when remote). Joined Sv is "
+        "named like any derived product, <base>_<recipe8>.zarr (--dest and --base, or "
+        "-o); a join that never finished is written again."
     ),
     # The shared --force/--base/--dest texts ("the input's base name",
     # "beside the input") don't describe a combine; they're listed above.
@@ -285,6 +324,8 @@ HELP = Help(
     ),
     examples=[
         "aa-combine ./converted/ --check",
+        ("aa-combine gs://b/HB1603/EK60/*_401d977d.zarr --dest gs://b/HB1603/RANGE/ "
+         "--base HB1603_RANGE   # each file's Sv, joined"),
         "aa-combine *.nc -o HB1603_L1.zarr --chunk-pings 500",
         "aa-ed ./raw/ | aa-combine -o gs://bucket/HB1603_L1.zarr --json | aa-store verify --json",
     ],
@@ -617,14 +658,14 @@ class Target:
     def staged(self) -> bool:
         """Written locally, then uploaded by the core: a gs:// NetCDF export.
 
-        A gs:// store is normally written in place through gcsfs (a large store
-        should not need twice its size on local disk). With AA_GCS_FAKE_ROOT set
-        there is no real bucket to write to, so a store is staged and published
-        into the fake one like any other product, and never reaches real GCS.
+        A gs:// store is written in place through fsspec (a large store should
+        not need its size on local disk): gcsfs on GCS, and with
+        AA_GCS_FAKE_ROOT the stand-in bucket's folder, which fsspec's gs:// is
+        pointed at (uris.install_fake_fsspec), so it never reaches GCS.
         """
         if not (self.remote and uris.is_gcs(self.raw)):
             return False
-        return self.is_netcdf or bool(os.getenv("AA_GCS_FAKE_ROOT"))
+        return self.is_netcdf
 
     def exists(self) -> bool:
         if not self.remote:
@@ -1183,6 +1224,64 @@ def _seams(
 # --------------------------------------------------------------------------- #
 # Writing
 # --------------------------------------------------------------------------- #
+#: Pings per NetCDF chunk when --chunk_pings is not given.
+_NETCDF_CHUNK_PINGS = 1000
+
+
+def _align_netcdf_chunks(echodata, pings: int) -> None:
+    """Chunk every ping_time group evenly and write HDF5 chunks to match.
+
+    The combined arrays carry each source file's own chunking, which is
+    uneven at every file boundary, while NetCDF picks one chunk shape per
+    variable. Mismatched, every output chunk is written in pieces, read back
+    and recompressed, which made a 24-file combine five times slower. Even
+    dask chunks with the same HDF5 chunk shape make each write one whole
+    chunk.
+    """
+    for group in echodata.group_paths:
+        ds = echodata[group]
+        if ds is None or "ping_time" not in ds.dims:
+            continue
+        ds = ds.chunk({"ping_time": pings})
+        for variable in ds.variables.values():
+            chunks = getattr(variable.data, "chunksize", None)
+            if chunks and variable.ndim:
+                variable.encoding["chunksizes"] = tuple(int(c) for c in chunks)
+                variable.encoding.pop("contiguous", None)
+        echodata[group] = ds
+
+
+#: HDF5 chunk cache per variable per open NetCDF file (netCDF-C's default is 64 MB).
+_READ_CACHE_BYTES = 1 << 20
+
+
+def _set_read_cache(size: int) -> Optional[tuple]:
+    """Give NetCDF files opened from now on an HDF5 chunk cache of *size*.
+
+    Returns the previous setting, or None when netCDF4 is not installed.
+    """
+    try:
+        import netCDF4
+    except ImportError:  # pragma: no cover - h5netcdf-only installs
+        return None
+    previous = netCDF4.get_chunk_cache()
+    netCDF4.set_chunk_cache(size, previous[1], previous[2])
+    return previous
+
+
+@contextlib.contextmanager
+def _small_read_cache(size: int = _READ_CACHE_BYTES):
+    """NetCDF files opened inside get a small HDF5 chunk cache (see combine())."""
+    previous = _set_read_cache(size)
+    try:
+        yield
+    finally:
+        if previous is not None:
+            import netCDF4
+
+            netCDF4.set_chunk_cache(*previous)
+
+
 def _supported(function, wanted: dict) -> dict:
     """Keep only the kwargs *function* actually accepts, and say what was cut.
 
@@ -1328,7 +1427,14 @@ def _drop_inherited_attrs(echodata) -> None:
     combined store, its aa_write marker), which would make an interrupted
     store look like its first input, or like a finished write. This tool
     writes its own values for all of them once the combine has succeeded.
+    combine_echodata also carries along the first input's aa_seal group
+    (stores sealed before catch-up 16 have one), which is dropped here too.
     """
+    try:
+        if provenance.drop_echodata_seal(echodata):
+            logger.debug(f"Dropped the inherited {SEAL_GROUP} group")
+    except Exception as exc:  # noqa: BLE001 - the writer skips it as well
+        logger.debug(f"Could not drop the inherited {SEAL_GROUP} group: {exc}")
     try:
         top = echodata["Top-level"]
         dropped = [key for key in INHERITED_ATTRS if key in top.attrs]
@@ -1426,40 +1532,19 @@ def _write_direct(
     this is not a reimplementation of the writer, it is the same write with
     two values supplied rather than derived.
     """
-    groups = [group for group in combined.group_paths if group != "Top-level"]
-    total = len(groups) + 1
-
-    root = combined["Top-level"]
-    root.to_zarr(
-        store=target.raw,
-        mode="w" if overwrite else "w-",
-        consolidated=False,
-        storage_options=storage_options or None,
+    groups = zarr_io.groups_of(combined)
+    # Every group gets the requested chunk shape and codec (the root has
+    # attributes only). A dask chunking that disagrees with the encoding
+    # chunks makes xarray raise rather than choose, so the writer rechunks
+    # to it, as echopype does.
+    zarr_io.write_echodata(
+        combined, target.raw, storage_options=storage_options, overwrite=overwrite,
+        encoding=lambda dataset: _build_encoding(dataset, chunk_pings, compression),
+        consolidate=False,
+        on_group=lambda done, total: _progress(progress, "progress", done=done, total=total,
+                                                unit="groups"),
     )
-    _progress(progress, "progress", done=1, total=total, unit="groups")
-
-    for index, group in enumerate(groups, start=2):
-        dataset = combined[group]
-        if dataset is None:
-            continue
-        encoding = _build_encoding(dataset, chunk_pings, compression)
-        for name, spec in encoding.items():
-            # Same reason echopype does it: a dask chunking that disagrees
-            # with the encoding chunks makes xarray raise rather than choose.
-            if "chunks" in spec and hasattr(dataset[name].data, "chunks"):
-                dataset[name] = dataset[name].chunk(
-                    dict(zip(dataset[name].dims, spec["chunks"]))
-                )
-        dataset.to_zarr(
-            store=target.raw,
-            group=group,
-            mode="a",
-            encoding=encoding,
-            consolidated=False,
-            storage_options=storage_options or None,
-        )
-        _progress(progress, "progress", done=index, total=total, unit="groups")
-    logger.info(f"Wrote {len(groups) + 1} group(s) with the requested chunk shape and codec")
+    logger.info(f"Wrote {len(groups)} group(s) with the requested chunk shape and codec")
 
 
 def _consolidate(target: Target, storage_options: dict) -> None:
@@ -1526,7 +1611,9 @@ def _stamp(
             marker = {"complete": complete, "tool": TOOL, "version": VERSION, "at": _now()}
             if extra:
                 marker.update(extra)
-            group.attrs["aa_write"] = marker
+            # JSON text, not an object: a store opened with xarray can then be
+            # saved to NetCDF as it is.
+            group.attrs["aa_write"] = json.dumps(marker, sort_keys=True)
     except Exception as exc:  # noqa: BLE001 - never let bookkeeping mask the outcome
         logger.debug(f"Could not stamp {target.raw}: {exc}")
 
@@ -1537,6 +1624,7 @@ def _annotate(
     parents: list[str],
     report: dict,
     storage_options: dict,
+    kind: Optional[str] = "l1",
 ) -> None:
     """Everything the store should be able to say about itself once it exists.
 
@@ -1551,8 +1639,9 @@ def _annotate(
         if group is None:
             logger.warning("Store written but could not annotate it")
             return
-        group.attrs["aa_kind"] = "l1"
-        group.attrs["provenance"] = {
+        if kind:
+            group.attrs["aa_kind"] = kind
+        group.attrs["provenance"] = json.dumps({
             "tool": TOOL,
             "version": VERSION,
             # Plural from the first line ever written. aa-combine is the first
@@ -1560,7 +1649,7 @@ def _annotate(
             # matters most is the one a singular `parent` cannot describe.
             "parents": parents,
             "at": _now(),
-        }
+        }, sort_keys=True)   # text, so the store can be saved to NetCDF as it is
         if report_uri:
             group.attrs["report"] = report_uri
         starts = [item["start"] for item in report["inputs"] if item.get("start")]
@@ -1623,20 +1712,23 @@ def _as_doc(value: Any) -> Optional[dict]:
     return None
 
 
-def _seal_hash(target: Target, storage_options: dict) -> Optional[str]:
-    """The product hash in the store's aa_seal subgroup, or None.
-
-    The seal is what makes a store's aa provenance genuine: xarray copies
-    root attributes into anything re-saved from a store, but not the seal.
+def _is_own(target: Target, doc: dict | None, storage_options: dict) -> bool:
+    """Whether the store's aa provenance is its own: sealed for it, in its
+    present shape (provenance.store_is_own). The seal is what makes it
+    genuine: xarray copies root attributes into anything re-saved from a
+    store, and echopype's combine copies the seal as well, but not the shape.
     """
-    for name in (f"{SEAL_GROUP}/zarr.json", f"{SEAL_GROUP}/.zattrs"):
-        document = _read_root_doc(target, name, storage_options)
-        if document is None:
-            continue
-        attrs = document.get("attributes", {}) if name.endswith("zarr.json") else document
-        value = (attrs or {}).get(SEAL_ATTR)
-        return str(value) if value else None
-    return None
+    try:
+        return provenance.store_is_own(target.raw, doc, storage_options)
+    except Exception as exc:  # noqa: BLE001 - unreadable is "not proven"
+        logger.debug(f"Could not read the seal of {target.raw}: {exc}")
+        return False
+
+
+def _marker(attrs: dict) -> dict | None:
+    """The aa_write marker: JSON text since catch-up 16, a JSON object before."""
+    marker = provenance.attr_json(attrs.get(WRITE_MARKER))
+    return marker if isinstance(marker, dict) else None
 
 
 def _existing_product(target: Target, storage_options: dict, run: Run, out) -> dict:
@@ -1666,15 +1758,15 @@ def _existing_product(target: Target, storage_options: dict, run: Run, out) -> d
             attrs = _root_attrs(target, storage_options)
             doc = _as_doc(attrs.get(provenance.ATTR))
             product_hash = ((doc or {}).get("product") or {}).get("hash")
-            if product_hash and _seal_hash(target, storage_options) != product_hash:
+            if product_hash and not _is_own(target, doc, storage_options):
                 logger.debug(f"{target.raw}: aa provenance without a matching seal; "
                              "not this store's own")
                 doc, product_hash = None, None
             info["attrs"] = attrs
             info["doc"] = doc
             info["hash"] = product_hash
-            marker = attrs.get(WRITE_MARKER)
-            info["complete"] = marker.get("complete") if isinstance(marker, dict) else None
+            marker = _marker(attrs)
+            info["complete"] = marker.get("complete") if marker is not None else None
         info["layout"] = (((info["doc"] or {}).get("extra") or {}).get(TOOL) or {}).get("layout")
     except Exception as exc:  # noqa: BLE001
         logger.debug(f"Could not read the existing product at {target.raw}: {exc}")
@@ -1836,7 +1928,8 @@ def _reuse_handle(
             logger.debug(f"Could not read the provenance of {target.raw}: {exc}")
     doc = doc or {}
     recorded = ((doc.get("extra") or {}).get(TOOL)) or {}
-    lineage = attrs.get("provenance") if isinstance(attrs.get("provenance"), dict) else {}
+    lineage = provenance.attr_json(attrs.get("provenance"))
+    lineage = lineage if isinstance(lineage, dict) else {}
     return _handle(
         target,
         parents=parents,
@@ -1852,7 +1945,7 @@ def _reuse_handle(
 
 
 def combine(
-    paths: list[Path],
+    paths: list,
     target: Target,
     channel_selection: Optional[list[str]],
     overwrite: bool,
@@ -1862,16 +1955,55 @@ def combine(
     storage_options: dict,
     progress: bool,
 ) -> None:
-    """Open, combine and write. Everything blocking has already been checked."""
+    """Open, combine and write. Everything blocking has already been checked.
+
+    Memory must not grow with the number of files. Three things made it:
+
+    * Opened without dask chunks, each file is lazily *indexed* but not lazily
+      *computed*, so xr.concat inside combine_echodata loaded every file
+      whole: ~8x the on-disk size, which a 5-hour EK60 range (39 files) took
+      past 31 GB. Opening with chunks={} keeps every variable a dask array in
+      the file's own chunking; combining builds a graph and the write streams
+      it.
+    * HDF5 keeps a read cache per variable per open file, 64 MB by default,
+      and filled it as the write read through the inputs. The small cache is
+      in force for the whole run, not just while opening: xarray reopens
+      files it has closed with whatever default is current, and HDF5 hands a
+      file that is already open (the QC pass's) its existing caches. main()
+      therefore sets it before the QC pass opens anything. The output does
+      not need a bigger one, because it is written in whole chunks (below).
+    * With threads, reads ran ahead of the locked, compressing NetCDF writer
+      and waited in memory for their turn.
+    """
+    with _small_read_cache():
+        _combine(paths, target, channel_selection, overwrite, compression,
+                 chunk_pings, consolidated, storage_options, progress)
+
+
+def _combine(
+    paths: list,
+    target: Target,
+    channel_selection: Optional[list[str]],
+    overwrite: bool,
+    compression: str,
+    chunk_pings: Optional[int],
+    consolidated: bool,
+    storage_options: dict,
+    progress: bool,
+) -> None:
     import echopype as ep
 
     _progress(progress, "progress", done=0, total=len(paths) + 1, unit="files")
     echodatas = []
     for index, path in enumerate(paths, start=1):
-        logger.info(f"Opening {path.name}")
-        # Lazy, and it must stay lazy: combine_echodata refuses objects with
-        # no source file, and an eagerly-loaded survey does not fit in memory.
-        echodatas.append(ep.open_converted(str(path)))
+        logger.info(f"Opening {uris.basename(str(path))}")
+        # chunks={}: lazy and dask-backed; see combine() for why it matters.
+        # A gs:// store is opened where it is (fsspec), never copied here.
+        if uris.is_remote(str(path)):
+            echodatas.append(ep.open_converted(str(path), chunks={},
+                                               storage_options=storage_options or {}))
+        else:
+            echodatas.append(ep.open_converted(str(path), chunks={}))
         _progress(progress, "progress", done=index, total=len(paths) + 1, unit="files")
 
     combine_kwargs = _supported(
@@ -1917,7 +2049,12 @@ def combine(
             },
         )
         logger.info(f"Writing {target.raw} (NetCDF export)")
-        combined.to_netcdf(**write_kwargs)
+        _align_netcdf_chunks(combined, chunk_pings or _NETCDF_CHUNK_PINGS)
+        # One chunk at a time (see combine()).
+        import dask
+
+        with dask.config.set(scheduler="synchronous"):
+            combined.to_netcdf(**write_kwargs)
         return
 
     controlled = bool(chunk_pings) or compression not in {"default", "zlib"}
@@ -1926,17 +2063,16 @@ def combine(
             combined, target, chunk_pings, compression, overwrite, storage_options, progress
         )
     else:
-        write_kwargs = _supported(
-            type(combined).to_zarr,
-            {
-                "save_path": target.raw,
-                "overwrite": overwrite,
-                "compress": compression != "none",
-                "output_storage_options": storage_options,
-            },
-        )
+        # echopype's groups and encodings, written by xarray to the store as
+        # named: EchoData.to_zarr would write a gs:// store to a local folder
+        # (see the module docstring, 4).
         logger.info(f"Writing {target.raw}")
-        combined.to_zarr(**write_kwargs)
+        zarr_io.write_echodata(
+            combined, target.raw, storage_options=storage_options, overwrite=overwrite,
+            compress=compression != "none", consolidate=False,
+            on_group=lambda done, total: _progress(progress, "progress", done=done,
+                                                    total=total, unit="groups"),
+        )
 
     if consolidated:
         # Deliberately not passed as a kwarg. echopype writes the groups one
@@ -1947,6 +2083,393 @@ def combine(
         # works — and it is worth doing: without it, opening this store costs
         # one request per array on every open, forever.
         _consolidate(target, storage_options)
+
+
+# --------------------------------------------------------------------------- #
+# Joining Sv
+# --------------------------------------------------------------------------- #
+def _kind_of(item) -> Optional[str]:
+    """The aa product kind of an input ("sv", "echodata", ...), from its own
+    provenance, read without copying it (a gs:// store's root metadata); None
+    when it has none or cannot be read here (a gs:// .nc: treated as before)."""
+    try:
+        if isinstance(item, Path):
+            doc = provenance.read(item)
+        elif uris.is_gcs(str(item)) and uris.is_store(str(item)):
+            doc, _status = provenance.inspect_store(uris.in_place(str(item)))
+        else:
+            return None
+    except Exception as exc:  # noqa: BLE001 - unknown, not fatal: judged as before
+        logger.debug(f"Could not read the provenance of {item}: {exc}")
+        return None
+    return ((doc or {}).get("product") or {}).get("kind")
+
+
+def _open_sv(path, storage_options: dict):
+    """An Sv dataset, lazily (dask, in its own chunks): a Zarr store local or
+    gs:// (read where it is), or a local NetCDF."""
+    import xarray as xr
+
+    text = str(path)
+    if uris.is_remote(text):
+        if text.startswith(("gs://", "gcs://")) and os.getenv("AA_GCS_FAKE_ROOT"):
+            uris.install_fake_fsspec()   # the stand-in bucket, never GCS
+        return xr.open_zarr(text, chunks={}, storage_options=storage_options or None)
+    if text.rstrip("/").endswith(".zarr") or Path(text).is_dir():
+        return xr.open_zarr(text, chunks={})
+    return xr.open_dataset(text, chunks={})
+
+
+def _sonar_of(doc: Optional[dict]) -> Optional[str]:
+    """The sonar model a product was converted with, from its pipeline."""
+    for step in (doc or {}).get("pipeline") or []:
+        model = (step.get("params") or {}).get("sonar_model")
+        if model:
+            return str(model)
+    return None
+
+
+def _inspect_sv(paths: list, progress: bool, uri_list: list[str], docs: list,
+                storage_options: dict) -> list[dict]:
+    """What the QC pass needs from each Sv input (as inspect_inputs does for
+    EchoData): its ping times, channels and depth; the sonar model from its
+    provenance."""
+    records: list[dict] = []
+    total = len(paths)
+    for index, path in enumerate(paths, start=1):
+        _progress(progress, "progress", done=index - 1, total=total, unit="files")
+        record: dict[str, Any] = {"path": str(path), "uri": uri_list[index - 1],
+                                  "name": uris.basename(str(path)), "error": None,
+                                  "sonar_model": _sonar_of(docs[index - 1])}
+        try:
+            dataset = _open_sv(path, storage_options)
+        except Exception as exc:  # noqa: BLE001 - one bad file must not stop the pass
+            record["error"] = f"{type(exc).__name__}: {exc}"
+            logger.error(f"Could not open {path}: {exc}")
+            records.append(record)
+            continue
+        if "Sv" not in dataset.data_vars or "ping_time" not in dataset.dims:
+            record["error"] = "not an Sv dataset (no Sv on ping_time)"
+            records.append(record)
+            continue
+        times = dataset["ping_time"].values
+        if len(times):
+            record["pings"] = int(len(times))
+            record["start"] = _iso(times.min())
+            record["end"] = _iso(times.max())
+            record["start_epoch"] = _epoch(times.min())
+            record["end_epoch"] = _epoch(times.max())
+            record["duplicate_pings"] = int(len(times) - len(set(times.tolist())))
+            record["monotonic"] = bool((times[1:] >= times[:-1]).all()) if len(times) > 1 else True
+        channels = dataset["channel"].values.tolist() if "channel" in dataset.coords else []
+        record["channels"] = [str(channel) for channel in channels]
+        record["duplicate_channels"] = len(record["channels"]) != len(set(record["channels"]))
+        if "range_sample" in dataset.dims:
+            record["range_samples"] = int(dataset.sizes["range_sample"])
+        records.append(record)
+    _progress(progress, "progress", done=total, total=total, unit="files")
+    return records
+
+
+def _same_values(a, b) -> bool:
+    import numpy as np
+
+    a, b = np.asarray(a), np.asarray(b)
+    if a.shape != b.shape:
+        return False
+    if a.dtype.kind in "fc" and b.dtype.kind in "fc":
+        return bool(np.array_equal(a, b, equal_nan=True))
+    return bool(np.array_equal(a, b))
+
+
+def join_sv(paths: list, target: Target, channel_selection: Optional[list[str]],
+            overwrite: bool, chunk_pings: Optional[int], compression: str,
+            storage_options: dict, progress: bool) -> dict:
+    """Write the Sv of every input, in the order given, as one store.
+
+    Memory does not grow with the number of files or their length: each
+    input is appended along ping_time a chunk at a time (one channel, a run
+    of pings, every sample), each dask chunk exactly one chunk of the store,
+    so nothing is ever read back and rewritten. A gs:// target is written in
+    place, never here.
+
+    * Depth: inputs shallower than the deepest are padded with NaN below
+      their last sample, as combining EchoData pads.
+    * Values without ping_time (beamwidths, equivalent beam angle, ...) that
+      are the same in every file are kept as they are; any that differ
+      between files are kept per ping, so each ping carries its own file's.
+    * source_filenames lists every file's.
+    Returns notes on what was done for the QC report.
+    """
+    import dask
+    import numpy as np
+
+    datasets = [_open_sv(path, storage_options) for path in paths]
+    if channel_selection:
+        datasets = [dataset.sel(channel=channel_selection) for dataset in datasets]
+    depth = max(int(dataset.sizes.get("range_sample", 1)) for dataset in datasets)
+    first = datasets[0]
+    on_files = {name for name in first.variables if "filenames" in first[name].dims}
+    fixed = [name for name in first.variables
+             if name not in first.dims and name not in on_files
+             and "ping_time" not in first[name].dims]
+    along = [name for name in first.variables
+             if name not in on_files and "ping_time" in first[name].dims]
+    missing = sorted({name for dataset in datasets[1:] for name in fixed + along
+                      if name not in dataset.variables})
+    varying = sorted(name for name in fixed if name not in missing and any(
+        not _same_values(dataset[name].values, first[name].values) for dataset in datasets[1:]))
+    names: list[str] = []
+    for dataset in datasets:
+        for name in on_files & set(dataset.data_vars):
+            names += [str(value) for value in np.atleast_1d(dataset[name].values)]
+    if missing:
+        logger.warning("Not in every input, so left out: " + ", ".join(missing))
+    if varying:
+        logger.info("Different from file to file, so kept per ping: " + ", ".join(varying))
+
+    pings = chunk_pings or max(1, int(zarr_io.CHUNK_BYTES // (8 * depth)))
+    store = target.raw
+    options = (storage_options or None) if target.remote else None
+    if target.remote and store.startswith(("gs://", "gcs://")) and os.getenv("AA_GCS_FAKE_ROOT"):
+        uris.install_fake_fsspec()
+    # The store's root attributes: the first file's own (echopype's), less
+    # its aa ones, plus the marker saying the join has not finished. Every
+    # write below gives the same, since xarray replaces them on each.
+    root_attrs = {key: value for key, value in first.attrs.items()
+                  if not str(key).startswith("aa_") and key not in INHERITED_ATTRS}
+    root_attrs[WRITE_MARKER] = json.dumps({"complete": False, "tool": TOOL, "version": VERSION,
+                                           "at": _now(), "stage": "joining"}, sort_keys=True)
+    offset = 0
+    total = len(datasets)
+    _progress(progress, "progress", done=0, total=total, unit="files")
+    for index, dataset in enumerate(datasets):
+        dataset = dataset.drop_vars([n for n in list(on_files) + missing
+                                     if n in dataset.variables])
+        if "range_sample" in dataset.dims and dataset.sizes["range_sample"] < depth:
+            dataset = dataset.reindex(range_sample=np.arange(depth))
+        for name in varying:
+            dataset[name] = dataset[name].expand_dims(ping_time=dataset["ping_time"].values)
+        zarr_io.clean_encoding(dataset)
+        count = int(dataset.sizes["ping_time"])
+        head = min(count, pings - offset % pings)
+        sizes = [head] + [pings] * ((count - head) // pings)
+        if sum(sizes) < count:
+            sizes.append(count - sum(sizes))
+        chunks = {"ping_time": tuple(sizes)}
+        for name in dataset.data_vars:
+            variable = dataset[name]
+            if "ping_time" in variable.dims:
+                dataset[name] = variable.chunk({**{d: (1 if d == "channel" else -1)
+                                                   for d in variable.dims}, **chunks})
+        with dask.config.set(scheduler="synchronous"):
+            if index == 0:
+                # Unfinished until the end (the marker): a join stopped part
+                # way is never taken for the product, and the next run
+                # writes it again.
+                dataset.attrs = dict(root_attrs)
+                encoding = zarr_io.chunked_encoding(dataset, pings,
+                                                    compress=compression != "none")
+                dataset.to_zarr(store, mode="w" if overwrite else "w-", encoding=encoding,
+                                consolidated=False, storage_options=options)
+            else:
+                appended = dataset.drop_vars([n for n in dataset.variables
+                                              if "ping_time" not in dataset[n].dims])
+                appended.attrs = dict(root_attrs)
+                appended.to_zarr(store, mode="a", append_dim="ping_time", consolidated=False,
+                                 storage_options=options)
+        offset += count
+        logger.info(f"[{index + 1}/{total}] {uris.basename(str(paths[index]))}: "
+                    f"{count} pings joined")
+        _progress(progress, "progress", done=index + 1, total=total, unit="files")
+    if names:
+        import xarray as xr
+
+        listing = xr.Dataset({"source_filenames": ("filenames", np.array(names, dtype=str))},
+                             coords={"filenames": np.arange(len(names))},
+                             attrs=dict(root_attrs))
+        listing.to_zarr(store, mode="a", consolidated=False, storage_options=options)
+    return {"pings": offset, "depth": depth, "perPing": varying, "leftOut": missing}
+
+
+def _main_sv(args, items: list, channel_selection: Optional[list[str]],
+             storage_options: dict, workdir) -> None:
+    """aa-combine given Sv: the per-file Sv of a range joined, in time order,
+    into one Sv store; QC, reuse, provenance and the report as for EchoData."""
+    if args.check or args.plan:
+        logger.error("--check/--plan are for EchoData; Sv inputs are checked as they are "
+                     "joined.")
+        sys.exit(2)
+    run = Run(SPEC_SV, args)
+    run.base_override = _output_base(args)
+    default_dir = workdir if workdir is not None else "."
+    paths: list = []
+    input_uris: list[str] = []
+    for item in items:
+        in_place = not isinstance(item, Path) and uris.is_store(str(item))
+        try:
+            registered = run.input(str(item), fetch=not in_place)
+        except Exception as exc:  # noqa: BLE001 - a missing or unreadable gs:// object
+            logger.error(f"Input does not exist: {item} ({exc})")
+            sys.exit(1)
+        if isinstance(item, Path):
+            paths.append(item)
+            input_uris.append(_to_uri(item))
+        else:
+            paths.append(registered.read_at if registered.remote else Path(registered.read_at))
+            input_uris.append(registered.uri)
+    docs = [registered.prov for registered in run.inputs]
+    in_place_count = sum(1 for item in run.inputs if item.via in ("in-place", "mount"))
+    if in_place_count:
+        logger.info(f"{in_place_count} store(s) read where they are; nothing copied here")
+    run.inputs.sort(key=lambda registered: (registered.id, registered.uri))
+
+    explicit = None
+    if args.output_path is not None:
+        explicit = uris.from_file_uri(str(args.output_path))
+        if "." not in uris.basename(explicit):
+            explicit = explicit.rstrip("/") + ".zarr"
+    out = run.plan(ext=".zarr", explicit=explicit, directory=default_dir, stage=False)
+    target = Target(out.target)
+    if target.suffix != ".zarr":
+        logger.error(f"-o {target.name}: joined Sv is a Zarr store (.zarr), written a "
+                     "chunk at a time; a NetCDF would be written whole.")
+        sys.exit(2)
+    if not target.remote and any(isinstance(item, Path) and _same_target(item, target)
+                                 for item in items):
+        logger.error(f"Refusing to overwrite an input: {target.raw}")
+        sys.exit(1)
+
+    existing = None
+    reuse = False
+    replace = bool(args.overwrite)
+    layout = _layout(args, target)
+    if target.exists():
+        existing = _existing_product(target, storage_options, run, out)
+        same = existing["hash"] == out.hash
+        finished = existing["complete"] is True
+        if same and finished and existing["layout"] == layout and not (args.overwrite
+                                                                         or run.force):
+            reuse = True
+        elif args.overwrite or (run.force and same):
+            replace = True
+        elif existing["hash"] is None and existing["complete"] is False:
+            # This tool's own join, stopped before it finished (its marker
+            # says so, and the name carries this recipe): write it again.
+            logger.info(f"{target.raw}: an earlier join never finished; writing it again.")
+            replace = True
+        else:
+            logger.error(f"{target.raw} exists. Pass --overwrite to replace it.")
+            if existing["hash"] and not same:
+                logger.info(f"It holds a different product (aa:{str(existing['hash'])[:8]}; "
+                            f"this one is aa:{out.short}).")
+            sys.exit(2)
+
+    def _on_signal(signum, _frame):
+        if target.exists():
+            _stamp(target, False, storage_options, extra={"interruptedBy": int(signum)})
+            logger.warning(f"Interrupted (signal {signum}); {target.raw} marked incomplete.")
+        _progress(args.progress, "done", exit=3)
+        sys.exit(3)
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(signum, _on_signal)
+        except (ValueError, OSError):  # pragma: no cover - not the main thread
+            pass
+
+    _progress(args.progress, "start", inputs=len(paths))
+    records = _inspect_sv(paths, args.progress, input_uris, docs, storage_options)
+    report = qc(records, channel_selection, args.sonar_model, args.gap_seconds,
+                args.gap_factor, sort_mode=args.sort)
+    report["kind"] = "sv"
+    if args.sort == "time":
+        order = sorted(range(len(records)), key=lambda i: (
+            records[i].get("start_epoch") is None, records[i].get("start_epoch") or 0))
+    elif args.sort == "name":
+        order = sorted(range(len(records)), key=lambda i: records[i]["name"])
+    else:
+        order = list(range(len(records)))
+    records = [records[i] for i in order]
+    paths = [item["path"] if uris.is_remote(item["path"]) else Path(item["path"])
+             for item in records if not item.get("error")]
+    report["order"] = [item["name"] for item in records if not item.get("error")]
+    report["sort"] = args.sort
+    for warning in report["warnings"]:
+        logger.warning(f"[{warning['code']}] {warning.get('file', '')} "
+                       f"{warning.get('detail', '')}".strip())
+    for problem in report["problems"]:
+        logger.error(f"[{problem['code']}] {problem.get('file', '')} "
+                     f"{problem.get('detail', '')}".strip())
+    report_uri = None
+    if not args.no_report and args.report != "none":
+        destination = uris.from_file_uri(args.report) if args.report else target.sibling(".qc.json")
+        report_uri = _write_report(report, destination, storage_options)
+    if report["problems"] or (args.strict and report["warnings"]):
+        logger.error("Refusing to join. Fix the problems above, or re-run without --strict "
+                     "if the warnings are understood and intended.")
+        _progress(args.progress, "done", exit=4)
+        sys.exit(4)
+
+    parents = [item["uri"] for item in records if not item.get("error")]
+    if reuse:
+        out.reused = True
+        if not args.quiet:
+            print(f"{TOOL}: reusing {target.raw} (identical product aa:{out.short} already "
+                  "exists; --force recomputes)", file=sys.stderr)
+        _progress(args.progress, "done", exit=0)
+        print(target.raw)
+        sys.exit(0)
+
+    if replace and target.exists():
+        logger.info(f"Overwriting {target.raw}")
+    try:
+        joined = join_sv(paths, target, channel_selection, replace or not target.exists(),
+                         args.chunk_pings, args.compression, storage_options, args.progress)
+    except Exception as exc:  # noqa: BLE001
+        if target.exists():
+            _stamp(target, False, storage_options, extra={"error": str(exc)})
+        logger.exception(f"Error while joining Sv: {exc}")
+        _progress(args.progress, "done", exit=1)
+        sys.exit(1)
+
+    starts = [item["start"] for item in report["inputs"] if item.get("start")]
+    ends = [item["end"] for item in report["inputs"] if item.get("end")]
+    time_range = [min(starts), max(ends)] if starts and ends else None
+    extra = {TOOL: {"time": time_range, "report": report_uri, "sort": args.sort,
+                    "layout": layout, "joined": joined}}
+    try:
+        if target.remote:
+            _embed_remote(run, out, target, storage_options, extra)
+            run.finish(out, embed=False, publish=False, emit=False)
+        else:
+            run.finish(out, extra=extra, emit=False)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(f"Could not record the aa provenance in {target.raw}: {exc}")
+        _progress(args.progress, "done", exit=1)
+        sys.exit(1)
+    _annotate(target, report_uri, parents, report, storage_options, kind=None)
+    _stamp(target, True, storage_options, extra={"inputs": len(parents)})
+    _consolidate(target, storage_options)
+    if target.remote:
+        _sidecar_remote(run, out, target, extra)
+    logger.success(f"Generated {target.raw} with aa-combine ({len(parents)} files' Sv "
+                   "joined).")
+    _progress(args.progress, "done", exit=0)
+    print(target.raw)
+    sys.exit(0)
+
+
+def _sidecar_remote(run: Run, out, target: Target, extra: dict) -> None:
+    """A store written in place keeps its record in its root metadata, with
+    no <store>.aa.json beside it. One left there by older tools describes the
+    store that was replaced, so it is deleted."""
+    if not uris.is_gcs(target.raw):
+        return
+    try:
+        uris.drop_store_sidecar(target.raw)
+    except Exception as exc:  # noqa: BLE001 - the store carries the record
+        logger.warning(f"Could not delete the old {target.name}{provenance.SIDECAR_SUFFIX}: {exc}")
 
 
 def _tree_bytes(path: Path) -> int:
@@ -2059,6 +2582,15 @@ def main() -> None:
         print(json.dumps(describe(parser), separators=(",", ":"), default=str))
         sys.exit(0)
 
+    # Small HDF5 read caches for every NetCDF file this run opens, the QC
+    # pass included, for the life of the process (see combine()). Set
+    # outright, not by entering _small_read_cache() by hand: a context
+    # manager nobody keeps is closed as soon as it is collected, which
+    # restored the 64 MB default at once. The QC pass then opened every
+    # input with big caches, HDF5 shares a file that is opened twice, and the
+    # combine read through those caches: memory grew with every file.
+    _set_read_cache(_READ_CACHE_BYTES)
+
     if len(sys.argv) == 1 and not stdio.stdin_is_piped():
         print_help()
         sys.exit(0)
@@ -2140,6 +2672,17 @@ def main() -> None:
         if not channel_selection:
             logger.error("--channels was given but parsed to an empty list.")
             sys.exit(2)
+
+    # Sv inputs (aa-sv's, per file) are joined, not combined: see _main_sv.
+    kinds = [_kind_of(item) for item in items]
+    if "sv" in kinds:
+        if any(kind != "sv" for kind in kinds):
+            odd = [uris.basename(str(item)) for item, kind in zip(items, kinds) if kind != "sv"]
+            logger.error("Some inputs are Sv and some are not (" + ", ".join(odd[:5])
+                         + "): join Sv with Sv, combine EchoData with EchoData.")
+            sys.exit(2)
+        _main_sv(args, items, channel_selection, storage_options, workdir)
+        return
 
     # ---------------------------
     # Resolve output
@@ -2257,11 +2800,14 @@ def main() -> None:
                 input_uris.append(item)
     else:
         # Each input's identity is its own product hash when it carries aa
-        # provenance (aa-nc / aa-ed output), else its content. gs:// inputs
-        # are read through a gcsfuse mount or the download cache.
+        # provenance (aa-nc / aa-ed output), else its content. A gs:// store
+        # is read where it is (its provenance in place, its data lazily
+        # through a gcsfuse mount or fsspec): nothing is copied here. A gs://
+        # .nc is read through a mount or the download cache.
         for item in items:
+            in_place = not isinstance(item, Path) and uris.is_store(item)
             try:
-                registered = run.input(str(item))
+                registered = run.input(str(item), fetch=not in_place)
             except Exception as exc:  # noqa: BLE001 - a missing or unreadable gs:// object
                 logger.error(f"Input does not exist: {item} ({exc})")
                 sys.exit(1)
@@ -2269,8 +2815,12 @@ def main() -> None:
                 paths.append(item)
                 input_uris.append(_to_uri(item))
             else:
-                paths.append(registered.local)
+                paths.append(registered.read_at if registered.remote
+                             else Path(registered.read_at))
                 input_uris.append(registered.uri)
+        in_place_count = sum(1 for item in run.inputs if item.via in ("in-place", "mount"))
+        if in_place_count:
+            logger.info(f"{in_place_count} store(s) read where they are; nothing copied here")
         # Canonical order: the combined product is sorted by time whatever
         # order the inputs arrive in, so the hash must not depend on it.
         run.inputs.sort(key=lambda registered: (registered.id, registered.uri))
@@ -2381,7 +2931,9 @@ def main() -> None:
         )
     elif args.sort == "name":
         records.sort(key=lambda item: item["name"])
-    paths = [Path(item["path"]) for item in records if not item.get("error")]
+    # A gs:// store stays a URI (opened in place); everything else a path.
+    paths = [item["path"] if uris.is_remote(item["path"]) else Path(item["path"])
+             for item in records if not item.get("error")]
     report["order"] = [item["name"] for item in records if not item.get("error")]
     report["sort"] = args.sort
 
@@ -2568,6 +3120,10 @@ def main() -> None:
         args.consolidated or _has_consolidated(write_target, storage_options)
     ):
         _consolidate(write_target, storage_options)
+    if target.remote and not target.staged:
+        # A store written in place gets the record beside it that every
+        # published product has (a staged .nc gets it from the core).
+        _sidecar_remote(run, out, target, extra)
 
     logger.success(f"Generated {target.raw} with aa-combine.")
     _progress(args.progress, "done", exit=0)

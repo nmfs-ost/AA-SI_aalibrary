@@ -93,7 +93,8 @@ HELP = Help(
     summary="Upload files and products to a GCS bucket.",
     does=(
         "With a gs:// destination (aa-upload [FILE ...] gs://bucket/prefix/): "
-        "uploads each input there, with its .aa.json sidecar, stamps the "
+        "uploads each input there, with its .aa.json sidecar (a .zarr store "
+        "carries its record inside, and needs none), stamps the "
         "product hash into the object's metadata, and skips objects that "
         "already hold the same product or the same bytes. Folders (.zarr "
         "stores) are uploaded recursively.\n\n"
@@ -115,6 +116,11 @@ HELP = Help(
         ("--force", "gs:// mode: upload even if the object is identical"),
         ("--dry-run", "show what would be uploaded; upload nothing"),
         ("--ship_name/--survey_name/--sonar_model", "echosounder mode (all three)"),
+        ("--no-metadata", ("echosounder mode: upload the files only; don't record "
+                           "their metadata in BigQuery (no BigQuery access needed)")),
+        ("--provisional-ship-name", ("echosounder mode: the ship or platform isn't "
+                                     "in the ICES ship list yet; upload under its "
+                                     "name anyway")),
         ("--as-is --destination_prefix PFX", "as-is mode"),
         ("--gcp_env prod|dev, --project_id, --gcp_bucket_name",
          "which project/bucket the original modes use"),
@@ -217,6 +223,15 @@ def print_help_full() -> None:
                                   file in GCP. Defaults to 'HDD' (the
                                   convention for local-disk uploads).
                                   Other values: NCEI, OMAO, etc.
+      --no-metadata               Upload the files only. Without it, the
+                                  .raw and .nc files' metadata is
+                                  recorded in BigQuery after the upload,
+                                  and access to BigQuery is checked
+                                  before anything is uploaded.
+      --provisional-ship-name     The ship or platform isn't in the ICES
+                                  ship list yet: upload under its name
+                                  anyway (otherwise an unlisted name is
+                                  refused, as it's usually a typo).
 
     As-is mode options:
       --as-is, --as_is            Upload the input verbatim to GCP under
@@ -325,6 +340,15 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Echosounder model (e.g. EK60, EK80).")
     parser.add_argument("--data_source", default="HDD",
                         help="Data source tag (default: HDD).")
+    parser.add_argument("--no-metadata", "--no_metadata", dest="no_metadata",
+                        action="store_true", default=False,
+                        help="Echosounder mode: upload the files only, without "
+                             "recording their metadata in BigQuery.")
+    parser.add_argument("--provisional-ship-name", "--provisional_ship_name",
+                        dest="provisional_ship_name", action="store_true",
+                        default=False,
+                        help="Echosounder mode: the ship isn't in the ICES ship "
+                             "list yet; upload under its name anyway.")
 
     # As-is mode
     parser.add_argument("--as-is", "--as_is", dest="as_is",
@@ -560,6 +584,8 @@ def _dispatch(mode: str, args, input_path: Path, gcp_bucket) -> None:
             gcp_bucket=gcp_bucket,
             debug=args.debug,
             dry_run=args.dry_run,
+            upload_metadata=not args.no_metadata,
+            provisional_ship_name=args.provisional_ship_name,
         )
 
 
@@ -704,6 +730,10 @@ def _main_gcs(args, sources: list, dest: str) -> None:
                 else:
                     with contextlib.redirect_stdout(sys.stderr):
                         up, same, gone = uris.publish_tree(local, uri, metadata=metadata)
+                        # A store carries its record; a sidecar left beside an
+                        # older one there would describe that one.
+                        if local.suffix.lower() == ".zarr" and uris.drop_store_sidecar(uri):
+                            gone += 1
                     _note(args, f"uploaded {local} -> {uri}: {up} files uploaded, "
                                 f"{same} unchanged" + (f", {gone} stale objects removed"
                                                        if gone else ""))
@@ -789,6 +819,8 @@ def _upload_echosounder(
     gcp_bucket,
     debug: bool,
     dry_run: bool,
+    upload_metadata: bool = True,
+    provisional_ship_name: bool = False,
 ) -> None:
     """Echosounder-mode upload.
 
@@ -833,6 +865,8 @@ def _upload_echosounder(
             data_source=data_source,
             gcp_bucket=gcp_bucket,
             debug=debug,
+            upload_metadata=upload_metadata,
+            provisional_ship_name=provisional_ship_name,
         )
         return
 
@@ -884,6 +918,8 @@ def _upload_echosounder(
             data_source=data_source,
             gcp_bucket=gcp_bucket,
             debug=debug,
+            upload_metadata=upload_metadata,
+            provisional_ship_name=provisional_ship_name,
         )
 
 

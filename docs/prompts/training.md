@@ -444,7 +444,7 @@ have to apply it yourself.
 - **`aa-plot`** — Interactive echogram plotting (hvPlot + Panel) -> standalone HTML
 - **`aa-raw`** — Download a raw echosounder file from NCEI
 - **`aa-refresh`** — Keep your AA-SI development libraries in sync with the latest code on GitHub. aa-refresh removes your current copies of aalibrary and AA-SI-KMEANS and reinstalls them fresh from main, so any new features, fixes, or sub-modules show up on your machine. Recommended every week or two
-- **`aa-setup`** — Reinstalls the startup script for the AA-SI GPCSetup environment on a Google Cloud VM.
+- **`aa-setup`** — Reinstalls the startup script for the AA-SI GCPSetup environment on a Google Cloud VM.
 - **`aa-show`** — Reveals data within nc files
 - **`aa-sound-speed`** — Compute seawater sound speed (m/s) using Echopype
 - **`aa-splitbeam-angle`** — Add split-beam angles (alongship/athwartship) to an Sv dataset

@@ -35,14 +35,16 @@ KNOWN_TOOLS: frozenset[str] = frozenset({
     "aa-clean", "aa-noise-est", "aa-impulse", "aa-min", "aa-transient",
     "aa-attenuated", "aa-detect-transient", "aa-detect-shoal",
     "aa-detect-seafloor", "aa-freqdiff", "aa-evl", "aa-evr",
+    # select, mask, lines and regions, calibration files
+    "aa-crop", "aa-mask", "aa-threshold", "aa-annotate", "aa-ecs",
     # grid and integrate; echometrics
-    "aa-mvbs", "aa-mvbs-index", "aa-nasc",
+    "aa-mvbs", "aa-mvbs-index", "aa-nasc", "aa-integrate",
     "aa-abundance", "aa-aggregation", "aa-center-of-mass", "aa-dispersion",
     "aa-evenness",
     # seawater
     "aa-sound-speed", "aa-absorption",
     # look and check
-    "aa-graph", "aa-plot", "aa-show", "aa-metadata", "aa-store",
+    "aa-graph", "aa-plot", "aa-tiles", "aa-show", "aa-metadata", "aa-store",
     # store and share
     "aa-upload", "aa-cruisepack",
     # set up and help

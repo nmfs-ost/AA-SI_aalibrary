@@ -80,7 +80,8 @@ different datasets never share a product even when they share a recipe.
 **Only scientific options count.** Each tool declares which options can
 change its numbers (they are listed under *SCIENTIFIC OPTIONS* in
 `aa-x --help`); paths, verbosity, compression, chunking and performance
-switches never enter the hash.
+switches never enter the hash (`aa-ed --swap`, which only chooses whether
+the data wait on disk or in memory while a file is read, is one of them).
 
 **Spelling doesn't matter.** Values are canonicalized before hashing, so
 these pairs give the same product:
@@ -127,9 +128,28 @@ Guards against reusing the wrong thing:
 
 - **Re-saved copies.** xarray copies attributes when a dataset is saved,
   so a product edited in a notebook would still claim the original hash.
-  NetCDF and Zarr products therefore carry a small `aa_seal` group that
-  xarray does not copy; provenance without a matching seal is ignored and
-  the file is treated as a plain file (a note says so on stderr).
+  NetCDF and Zarr products therefore carry a seal: the product hash and
+  `shape`, a fingerprint of every array's path and shape as written.
+  Provenance whose seal is missing, names another product, or no longer
+  matches the file's shape is ignored, and the file is treated as a plain
+  file (a note says so on stderr).
+  - An EchoData keeps its seal in an attribute `aa_seal` of its
+    `Provenance` group: echopype refuses to display an EchoData that has a
+    group it doesn't know (`KeyError: 'aa_seal'`).
+  - Any other product (Sv, MVBS, …) keeps it in a small `aa_seal` group,
+    which saving a dataset with xarray never copies.
+  - echopype's `combine_echodata` and DataTree copies carry every group and
+    attribute along, seal included. The shape tells them apart: a combine
+    has more pings, a subset fewer.
+  - Products sealed before November 2026 (catch-up 16) have an `aa_seal`
+    group holding the hash only. They are still their own and are reused.
+    An EchoData sealed that way is also refused when its Provenance lists a
+    different number of source files than its record, which is what an
+    echopype combine of it looks like. Displaying one in echopype still
+    needs `ed._tree = ed._tree.drop_nodes("aa_seal")` first.
+- **Saving products elsewhere.** Records and markers (`aa_provenance`,
+  `aa_write`, `provenance`) are JSON text, so a product opened with xarray
+  saves to NetCDF as it is.
 - **Rewritten objects.** Objects record the MD5 they were published with
   (`aa-content-md5`); an object rewritten afterwards is not reused.
 - **Replaced raw files.** A `.raw` whose `.aa.json` sidecar describes
@@ -168,8 +188,8 @@ from, carried forward through every step.
 
 | Format | Where the document is |
 |---|---|
-| `.nc` | root attributes `aa_provenance` (plus `aa_recipe`, `aa_product_hash`, `aa_base`, `aa_tool`, `aa_product_kind`, a `history` line) and the `aa_seal` group |
-| `.zarr` | root attributes, same names, plus `aa_seal`; consolidated metadata is refreshed |
+| `.nc` | root attributes `aa_provenance` (plus `aa_recipe`, `aa_product_hash`, `aa_base`, `aa_tool`, `aa_product_kind`, a `history` line) and the seal |
+| `.zarr` | root attributes, same names (the record as JSON text), plus the seal; consolidated metadata is refreshed |
 | `.png` | text chunks |
 | `.html` | a `<script type="application/json" id="aa-provenance">` block at the top of `<head>` |
 | anything else | a `<file>.aa.json` sidecar |
@@ -184,8 +204,56 @@ aa-metadata FILE                 # summary: product, base, inputs, sources, pipe
 aa-metadata FILE --verify        # recompute the hash; check it matches the file name
 aa-metadata FILE --json          # the document
 aa-metadata gs://bucket/x.nc     # works on objects too
+aa-metadata FILE --commands      # the commands that made it, as a script
 ... | aa-metadata --tee | ...    # in the middle of a pipe
 ```
+
+## Remaking a product: `aa-metadata --commands`
+
+The record says which tools made a product, with which settings, from which
+inputs, so it can be turned back into console commands. `aa-metadata
+--commands` writes them as a Bash script that anyone can run on their own
+workstation:
+
+```bash
+#!/usr/bin/env bash
+# Remake SYNTH2601_e99e4b09.nc (product aa:a817283c) with the AA-SI console tools.
+set -euo pipefail
+RAW="${RAW:-./raw}"     # a folder holding the raw files named below
+DEST="${DEST:-.}"       # where the products go: a folder, or gs://bucket/folder/
+NC1=$(aa-nc "$RAW/D20260614-T090000.raw" --sonar_model EK60 --dest "$DEST")
+...
+SV=$(aa-sv "$COMBINED" --dest "$DEST")
+DEPTH=$(aa-depth "$SV" --dest "$DEST")
+echo "$DEPTH"
+```
+
+How the script is written:
+
+- **No paths from the machine that made it.** Raw files are `"$RAW/<name>"`,
+  products go to `--dest "$DEST"`, and inputs in a bucket keep their `gs://`
+  URIs.
+- **The tools' own flags.** Each step's flags come from its recorded settings,
+  rendered through that tool's parser. Only settings that differ from the
+  defaults are written.
+- **The same products.** The same inputs and settings make the same product
+  hash, so a run of the script on someone else's workstation remakes the
+  products under the same names. Products already there are reused.
+- **Steps that are not computations** (lines and regions drawn in a viewer,
+  `aa-annotate`; calibration written from values, `aa-ecs`) are referenced by
+  their URI and not rerun.
+
+`--json --commands` prints the provenance document and then a second line:
+
+```json
+{"schema": "aa-commands/1", "product": "…", "command": "…", "script": "…", "notes": […]}
+```
+
+- `command` is the last step alone, from the product's direct inputs.
+- `script` is the whole chain from the raw files.
+- `notes` lists anything that could not be written as a command.
+
+The Workbench shows both under **Metadata ▸ Remake it**.
 
 ## gs:// URIs
 
@@ -197,16 +265,42 @@ still runs on local files; the core moves bytes at the edges:
   gcsfuse mount that shows the object (e.g. `~/ggn-nmfs-aa-prod-1-data`),
   or a download into the cache (checked against the object's MD5).
 - **Writing** stages the file in the cache, uploads it with its sidecar,
-  stamps `aa-recipe`, `aa-product-hash`, `aa-base`, `aa-tool` and `aa-content-md5` into
-  the object's custom metadata, and keeps the staged copy in the cache so
-  the next stage reads it without downloading. Every product published to
-  gs:// gets a `<object>.aa.json` sidecar beside it (a store: `<store>.aa.json`),
-  so its provenance can be read without downloading the product.
+  stamps `aa-recipe`, `aa-product-hash`, `aa-base`, `aa-tool`, `aa-content-md5`
+  and `aa-kind` (what the product is: one tool can write several kinds, as
+  aa-annotate writes line and region files) into the object's custom metadata,
+  and keeps the staged copy in the cache so
+  the next stage reads it without downloading. Every file published to
+  gs:// gets a `<object>.aa.json` sidecar beside it, so its provenance can be
+  read without downloading the product. A Zarr store gets none: its record is
+  in its root metadata (`zarr.json`), which is read in place, and publishing a
+  store deletes any `<store>.aa.json` older tools left beside it (it would
+  describe the store that was replaced).
+- **Reading a Zarr store in place.** `aa-combine` and `aa-sv` never copy a
+  gs:// `.zarr` input: its identity is its own sealed provenance, read from the
+  store's root metadata (kilobytes), and its data is opened where it is, lazily
+  (through a gcsfuse mount, else gcsfs). The identity is the one a copy would
+  get, so reading in place never changes a hash. A store without aa provenance
+  is identified by its content, which means reading all of it, so it is copied
+  as before. In the code: `run.input(token, fetch=False)`, then open
+  `input.read_at`; `run.fetch(input)` when a local copy is needed after all.
+  `aa-ed` registers a gs:// `.raw` the same way, by the object's MD5, so a
+  product already made from it is found without downloading the raw file.
+- **A store published to gs://** (`aa-ed --format zarr -o gs://…`) goes up
+  object by object with its root metadata last and the product hash stamped on
+  that root object, so a store whose upload never finished is never taken for
+  the finished product. `aa-combine` writes its store in place through fsspec.
+  Both write echopype's groups and encodings with `_core.zarr_io`, never
+  `EchoData.to_zarr`, which writes a gs:// store to a local folder named after
+  the bucket (echopype 0.11). Codecs are spelled for the installed zarr:
+  echopype 0.11's `compressor` (refused by xarray 2026.9) becomes
+  `compressors: [codec]` with zarr 3.
 - **`aa-metadata gs://…`** reads that sidecar first and trusts it only when it
   names the product hash the object itself carries; for a store without one it
   reads only the root metadata and the seal; only then does it download.
 - `AA_GCS_FAKE_ROOT=/dir` makes a local directory play the object store
-  (tests and rehearsals): nothing reaches GCS, stores included.
+  (tests and rehearsals): nothing reaches GCS, stores included. fsspec's
+  `gs://` is pointed at the same directory, so stores read and written in
+  place land there too.
 - `AA_CACHE_DIR` sets the cache (default `~/.cache/aalibrary`). Point it at
   a tmpfs to keep a whole pipeline in RAM.
 - `AA_GCS_MOUNTS="bucket=/path"` declares mounts that `/proc/mounts`
@@ -214,6 +308,46 @@ still runs on local files; the core moves bytes at the edges:
 - `aa-download` copies objects or prefixes to local files; `aa-upload FILE…
   gs://bucket/prefix/` uploads with the same metadata. Re-uploading a
   `.zarr` store replaces it completely.
+
+## Sv file by file
+
+A range too long for the workstation's disk is calibrated one raw file at a
+time, every product in the bucket, read where it is:
+
+```bash
+D=gs://BUCKET/derived_products/YOU/Reuben_Lasker/RL2107/EK80/
+aa-ed RAW1 RAW2 … --format zarr --dest $D --sonar_model EK80 --cleanup-raw   # each file's EchoData
+aa-sv $D/RAW1.zarr $D/RAW2.zarr … --format zarr --dest $D \
+      --waveform_mode CW --encode_mode power                                 # each file's Sv, beside it
+aa-combine $D/RAW1_<recipe>.zarr … --dest gs://…/RANGE/ --base RANGE        # the range's Sv
+aa-graph gs://…/RANGE/RANGE_<recipe>.zarr --dest gs://…/RANGE/ --var Sv      # its echogram
+```
+
+- **One file at a time.** `aa-sv` given several inputs calibrates each in a
+  fresh process into `--dest` (an identical Sv already there is reused), so a
+  stopped run keeps what it made. Each file's Sv is written here, then
+  uploaded with its root metadata last. On a 1 GB EK60 file: 0.9 GB of memory,
+  2 GB of local disk (the Sv store), under 2 minutes.
+- **The join.** `aa-combine` given Sv (inputs whose provenance kind is `sv`)
+  appends each file's Sv along `ping_time`, in time order, a chunk at a time,
+  into a store written in place in the bucket: nothing local, about 1.3 GB of
+  memory whatever the length. The QC pass is the EchoData one. Files shallower
+  than the deepest are padded with NaN; values without `ping_time` that
+  differ between files (a gain changed mid-survey) are kept per ping. A join
+  stopped part way is marked unfinished and written again by the next run.
+- **Its identity.** The joined Sv's pipeline is `aa-ed` ×N → `aa-sv` ×N →
+  `aa-combine` (`aa.join_sv`): a different recipe, so a different name, from
+  `aa-combine` → `aa-sv` (the Sv of the combined EchoData), and neither is
+  reused for the other. The numbers are the same where the environment is
+  recorded per ping (EK60, tested). Where it is recorded once per file (EK80),
+  each file here is calibrated with its own values, while echopype
+  interpolates them linearly between files for a combined EchoData; the two
+  differ only if sound speed or absorption changed between files.
+- **Memory of any `aa-sv`.** A file's per-ping values (pulse length, power,
+  sample interval) are stored in one chunk spanning every ping; echopype
+  broadcasts them against range, which made one chunk of Sv the size of the
+  whole file (4.6 GB for a 1 GB file). `aa-sv` now chunks them as the
+  backscatter is chunked: the same values, 0.8 GB.
 
 ## The pipe contract
 
@@ -229,6 +363,9 @@ still runs on local files; the core moves bytes at the edges:
 
 - Editing a product *in place* (opening it with netCDF4 in append mode
   and changing data) keeps its seal and hash. Save edits to a new file.
+- A copy that changes values but keeps every array's shape and the seal
+  (a DataTree saved whole after editing values) passes as the product. The
+  seal compares shapes, never values.
 - Some spellings a library would reject (`20S`, `-125` without `dB`)
   canonicalize to a valid value; if that product already exists it is
   reused rather than the run failing. It can never return a different

@@ -110,6 +110,23 @@ def use_gcp_prod() -> None:
     logger.debug("You are now using the GCP Prod environment.")
 
 
+def use_gcp_default() -> None:
+    """Production, unless the environment already names a project.
+
+    What `import aalibrary` does. A project already in
+    ``AALIBRARY_GCP_PROJECT_ID`` is kept; its bucket is
+    ``AALIBRARY_GCP_BUCKET_NAME`` when set, else the AA-SI convention
+    ``<project>-data`` (the production and development buckets follow it).
+    """
+    project_id = os.getenv("AALIBRARY_GCP_PROJECT_ID", "").strip()
+    if not project_id:
+        use_gcp_prod()
+        return
+    bucket_name = os.getenv("AALIBRARY_GCP_BUCKET_NAME", "").strip()
+    os.environ["AALIBRARY_GCP_BUCKET_NAME"] = bucket_name or f"{project_id}-data"
+    logger.debug(f"Using the GCP project '{project_id}' from the environment.")
+
+
 def use_custom_gcp_environment(project_id: str, bucket_name: str) -> None:
     """Sets environment variables to use the custom GCP resources. specified by
     the user.

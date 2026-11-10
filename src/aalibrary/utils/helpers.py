@@ -57,8 +57,37 @@ def get_current_gcp_user_email() -> str:
             text=True,
             check=False,
         ).stdout
-    email = email.replace("\n", "")
+    email = email.replace("\n", "").strip()
+    if _is_email_address(email):
+        return email
+    # gcloud's account setting can hold anything, and Google's instructions
+    # read `gcloud config set account ACCOUNT`: run as written, products went
+    # to derived_products/ACCOUNT/. When the setting isn't an address and gcloud
+    # holds credentials for exactly one account, that is who is signed in.
+    held = [account for account in _credentialed_gcp_accounts()
+            if _is_email_address(account)]
+    if len(held) == 1:
+        return held[0]
     return email
+
+
+def _is_email_address(value: str) -> bool:
+    local, at, domain = (value or "").strip().partition("@")
+    return bool(at and local and "." in domain.strip(".")
+                and not any(ch.isspace() for ch in value.strip()))
+
+
+def _credentialed_gcp_accounts() -> list[str]:
+    """Every account gcloud holds credentials for (`gcloud auth list`)."""
+    command = ["gcloud", "auth", "list", "--format=value(account)"]
+    try:
+        out = subprocess.run(command, shell=platform.system() == "Windows",
+                             capture_output=True, text=True, check=False,
+                             timeout=20).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [line.strip() for line in out.splitlines()
+            if line.strip() and line.strip() != "(unset)"]
 
 
 def get_file_name_from_url(url: str = "") -> str:
@@ -262,7 +291,8 @@ def parse_correct_gcp_storage_bucket_location_based_on_file_type(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".
@@ -377,7 +407,8 @@ def parse_correct_gcp_storage_bucket_location(
     Args:
         file_name (str, optional): The file name (includes extension).
             Defaults to "".
-        file_type (str, optional): The file type (not include the dot ".").
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".".
             Defaults to "".
         ship_name (str, optional): The ship name associated with this survey.
             Defaults to "".

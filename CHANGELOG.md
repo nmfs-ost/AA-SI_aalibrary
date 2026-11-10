@@ -57,6 +57,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - aa-find's Plot action, aa-cruisepack `--help` (it started a disk scan),
   aa-setup's literal `{ACCOUNT}`, and many help texts and examples.
 - `cloud_utils` imports `win32gui` only on Windows.
+- Uploading your own files (issues #17-#25):
+  - `upload_file_to_gcp_storage_bucket`: `file_location` may be the file's
+    full path or its folder (with `file_name`); `gcp_storage_bucket_location`
+    may be a folder, use back slashes, or start with `gs://bucket/` or the
+    bucket's name (a Windows path used to become one object named after the
+    folder, at the top of the bucket); the standard location uses the
+    normalized ship name, as the directory uploader does; `file_type`
+    defaults to the file's suffix; it returns the object's path (None on
+    failure) and prints the `gs://` address.
+  - The echosounder directory uploader checks the names, the ship name
+    (ICES) and BigQuery write access before uploading anything (a missing
+    BigQuery permission used to stop it after the first .raw file), uploads
+    the files and then records the metadata, never adds a second metadata
+    row for a file, and no longer fails on .nc files
+    (`KeyError: 'file_download_directory'`).
+  - `RawFile` reads the time zone and transect name from a local .raw file
+    for every data source (it raised AttributeError for anything but NCEI),
+    and NCEI files get them too (they were always empty).
+  - Reading a .raw file's first datagram from NCEI or GCS downloads only that
+    datagram, not the whole file.
+  - Importing aalibrary no longer needs the ICES web service to answer; the
+    ship list is fetched once, when first needed.
+  - Python 3.14 installs (numcodecs is no longer pinned to 0.15.1, which has
+    no Python 3.14 wheels; zarr is pinned to >=3.1,<4 as aa-setup does).
+
+### Added (uploads)
+
+- `upload_metadata=False` on the echosounder directory uploader (aa-upload
+  `--no-metadata`) uploads the files only;
+  `upload_local_echosounder_metadata_from_directory_to_bigquery` records
+  their metadata later.
+- `provisional_ship_name=True` (aa-upload `--provisional-ship-name`) uploads
+  under a ship or platform name that isn't in the ICES list yet.
+- `LocalSurvey.upload_files()`, and LocalSurvey documentation; LocalSurvey
+  refuses to upload files with no echosounder (they went to `.../None/`).
+- The docs mark required parameters, and say what `file_type` is.
 
 ### Changed
 

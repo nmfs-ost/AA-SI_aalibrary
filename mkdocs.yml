@@ -62,6 +62,7 @@ nav:
     - "AALibrary": documentation/aalibrary.md
     - "Utils": documentation/utils.md
     - "RawFile": documentation/raw_file.md
+    - "LocalSurvey": documentation/survey.md
     - "Tugboat API": documentation/tugboat_api.md
     - "Console Tools": documentation/console_tools.md
     - "Console Products & Provenance": documentation/console_provenance.md
@@ -84,6 +85,8 @@ plugins:
     default_handler: python
     handlers:
       python:
+        # Document the code in this clone, not whichever aalibrary is installed.
+        paths: [src]
         options:
           show_source: false
           group_by_category: true

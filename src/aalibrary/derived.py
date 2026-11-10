@@ -100,7 +100,8 @@ def upload_derived_product_to_gcp(
 
     Args:
         file_name (str, optional): The name of the file. Defaults to "".
-        file_type (str, optional): The file type. Defaults to "".
+        file_type (str, optional): The file name suffix, e.g. "raw", "idx",
+            "nc", without the dot ".". Defaults to "".
         file_location (str, optional): The local file path. Defaults to "".
         ship_name (str, optional): The ship name associated with this file.
             Defaults to "".

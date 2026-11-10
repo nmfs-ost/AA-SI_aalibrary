@@ -14,30 +14,135 @@ For a detailed description (pros/cons) of all upload tools/options, take a look 
 
 ## Uploading Echosounder Files To GCP
 
-In order to upload selective Echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet. This function maintains the formatting and folder structure that AALibrary uses. This makes retrieval of the files using the AALibrary possible.
+To upload a folder of echosounder files (.raw, .idx, .bot, .nc) to GCP, use the following snippet. This function maintains the formatting and folder structure that AALibrary uses. This makes retrieval of the files using the AALibrary possible.
 
 ```python
 from aalibrary.egress import (
     upload_local_echosounder_files_from_directory_to_gcp_storage_bucket
 )
-from aalibrary.utils.cloud_utils import setup_gcp_storage_objs
 
-gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-    setup_gcp_storage_objs(
-        project_id="ggn-nmfs-aa-dev-1",
-        gcp_bucket_name="ggn-nmfs-aa-dev-1-data",
-    )
-)
 upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
-        local_echosounder_directory_to_upload="./Reuben_Lasker/RL2107/EK80/",
-        ship_name="Reuben_Lasker",
-        survey_name="RL2107",
-        echosounder="EK80",
-        data_source="HDD", # <== Refers to the fact that this is uploaded from local.
-        gcp_bucket=gcp_bucket,
-        debug=True,
+    local_echosounder_directory_to_upload=r"C:/data/DX2301/EK80",
+    ship_name="Henry B. Bigelow",   # normalized to Henry_B_Bigelow
+    survey_name="DX2301",
+    echosounder="EK80",
+    data_source="HDD",  # <== Refers to the fact that this is uploaded from local.
 )
 ```
+
+The files go to `HDD/Henry_B_Bigelow/DX2301/EK80/data/raw/` (and `.../data/netcdf/` for .nc files) in the bucket aalibrary is configured for; pass `gcp_bucket=` to choose another. Then the .raw and .nc files' metadata is recorded in BigQuery.
+
+Before anything is uploaded, it checks:
+
+* the folder and the names (the echosounder and data source must be ones aalibrary knows);
+* the ship name, against the ICES ship list (see [ships without an ICES code](#ships-and-platforms-without-an-ices-code-yet));
+* that your account can add rows to the BigQuery metadata tables. If it can't, nothing is uploaded and the message says what to do.
+
+Files already in the bucket aren't uploaded again, and files whose metadata is already in BigQuery don't get a second row. So if an upload is interrupted, run the same call again.
+
+### Uploading Without The Metadata, And Adding It Later
+
+Recording metadata needs the **BigQuery Data Editor** role on the `metadata` dataset (ask a project admin). Without it, or when you just want the files up quickly, upload the files only:
+
+```python
+upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
+    local_echosounder_directory_to_upload=r"C:/data/DX2301/EK80",
+    ship_name="Henry B. Bigelow",
+    survey_name="DX2301",
+    echosounder="EK80",
+    data_source="HDD",
+    upload_metadata=False,
+)
+```
+
+Later (from the same folder, with the same names), record their metadata. Nothing is uploaded to the bucket, and files that already have metadata are skipped:
+
+```python
+from aalibrary.egress import (
+    upload_local_echosounder_metadata_from_directory_to_bigquery
+)
+
+upload_local_echosounder_metadata_from_directory_to_bigquery(
+    local_echosounder_directory=r"C:/data/DX2301/EK80",
+    ship_name="Henry B. Bigelow",
+    survey_name="DX2301",
+    echosounder="EK80",
+    data_source="HDD",
+)
+```
+
+From the command line, `aa-upload` does the same: `--no-metadata` uploads the files only.
+
+### Ships And Platforms Without An ICES Code Yet
+
+An unlisted ship name is refused, since it's usually a misspelling (the message suggests the closest ICES names). For a new ship or platform that doesn't have an ICES code yet, say so:
+
+```python
+upload_local_echosounder_files_from_directory_to_gcp_storage_bucket(
+    ...,
+    ship_name="DriX 1",
+    provisional_ship_name=True,   # aa-upload: --provisional-ship-name
+)
+```
+
+The files are filed under the name as given (normalized: `Drix_1`), and their metadata has no ICES code. If the name ICES approves is different, the files will need to be moved to the new name's folder.
+
+## Uploading One File
+
+`upload_file_to_gcp_storage_bucket` uploads a single file. Tell it where the file is with `file_location`: the file's full path, or the folder it's in together with `file_name`.
+
+To put it in the standard place (where the directory uploader would), give the names and leave out `gcp_storage_bucket_location`:
+
+```python
+from pathlib import Path
+from aalibrary.egress import upload_file_to_gcp_storage_bucket
+
+f = Path(r"C:/data/DX2301/EK80/D20231017-T211129.idx")
+upload_file_to_gcp_storage_bucket(
+    file_location=f,              # or file_location=f.parent, file_name=f.name
+    ship_name="Henry B. Bigelow",
+    survey_name="DX2301",
+    echosounder="EK80",
+    data_source="HDD",
+)
+# -> HDD/Henry_B_Bigelow/DX2301/EK80/data/raw/D20231017-T211129.idx
+```
+
+To put it somewhere else, give `gcp_storage_bucket_location`: a folder in the bucket (the file keeps its name), or the full object path. A Windows-style path, a leading `gs://bucket/` or the bucket's name are all fine:
+
+```python
+upload_file_to_gcp_storage_bucket(
+    file_location=f,
+    gcp_storage_bucket_location="HDD/Henry_B_Bigelow/DX2301/EK80/test/",
+)
+# -> HDD/Henry_B_Bigelow/DX2301/EK80/test/D20231017-T211129.idx
+```
+
+It prints the `gs://` address the file went to, skips a file that's already there, and returns the object's path in the bucket (or `None` if it couldn't be uploaded). It doesn't record BigQuery metadata.
+
+`file_type` is the file name suffix (e.g. "raw", "idx", "nc", without the dot); it's taken from the file name when you leave it out.
+
+## Uploading A Whole Survey With `LocalSurvey`
+
+`LocalSurvey` looks through a survey's folder, subfolders included, and works out where every file belongs in the bucket. You can then upload them all and check the uploads by checksum. It uploads files only: no BigQuery metadata, and no ICES check on the ship name.
+
+```python
+from aalibrary.survey import LocalSurvey
+
+survey = LocalSurvey(
+    directory_path=r"C:/data/DX2301",
+    ship_name="Henry B. Bigelow",
+    survey_name="DX2301",
+    echosounder="EK80",   # or leave it out if the files sit in folders named after it (.../EK80/...)
+    data_source="HDD",
+)
+print(survey)                       # counts and sizes of what was found
+survey.print_all_files_in_directory()  # each file and where it will go
+survey.upload_files()               # files already in the bucket are skipped
+survey.verify_gcp_uploads()         # compares checksums with the bucket
+```
+
+See the [LocalSurvey reference](../documentation/survey.md) for everything it offers.
 
 ## Uploading A Survey/Folder `As-Is` To GCP
 
