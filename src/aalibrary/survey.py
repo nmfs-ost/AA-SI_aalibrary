@@ -330,12 +330,14 @@ class LocalSurvey:
     echosounder: str = ""
     data_source: str = "HDD"
     directory_path: str = ""
+    auxiliary_directory_path: str = ""
     relocation_path: str = ""
     debug: bool = False
     gcp_bucket: storage.Client.bucket = None
     gcp_project_id: str = None
     gcp_bucket_name: str = None
     upload_to_gcp: bool = None
+    missing_or_incorrectly_uploaded_files: set = set()
     # Get all valid and normalized ICES ship names
     valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
         normalize_ship_names=True
@@ -346,6 +348,9 @@ class LocalSurvey:
         self._handle_paths()
         print(f"ANALYZING DIRECTORY: {self.directory_path}")
         self._create_vars_for_use_later()
+        if self.upload_to_gcp:
+            print("UPLOAD TO GCP ENABLED")
+            self._upload_to_gcp()
 
     def __repr__(self):
         print_dict = {
@@ -387,6 +392,21 @@ class LocalSurvey:
             if self.debug:
                 logging.debug(
                     "normalized directory path = %s", self.directory_path
+                )
+        assert "auxiliary_directory_path" in self.__dict__, (
+            "`auxiliary_directory_path` is required for the LocalSurvey object"
+            ". If necessary, please create an empty `auxiliary` directory in "
+            "the survey directory and pass it as a parameter."
+        )
+
+        if "auxiliary_directory_path" in self.__dict__:
+            self.auxiliary_directory_path = (
+                os.path.normpath(self.auxiliary_directory_path) + os.sep
+            )
+            if self.debug:
+                logging.debug(
+                    "normalized auxiliary directory path = %s",
+                    self.auxiliary_directory_path,
                 )
         if "relocation_path" in self.__dict__:
             self.relocation_path = (
@@ -430,6 +450,10 @@ class LocalSurvey:
 
         # Get all files in this directory.
         directory_path_glob = os.sep.join([self.directory_path, "**", "*"])
+        # Get all files in auxiliary directory
+        auxiliary_directory_path_glob = os.sep.join(
+            [self.auxiliary_directory_path, "**", "*"]
+        )
         # EX. self.all_file_paths_in_directory = {
         # 'C:\\Users\\Hannan\\AmSam2HawaiiSE2602L3\\D20260717-T000432.raw.evi':
         # {'echosounder': None,
@@ -441,9 +465,19 @@ class LocalSurvey:
         self.all_file_paths_in_directory = glob(
             directory_path_glob, recursive=True
         )
+        self.all_auxiliary_file_paths = glob(
+            auxiliary_directory_path_glob, recursive=True
+        )
         self.all_file_paths_in_directory = {
-            file_path: {} for file_path in self.all_file_paths_in_directory
+            file_path: {"is_auxiliary": False}
+            for file_path in self.all_file_paths_in_directory
         }
+        # Check for and update auxiliary file paths with a boolean in
+        # all_file_paths_in_directory.
+        for file_path in self.all_auxiliary_file_paths:
+            self.all_file_paths_in_directory[file_path] = {
+                "is_auxiliary": True
+            }
         # Remove directories from the list of files and assign attributes to
         # each file.
         # List to get rid of deleting while iterating error.
@@ -608,8 +642,12 @@ class LocalSurvey:
         ):
             file_name = os.path.basename(file_path)
             file_type = self.all_file_paths_in_directory[file_path]["type"]
-            gcp_storage_bucket_location = (
-                parse_correct_gcp_storage_bucket_location_based_on_file_type(
+            is_auxiliary = self.all_file_paths_in_directory[file_path][
+                "is_auxiliary"
+            ]
+            if not is_auxiliary:
+                # Parse based on file-type
+                gcp_storage_bucket_location = parse_correct_gcp_storage_bucket_location_based_on_file_type(
                     file_name=file_name,
                     file_type=file_type,
                     ship_name=self.ship_name,
@@ -620,7 +658,19 @@ class LocalSurvey:
                     data_source=self.data_source,
                     debug=self.debug,
                 )
-            )
+            elif is_auxiliary:
+                # Parse using standard method instead of base file type
+                # so we can bypass file-type based allocation.
+                # This keeps the auxiliary directory layout.
+                file_path_past_aux_directory = os.path.normpath(
+                    file_path.split("auxiliary" + os.sep)[-1]
+                )
+                # Convert any '\\' to '/'
+                file_path_past_aux_directory = (
+                    file_path_past_aux_directory.replace("\\", "/")
+                )
+                gcp_storage_bucket_location = f"{self.data_source}/{self.ship_name}/{self.survey_name}/auxiliary/{file_path_past_aux_directory}"
+
             self.all_file_paths_in_directory[file_path][
                 "gcp_storage_bucket_location"
             ] = gcp_storage_bucket_location
@@ -747,7 +797,10 @@ class LocalSurvey:
         self._upload_to_gcp(files_to_upload=files_to_upload)
 
     def _upload_to_gcp(
-        self, files_to_upload: List[str] = None, save_results_loc: str = ""
+        self,
+        files_to_upload: List[str] = None,
+        save_results_loc: str = "",
+        force_reupload: bool = False,
     ):
         """Uploads all files to GCP according to their GCP storage bucket
         locations."""
@@ -772,6 +825,7 @@ class LocalSurvey:
                     file
                 ]["gcp_storage_bucket_location"],
                 gcp_bucket=self.gcp_bucket,
+                force_upload=force_reupload,
                 verbose=False,
             )
             # End the timer.
@@ -852,11 +906,18 @@ class LocalSurvey:
             "gcp_crc32c_checksum"
         ] = gcp_crc32c_checksum
 
-    def verify_gcp_uploads(self):
+    def verify_gcp_uploads(
+        self, reupload_incorrectly_uploaded_files: bool = False
+    ):
         """Verifies the files that have been uploaded to GCP using file
         checksums. Gives a printout of the number of files that have/haven't
-        been uploaded."""
+        been uploaded.
 
+        Args:
+            reupload_incorrectly_uploaded_files (bool, optional): If True,
+                reuploads files that were incorrectly uploaded.
+                Defaults to False.
+        """
         # Go through all files in the directory and verify their checksums with
         # the files in GCP.
         files_uploaded = 0
@@ -917,6 +978,7 @@ class LocalSurvey:
             # If the gcp crc32c checksum is None, then the object does not
             # exist in GCP. Add it to the files not uploaded.
             if gcp_crc32c_checksum is None:
+                self.missing_or_incorrectly_uploaded_files.add(file_path)
                 files_not_uploaded += 1
                 files_not_uploaded_size_in_bytes += (
                     self.all_file_paths_in_directory[file_path]["size"]
@@ -931,6 +993,7 @@ class LocalSurvey:
             # In the case the blob exists but the checksums do not match (has
             # been uploaded incorrectly)
             if gcp_crc32c_checksum != local_file_checksum:
+                self.missing_or_incorrectly_uploaded_files.add(file_path)
                 files_uploaded_incorrectly += 1
                 files_uploaded_incorrectly_size_in_bytes += (
                     self.all_file_paths_in_directory[file_path]["size"]
@@ -968,6 +1031,22 @@ class LocalSurvey:
             "NOTE: Files uploaded incorrectly are counted based on "
             "mismatched checksums."
         )
+
+        if (
+            reupload_incorrectly_uploaded_files
+            and self.missing_or_incorrectly_uploaded_files
+        ):
+            print(
+                "Reuploading incorrectly uploaded files to GCP storage bucket..."
+            )
+            self._upload_to_gcp(
+                files_to_upload=list(
+                    self.missing_or_incorrectly_uploaded_files
+                ),
+                save_results_loc="",
+                force_reupload=True,
+            )
+            print("Reupload complete. Please verify again.")
 
 
 if __name__ == "__main__":
@@ -1009,18 +1088,18 @@ if __name__ == "__main__":
     # survey.create_raw_file_objects()
     # print(survey.raw_files)
 
-    local_survey = LocalSurvey(
-        ship_name="Henry_B._Bigelow",
-        survey_name="HB2407",
-        data_source="HDD",
-        directory_path="./HDD/",
-        # relocation_path="./Copy_HDD/",
-        upload_to_gcp=False,
-        debug=True,
-        gcp_bucket=gcp_bucket,
-        gcp_bucket_name=gcp_bucket_name,
-    )
-    local_survey.verify_gcp_uploads()
+    # local_survey = LocalSurvey(
+    #     ship_name="Henry_B._Bigelow",
+    #     survey_name="HB2407",
+    #     data_source="HDD",
+    #     directory_path="./HDD/",
+    #     # relocation_path="./Copy_HDD/",
+    #     upload_to_gcp=False,
+    #     debug=True,
+    #     gcp_bucket=gcp_bucket,
+    #     gcp_bucket_name=gcp_bucket_name,
+    # )
+    # local_survey.verify_gcp_uploads()
     # local_survey.print_all_files_in_directory()
     # local_survey._test_upload_to_gcp_speeds(megabytes=100)
     # i = 0
@@ -1031,3 +1110,18 @@ if __name__ == "__main__":
     #     ):
     #         i += 1
     # print(i)
+
+    # Test auxiliary file uploads
+    local_survey = LocalSurvey(
+        ship_name="Reuben_Lasker",
+        survey_name="TEST1234",
+        data_source="HDD",
+        directory_path="./TEST1234/",
+        auxiliary_directory_path="./TEST1234/auxiliary/",
+        upload_to_gcp=False,
+        debug=True,
+        gcp_bucket=gcp_bucket,
+        gcp_bucket_name=gcp_bucket_name,
+    )
+    pprint.pprint(local_survey.all_file_paths_in_directory)
+    local_survey.verify_gcp_uploads(reupload_incorrectly_uploaded_files=True)
