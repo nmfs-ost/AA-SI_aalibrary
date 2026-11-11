@@ -5,12 +5,14 @@ Survey class that can be used to manage surveys."""
 # pylint: disable=attribute-defined-outside-init
 
 import logging
+import sys
 import os
 import pprint
 from glob import glob
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List
+import atexit
 
 from google.cloud import storage
 import boto3
@@ -157,9 +159,7 @@ class Survey:
             or ("s3_client" not in self.__dict__)
             or ("s3_bucket" not in self.__dict__)
         ):
-            self.s3_client, self.s3_resource, self.s3_bucket = (
-                create_s3_objs()
-            )
+            self.s3_client, self.s3_resource, self.s3_bucket = create_s3_objs()
 
         # Creating RawFile objects for all raw files in this survey takes a lot
         # of time and memory, so we will implement a boolean to check if
@@ -409,14 +409,21 @@ class LocalSurvey:
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+        atexit.register(self._sudden_exit)
         self._handle_paths()
         print(f"ANALYZING DIRECTORY: {self.directory_path}")
         self._create_vars_for_use_later()
         if self.upload_to_gcp:
             print("UPLOAD TO GCP ENABLED")
             self._upload_to_gcp()
-
+    
     def __repr__(self):
+        return_str = (f"LocalSurvey(ship_name={self.ship_name}, "
+                      f"survey_name={self.survey_name}, "
+                      f"directory_path={self.directory_path})")
+        return return_str
+
+    def __str__(self):
         print_dict = {
             "ship_name": self.ship_name,
             "survey_name": self.survey_name,
@@ -1026,7 +1033,7 @@ class LocalSurvey:
             gcp_bucket, file_path=gcp_storage_bucket_location
         )
         if file_exists_in_gcp and not force_upload:
-            print(
+            tqdm.write(
                 (
                     f"INFO: FILE `{file_name}` ALREADY EXISTS IN GCP AT "
                     f"`{gcp_storage_bucket_location}`."
@@ -1035,7 +1042,7 @@ class LocalSurvey:
         else:
             try:
                 if verbose:
-                    print(
+                    tqdm.write(
                         (
                             f"UPLOADING FILE `{file_name}` TO GCP AT"
                             f" `{gcp_storage_bucket_location}`..."
@@ -1049,9 +1056,9 @@ class LocalSurvey:
                     debug=debug,
                 )
                 if verbose:
-                    print("UPLOADED.")
+                    tqdm.write("UPLOADED.")
             except Exception as e:
-                logging.error(
+                tqdm.write(
                     "COULD NOT UPLOAD FILE %s TO GCP (%s) STORAGE BUCKET DUE "
                     "TO THE FOLLOWING ERROR:\n%s",
                     file_name,
@@ -1234,6 +1241,25 @@ class LocalSurvey:
             )
             print("Reupload complete. Please verify again.")
 
+    def _sudden_exit(self):
+        """Handles a sudden exit of the program. This is used to clean up any
+        resources that may have been left open."""
+        print("Sudden exit detected.\nExiting LocalSurvey...", file=sys.stderr)
+        print(
+            "If you have any uploads pending, you can always re-run the"
+            " LocalSurvey object to finish uploading.", file=sys.stderr
+        )
+        print(
+            "You can also verify your uploaded files using"
+            " `LocalSurvey.verify_gcp_uploads()` to check for any missing "
+            "or incorrectly uploaded files.", file=sys.stderr
+        )
+        print(
+            "Hint: Set the `reupload_incorrectly_uploaded_files` parameter"
+            " to True to automatically re-upload any missing or incorrectly"
+            " uploaded files.", file=sys.stderr
+        )
+
 
 if __name__ == "__main__":
     # set logging config
@@ -1251,9 +1277,7 @@ if __name__ == "__main__":
     # )
     # set up storage objects
     s3_client, s3_resource, s3_bucket = create_s3_objs()
-    gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        setup_gcp_storage_objs()
-    )
+    gcp_stor_client, gcp_bucket_name, gcp_bucket = setup_gcp_storage_objs()
 
     # create a survey object
     # survey = Survey(
@@ -1304,7 +1328,7 @@ if __name__ == "__main__":
         data_source="HDD",
         directory_path="./TEST1234/",
         auxiliary_directory_path="./TEST1234/auxiliary/",
-        upload_to_gcp=False,
+        upload_to_gcp=True,
         debug=True,
         gcp_bucket=gcp_bucket,
         gcp_bucket_name=gcp_bucket_name,
