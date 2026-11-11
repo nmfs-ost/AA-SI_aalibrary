@@ -21,31 +21,40 @@ from tqdm.contrib.concurrent import thread_map, process_map
 if __package__ is None or __package__ == "":
     # uses current directory visibility
     import ices_ship_names
-    from utils import ncei_cache_utils, cloud_utils
+    from utils import ncei_cache_utils
+    from utils.cloud_utils import (
+        setup_gcp_storage_objs,
+        create_s3_objs,
+        check_if_file_exists_in_gcp,
+        upload_file_to_gcp_bucket,
+    )
     from utils.helpers import (
         normalize_ship_name,
         parse_correct_gcp_storage_bucket_location_based_on_file_type,
-        calculate_local_crc32c_checksum,
         _get_single_local_file_crc32c_checksum_multi_process,
     )
     from utils.gcp_utils import get_gcp_file_checksum
     from raw_file import RawFile
     from config import VALID_ECHOSOUNDERS
-    from utils.cloud_utils import upload_file_to_gcp_bucket
+
 else:
     # uses current package visibility
     from aalibrary import ices_ship_names
-    from aalibrary.utils import ncei_cache_utils, cloud_utils
+    from aalibrary.utils import ncei_cache_utils
+    from aalibrary.utils.cloud_utils import (
+        setup_gcp_storage_objs,
+        create_s3_objs,
+        check_if_file_exists_in_gcp,
+        upload_file_to_gcp_bucket,
+    )
     from aalibrary.utils.helpers import (
         normalize_ship_name,
         parse_correct_gcp_storage_bucket_location_based_on_file_type,
-        calculate_local_crc32c_checksum,
         _get_single_local_file_crc32c_checksum_multi_process,
     )
     from aalibrary.utils.gcp_utils import get_gcp_file_checksum
     from aalibrary.raw_file import RawFile
     from aalibrary.config import VALID_ECHOSOUNDERS
-    from aalibrary.utils.cloud_utils import upload_file_to_gcp_bucket
 
 
 class Survey:
@@ -141,7 +150,7 @@ class Survey:
             or ("gcp_stor_client" not in self.__dict__)
         ):
             self.gcp_stor_client, self.gcp_bucket_name, self.gcp_bucket = (
-                cloud_utils.setup_gcp_storage_objs()
+                setup_gcp_storage_objs()
             )
         if (
             ("s3_resource" not in self.__dict__)
@@ -149,7 +158,7 @@ class Survey:
             or ("s3_bucket" not in self.__dict__)
         ):
             self.s3_client, self.s3_resource, self.s3_bucket = (
-                cloud_utils.create_s3_objs()
+                create_s3_objs()
             )
 
         # Creating RawFile objects for all raw files in this survey takes a lot
@@ -497,7 +506,7 @@ class LocalSurvey:
         if self.gcp_bucket_name is None:
             self.gcp_bucket_name = os.getenv("AALIBRARY_GCP_BUCKET_NAME")
         if self.gcp_bucket is None:
-            _, _, self.gcp_bucket = cloud_utils.setup_gcp_storage_objs(
+            _, _, self.gcp_bucket = setup_gcp_storage_objs(
                 project_id=self.gcp_project_id,
                 gcp_bucket_name=self.gcp_bucket_name,
                 verbose=False,
@@ -898,7 +907,7 @@ class LocalSurvey:
                 f"{len(no_echosounder)} file(s) have no echosounder (e.g. "
                 f"`{no_echosounder[0]}`): none of the folders above them is "
                 "named after one. Give it when making the LocalSurvey, e.g. "
-                "echosounder=\"EK80\". Nothing has been uploaded."
+                'echosounder="EK80". Nothing has been uploaded.'
             )
         if not files_to_upload:
             print("NO FILES TO UPLOAD.")
@@ -920,7 +929,7 @@ class LocalSurvey:
                 gcp_bucket=self.gcp_bucket,
                 force_upload=force_reupload,
                 verbose=False,
-                debug=self.debug
+                debug=self.debug,
             )
             # End the timer.
             end_time = datetime.now()
@@ -944,7 +953,8 @@ class LocalSurvey:
 
         print("Uploads complete.")
         print(
-            f"Total Size Uploaded in Bytes: {total_file_size_uploaded_in_bytes}"
+            "Total Size Uploaded in Bytes:"
+            f" {total_file_size_uploaded_in_bytes}"
         )
         print(f"Total Elapsed Time: {total_elapsed_time_formatted_str}")
         print(
@@ -962,7 +972,8 @@ class LocalSurvey:
             with open(save_results_loc, "w", encoding="utf-8") as f:
                 f.write("Uploads complete.\n")
                 f.write(
-                    f"Total Size Uploaded in Bytes: {total_file_size_uploaded_in_bytes}\n"
+                    "Total Size Uploaded in Bytes:"
+                    f" {total_file_size_uploaded_in_bytes}\n"
                 )
                 f.write(
                     f"Total Elapsed Time: {total_elapsed_time_formatted_str}\n"
@@ -982,55 +993,28 @@ class LocalSurvey:
         verbose: bool = True,
         debug: bool = False,
     ):
-        """Safely uploads a local file to the storage bucket. Will also check to
-        see if the file already exists.
+        """Safely uploads a local file to the storage bucket. Will also check
+        to see if the file already exists.
 
         Args:
             file_name (str, optional): The file name (includes extension).
                 Defaults to "".
-            file_type (str, optional): The file type (do not include the dot ".").
-                Defaults to "".
-            ship_name (str, optional): The ship name associated with this survey.
-                Defaults to "".
-            survey_name (str, optional): The survey name/identifier. Defaults
-                to "".
-            echosounder (str, optional): The echosounder used to gather the data.
-                Defaults to "".
             file_location (str, optional): The local location of the file.
                 Defaults to "".
-            gcp_storage_bucket_location (str, optional): The location of the file
-                within GCP Storage Buckets.
+            gcp_storage_bucket_location (str, optional): The location of the
+                file within GCP Storage Buckets.
                 Defaults to "".
-                NOTE: If this is not provided, a gcp_storage_bucket_location will
-                be parsed from the other parameters provided.
+                NOTE: If this is not provided, a gcp_storage_bucket_location
+                will be parsed from the other parameters provided.
             gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
                 used to upload the file. Defaults to None.
-            data_source (str, optional): The source of the data. Can be one of
-                ["NCEI", "OMAO", "HDD", "TEST"]. Defaults to "".
-            user_email (str, optional): The user email as a string. Defaults to "".
-            is_survey_metadata (bool, optional): Whether or not the file is a
-                metadata file associated with a survey. The files are stored at
-                the survey level, in the `metadata/` folder. Defaults to False.
-            is_calibration_file (bool, optional): Whether of not the file is a
-                calibration file. These files are stored within their own
-                `calibration/` sub-directory within the survey.
-            is_calibration_mapping_file (bool, optional): Whether or not a file is
-                a calibration mapping file. This is stored in a separate directory
-                called `mappings/` within the `calibration/` directory.
-            is_auxiliary_file (bool, optional): Whether or not the file is an
-                auxiliary file associated with the survey. These files can be of
-                any extension. And do not necessarily have to be data files.
-            is_derived_product (bool, optional): Whether or not the file is a
-                derived product. These can be analysis work products or anything
-                else that is not a file that analysis can be derived from (netcdf).
+            force_upload (bool, optional): Whether or not to force the upload
+                of the file to GCP. If True, the file will be uploaded
+                regardless of whether or not it already exists in GCP.
                 Defaults to False.
-            force_upload (bool, optional): Whether or not to force the upload of
-                the file to GCP. If True, the file will be uploaded regardless of
-                whether or not it already exists in GCP.
-                Defaults to False.
-            verbose (bool, optional): Whether or not you want to print intermediate
-                statements about uploads. Helpful for if you are using progress
-                bars.
+            verbose (bool, optional): Whether or not you want to print
+                intermediate statements about uploads. Helpful for if you are
+                using progress bars.
                 Defaults to True.
             debug (bool, optional): Whether or not to print debug statements.
                 Defaults to False.
@@ -1038,7 +1022,7 @@ class LocalSurvey:
         assert file_location != "", "A `file_location` is needed to upload."
 
         # Check if the file exists in GCP
-        file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
+        file_exists_in_gcp = check_if_file_exists_in_gcp(
             gcp_bucket, file_path=gcp_storage_bucket_location
         )
         if file_exists_in_gcp and not force_upload:
@@ -1068,8 +1052,8 @@ class LocalSurvey:
                     print("UPLOADED.")
             except Exception as e:
                 logging.error(
-                    "COULD NOT UPLOAD FILE %s TO GCP (%s) STORAGE BUCKET DUE TO "
-                    "THE FOLLOWING ERROR:\n%s",
+                    "COULD NOT UPLOAD FILE %s TO GCP (%s) STORAGE BUCKET DUE "
+                    "TO THE FOLLOWING ERROR:\n%s",
                     file_name,
                     gcp_storage_bucket_location,
                     e,
@@ -1218,8 +1202,10 @@ class LocalSurvey:
         )
         print(
             f"Total size of uploaded files (incorrectly):\n"
-            f"\t{files_uploaded_incorrectly_size_in_bytes / (1024**2):.2f} megabytes"
-            f"\t{files_uploaded_incorrectly_size_in_bytes / (1024**3):.2f} gigabytes"
+            f"\t{files_uploaded_incorrectly_size_in_bytes / (1024**2):.2f}"
+            " megabytes"
+            f"\t{files_uploaded_incorrectly_size_in_bytes / (1024**3):.2f}"
+            " gigabytes"
         )
         print(
             f"Total size of not uploaded files:\n"
@@ -1236,7 +1222,8 @@ class LocalSurvey:
             and self.missing_or_incorrectly_uploaded_files
         ):
             print(
-                "Reuploading incorrectly uploaded files to GCP storage bucket..."
+                "Reuploading missing or mismatched checksum files to GCP "
+                "storage bucket..."
             )
             self._upload_to_gcp(
                 files_to_upload=list(
@@ -1263,9 +1250,9 @@ if __name__ == "__main__":
     #     handlers=[logging.StreamHandler(sys.stdout)],
     # )
     # set up storage objects
-    s3_client, s3_resource, s3_bucket = cloud_utils.create_s3_objs()
+    s3_client, s3_resource, s3_bucket = create_s3_objs()
     gcp_stor_client, gcp_bucket_name, gcp_bucket = (
-        cloud_utils.setup_gcp_storage_objs()
+        setup_gcp_storage_objs()
     )
 
     # create a survey object
