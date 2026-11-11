@@ -925,7 +925,7 @@ def _upload_file(
         return "failed", gcp_storage_bucket_location
 
 
-def _upload_file_to_gcp_storage_bucket(
+def upload_file_to_gcp_storage_bucket(
     file_name: str = "",
     file_type: str = "",
     ship_name: str = "",
@@ -1035,140 +1035,6 @@ def _upload_file_to_gcp_storage_bucket(
     )
     return None if status == "failed" else gcp_storage_bucket_location
 
-
-def upload_file_to_gcp_storage_bucket(
-    file_name: str = "",
-    file_type: str = "",
-    ship_name: str = "",
-    survey_name: str = "",
-    echosounder: str = "",
-    file_location: str = "",
-    gcp_storage_bucket_location: str = "",
-    gcp_bucket: storage.Client.bucket = None,
-    data_source: str = "",
-    user_email: str = "",
-    is_survey_metadata: bool = False,
-    is_calibration_file: bool = False,
-    is_calibration_mapping_file: bool = False,
-    is_auxiliary_file: bool = False,
-    is_derived_product: bool = False,
-    force_upload: bool = False,
-    verbose: bool = True,
-    debug: bool = False,
-):
-    """Safely uploads a local file to the storage bucket. Will also check to
-    see if the file already exists.
-
-    Args:
-        file_name (str, optional): The file name (includes extension).
-            Defaults to "".
-        file_type (str, optional): The file type (do not include the dot ".").
-            Defaults to "".
-        ship_name (str, optional): The ship name associated with this survey.
-            Defaults to "".
-        survey_name (str, optional): The survey name/identifier. Defaults
-            to "".
-        echosounder (str, optional): The echosounder used to gather the data.
-            Defaults to "".
-        file_location (str, optional): The local location of the file.
-            Defaults to "".
-        gcp_storage_bucket_location (str, optional): The location of the file
-            within GCP Storage Buckets.
-            Defaults to "".
-            NOTE: If this is not provided, a gcp_storage_bucket_location will
-            be parsed from the other parameters provided.
-        gcp_bucket (storage.Client.bucket, optional): The GCP bucket object
-            used to upload the file. Defaults to None.
-        data_source (str, optional): The source of the data. Can be one of
-            ["NCEI", "OMAO", "HDD", "TEST"]. Defaults to "".
-        user_email (str, optional): The user email as a string. Defaults to "".
-        is_survey_metadata (bool, optional): Whether or not the file is a
-            metadata file associated with a survey. The files are stored at
-            the survey level, in the `metadata/` folder. Defaults to False.
-        is_calibration_file (bool, optional): Whether of not the file is a
-            calibration file. These files are stored within their own
-            `calibration/` sub-directory within the survey.
-        is_calibration_mapping_file (bool, optional): Whether or not a file is
-            a calibration mapping file. This is stored in a separate directory
-            called `mappings/` within the `calibration/` directory.
-        is_auxiliary_file (bool, optional): Whether or not the file is an
-            auxiliary file associated with the survey. These files can be of
-            any extension. And do not necessarily have to be data files.
-        is_derived_product (bool, optional): Whether or not the file is a
-            derived product. These can be analysis work products or anything
-            else that is not a file that analysis can be derived from (netcdf).
-            Defaults to False.
-        force_upload (bool, optional): Whether or not to force the upload of
-            the file to GCP. If True, the file will be uploaded regardless of
-            whether or not it already exists in GCP.
-            Defaults to False.
-        verbose (bool, optional): Whether or not you want to print intermediate
-            statements about uploads. Helpful for if you are using progress
-            bars.
-            Defaults to True.
-        debug (bool, optional): Whether or not to print debug statements.
-            Defaults to False.
-    """
-    assert file_location != "", "A `file_location` is needed to upload."
-
-    if gcp_storage_bucket_location == "":
-        gcp_storage_bucket_location = (
-            helpers.parse_correct_gcp_storage_bucket_location(
-                file_name=file_name,
-                file_type=file_type,
-                ship_name=ship_name,
-                survey_name=survey_name,
-                echosounder=echosounder,
-                data_source=data_source,
-                user_email=user_email,
-                is_survey_metadata=is_survey_metadata,
-                is_calibration_file=is_calibration_file,
-                is_calibration_mapping_file=is_calibration_mapping_file,
-                is_auxiliary_file=is_auxiliary_file,
-                is_derived_product=is_derived_product,
-                debug=debug,
-            )
-        )
-
-    # Check if the file exists in GCP
-    file_exists_in_gcp = cloud_utils.check_if_file_exists_in_gcp(
-        gcp_bucket, file_path=gcp_storage_bucket_location
-    )
-    if file_exists_in_gcp and not force_upload:
-        print(
-            (
-                f"INFO: FILE `{file_name}` ALREADY EXISTS IN GCP AT "
-                f"`{gcp_storage_bucket_location}`."
-            )
-        )
-    else:
-        try:
-            if verbose:
-                print(
-                    (
-                        f"UPLOADING FILE `{file_name}` TO GCP AT"
-                        f" `{gcp_storage_bucket_location}`..."
-                    )
-                )
-            # Upload to storage bucket.
-            cloud_utils.upload_file_to_gcp_bucket(
-                bucket=gcp_bucket,
-                blob_file_path=gcp_storage_bucket_location,
-                local_file_path=file_location,
-                debug=debug,
-            )
-            if verbose:
-                print("UPLOADED.")
-        except Exception as e:
-            logging.error(
-                "COULD NOT UPLOAD FILE %s TO GCP (%s) STORAGE BUCKET DUE TO "
-                "THE FOLLOWING ERROR:\n%s",
-                file_name,
-                gcp_storage_bucket_location,
-                e,
-            )
-
-    return
 
 if __name__ == "__main__":
     config.use_gcp_dev()
