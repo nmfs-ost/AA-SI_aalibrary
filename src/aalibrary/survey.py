@@ -400,7 +400,6 @@ class LocalSurvey:
     gcp_bucket: storage.Client.bucket = None
     gcp_project_id: str = None
     gcp_bucket_name: str = None
-    upload_to_gcp: bool = None
     missing_or_incorrectly_uploaded_files: set = set()
     # Get all valid and normalized ICES ship names
     valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
@@ -413,9 +412,6 @@ class LocalSurvey:
         self._handle_paths()
         print(f"ANALYZING DIRECTORY: {self.directory_path}")
         self._create_vars_for_use_later()
-        if self.upload_to_gcp:
-            print("UPLOAD TO GCP ENABLED")
-            self._upload_to_gcp()
 
     def __repr__(self):
         return_str = (f"LocalSurvey(ship_name={self.ship_name}, "
