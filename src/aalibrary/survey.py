@@ -341,21 +341,21 @@ class LocalSurvey:
         ```python
         from aalibrary.survey import LocalSurvey
 
-        survey = LocalSurvey(
-            directory_path=r"C:/data/DX2301",
+        local_survey = LocalSurvey(
+            survey_directory_path=r"C:/data/DX2301",
             ship_name="Henry B. Bigelow",
             survey_name="DX2301",
             echosounder="EK80",
             data_source="HDD",
         )
-        print(survey)                 # what was found
-        survey.upload_files()         # upload everything (skips files
-                                      # already in the bucket)
-        survey.verify_gcp_uploads()   # compare checksums with the bucket
+        print(local_survey)                 # what was found
+        local_survey.upload_files()         # upload everything (skips files
+                                            # already in the bucket)
+        local_survey.verify_gcp_uploads()   # compare checksums with the bucket
         ```
 
     Args:
-        directory_path (str): Required. The folder that holds the survey's
+        survey_directory_path (str): Required. The folder that holds the survey's
             files. Subfolders are included.
         ship_name (str): Required. The ship name, e.g. "Henry B. Bigelow"
             (normalized to "Henry_B_Bigelow").
@@ -386,6 +386,8 @@ class LocalSurvey:
         num_all_files_in_directory (int), num_raw_files_in_directory (int),
         num_idx_files_in_directory (int), num_bot_files_in_directory (int):
             File counts.
+        num_all_auxiliary_files_in_directory (int): The number of auxiliary
+            files in the directory.
         total_file_size_gb_in_directory (float): Total size.
     """
 
@@ -393,7 +395,7 @@ class LocalSurvey:
     survey_name: str = ""
     echosounder: str = ""
     data_source: str = "HDD"
-    directory_path: str = ""
+    survey_directory_path: str = ""
     auxiliary_directory_path: str = ""
     relocation_path: str = ""
     debug: bool = False
@@ -410,13 +412,15 @@ class LocalSurvey:
         self.__dict__.update(kwargs)
         atexit.register(self._sudden_exit)
         self._handle_paths()
-        print(f"ANALYZING DIRECTORY: {self.directory_path}")
+        print(f"ANALYZING DIRECTORY: {self.survey_directory_path}")
         self._create_vars_for_use_later()
 
     def __repr__(self):
-        return_str = (f"LocalSurvey(ship_name={self.ship_name}, "
-                      f"survey_name={self.survey_name}, "
-                      f"directory_path={self.directory_path})")
+        return_str = (
+            f"LocalSurvey(ship_name={self.ship_name}, "
+            f"survey_name={self.survey_name}, "
+            f"survey_directory_path={self.survey_directory_path})"
+        )
         return return_str
 
     def __str__(self):
@@ -424,6 +428,7 @@ class LocalSurvey:
             "ship_name": self.ship_name,
             "survey_name": self.survey_name,
             "num_all_files_in_directory": self.num_all_files_in_directory,
+            "num_all_auxiliary_files_in_directory": self.num_all_auxiliary_files_in_directory,
             "total_file_size_bytes_in_directory": (
                 self.total_file_size_bytes_in_directory
             ),
@@ -444,37 +449,44 @@ class LocalSurvey:
         """Handles all minute functions and adjustments related to paths."""
 
         assert (
-            "directory_path" in self.__dict__
-        ), "`directory_path` is required for the LocalSurvey object."
+            "survey_directory_path" in self.__dict__
+        ), "`survey_directory_path` is required for the LocalSurvey object."
 
         # Normalize paths
-        if "directory_path" in self.__dict__:
-            self.directory_path = (
-                os.path.normpath(self.directory_path) + os.sep
+        if "survey_directory_path" in self.__dict__:
+            self.survey_directory_path = (
+                os.path.normpath(self.survey_directory_path) + os.sep
             )
-            assert os.path.exists(self.directory_path), (
+            assert os.path.exists(self.survey_directory_path), (
                 "The directory provided does not exist or could not be found:"
-                f" `{self.directory_path}`"
+                f" `{self.survey_directory_path}`"
             )
             if self.debug:
                 logging.debug(
-                    "normalized directory path = %s", self.directory_path
+                    "normalized directory path = %s",
+                    self.survey_directory_path,
                 )
-        assert "auxiliary_directory_path" in self.__dict__, (
-            "`auxiliary_directory_path` is required for the LocalSurvey object"
-            ". If necessary, please create an empty `auxiliary` directory in "
-            "the survey directory and pass it as a parameter."
-        )
 
-        if "auxiliary_directory_path" in self.__dict__:
-            self.auxiliary_directory_path = (
-                os.path.normpath(self.auxiliary_directory_path) + os.sep
+        # Handle auxiliary_directory_path.
+        # First we assume the auxiliary_directory_path from the given
+        # survey_directory_path.
+        self.auxiliary_directory_path = os.path.normpath(
+            os.sep.join([self.survey_directory_path, "auxiliary"])
+        )
+        # Then we check if it exists, and if not, we create it for the user.
+        if not os.path.exists(self.auxiliary_directory_path):
+            os.makedirs(self.auxiliary_directory_path)
+            print(
+                "No existing auxiliary directory found. Created ="
+                f" {self.auxiliary_directory_path}`"
             )
             if self.debug:
                 logging.debug(
-                    "normalized auxiliary directory path = %s",
-                    self.auxiliary_directory_path,
+                    "normalized auxiliary directory path ="
+                    f" {self.auxiliary_directory_path}"
                 )
+
+        # Handle relocation path.
         if "relocation_path" in self.__dict__:
             self.relocation_path = (
                 os.path.normpath(self.relocation_path) + os.sep
@@ -516,7 +528,9 @@ class LocalSurvey:
             )
 
         # Get all files in this directory.
-        directory_path_glob = os.sep.join([self.directory_path, "**", "*"])
+        directory_path_glob = os.sep.join(
+            [self.survey_directory_path, "**", "*"]
+        )
         # Get all files in auxiliary directory
         auxiliary_directory_path_glob = os.sep.join(
             [self.auxiliary_directory_path, "**", "*"]
@@ -602,6 +616,14 @@ class LocalSurvey:
 
         # Get number of all files in this directory.
         self.num_all_files_in_directory = len(self.all_file_paths_in_directory)
+        # Get num of all auxiliary files in this directory.
+        self.num_all_auxiliary_files_in_directory = len(
+            [
+                file_path
+                for file_path in self.all_file_paths_in_directory
+                if self.all_file_paths_in_directory[file_path]["is_auxiliary"]
+            ]
+        )
         # Get all file types in this directory.
         self.all_file_types_in_directory = list(
             set(
@@ -1243,17 +1265,20 @@ class LocalSurvey:
         print("Sudden exit detected.\nExiting LocalSurvey...", file=sys.stderr)
         print(
             "If you have any uploads pending, you can always re-run the"
-            " LocalSurvey object to finish uploading.", file=sys.stderr
+            " LocalSurvey object to finish uploading.",
+            file=sys.stderr,
         )
         print(
             "You can also verify your uploaded files using"
             " `LocalSurvey.verify_gcp_uploads()` to check for any missing "
-            "or incorrectly uploaded files.", file=sys.stderr
+            "or incorrectly uploaded files.",
+            file=sys.stderr,
         )
         print(
             "Hint: Set the `reupload_incorrectly_uploaded_files` parameter"
             " to True to automatically re-upload any missing or incorrectly"
-            " uploaded files.", file=sys.stderr
+            " uploaded files.",
+            file=sys.stderr,
         )
 
 
@@ -1298,7 +1323,7 @@ if __name__ == "__main__":
     #     ship_name="Henry_B._Bigelow",
     #     survey_name="HB2407",
     #     data_source="HDD",
-    #     directory_path="./HDD/",
+    #     survey_directory_path="./HDD/",
     #     # relocation_path="./Copy_HDD/",
     #     upload_to_gcp=False,
     #     debug=True,
@@ -1317,14 +1342,14 @@ if __name__ == "__main__":
     #         i += 1
     # print(i)
 
-    # LocalSurvey uploads from a directory_path.
+    # LocalSurvey uploads from a survey_directory_path.
     # Uploads any un-uploaded files to GCP.
     local_survey = LocalSurvey(
         ship_name="Reuben_Lasker",
         survey_name="TEST1234",
         echosounder="EK80",
         data_source="HDD",
-        directory_path="./TEST1234/",
+        survey_directory_path="./TEST1234/",
         # Create an empty auxiliary directory if you dont have one.
         auxiliary_directory_path="./TEST1234/auxiliary/",
         # Whether or not to upload to GCP
@@ -1335,7 +1360,7 @@ if __name__ == "__main__":
     )
     # Prints a generic overview of the directory and its files.
     print(local_survey)
-    # Tests upload speeds with a printout of results. This is useful for testing
+    # Tests upload speeds with a printout of results. This is useful testing
     # to see if your network can handle large uploads. You can specify either a
     # number of files or a number of megabytes to upload. The smallest files
     # are uploaded first.
