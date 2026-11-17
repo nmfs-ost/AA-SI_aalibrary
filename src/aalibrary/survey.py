@@ -416,7 +416,7 @@ class LocalSurvey:
         if self.upload_to_gcp:
             print("UPLOAD TO GCP ENABLED")
             self._upload_to_gcp()
-    
+
     def __repr__(self):
         return_str = (f"LocalSurvey(ship_name={self.ship_name}, "
                       f"survey_name={self.survey_name}, "
@@ -1321,17 +1321,29 @@ if __name__ == "__main__":
     #         i += 1
     # print(i)
 
-    # Test auxiliary file uploads
+    # LocalSurvey uploads from a directory_path.
+    # Uploads any un-uploaded files to GCP.
     local_survey = LocalSurvey(
         ship_name="Reuben_Lasker",
         survey_name="TEST1234",
+        echosounder="EK80",
         data_source="HDD",
         directory_path="./TEST1234/",
+        # Create an empty auxiliary directory if you dont have one.
         auxiliary_directory_path="./TEST1234/auxiliary/",
+        # Whether or not to upload to GCP
         upload_to_gcp=True,
         debug=True,
         gcp_bucket=gcp_bucket,
         gcp_bucket_name=gcp_bucket_name,
     )
-    pprint.pprint(local_survey.all_file_paths_in_directory)
+    # Prints a generic overview of the directory and its files.
+    print(local_survey)
+    # Tests upload speeds with a printout of results. This is useful for testing
+    # to see if your network can handle large uploads. You can specify either a
+    # number of files or a number of megabytes to upload. The smallest files
+    # are uploaded first.
+    # local_survey._test_upload_to_gcp_speeds(megabytes=100)
+    # Verifies the files that have been uploaded to GCP using file checksums.
+    # The reupload param will reupload any missing or incorrectly uploaded files.
     local_survey.verify_gcp_uploads(reupload_incorrectly_uploaded_files=True)

@@ -4,10 +4,13 @@ Specifically the `SHIPC` platform code which refers to ship names.
 """
 
 import functools
+import os
 from typing import List
 from difflib import get_close_matches
+import json
 
 import requests
+from pathlib import Path
 
 # For pytests-sake
 if __package__ is None or __package__ == "":
@@ -16,6 +19,9 @@ if __package__ is None or __package__ == "":
 else:
     # uses current package visibility
     from aalibrary.utils.helpers import normalize_ship_name
+
+# Inside src/aalibrary/ices_ship_names.py
+PACKAGE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 @functools.lru_cache(maxsize=1)
@@ -27,7 +33,7 @@ def _fetch_all_ship_info() -> tuple:
             "https://vocab.ices.dk/services/api/Code/"
             "7f9a91e1-fb57-464a-8eb0-697e4b0235b5"
         ),
-        timeout=10
+        timeout=10,
     )
     response.raise_for_status()
     return tuple(response.json())
@@ -60,6 +66,27 @@ class NormalizedIcesShipNames:
         return list(_normalized_ices_ship_names())
 
 
+def _update_ices_ship_names_cache() -> None:
+    """FOR DEVS ONLY: Updates the cache of normalized ICES ship names. This is
+    useful if the ICES database has changed since the last time it was fetched.
+    """
+    all_ship_codes_and_names = get_all_ices_ship_codes_and_names(
+        normalize_ship_names=False
+    )
+    # Save dictionary to a JSON file
+    save_path = os.sep.join(
+        [str(PACKAGE_DIR), "other", "ices_ship_names_cache.json"]
+    )
+    with open(
+        save_path,
+        "w+",
+        encoding="utf-8",
+    ) as f:
+        json.dump(all_ship_codes_and_names, f, indent=4)
+
+    print("ICES ship names cache updated.")
+
+
 def get_all_ices_ship_codes_and_names(
     normalize_ship_names: bool = False,
 ) -> dict:
@@ -75,10 +102,25 @@ def get_all_ices_ship_codes_and_names(
             and the name is the value.
     """
 
-    all_ship_info = get_all_ship_info()
-    all_ship_codes_and_names = {}
-    for ship_info in all_ship_info:
-        all_ship_codes_and_names[ship_info["key"]] = ship_info["description"]
+    if not os.path.exists(
+        os.sep.join([str(PACKAGE_DIR), "other", "ices_ship_names_cache.json"])
+    ):
+        all_ship_info = get_all_ship_info()
+        all_ship_codes_and_names = {}
+        for ship_info in all_ship_info:
+            all_ship_codes_and_names[ship_info["key"]] = ship_info[
+                "description"
+            ]
+    else:
+        # Load the ship codes and names from the JSON file
+        with open(
+            os.sep.join(
+                [str(PACKAGE_DIR), "other", "ices_ship_names_cache.json"]
+            ),
+            "r",
+            encoding="utf-8",
+        ) as f:
+            all_ship_codes_and_names = json.load(f)
 
     if normalize_ship_names:
         all_ship_codes_and_names = {
@@ -101,16 +143,9 @@ def get_all_ices_ship_names(normalize_ship_names: bool = False) -> List:
         List: A list containing strings of all of the ship names.
     """
 
-    all_ship_info = get_all_ship_info()
-    all_ship_names = []
-    for ship_info in all_ship_info:
-        # Here `ship_info` is a dict
-        all_ship_names.append(ship_info["description"])
-    if normalize_ship_names:
-        all_ship_names = [
-            normalize_ship_name(ship_name=ship_name)
-            for ship_name in all_ship_names
-        ]
+    all_ship_codes_and_names = get_all_ices_ship_codes_and_names(
+        normalize_ship_names=normalize_ship_names)
+    all_ship_names = list(all_ship_codes_and_names.values())
 
     return all_ship_names
 
@@ -170,4 +205,6 @@ if __name__ == "__main__":
     # for ship_name in all_ship_names:
     #     if "lasker" in ship_name.lower():
     #         print(ship_name)
-    print(get_ices_code_from_ship_name("Reuben_Lasker", is_normalized=True))
+    # print(get_ices_code_from_ship_name("Reuben_Lasker", is_normalized=True))
+
+    _update_ices_ship_names_cache()

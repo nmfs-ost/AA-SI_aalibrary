@@ -13,11 +13,14 @@ from difflib import get_close_matches
 from google.cloud import storage
 from tqdm import tqdm
 
+from aalibrary import ices_ship_names
+
 # For pytests-sake
 if __package__ is None or __package__ == "":
     # uses current directory visibility
     import config
     import metadata
+    import ices_ship_names
     from raw_file import RawFile
     from utils import cloud_utils, helpers
     from utils.helpers import check_for_assertion_errors
@@ -25,6 +28,7 @@ else:
     # uses current package visibility
     from aalibrary import config
     from aalibrary import metadata
+    from aalibrary import ices_ship_names
     from aalibrary.raw_file import RawFile
     from aalibrary.utils import cloud_utils, helpers
     from aalibrary.utils.helpers import check_for_assertion_errors
@@ -58,7 +62,10 @@ def _check_ship_name(
     would refuse it after the uploads), unless it's marked provisional;
     otherwise it's a warning."""
     try:
-        names = RawFile.valid_ICES_ship_names
+        # Get all valid and normalized ICES ship names using cache.
+        names = ices_ship_names.get_all_ices_ship_names(
+        normalize_ship_names=True
+    )
     except Exception as e:  # ICES didn't answer
         if refuse:
             raise

@@ -116,9 +116,10 @@ class RawFile:
     datagram_timestamp = None
     file_datetime_timezone: str = None
     transect_name: str = None
-    # All valid and normalized ICES ship names, fetched from ICES on first use
-    # (not when aalibrary is imported).
-    valid_ICES_ship_names = ices_ship_names.NormalizedIcesShipNames()
+    # Get all valid and normalized ICES ship names using cache.
+    valid_ICES_ship_names = ices_ship_names.get_all_ices_ship_names(
+        normalize_ship_names=True
+    )
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
