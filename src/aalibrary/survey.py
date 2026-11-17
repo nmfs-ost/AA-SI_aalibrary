@@ -481,7 +481,7 @@ class LocalSurvey:
                 f" {self.auxiliary_directory_path}`"
             )
             if self.debug:
-                logging.debug(
+                print(
                     "normalized auxiliary directory path ="
                     f" {self.auxiliary_directory_path}"
                 )
@@ -492,7 +492,7 @@ class LocalSurvey:
                 os.path.normpath(self.relocation_path) + os.sep
             )
             if self.debug:
-                logging.debug(
+                print(
                     "normalized relocation path = %s", self.relocation_path
                 )
             # Create the relocation path if it does not exist.
