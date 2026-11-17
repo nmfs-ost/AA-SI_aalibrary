@@ -492,9 +492,7 @@ class LocalSurvey:
                 os.path.normpath(self.relocation_path) + os.sep
             )
             if self.debug:
-                print(
-                    "normalized relocation path = %s", self.relocation_path
-                )
+                print("normalized relocation path = %s", self.relocation_path)
             # Create the relocation path if it does not exist.
             if not os.path.exists(self.relocation_path):
                 os.makedirs(self.relocation_path)
@@ -861,7 +859,10 @@ class LocalSurvey:
                 bytes_allocated = 0
                 all_files_sorted_by_size_idx = 0
                 files_to_upload = []
-                while bytes_allocated <= mb_in_bytes:
+                while (bytes_allocated <= mb_in_bytes) and (
+                    all_files_sorted_by_size_idx
+                    < len(self.all_files_sorted_by_size)
+                ):
                     # get the next smallest file by size
                     next_file = self.all_files_sorted_by_size[
                         all_files_sorted_by_size_idx
@@ -1352,14 +1353,13 @@ if __name__ == "__main__":
         survey_directory_path="./TEST1234/",
         # Create an empty auxiliary directory if you dont have one.
         auxiliary_directory_path="./TEST1234/auxiliary/",
-        # Whether or not to upload to GCP
-        upload_to_gcp=True,
         debug=True,
         gcp_bucket=gcp_bucket,
         gcp_bucket_name=gcp_bucket_name,
     )
     # Prints a generic overview of the directory and its files.
     print(local_survey)
+    # local_survey._test_upload_to_gcp_speeds(megabytes=5000)
     # Tests upload speeds with a printout of results. This is useful testing
     # to see if your network can handle large uploads. You can specify either a
     # number of files or a number of megabytes to upload. The smallest files
